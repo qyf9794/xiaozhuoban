@@ -1,0 +1,11 @@
+node_modules
+.pnpm-store
+.turbo
+dist
+coverage
+.DS_Store
+*.log
+apps/desktop/src-tauri/target
+apps/web/.vite
+.npm-cache
+package-lock.json

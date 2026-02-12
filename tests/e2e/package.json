@@ -1,0 +1,12 @@
+{
+  "name": "@xiaozhuoban/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "echo 'playwright scenarios documented but not wired in this scaffold'",
+    "build": "echo 'no build'",
+    "lint": "echo 'lint skipped'",
+    "typecheck": "echo 'no typecheck'"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "小桌板",
+  "version": "0.1.0",
+  "identifier": "com.xiaozhuoban.app",
+  "build": {
+    "beforeDevCommand": "cd ../../web && pnpm dev",
+    "beforeBuildCommand": "cd ../../web && pnpm build",
+    "frontendDist": "../../web/dist",
+    "devUrl": "http://localhost:5173"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "小桌板",
+        "width": 1440,
+        "height": 900,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": []
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@xiaozhuoban/widget-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "lint": "echo 'lint skipped'",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@xiaozhuoban/domain": "workspace:*"
+  }
+}

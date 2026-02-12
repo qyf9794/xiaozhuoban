@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@xiaozhuoban/domain": ["packages/domain/src"],
+      "@xiaozhuoban/layout-engine": ["packages/layout-engine/src"],
+      "@xiaozhuoban/widget-runtime": ["packages/widget-runtime/src"],
+      "@xiaozhuoban/ai-builder": ["packages/ai-builder/src"],
+      "@xiaozhuoban/data": ["packages/data/src"],
+      "@xiaozhuoban/contracts": ["packages/contracts/src"],
+      "@xiaozhuoban/ui": ["packages/ui/src"]
+    }
+  }
+}
