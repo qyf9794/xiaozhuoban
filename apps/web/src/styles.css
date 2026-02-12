@@ -34,7 +34,7 @@ body {
   height: 8px;
   padding: 0;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.7);
+  border: none;
   background: linear-gradient(160deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.36));
   backdrop-filter: blur(12px);
   color: transparent;
@@ -61,6 +61,7 @@ body {
   width: 20px;
   height: 20px;
   border-radius: 999px;
+  border: none;
   background: linear-gradient(165deg, rgba(248, 113, 113, 0.92), rgba(220, 38, 38, 0.92));
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff;

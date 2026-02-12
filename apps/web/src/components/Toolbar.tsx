@@ -55,6 +55,21 @@ export function Toolbar({
       }}
     >
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <button
+          aria-label={sidebarOpen ? "隐藏侧栏" : "显示侧栏"}
+          onClick={onToggleSidebar}
+          style={{
+            border: "none",
+            background: "transparent",
+            color: "#94a3b8",
+            fontSize: 18,
+            lineHeight: 1,
+            cursor: "pointer",
+            padding: 2
+          }}
+        >
+          {sidebarOpen ? "◧" : "◨"}
+        </button>
         <h1 style={{ margin: 0, fontSize: 18 }}>{board.name}</h1>
       </div>
       <div style={{ display: "flex", gap: 8 }}>
