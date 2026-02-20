@@ -77,6 +77,7 @@ interface QuickLinkItem {
   url: string;
   method: "OPEN" | "GET" | "POST";
   body?: string;
+  headers?: string;
 }
 
 async function executeQuickLink(link: QuickLinkItem): Promise<string> {
@@ -89,9 +90,23 @@ async function executeQuickLink(link: QuickLinkItem): Promise<string> {
   }
 
   const init: RequestInit = { method: link.method };
+  const headers: Record<string, string> = {};
+
+  if (link.headers?.trim()) {
+    try {
+      Object.assign(headers, JSON.parse(link.headers));
+    } catch {
+      throw new Error("Headers 必须是合法 JSON");
+    }
+  }
+
   if (link.method === "POST") {
-    init.headers = { "Content-Type": "application/json" };
+    if (!headers["Content-Type"]) headers["Content-Type"] = "application/json";
     init.body = link.body?.trim() || "{}";
+  }
+
+  if (Object.keys(headers).length > 0) {
+    init.headers = headers;
   }
 
   const response = await fetch(target, init);
@@ -814,6 +829,7 @@ export function BuiltinWidgetView({
     const draftUrl = asString(instance.state.linkDraftUrl);
     const draftMethod = (asString(instance.state.linkDraftMethod) || "OPEN") as QuickLinkItem["method"];
     const draftBody = asString(instance.state.linkDraftBody);
+    const draftHeaders = asString(instance.state.linkDraftHeaders);
 
     const save = (next: Record<string, unknown>) => onStateChange({ ...instance.state, ...next });
 
@@ -857,11 +873,13 @@ export function BuiltinWidgetView({
                   method: draftMethod
                 };
                 if (draftMethod === "POST" && draftBody.trim()) next.body = draftBody;
+                if ((draftMethod === "GET" || draftMethod === "POST") && draftHeaders.trim()) next.headers = draftHeaders;
                 save({
                   links: [next, ...links],
                   linkDraftName: "",
                   linkDraftUrl: "",
                   linkDraftBody: "",
+                  linkDraftHeaders: "",
                   quickLinkStatus: "已添加"
                 });
               }}
@@ -874,6 +892,14 @@ export function BuiltinWidgetView({
               value={draftBody}
               onChange={(event) => save({ linkDraftBody: event.target.value })}
               placeholder="POST Body(JSON)，留空默认 {}"
+              style={{ borderRadius: 10, border: "1px solid rgba(203,213,225,0.65)", padding: "6px 8px", minHeight: 60 }}
+            />
+          ) : null}
+          {draftMethod === "GET" || draftMethod === "POST" ? (
+            <textarea
+              value={draftHeaders}
+              onChange={(event) => save({ linkDraftHeaders: event.target.value })}
+              placeholder='Headers(JSON)，如 {"Authorization":"Bearer <token>","Accept":"application/vnd.github+json"}'
               style={{ borderRadius: 10, border: "1px solid rgba(203,213,225,0.65)", padding: "6px 8px", minHeight: 60 }}
             />
           ) : null}
