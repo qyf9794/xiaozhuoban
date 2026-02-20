@@ -89,6 +89,18 @@ const baseWidgets: Array<Omit<WidgetDefinition, "id" | "createdAt" | "updatedAt"
     uiSchema: { layout: "single-column" },
     logicSpec: {},
     storagePolicy: { strategy: "local" }
+  },
+  {
+    kind: "system",
+    type: "quicklink",
+    name: "远程执行",
+    version: 1,
+    description: "添加远程链接，点击即可触发执行",
+    inputSchema: { fields: [] },
+    outputSchema: { fields: [] },
+    uiSchema: { layout: "single-column" },
+    logicSpec: {},
+    storagePolicy: { strategy: "local" }
   }
 ];
 

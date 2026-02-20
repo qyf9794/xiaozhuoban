@@ -71,6 +71,33 @@ interface RecordingItem {
   mimeType: string;
 }
 
+interface QuickLinkItem {
+  id: string;
+  name: string;
+  url: string;
+  method: "OPEN" | "GET" | "POST";
+  body?: string;
+}
+
+async function executeQuickLink(link: QuickLinkItem): Promise<string> {
+  const target = link.url.trim();
+  if (!target) return "链接为空";
+
+  if (link.method === "OPEN") {
+    window.open(target, "_blank", "noopener,noreferrer");
+    return "已打开";
+  }
+
+  const init: RequestInit = { method: link.method };
+  if (link.method === "POST") {
+    init.headers = { "Content-Type": "application/json" };
+    init.body = link.body?.trim() || "{}";
+  }
+
+  const response = await fetch(target, init);
+  return `执行完成 (${response.status})`;
+}
+
 function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -776,6 +803,128 @@ export function BuiltinWidgetView({
               </>
             )}
           </div>
+        </div>
+      </WidgetShell>
+    );
+  }
+
+  if (definition.type === "quicklink") {
+    const links = (Array.isArray(instance.state.links) ? instance.state.links : []) as QuickLinkItem[];
+    const draftName = asString(instance.state.linkDraftName);
+    const draftUrl = asString(instance.state.linkDraftUrl);
+    const draftMethod = (asString(instance.state.linkDraftMethod) || "OPEN") as QuickLinkItem["method"];
+    const draftBody = asString(instance.state.linkDraftBody);
+
+    const save = (next: Record<string, unknown>) => onStateChange({ ...instance.state, ...next });
+
+    return (
+      <WidgetShell definition={definition} instance={instance}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
+          <input
+            value={draftName}
+            onChange={(event) => save({ linkDraftName: event.target.value })}
+            placeholder="名称（如：触发日报）"
+            style={{ borderRadius: 10, border: "1px solid rgba(203,213,225,0.65)", padding: "6px 8px" }}
+          />
+          <input
+            value={draftUrl}
+            onChange={(event) => save({ linkDraftUrl: event.target.value })}
+            placeholder="https://..."
+            style={{ borderRadius: 10, border: "1px solid rgba(203,213,225,0.65)", padding: "6px 8px" }}
+          />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+            <select
+              value={draftMethod}
+              onChange={(event) => save({ linkDraftMethod: event.target.value })}
+              style={{ borderRadius: 10, border: "1px solid rgba(203,213,225,0.65)", padding: "6px 8px" }}
+            >
+              <option value="OPEN">打开链接</option>
+              <option value="GET">GET 执行</option>
+              <option value="POST">POST 执行</option>
+            </select>
+            <Button
+              onClick={() => {
+                const name = draftName.trim();
+                const url = draftUrl.trim();
+                if (!name || !url) {
+                  save({ quickLinkStatus: "请填写名称和链接" });
+                  return;
+                }
+                const next: QuickLinkItem = {
+                  id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                  name,
+                  url,
+                  method: draftMethod
+                };
+                if (draftMethod === "POST" && draftBody.trim()) next.body = draftBody;
+                save({
+                  links: [next, ...links],
+                  linkDraftName: "",
+                  linkDraftUrl: "",
+                  linkDraftBody: "",
+                  quickLinkStatus: "已添加"
+                });
+              }}
+            >
+              添加
+            </Button>
+          </div>
+          {draftMethod === "POST" ? (
+            <textarea
+              value={draftBody}
+              onChange={(event) => save({ linkDraftBody: event.target.value })}
+              placeholder="POST Body(JSON)，留空默认 {}"
+              style={{ borderRadius: 10, border: "1px solid rgba(203,213,225,0.65)", padding: "6px 8px", minHeight: 60 }}
+            />
+          ) : null}
+          {asString(instance.state.quickLinkStatus) ? (
+            <small style={{ color: "#64748b" }}>{asString(instance.state.quickLinkStatus)}</small>
+          ) : null}
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {links.length === 0 ? (
+            <div style={{ color: "#64748b" }}>暂无执行链接，添加后可远程一键触发。</div>
+          ) : (
+            links.map((link) => (
+              <div
+                key={link.id}
+                style={{
+                  border: "1px solid rgba(203,213,225,0.6)",
+                  borderRadius: 10,
+                  padding: "6px 8px",
+                  display: "grid",
+                  gridTemplateColumns: "1fr auto auto",
+                  gap: 6,
+                  alignItems: "center"
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link.name}</div>
+                  <small style={{ color: "#64748b", overflowWrap: "anywhere" }}>{link.method} · {link.url}</small>
+                </div>
+                <Button
+                  onClick={() => {
+                    void executeQuickLink(link)
+                      .then((msg) => save({ quickLinkStatus: `${link.name}：${msg}` }))
+                      .catch((error) =>
+                        save({ quickLinkStatus: `${link.name}：${error instanceof Error ? error.message : "执行失败"}` })
+                      );
+                  }}
+                >
+                  执行
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    save({ links: links.filter((item) => item.id !== link.id) });
+                  }}
+                >
+                  删除
+                </Button>
+              </div>
+            ))
+          )}
         </div>
       </WidgetShell>
     );
