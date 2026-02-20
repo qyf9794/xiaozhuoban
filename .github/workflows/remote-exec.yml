@@ -1,0 +1,60 @@
+name: Remote Execute
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "要执行的动作"
+        required: true
+        default: "build_web"
+        type: choice
+        options:
+          - build_web
+          - test_all
+          - echo
+      payload:
+        description: "可选参数(JSON 或文本)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Print request
+        run: |
+          echo "action=${{ inputs.action }}"
+          echo "payload=${{ inputs.payload }}"
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web
+        if: ${{ inputs.action == 'build_web' }}
+        run: pnpm --filter @xiaozhuoban/web build
+
+      - name: Run tests
+        if: ${{ inputs.action == 'test_all' }}
+        run: pnpm -r test -- --run
+
+      - name: Echo payload
+        if: ${{ inputs.action == 'echo' }}
+        run: |
+          echo "Remote payload:"
+          echo "${{ inputs.payload }}"
