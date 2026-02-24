@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent } from "react";
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { Button } from "@xiaozhuoban/ui";
 import { WidgetShell } from "./WidgetShell";
@@ -29,6 +29,78 @@ const TRANSLATE_LANG_OPTIONS = [
   { value: "zh-CN", label: "中文" },
   { value: "en", label: "英文" }
 ] as const;
+
+const CONVERTER_CATEGORY_OPTIONS = [
+  { value: "length", label: "长度" },
+  { value: "weight", label: "重量" },
+  { value: "temperature", label: "温度" }
+] as const;
+
+const CONVERTER_UNIT_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
+  length: [
+    { value: "m", label: "米(m)" },
+    { value: "km", label: "千米(km)" },
+    { value: "cm", label: "厘米(cm)" },
+    { value: "inch", label: "英寸(in)" },
+    { value: "ft", label: "英尺(ft)" }
+  ],
+  weight: [
+    { value: "kg", label: "千克(kg)" },
+    { value: "g", label: "克(g)" },
+    { value: "lb", label: "磅(lb)" },
+    { value: "oz", label: "盎司(oz)" }
+  ],
+  temperature: [
+    { value: "c", label: "摄氏(°C)" },
+    { value: "f", label: "华氏(°F)" },
+    { value: "k", label: "开尔文(K)" }
+  ]
+};
+
+function convertUnit(value: number, category: string, from: string, to: string): number {
+  if (from === to) return value;
+
+  if (category === "length") {
+    const toMeter: Record<string, number> = {
+      m: 1,
+      km: 1000,
+      cm: 0.01,
+      inch: 0.0254,
+      ft: 0.3048
+    };
+    const meter = value * (toMeter[from] ?? 1);
+    return meter / (toMeter[to] ?? 1);
+  }
+
+  if (category === "weight") {
+    const toKg: Record<string, number> = {
+      kg: 1,
+      g: 0.001,
+      lb: 0.45359237,
+      oz: 0.028349523125
+    };
+    const kg = value * (toKg[from] ?? 1);
+    return kg / (toKg[to] ?? 1);
+  }
+
+  if (category === "temperature") {
+    const toCelsius = (n: number, unit: string): number => {
+      if (unit === "c") return n;
+      if (unit === "f") return (n - 32) * (5 / 9);
+      if (unit === "k") return n - 273.15;
+      return n;
+    };
+    const fromCelsius = (n: number, unit: string): number => {
+      if (unit === "c") return n;
+      if (unit === "f") return n * (9 / 5) + 32;
+      if (unit === "k") return n + 273.15;
+      return n;
+    };
+    return fromCelsius(toCelsius(value, from), to);
+  }
+
+  return value;
+}
 
 async function quickTranslate(text: string, sourceLang: string, targetLang: string): Promise<string> {
   const input = text.trim();
@@ -134,6 +206,54 @@ interface RecordingItem {
   mimeType: string;
 }
 
+interface ClipboardRecord {
+  id: string;
+  text: string;
+  pinned: boolean;
+  createdAt: string;
+}
+
+function normalizeClipboardRecords(raw: unknown): ClipboardRecord[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item, index) => {
+      if (typeof item === "string") {
+        return {
+          id: `clip_${Date.now()}_${index}`,
+          text: item,
+          pinned: false,
+          createdAt: new Date(Date.now() - index).toISOString()
+        } satisfies ClipboardRecord;
+      }
+      if (item && typeof item === "object") {
+        const candidate = item as Partial<ClipboardRecord>;
+        const text = typeof candidate.text === "string" ? candidate.text : "";
+        if (!text.trim()) return null;
+        return {
+          id: typeof candidate.id === "string" ? candidate.id : `clip_${Date.now()}_${index}`,
+          text,
+          pinned: candidate.pinned === true,
+          createdAt: typeof candidate.createdAt === "string" ? candidate.createdAt : new Date(Date.now() - index).toISOString()
+        } satisfies ClipboardRecord;
+      }
+      return null;
+    })
+    .filter((item): item is ClipboardRecord => Boolean(item));
+}
+
+function trimUnpinnedRecords(records: ClipboardRecord[], maxUnpinned = 30): ClipboardRecord[] {
+  const next = [...records];
+  let unpinnedCount = next.filter((item) => !item.pinned).length;
+  if (unpinnedCount <= maxUnpinned) return next;
+  for (let i = next.length - 1; i >= 0 && unpinnedCount > maxUnpinned; i -= 1) {
+    if (!next[i].pinned) {
+      next.splice(i, 1);
+      unpinnedCount -= 1;
+    }
+  }
+  return next;
+}
+
 function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -227,6 +347,127 @@ function ComposedInput({
   );
 }
 
+function VerticalResizableTextarea({
+  value,
+  onCommit,
+  placeholder,
+  readOnly = false,
+  minHeight = 74,
+  height,
+  onHeightCommit,
+  style
+}: {
+  value: string;
+  onCommit?: (value: string) => void;
+  placeholder?: string;
+  readOnly?: boolean;
+  minHeight?: number;
+  height: number;
+  onHeightCommit: (height: number) => void;
+  style?: CSSProperties;
+}) {
+  const [draft, setDraft] = useState(value);
+  const composingRef = useRef(false);
+  const [liveHeight, setLiveHeight] = useState(Math.max(minHeight, height));
+  const heightRef = useRef(Math.max(minHeight, height));
+  const dragRef = useRef<null | { startY: number; startHeight: number }>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (!composingRef.current) {
+      setDraft(value);
+    }
+  }, [value]);
+
+  useEffect(() => {
+    const nextHeight = Math.max(minHeight, height);
+    setLiveHeight(nextHeight);
+    heightRef.current = nextHeight;
+    if (textareaRef.current) {
+      textareaRef.current.style.height = `${nextHeight}px`;
+    }
+  }, [height, minHeight]);
+
+  useEffect(() => {
+    const onMove = (event: MouseEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const nextHeight = Math.max(minHeight, drag.startHeight + (event.clientY - drag.startY));
+      heightRef.current = nextHeight;
+      if (textareaRef.current) {
+        textareaRef.current.style.height = `${nextHeight}px`;
+      }
+      setLiveHeight(nextHeight);
+    };
+    const onUp = () => {
+      if (!dragRef.current) return;
+      dragRef.current = null;
+      onHeightCommit(heightRef.current);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [minHeight, onHeightCommit]);
+
+  return (
+    <div style={{ position: "relative" }}>
+      <textarea
+        ref={textareaRef}
+        readOnly={readOnly}
+        value={draft}
+        placeholder={placeholder}
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+          if (!readOnly && !composingRef.current) {
+            onCommit?.(next);
+          }
+        }}
+        onCompositionStart={() => {
+          composingRef.current = true;
+        }}
+        onCompositionEnd={(event) => {
+          composingRef.current = false;
+          const next = event.currentTarget.value;
+          setDraft(next);
+          if (!readOnly) {
+            onCommit?.(next);
+          }
+        }}
+        style={{
+          width: "100%",
+          maxWidth: "100%",
+          minHeight,
+          height: liveHeight,
+          resize: "none",
+          overflow: "auto",
+          ...style
+        }}
+      />
+      <div
+        onMouseDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          dragRef.current = { startY: event.clientY, startHeight: heightRef.current };
+        }}
+        data-no-drag="true"
+        style={{
+          position: "absolute",
+          left: 8,
+          right: 8,
+          bottom: 1,
+          height: 10,
+          cursor: "ns-resize"
+        }}
+        title="拖拽调整高度"
+      />
+    </div>
+  );
+}
+
 export function BuiltinWidgetView({
   definition,
   instance,
@@ -237,15 +478,22 @@ export function BuiltinWidgetView({
   onStateChange: (nextState: Record<string, unknown>) => void;
 }) {
   if (definition.type === "note") {
+    const noteText = asString(instance.state.content);
+    const noteHeight = Number(instance.state.noteHeight ?? 110);
+
     return (
       <WidgetShell definition={definition} instance={instance}>
-        <ComposedInput
-          value={asString(instance.state.content)}
+        <VerticalResizableTextarea
+          value={noteText}
           onCommit={(next) => onStateChange({ ...instance.state, content: next })}
           placeholder="在这里记录你的想法..."
-          multiline
+          minHeight={90}
+          height={noteHeight}
+          onHeightCommit={(nextHeight) => onStateChange({ ...instance.state, noteHeight: nextHeight })}
           style={{
+            borderRadius: 12,
             border: "1px solid rgba(250, 204, 21, 0.5)",
+            padding: "6px 8px",
             background: "linear-gradient(165deg, rgba(255, 247, 196, 0.68), rgba(255, 233, 133, 0.46))"
           }}
         />
@@ -1127,6 +1375,375 @@ export function BuiltinWidgetView({
     );
   }
 
+  if (definition.type === "clipboard") {
+    const records = normalizeClipboardRecords(instance.state.items);
+    const pinnedCount = records.filter((item) => item.pinned).length;
+    const error = asString(instance.state.clipboardError);
+    const [reading, setReading] = useState(false);
+    const recordsRef = useRef(records);
+    const stateRef = useRef(instance.state);
+
+    useEffect(() => {
+      recordsRef.current = records;
+      stateRef.current = instance.state;
+    }, [records, instance.state]);
+
+    const saveClipboardItem = (value: string) => {
+      const text = value.trim();
+      if (!text) {
+        onStateChange({ ...stateRef.current, clipboardError: "内容为空" });
+        return;
+      }
+      const currentRecords = recordsRef.current;
+      const existing = currentRecords.find((item) => item.text === text);
+      const nextHead: ClipboardRecord = existing
+        ? { ...existing, text, createdAt: new Date().toISOString() }
+        : {
+            id: `clip_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            text,
+            pinned: false,
+            createdAt: new Date().toISOString()
+          };
+      const merged = [nextHead, ...currentRecords.filter((item) => item.id !== nextHead.id)];
+      const nextRecords = trimUnpinnedRecords(merged, 30);
+      onStateChange({
+        ...stateRef.current,
+        items: nextRecords,
+        clipboardError: ""
+      });
+    };
+
+    useEffect(() => {
+      const onCopyLike = (event: ClipboardEvent) => {
+        const fromEvent = event.clipboardData?.getData("text/plain")?.trim();
+        if (fromEvent) {
+          saveClipboardItem(fromEvent);
+          return;
+        }
+        const selection = window.getSelection?.()?.toString().trim();
+        if (selection) {
+          saveClipboardItem(selection);
+        }
+      };
+
+      const onPaste = (event: ClipboardEvent) => {
+        const pasted = event.clipboardData?.getData("text/plain")?.trim();
+        if (pasted) {
+          saveClipboardItem(pasted);
+        }
+      };
+
+      document.addEventListener("copy", onCopyLike);
+      document.addEventListener("cut", onCopyLike);
+      document.addEventListener("paste", onPaste);
+      return () => {
+        document.removeEventListener("copy", onCopyLike);
+        document.removeEventListener("cut", onCopyLike);
+        document.removeEventListener("paste", onPaste);
+      };
+      // listener registers once for this widget instance
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const captureClipboard = () => {
+      if (!navigator.clipboard?.readText) {
+        const pasted = window.prompt("当前环境不支持直接读取剪贴板，请粘贴文本：", "");
+        if (pasted !== null) saveClipboardItem(pasted);
+        return;
+      }
+      setReading(true);
+      void navigator.clipboard
+        .readText()
+        .then((text) => {
+          saveClipboardItem(text);
+        })
+        .catch((readError) => {
+          const pasted = window.prompt("读取剪贴板失败，请手动粘贴：", "");
+          if (pasted !== null) {
+            saveClipboardItem(pasted);
+          } else {
+            onStateChange({
+              ...instance.state,
+              clipboardError: readError instanceof Error ? readError.message : "读取剪贴板失败"
+            });
+          }
+        })
+        .finally(() => {
+          setReading(false);
+        });
+    };
+
+    return (
+      <WidgetShell definition={definition} instance={instance}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+          <button
+            onClick={captureClipboard}
+            style={{
+              border: "1px solid rgba(248, 113, 113, 0.45)",
+              background: "linear-gradient(165deg, rgba(254, 202, 202, 0.45), rgba(248, 113, 113, 0.22))",
+              width: 24,
+              height: 24,
+              borderRadius: "50%",
+              padding: 0,
+              color: "#dc2626",
+              fontSize: 16,
+              cursor: "pointer",
+              lineHeight: 1,
+              transform: "rotate(60deg)",
+              transformOrigin: "center",
+              display: "grid",
+              placeItems: "center"
+            }}
+            title="记录"
+          >
+            {reading ? "…" : "✏︎"}
+          </button>
+        </div>
+        {error ? <div style={{ fontSize: 12, color: "#b91c1c", marginBottom: 6 }}>{error}</div> : null}
+        <div className="glass-scrollbar" style={{ maxHeight: 190, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, paddingRight: 2 }}>
+          {records.length === 0 ? (
+            <div style={{ fontSize: 12, color: "#64748b" }}>点击红色铅笔记录复制内容</div>
+          ) : (
+            records.map((record) => (
+              <div
+                key={record.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "auto 1fr auto auto",
+                  gap: 8,
+                  alignItems: "center",
+                  borderRadius: 10,
+                  border: "1px solid rgba(203, 213, 225, 0.55)",
+                  padding: "6px 8px",
+                  background: "linear-gradient(160deg, rgba(255,255,255,0.56), rgba(255,255,255,0.3))",
+                  color: "#0f172a",
+                  fontSize: 12,
+                  lineHeight: 1.4
+                }}
+              >
+                <button
+                  onClick={() => {
+                    if (!record.pinned && pinnedCount >= 30) {
+                      onStateChange({
+                        ...instance.state,
+                        clipboardError: "固定记录已超过30条，请先删除记录"
+                      });
+                      return;
+                    }
+                    const nextRecords = records.map((item) =>
+                      item.id === record.id ? { ...item, pinned: !item.pinned } : item
+                    );
+                    onStateChange({
+                      ...instance.state,
+                      items: nextRecords,
+                      clipboardError: ""
+                    });
+                  }}
+                  style={{
+                    border: "none",
+                    background: record.pinned ? "rgba(51, 65, 85, 0.12)" : "transparent",
+                    borderRadius: 6,
+                    padding: record.pinned ? "1.1px 2.2px" : "1px 2px",
+                    cursor: "pointer",
+                    color: record.pinned ? "#334155" : "#94a3b8",
+                    fontSize: 14,
+                    lineHeight: 1,
+                    transform: "translateY(1px)"
+                  }}
+                  title={record.pinned ? "取消固定" : "固定"}
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                    <path
+                      d="M4 1.25h4l-.75 2.7 1.75 1v.95H3v-.95l1.75-1L4 1.25ZM6 5.9V10.5"
+                      stroke="currentColor"
+                      strokeWidth="1.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => void navigator.clipboard?.writeText(record.text)}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    padding: 0,
+                    textAlign: "left",
+                    minWidth: 0,
+                    cursor: "pointer",
+                    color: "#0f172a"
+                  }}
+                  title="点击复制"
+                >
+                  <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{record.text}</div>
+                </button>
+                <button
+                  onClick={() => void navigator.clipboard?.writeText(record.text)}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    padding: 0,
+                    cursor: "pointer",
+                    color: "#94a3b8",
+                    fontSize: 13,
+                    lineHeight: 1
+                  }}
+                  title="复制"
+                >
+                  ⧉
+                </button>
+                <button
+                  onClick={() => {
+                    const nextRecords = records.filter((item) => item.id !== record.id);
+                    onStateChange({
+                      ...instance.state,
+                      items: nextRecords,
+                      clipboardError: ""
+                    });
+                  }}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    padding: 0,
+                    cursor: "pointer",
+                    color: "#94a3b8",
+                    fontSize: 13,
+                    lineHeight: 1
+                  }}
+                  title="删除"
+                >
+                  ✕
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </WidgetShell>
+    );
+  }
+
+  if (definition.type === "converter") {
+    const category = asString(instance.state.category) || "length";
+    const units = CONVERTER_UNIT_OPTIONS[category] ?? CONVERTER_UNIT_OPTIONS.length;
+    const fromUnit = asString(instance.state.fromUnit) || units[0]?.value || "m";
+    const toUnit = asString(instance.state.toUnit) || units[1]?.value || units[0]?.value || "km";
+    const rawValue = asString(instance.state.inputValue);
+    const numericValue = Number(rawValue);
+    const hasNumber = rawValue.trim() !== "" && Number.isFinite(numericValue);
+    const result = hasNumber ? convertUnit(numericValue, category, fromUnit, toUnit) : null;
+
+    return (
+      <WidgetShell definition={definition} instance={instance}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+          <select
+            value={category}
+            onChange={(event) => {
+              const nextCategory = event.target.value;
+              const nextUnits = CONVERTER_UNIT_OPTIONS[nextCategory] ?? CONVERTER_UNIT_OPTIONS.length;
+              onStateChange({
+                ...instance.state,
+                category: nextCategory,
+                fromUnit: nextUnits[0]?.value ?? "",
+                toUnit: nextUnits[1]?.value ?? nextUnits[0]?.value ?? ""
+              });
+            }}
+            style={{
+              borderRadius: 10,
+              border: "1px solid rgba(203, 213, 225, 0.65)",
+              padding: "6px 8px",
+              width: "100%",
+              background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
+            }}
+          >
+            {CONVERTER_CATEGORY_OPTIONS.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+
+          <input
+            value={rawValue}
+            onChange={(event) => onStateChange({ ...instance.state, inputValue: event.target.value })}
+            inputMode="decimal"
+            placeholder="输入数值"
+            style={{
+              width: "100%",
+              borderRadius: 12,
+              border: "1px solid rgba(203, 213, 225, 0.65)",
+              padding: "6px 8px",
+              background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
+            }}
+          />
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 6, alignItems: "center" }}>
+            <select
+              value={fromUnit}
+              onChange={(event) => onStateChange({ ...instance.state, fromUnit: event.target.value })}
+              style={{
+                borderRadius: 10,
+                border: "1px solid rgba(203, 213, 225, 0.65)",
+                padding: "6px 8px",
+                width: "100%",
+                background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
+              }}
+            >
+              {units.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => onStateChange({ ...instance.state, fromUnit: toUnit, toUnit: fromUnit })}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: "#334155",
+                fontSize: 14,
+                cursor: "pointer",
+                padding: "0 2px"
+              }}
+              title="交换"
+            >
+              ⇄
+            </button>
+            <select
+              value={toUnit}
+              onChange={(event) => onStateChange({ ...instance.state, toUnit: event.target.value })}
+              style={{
+                borderRadius: 10,
+                border: "1px solid rgba(203, 213, 225, 0.65)",
+                padding: "6px 8px",
+                width: "100%",
+                background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
+              }}
+            >
+              {units.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div
+            style={{
+              borderRadius: 12,
+              border: "1px solid rgba(203, 213, 225, 0.65)",
+              padding: "8px 10px",
+              minHeight: 40,
+              color: "#0f172a",
+              background: "linear-gradient(160deg, rgba(255,255,255,0.6), rgba(255,255,255,0.3))"
+            }}
+          >
+            {hasNumber ? `${result?.toFixed(6).replace(/\.?0+$/, "")} ${toUnit}` : "结果会显示在这里"}
+          </div>
+        </div>
+      </WidgetShell>
+    );
+  }
+
   if (definition.type === "translate") {
     interface TranslateHistoryItem {
       sourceText: string;
@@ -1147,52 +1764,8 @@ export function BuiltinWidgetView({
     const historyIndex = Number.isFinite(rawHistoryIndex) ? rawHistoryIndex : -1;
     const canPrev = historyIndex > 0;
     const canNext = historyIndex >= 0 && historyIndex < history.length - 1;
-    const [sourceDraft, setSourceDraft] = useState(sourceText);
-    const sourceComposingRef = useRef(false);
-    const [sourceHeight, setSourceHeight] = useState(Number(instance.state.sourceHeight ?? 108));
-    const [resultHeight, setResultHeight] = useState(Number(instance.state.resultHeight ?? 96));
-    const resizeRef = useRef<null | { target: "source" | "result"; startY: number; startHeight: number }>(null);
-
-    useEffect(() => {
-      if (!sourceComposingRef.current) {
-        setSourceDraft(sourceText);
-      }
-    }, [sourceText]);
-
-    useEffect(() => {
-      const onMove = (event: MouseEvent) => {
-        const active = resizeRef.current;
-        if (!active) return;
-        const next = Math.max(74, active.startHeight + (event.clientY - active.startY));
-        if (active.target === "source") setSourceHeight(next);
-        else setResultHeight(next);
-      };
-      const onUp = () => {
-        const active = resizeRef.current;
-        if (!active) return;
-        resizeRef.current = null;
-        onStateChange({
-          ...instance.state,
-          sourceHeight,
-          resultHeight
-        });
-      };
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
-      return () => {
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-      };
-    }, [instance.state, onStateChange, resultHeight, sourceHeight]);
-
-    const startResize = (target: "source" | "result", event: ReactMouseEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      resizeRef.current = {
-        target,
-        startY: event.clientY,
-        startHeight: target === "source" ? sourceHeight : resultHeight
-      };
-    };
+    const sourceHeight = Number(instance.state.sourceHeight ?? 108);
+    const resultHeight = Number(instance.state.resultHeight ?? 96);
 
     return (
       <WidgetShell definition={definition} instance={instance}>
@@ -1259,52 +1832,20 @@ export function BuiltinWidgetView({
           </select>
         </div>
 
-        <div style={{ position: "relative", marginTop: 2 }}>
-          <textarea
-            value={sourceDraft}
-            placeholder="输入要翻译的文本..."
-            onChange={(event) => {
-              const next = event.target.value;
-              setSourceDraft(next);
-              if (!sourceComposingRef.current) {
-                onStateChange({ ...instance.state, sourceText: next });
-              }
-            }}
-            onCompositionStart={() => {
-              sourceComposingRef.current = true;
-            }}
-            onCompositionEnd={(event) => {
-              sourceComposingRef.current = false;
-              const next = event.currentTarget.value;
-              setSourceDraft(next);
-              onStateChange({ ...instance.state, sourceText: next });
-            }}
-            style={{
-              width: "100%",
-              maxWidth: "100%",
-              minHeight: 74,
-              height: sourceHeight,
-              resize: "none",
-              overflow: "auto",
-              borderRadius: 12,
-              border: "1px solid rgba(203, 213, 225, 0.65)",
-              padding: "8px 10px",
-              background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
-            }}
-          />
-          <div
-            onMouseDown={(event) => startResize("source", event)}
-            style={{
-              position: "absolute",
-              left: 8,
-              right: 8,
-              bottom: 1,
-              height: 10,
-              cursor: "ns-resize"
-            }}
-            title="拖拽调整高度"
-          />
-        </div>
+        <VerticalResizableTextarea
+          value={sourceText}
+          onCommit={(next) => onStateChange({ ...instance.state, sourceText: next })}
+          placeholder="输入要翻译的文本..."
+          minHeight={74}
+          height={sourceHeight}
+          onHeightCommit={(nextHeight) => onStateChange({ ...instance.state, sourceHeight: nextHeight })}
+          style={{
+            borderRadius: 12,
+            border: "1px solid rgba(203, 213, 225, 0.65)",
+            padding: "8px 10px",
+            background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
+          }}
+        />
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, marginBottom: 8 }}>
           <Button
             onClick={() => {
@@ -1413,39 +1954,22 @@ export function BuiltinWidgetView({
           </div>
         </div>
         {translateError ? <div style={{ fontSize: 12, color: "#b91c1c", marginBottom: 6 }}>{translateError}</div> : null}
-        <div style={{ position: "relative", marginTop: 2 }}>
-          <textarea
-            readOnly
-            value={translatedText || "翻译结果会显示在这里"}
-            style={{
-              display: "block",
-              boxSizing: "border-box",
-              width: "100%",
-              maxWidth: "100%",
-              borderRadius: 12,
-              border: "1px solid rgba(203, 213, 225, 0.65)",
-              padding: "8px 10px",
-              minHeight: 74,
-              height: resultHeight,
-              color: "#0f172a",
-              background: "linear-gradient(160deg, rgba(255,255,255,0.6), rgba(255,255,255,0.3))",
-              resize: "none",
-              overflow: "auto"
-            }}
-          />
-          <div
-            onMouseDown={(event) => startResize("result", event)}
-            style={{
-              position: "absolute",
-              left: 8,
-              right: 8,
-              bottom: 1,
-              height: 10,
-              cursor: "ns-resize"
-            }}
-            title="拖拽调整高度"
-          />
-        </div>
+        <VerticalResizableTextarea
+          value={translatedText || "翻译结果会显示在这里"}
+          readOnly
+          minHeight={74}
+          height={resultHeight}
+          onHeightCommit={(nextHeight) => onStateChange({ ...instance.state, resultHeight: nextHeight })}
+          style={{
+            display: "block",
+            boxSizing: "border-box",
+            borderRadius: 12,
+            border: "1px solid rgba(203, 213, 225, 0.65)",
+            padding: "8px 10px",
+            color: "#0f172a",
+            background: "linear-gradient(160deg, rgba(255,255,255,0.6), rgba(255,255,255,0.3))"
+          }}
+        />
       </WidgetShell>
     );
   }
@@ -1831,7 +2355,25 @@ export function AIFormWidgetView({
           };
 
           if (field.type === "textarea") {
-            return <textarea {...common} placeholder={field.placeholder} />;
+            const heightKey = `__textarea_h_${field.key}`;
+            const height = Number((instance.state[heightKey] as number | undefined) ?? 110);
+            return (
+              <VerticalResizableTextarea
+                value={String((instance.state[field.key] as string | undefined) ?? "")}
+                onCommit={(next) => onStateChange({ ...instance.state, [field.key]: next })}
+                placeholder={field.placeholder}
+                minHeight={90}
+                height={height}
+                onHeightCommit={(nextHeight) => onStateChange({ ...instance.state, [heightKey]: nextHeight })}
+                style={{
+                  borderRadius: 10,
+                  border: "1px solid #cbd5e1",
+                  padding: "6px 8px",
+                  width: "100%",
+                  background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
+                }}
+              />
+            );
           }
           if (field.type === "select") {
             return (

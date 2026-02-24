@@ -110,6 +110,35 @@ const baseWidgets: Array<Omit<WidgetDefinition, "id" | "createdAt" | "updatedAt"
   },
   {
     kind: "system",
+    type: "clipboard",
+    name: "剪贴板历史",
+    version: 1,
+    description: "记录最近复制文本",
+    inputSchema: { fields: [] },
+    outputSchema: { fields: [{ key: "items", label: "历史", type: "textarea" }] },
+    uiSchema: { layout: "single-column" },
+    logicSpec: {},
+    storagePolicy: { strategy: "local" }
+  },
+  {
+    kind: "system",
+    type: "converter",
+    name: "单位换算",
+    version: 1,
+    description: "长度/重量/温度换算",
+    inputSchema: {
+      fields: [
+        { key: "category", label: "类别", type: "select", options: ["长度", "重量", "温度"] },
+        { key: "value", label: "数值", type: "number" }
+      ]
+    },
+    outputSchema: { fields: [{ key: "result", label: "结果", type: "text" }] },
+    uiSchema: { layout: "single-column" },
+    logicSpec: {},
+    storagePolicy: { strategy: "local" }
+  },
+  {
+    kind: "system",
     type: "recorder",
     name: "录音机",
     version: 1,
