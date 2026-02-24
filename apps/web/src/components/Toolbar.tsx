@@ -1,28 +1,31 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { Board, WidgetDefinition } from "@xiaozhuoban/domain";
-import { Button } from "@xiaozhuoban/ui";
 
 export function Toolbar({
   board,
   definitions,
   sidebarOpen,
+  fullscreen,
+  onToggleFullscreen,
   onToggleSidebar,
+  onOpenCommandPalette,
+  onToggleLayoutMode,
   onPickWallpaper,
   onBackup,
-  onToggleLayoutMode,
   onAddWidget,
-  onOpenCommandPalette,
   onOpenAiDialog
 }: {
   board: Board;
   definitions: WidgetDefinition[];
   sidebarOpen: boolean;
+  fullscreen: boolean;
+  onToggleFullscreen: () => void;
   onToggleSidebar: () => void;
+  onOpenCommandPalette: () => void;
+  onToggleLayoutMode: () => void;
   onPickWallpaper: () => void;
   onBackup: () => void;
-  onToggleLayoutMode: () => void;
   onAddWidget: (definitionId: string) => void;
-  onOpenCommandPalette: () => void;
   onOpenAiDialog: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -70,13 +73,32 @@ export function Toolbar({
         >
           {sidebarOpen ? "◧" : "◨"}
         </button>
+        <button
+          aria-label={fullscreen ? "退出全屏" : "全屏"}
+          onClick={onToggleFullscreen}
+          style={{
+            border: "none",
+            background: "transparent",
+            color: "#94a3b8",
+            fontSize: 17,
+            lineHeight: 1,
+            cursor: "pointer",
+            padding: 2
+          }}
+        >
+          {fullscreen ? "🗗" : "⛶"}
+        </button>
         <h1 style={{ margin: 0, fontSize: 18 }}>{board.name}</h1>
       </div>
       <div style={{ display: "flex", gap: 8 }}>
         <select
           onChange={(event) => {
             if (event.target.value) {
-              onAddWidget(event.target.value);
+              if (event.target.value === "__ai__") {
+                onOpenAiDialog();
+              } else {
+                onAddWidget(event.target.value);
+              }
               event.target.value = "";
             }
           }}
@@ -91,23 +113,35 @@ export function Toolbar({
           <option value="" disabled>
             添加 Widget
           </option>
+          <option value="__ai__">✨ AI 生成</option>
           {definitions.map((definition) => (
             <option key={definition.id} value={definition.id}>
               {definition.name}
             </option>
           ))}
         </select>
-        <Button onClick={onOpenAiDialog}>AI 生成</Button>
         <div ref={menuRef} style={{ position: "relative" }}>
-          <Button variant="ghost" onClick={() => setMenuOpen((prev) => !prev)}>
-            设置
-          </Button>
+          <button
+            aria-label="设置"
+            onClick={() => setMenuOpen((prev) => !prev)}
+            style={{
+              border: "none",
+              background: "transparent",
+              color: "#94a3b8",
+              fontSize: 26,
+              lineHeight: 1,
+              cursor: "pointer",
+              padding: 2
+            }}
+          >
+            ⚙
+          </button>
           {menuOpen ? (
             <div
               style={{
                 position: "absolute",
                 right: 0,
-                top: 38,
+                top: 28,
                 width: 180,
                 borderRadius: 12,
                 border: "1px solid rgba(255,255,255,0.62)",

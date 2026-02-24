@@ -13,6 +13,7 @@ export function BoardCanvas({
   board,
   definitions,
   widgets,
+  fullscreen = false,
   onMove,
   onStateChange,
   onRemoveWidget
@@ -20,6 +21,7 @@ export function BoardCanvas({
   board: Board;
   definitions: WidgetDefinition[];
   widgets: WidgetInstance[];
+  fullscreen?: boolean;
   onMove: (widgetId: string, x: number, y: number) => void;
   onStateChange: (widgetId: string, state: Record<string, unknown>) => void;
   onRemoveWidget: (widgetId: string) => void;
@@ -39,8 +41,10 @@ export function BoardCanvas({
       style={{
         position: "relative",
         overflow: "auto",
-        height: "calc(100vh - 120px)",
-        borderRadius: 16,
+        height: fullscreen ? "100vh" : "calc(100vh - 120px)",
+        borderRadius: fullscreen ? 0 : 16,
+        userSelect: drag ? "none" : "auto",
+        WebkitUserSelect: drag ? "none" : "auto",
         background:
           board.background.type === "color"
             ? board.background.value
@@ -99,6 +103,7 @@ export function BoardCanvas({
               ) {
                 return;
               }
+              event.preventDefault();
               setDrag({
                 id: widget.id,
                 lastX: event.clientX,

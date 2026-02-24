@@ -176,7 +176,8 @@ export function BoardSidebar({
         display: "flex",
         flexDirection: "column",
         gap: 16,
-        padding: 14
+        padding: 14,
+        position: "relative"
       }}
     >
       <section>
@@ -200,6 +201,7 @@ export function BoardSidebar({
           ))}
         </div>
       </section>
+
     </aside>
   );
 }

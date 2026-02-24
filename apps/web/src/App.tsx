@@ -32,6 +32,7 @@ export function App() {
     createBackupSnapshot
   } = useAppStore();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [fullscreen, setFullscreen] = useState(false);
   const wallpaperInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeBoard = useMemo(() => boards.find((item) => item.id === activeBoardId), [activeBoardId, boards]);
@@ -62,13 +63,21 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [setActiveBoard, setCommandPaletteOpen, boards]);
 
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
   if (!ready || !activeBoard) {
     return <div className="loading">初始化中...</div>;
   }
 
   return (
     <div className="app-shell">
-      {sidebarOpen ? (
+      {sidebarOpen && !fullscreen ? (
         <BoardSidebar
           boards={boards}
           activeBoardId={activeBoardId}
@@ -79,36 +88,47 @@ export function App() {
         />
       ) : null}
       <main style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-        <Toolbar
-          board={activeBoard}
-          definitions={widgetDefinitions}
-          sidebarOpen={sidebarOpen}
-          onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
-          onPickWallpaper={() => wallpaperInputRef.current?.click()}
-          onBackup={() => {
-            void (async () => {
-              const snapshot = await createBackupSnapshot();
-              const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
-              const url = URL.createObjectURL(blob);
-              const anchor = document.createElement("a");
-              anchor.href = url;
-              anchor.download = `xiaozhuoban-backup-${new Date().toISOString().slice(0, 19)}.json`;
-              document.body.appendChild(anchor);
-              anchor.click();
-              anchor.remove();
-              URL.revokeObjectURL(url);
-            })();
-          }}
-          onToggleLayoutMode={() => void toggleLayoutMode()}
-          onAddWidget={(definitionId) => void addWidgetInstance(definitionId)}
-          onOpenCommandPalette={() => setCommandPaletteOpen(true)}
-          onOpenAiDialog={() => setAiDialogOpen(true)}
-        />
+        {!fullscreen ? (
+          <Toolbar
+            board={activeBoard}
+            definitions={widgetDefinitions}
+            sidebarOpen={sidebarOpen}
+            fullscreen={fullscreen}
+            onToggleFullscreen={() => {
+              if (document.fullscreenElement) {
+                void document.exitFullscreen();
+              } else {
+                void document.documentElement.requestFullscreen();
+              }
+            }}
+            onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
+            onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+            onToggleLayoutMode={() => void toggleLayoutMode()}
+            onPickWallpaper={() => wallpaperInputRef.current?.click()}
+            onBackup={() => {
+              void (async () => {
+                const snapshot = await createBackupSnapshot();
+                const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const anchor = document.createElement("a");
+                anchor.href = url;
+                anchor.download = `xiaozhuoban-backup-${new Date().toISOString().slice(0, 19)}.json`;
+                document.body.appendChild(anchor);
+                anchor.click();
+                anchor.remove();
+                URL.revokeObjectURL(url);
+              })();
+            }}
+            onAddWidget={(definitionId) => void addWidgetInstance(definitionId)}
+            onOpenAiDialog={() => setAiDialogOpen(true)}
+          />
+        ) : null}
 
         <BoardCanvas
           board={activeBoard}
           definitions={widgetDefinitions}
           widgets={widgetInstances}
+          fullscreen={fullscreen}
           onMove={(widgetId, x, y) => void updateWidgetPosition(widgetId, x, y)}
           onStateChange={(widgetId, state) => void updateWidgetState(widgetId, state)}
           onRemoveWidget={(widgetId) => void removeWidgetInstance(widgetId)}

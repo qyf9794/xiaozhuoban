@@ -250,7 +250,7 @@ export function BuiltinWidgetView({
                 });
               }}
             >
-              添加
+              +
             </Button>
           </div>
         </div>
@@ -455,6 +455,8 @@ export function BuiltinWidgetView({
                       ? "linear-gradient(160deg, rgba(37, 99, 235, 0.82), rgba(56, 189, 248, 0.72))"
                       : "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.3))",
                     color: isOp ? "#eff6ff" : "#0f172a",
+                    fontSize: isOp ? 20 : 14,
+                    fontWeight: isOp ? 700 : 500,
                     minHeight: 34,
                     cursor: "pointer"
                   }}
@@ -470,7 +472,6 @@ export function BuiltinWidgetView({
   }
 
   if (definition.type === "countdown") {
-    const title = asString(instance.state.title) || "专注倒计时";
     const inputHours = Number(instance.state.inputHours ?? 0);
     const inputMinutes = Number(instance.state.inputMinutes ?? 5);
     const inputSeconds = Number(instance.state.inputSeconds ?? 0);
@@ -509,11 +510,6 @@ export function BuiltinWidgetView({
     return (
       <WidgetShell definition={definition} instance={instance}>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <ComposedInput
-            value={title}
-            onCommit={(next) => onStateChange({ ...instance.state, title: next })}
-            placeholder="倒计时标题"
-          />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
             <input
               type="number"
@@ -558,8 +554,8 @@ export function BuiltinWidgetView({
               }}
             />
           </div>
-          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-            <Button
+          <div style={{ display: "flex", gap: 22, justifyContent: "center", alignItems: "center" }}>
+            <button
               onClick={() => {
                 const total = inputHours * 3600 + inputMinutes * 60 + inputSeconds;
                 onStateChange({
@@ -569,19 +565,19 @@ export function BuiltinWidgetView({
                   running: total > 0
                 });
               }}
+              style={timerIconBtnStyle}
             >
-              开始
-            </Button>
-            <Button
-              variant="ghost"
+              ▶
+            </button>
+            <button
               onClick={() => {
                 onStateChange({ ...instance.state, running: false });
               }}
+              style={timerIconBtnStyle}
             >
-              暂停
-            </Button>
-            <Button
-              variant="ghost"
+              ⏸
+            </button>
+            <button
               onClick={() => {
                 const total = inputHours * 3600 + inputMinutes * 60 + inputSeconds;
                 onStateChange({
@@ -591,9 +587,10 @@ export function BuiltinWidgetView({
                   running: false
                 });
               }}
+              style={timerIconBtnStyle}
             >
-              重置
-            </Button>
+              ↺
+            </button>
           </div>
         </div>
         <div
@@ -880,9 +877,7 @@ export function BuiltinWidgetView({
               fontSize: 13,
               lineHeight: 1
             }}
-          >
-            {recording ? "■" : "●"}
-          </button>
+          />
         </div>
 
         {recording ? <div style={{ color: "#fda4af", marginBottom: 8, textAlign: "center" }}>录音中...</div> : null}
@@ -891,9 +886,7 @@ export function BuiltinWidgetView({
         ) : null}
 
         <div ref={menuRootRef} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {recordings.length === 0 ? (
-            <div style={{ color: "#64748b" }}>暂无录音，点击“开始录音”创建。</div>
-          ) : (
+          {recordings.length === 0 ? null : (
             recordings.map((item, index) => (
               <div
                 key={item.id}
@@ -1189,3 +1182,18 @@ export function AIFormWidgetView({
     </WidgetShell>
   );
 }
+
+const timerIconBtnStyle: CSSProperties = {
+  border: "none",
+  background: "transparent",
+  color: "#334155",
+  fontSize: 18,
+  lineHeight: 1,
+  width: 20,
+  height: 20,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 0,
+  cursor: "pointer"
+};
