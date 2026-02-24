@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent, type MouseEvent as ReactMouseEvent } from "react";
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { Button } from "@xiaozhuoban/ui";
 import { WidgetShell } from "./WidgetShell";
@@ -24,6 +24,44 @@ const MAJOR_CITIES = [
   { value: "xian", label: "西安", latitude: 34.3416, longitude: 108.9398 }
 ] as const;
 
+const TRANSLATE_LANG_OPTIONS = [
+  { value: "auto", label: "自动" },
+  { value: "zh-CN", label: "中文" },
+  { value: "en", label: "英文" }
+] as const;
+
+async function quickTranslate(text: string, sourceLang: string, targetLang: string): Promise<string> {
+  const input = text.trim();
+  if (!input) return "";
+  const inferredSourceLang =
+    sourceLang === "auto"
+      ? /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]/.test(input)
+        ? "zh-CN"
+        : "en"
+      : sourceLang;
+  const langpair = `${inferredSourceLang}|${targetLang}`;
+  const url = new URL("https://api.mymemory.translated.net/get");
+  url.searchParams.set("q", input);
+  url.searchParams.set("langpair", langpair);
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    throw new Error(`翻译失败 (${response.status})`);
+  }
+  const payload = (await response.json()) as {
+    responseStatus?: number;
+    responseDetails?: string;
+    responseData?: { translatedText?: string };
+  };
+  if (payload.responseStatus && payload.responseStatus !== 200) {
+    throw new Error(payload.responseDetails || "翻译失败");
+  }
+  const translated = payload.responseData?.translatedText?.trim();
+  if (!translated) {
+    throw new Error("未获取到翻译结果");
+  }
+  return translated;
+}
+
 function weatherCodeToText(code: number): string {
   if (code === 0) return "晴";
   if ([1, 2].includes(code)) return "少云";
@@ -44,6 +82,31 @@ function weatherCodeToIcon(code: number, isDay: boolean): string {
   if (code === 0) return isDay ? "☀️" : "🌙";
   if ([1, 2, 3].includes(code)) return "⛅";
   return "🌤️";
+}
+
+interface ITunesTrack {
+  trackId: number;
+  trackName: string;
+  artistName: string;
+  collectionName?: string;
+  artworkUrl100?: string;
+  previewUrl?: string;
+  trackTimeMillis?: number;
+}
+
+async function searchITunesTracks(term: string): Promise<ITunesTrack[]> {
+  const query = term.trim();
+  if (!query) return [];
+  const url = new URL("https://itunes.apple.com/search");
+  url.searchParams.set("term", query);
+  url.searchParams.set("entity", "song");
+  url.searchParams.set("limit", "20");
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    throw new Error(`搜索失败 (${response.status})`);
+  }
+  const payload = (await response.json()) as { results?: ITunesTrack[] };
+  return (payload.results ?? []).filter((item) => Boolean(item.previewUrl));
 }
 
 interface TodoItem {
@@ -250,7 +313,7 @@ export function BuiltinWidgetView({
                 });
               }}
             >
-              +
+              <span style={{ fontSize: 24, lineHeight: 1, display: "inline-block" }}>+</span>
             </Button>
           </div>
         </div>
@@ -773,6 +836,615 @@ export function BuiltinWidgetView({
               </>
             )}
           </div>
+        </div>
+      </WidgetShell>
+    );
+  }
+
+  if (definition.type === "music") {
+    const query = asString(instance.state.query);
+    const [results, setResults] = useState<ITunesTrack[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
+    const [activeTrackId, setActiveTrackId] = useState<number | null>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+    const searchSeqRef = useRef(0);
+    const composingRef = useRef(false);
+    const [queryDraft, setQueryDraft] = useState(query);
+    const resultsRef = useRef<ITunesTrack[]>([]);
+    const activeTrackIdRef = useRef<number | null>(null);
+
+    const inputStyle: CSSProperties = {
+      width: "100%",
+      borderRadius: 12,
+      border: "1px solid rgba(203, 213, 225, 0.65)",
+      padding: "6px 8px",
+      background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
+    };
+
+    useEffect(() => {
+      if (!composingRef.current) {
+        setQueryDraft(query);
+      }
+    }, [query]);
+
+    useEffect(() => {
+      resultsRef.current = results;
+    }, [results]);
+
+    useEffect(() => {
+      activeTrackIdRef.current = activeTrackId;
+    }, [activeTrackId]);
+
+    useEffect(() => {
+      const audio = new Audio();
+      audio.preload = "none";
+      const onTimeUpdate = () => {
+        if (!audio.duration || Number.isNaN(audio.duration)) {
+          setProgress(0);
+          return;
+        }
+        setProgress((audio.currentTime / audio.duration) * 100);
+      };
+      const onPlay = () => setIsPlaying(true);
+      const onPause = () => setIsPlaying(false);
+      const onEnded = () => {
+        const currentId = activeTrackIdRef.current;
+        const currentResults = resultsRef.current;
+        if (!currentId || !currentResults.length) {
+          setIsPlaying(false);
+          setProgress(0);
+          return;
+        }
+        const currentIndex = currentResults.findIndex((item) => item.trackId === currentId);
+        const nextTrack = currentIndex >= 0 ? currentResults.slice(currentIndex + 1).find((item) => Boolean(item.previewUrl)) : null;
+        if (!nextTrack?.previewUrl) {
+          setIsPlaying(false);
+          setProgress(0);
+          return;
+        }
+        audio.src = nextTrack.previewUrl;
+        setActiveTrackId(nextTrack.trackId);
+        setProgress(0);
+        void audio.play().catch(() => {
+          setError("自动播放下一首失败，请手动点击播放");
+          setIsPlaying(false);
+        });
+      };
+      audio.addEventListener("timeupdate", onTimeUpdate);
+      audio.addEventListener("play", onPlay);
+      audio.addEventListener("pause", onPause);
+      audio.addEventListener("ended", onEnded);
+      audioRef.current = audio;
+      return () => {
+        audio.pause();
+        audio.removeEventListener("timeupdate", onTimeUpdate);
+        audio.removeEventListener("play", onPlay);
+        audio.removeEventListener("pause", onPause);
+        audio.removeEventListener("ended", onEnded);
+      };
+    }, []);
+
+    const runSearch = (rawKeyword?: string) => {
+      const keyword = (rawKeyword ?? query).trim();
+      if (!keyword) {
+        setResults([]);
+        setError("");
+        setLoading(false);
+        return;
+      }
+      const seq = ++searchSeqRef.current;
+      setLoading(true);
+      setError("");
+      void searchITunesTracks(keyword)
+        .then((items) => {
+          if (seq !== searchSeqRef.current) return;
+          setResults(items);
+          if (!items.length) setError("未找到可试听结果");
+        })
+        .catch((searchError) => {
+          if (seq !== searchSeqRef.current) return;
+          setError(searchError instanceof Error ? searchError.message : "搜索失败");
+          setResults([]);
+        })
+        .finally(() => {
+          if (seq !== searchSeqRef.current) return;
+          setLoading(false);
+        });
+    };
+
+    useEffect(() => {
+      const keyword = query.trim();
+      if (!keyword) {
+        searchSeqRef.current += 1;
+        setResults([]);
+        setError("");
+        setLoading(false);
+        return;
+      }
+      const timer = window.setTimeout(() => {
+        runSearch(keyword);
+      }, 300);
+      return () => window.clearTimeout(timer);
+      // search depends on query only
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [query]);
+
+    return (
+      <WidgetShell definition={definition} instance={instance}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 8 }}>
+          <input
+            value={queryDraft}
+            onChange={(event) => {
+              const next = event.target.value;
+              setQueryDraft(next);
+              if (!composingRef.current) {
+                onStateChange({ ...instance.state, query: next });
+              }
+            }}
+            onCompositionStart={() => {
+              composingRef.current = true;
+            }}
+            onCompositionEnd={(event) => {
+              composingRef.current = false;
+              const next = event.currentTarget.value;
+              setQueryDraft(next);
+              onStateChange({ ...instance.state, query: next });
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                onStateChange({ ...instance.state, query: queryDraft });
+                runSearch(queryDraft);
+              }
+            }}
+            placeholder="搜索歌曲 / 歌手"
+            style={inputStyle}
+          />
+          <Button onClick={runSearch}>
+            <span style={{ fontSize: 24, lineHeight: 1, display: "inline-block" }}>⌕</span>
+          </Button>
+        </div>
+        {loading ? <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>搜索中...</div> : null}
+        {error ? <div style={{ fontSize: 12, color: "#b91c1c", marginBottom: 6 }}>{error}</div> : null}
+        <div className="glass-scrollbar" style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>
+          {results.map((track) => {
+            const active = activeTrackId === track.trackId;
+            return (
+              <div
+                key={track.trackId}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "40px auto 1fr",
+                  gap: 8,
+                  alignItems: "center"
+                }}
+              >
+                {track.artworkUrl100 ? (
+                  <img
+                    src={track.artworkUrl100}
+                    alt={track.trackName}
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 8,
+                      objectFit: "cover",
+                      background: "rgba(226, 232, 240, 0.5)"
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 8,
+                      background: "rgba(226, 232, 240, 0.5)"
+                    }}
+                  />
+                )}
+                <button
+                  onClick={() => {
+                    if (!track.previewUrl || !audioRef.current) return;
+                    if (active && isPlaying) {
+                      audioRef.current.pause();
+                      return;
+                    }
+                    if (!active) {
+                      audioRef.current.src = track.previewUrl;
+                      setActiveTrackId(track.trackId);
+                      setProgress(0);
+                    }
+                    void audioRef.current.play().catch(() => {
+                      setError("播放失败，请重试");
+                    });
+                  }}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "#111827",
+                    fontSize: 14,
+                    cursor: "pointer",
+                    padding: 0,
+                    width: 16
+                  }}
+                  title={active && isPlaying ? "暂停" : "播放"}
+                >
+                  {active && isPlaying ? "⏸" : "▶"}
+                </button>
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      fontSize: 13,
+                      color: "#0f172a"
+                    }}
+                  >
+                    {track.trackName}
+                  </div>
+                  <div
+                    style={{
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      fontSize: 11,
+                      color: "#334155"
+                    }}
+                  >
+                    {track.artistName}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      height: 2,
+                      width: "100%",
+                      borderRadius: 2,
+                      background: "rgba(100, 116, 139, 0.3)",
+                      overflow: "hidden"
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: "100%",
+                        width: active ? `${progress}%` : 0,
+                        background: "rgba(31, 41, 55, 0.75)",
+                        transition: "width 120ms linear"
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {!loading && !results.length && !error ? (
+            <div style={{ fontSize: 12, color: "#64748b" }}>输入关键词后搜索并试听 30 秒。</div>
+          ) : null}
+        </div>
+      </WidgetShell>
+    );
+  }
+
+  if (definition.type === "translate") {
+    interface TranslateHistoryItem {
+      sourceText: string;
+      translatedText: string;
+      sourceLang: string;
+      targetLang: string;
+      translatedAt: string;
+    }
+
+    const sourceText = asString(instance.state.sourceText);
+    const translatedText = asString(instance.state.translatedText);
+    const sourceLang = asString(instance.state.sourceLang) || "auto";
+    const targetLang = asString(instance.state.targetLang) || "zh-CN";
+    const translating = instance.state.translating === true;
+    const translateError = asString(instance.state.translateError);
+    const history = (Array.isArray(instance.state.translateHistory) ? instance.state.translateHistory : []) as TranslateHistoryItem[];
+    const rawHistoryIndex = Number(instance.state.translateHistoryIndex ?? (history.length ? history.length - 1 : -1));
+    const historyIndex = Number.isFinite(rawHistoryIndex) ? rawHistoryIndex : -1;
+    const canPrev = historyIndex > 0;
+    const canNext = historyIndex >= 0 && historyIndex < history.length - 1;
+    const [sourceDraft, setSourceDraft] = useState(sourceText);
+    const sourceComposingRef = useRef(false);
+    const [sourceHeight, setSourceHeight] = useState(Number(instance.state.sourceHeight ?? 108));
+    const [resultHeight, setResultHeight] = useState(Number(instance.state.resultHeight ?? 96));
+    const resizeRef = useRef<null | { target: "source" | "result"; startY: number; startHeight: number }>(null);
+
+    useEffect(() => {
+      if (!sourceComposingRef.current) {
+        setSourceDraft(sourceText);
+      }
+    }, [sourceText]);
+
+    useEffect(() => {
+      const onMove = (event: MouseEvent) => {
+        const active = resizeRef.current;
+        if (!active) return;
+        const next = Math.max(74, active.startHeight + (event.clientY - active.startY));
+        if (active.target === "source") setSourceHeight(next);
+        else setResultHeight(next);
+      };
+      const onUp = () => {
+        const active = resizeRef.current;
+        if (!active) return;
+        resizeRef.current = null;
+        onStateChange({
+          ...instance.state,
+          sourceHeight,
+          resultHeight
+        });
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+      return () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+    }, [instance.state, onStateChange, resultHeight, sourceHeight]);
+
+    const startResize = (target: "source" | "result", event: ReactMouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      resizeRef.current = {
+        target,
+        startY: event.clientY,
+        startHeight: target === "source" ? sourceHeight : resultHeight
+      };
+    };
+
+    return (
+      <WidgetShell definition={definition} instance={instance}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 6, alignItems: "center", marginBottom: 8 }}>
+          <select
+            value={sourceLang}
+            onChange={(event) => onStateChange({ ...instance.state, sourceLang: event.target.value })}
+            style={{
+              borderRadius: 10,
+              border: "1px solid rgba(203, 213, 225, 0.65)",
+              padding: "6px 8px",
+              width: "100%",
+              background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
+            }}
+          >
+            {TRANSLATE_LANG_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => {
+              const nextSourceLang = targetLang;
+              const nextTargetLang = sourceLang === "auto" ? "zh-CN" : sourceLang;
+              onStateChange({
+                ...instance.state,
+                sourceLang: nextSourceLang,
+                targetLang: nextTargetLang,
+                sourceText: translatedText,
+                translatedText: sourceText
+              });
+            }}
+            style={{
+              border: "1px solid rgba(148, 163, 184, 0.42)",
+              borderRadius: 10,
+              background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))",
+              minHeight: 32,
+              minWidth: 34,
+              cursor: "pointer",
+              color: "#334155",
+              fontSize: 14
+            }}
+            title="交换"
+          >
+            ⇄
+          </button>
+          <select
+            value={targetLang}
+            onChange={(event) => onStateChange({ ...instance.state, targetLang: event.target.value })}
+            style={{
+              borderRadius: 10,
+              border: "1px solid rgba(203, 213, 225, 0.65)",
+              padding: "6px 8px",
+              width: "100%",
+              background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
+            }}
+          >
+            {TRANSLATE_LANG_OPTIONS.filter((option) => option.value !== "auto").map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ position: "relative", marginTop: 2 }}>
+          <textarea
+            value={sourceDraft}
+            placeholder="输入要翻译的文本..."
+            onChange={(event) => {
+              const next = event.target.value;
+              setSourceDraft(next);
+              if (!sourceComposingRef.current) {
+                onStateChange({ ...instance.state, sourceText: next });
+              }
+            }}
+            onCompositionStart={() => {
+              sourceComposingRef.current = true;
+            }}
+            onCompositionEnd={(event) => {
+              sourceComposingRef.current = false;
+              const next = event.currentTarget.value;
+              setSourceDraft(next);
+              onStateChange({ ...instance.state, sourceText: next });
+            }}
+            style={{
+              width: "100%",
+              maxWidth: "100%",
+              minHeight: 74,
+              height: sourceHeight,
+              resize: "none",
+              overflow: "auto",
+              borderRadius: 12,
+              border: "1px solid rgba(203, 213, 225, 0.65)",
+              padding: "8px 10px",
+              background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
+            }}
+          />
+          <div
+            onMouseDown={(event) => startResize("source", event)}
+            style={{
+              position: "absolute",
+              left: 8,
+              right: 8,
+              bottom: 1,
+              height: 10,
+              cursor: "ns-resize"
+            }}
+            title="拖拽调整高度"
+          />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, marginBottom: 8 }}>
+          <Button
+            onClick={() => {
+              if (!sourceText.trim()) return;
+              onStateChange({ ...instance.state, translating: true, translateError: "" });
+              void quickTranslate(sourceText, sourceLang, targetLang)
+                .then((text) => {
+                  const currentHistory = (Array.isArray(instance.state.translateHistory)
+                    ? instance.state.translateHistory
+                    : []) as TranslateHistoryItem[];
+                  const currentIndex = Number(instance.state.translateHistoryIndex ?? (currentHistory.length ? currentHistory.length - 1 : -1));
+                  const normalizedIndex = Number.isFinite(currentIndex) ? currentIndex : currentHistory.length - 1;
+                  const baseHistory =
+                    normalizedIndex >= 0 && normalizedIndex < currentHistory.length - 1
+                      ? currentHistory.slice(0, normalizedIndex + 1)
+                      : currentHistory;
+                  const nextHistory = [
+                    ...baseHistory,
+                    {
+                      sourceText,
+                      translatedText: text,
+                      sourceLang,
+                      targetLang,
+                      translatedAt: new Date().toISOString()
+                    }
+                  ];
+                  onStateChange({
+                    ...instance.state,
+                    translating: false,
+                    translateError: "",
+                    translatedText: text,
+                    translateHistory: nextHistory,
+                    translateHistoryIndex: nextHistory.length - 1
+                  });
+                })
+                .catch((error) => {
+                  onStateChange({
+                    ...instance.state,
+                    translating: false,
+                    translateError: error instanceof Error ? error.message : "翻译失败"
+                  });
+                });
+            }}
+          >
+            {translating ? "…" : "⇢"}
+          </Button>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+            <button
+              onClick={() => {
+                if (!canPrev) return;
+                const nextIndex = historyIndex - 1;
+                const item = history[nextIndex];
+                if (!item) return;
+                onStateChange({
+                  ...instance.state,
+                  sourceText: item.sourceText,
+                  translatedText: item.translatedText,
+                  sourceLang: item.sourceLang,
+                  targetLang: item.targetLang,
+                  translateHistoryIndex: nextIndex
+                });
+              }}
+              style={{
+                border: "none",
+                background: "transparent",
+                padding: 0,
+                minWidth: 12,
+                color: canPrev ? "#0f172a" : "#94a3b8",
+                cursor: canPrev ? "pointer" : "default",
+                fontSize: 12,
+                lineHeight: 1
+              }}
+              title="上一条翻译"
+            >
+              ◀
+            </button>
+            <button
+              onClick={() => {
+                if (!canNext) return;
+                const nextIndex = historyIndex + 1;
+                const item = history[nextIndex];
+                if (!item) return;
+                onStateChange({
+                  ...instance.state,
+                  sourceText: item.sourceText,
+                  translatedText: item.translatedText,
+                  sourceLang: item.sourceLang,
+                  targetLang: item.targetLang,
+                  translateHistoryIndex: nextIndex
+                });
+              }}
+              style={{
+                border: "none",
+                background: "transparent",
+                padding: 0,
+                minWidth: 12,
+                color: canNext ? "#0f172a" : "#94a3b8",
+                cursor: canNext ? "pointer" : "default",
+                fontSize: 12,
+                lineHeight: 1
+              }}
+              title="下一条翻译"
+            >
+              ▶
+            </button>
+          </div>
+        </div>
+        {translateError ? <div style={{ fontSize: 12, color: "#b91c1c", marginBottom: 6 }}>{translateError}</div> : null}
+        <div style={{ position: "relative", marginTop: 2 }}>
+          <textarea
+            readOnly
+            value={translatedText || "翻译结果会显示在这里"}
+            style={{
+              display: "block",
+              boxSizing: "border-box",
+              width: "100%",
+              maxWidth: "100%",
+              borderRadius: 12,
+              border: "1px solid rgba(203, 213, 225, 0.65)",
+              padding: "8px 10px",
+              minHeight: 74,
+              height: resultHeight,
+              color: "#0f172a",
+              background: "linear-gradient(160deg, rgba(255,255,255,0.6), rgba(255,255,255,0.3))",
+              resize: "none",
+              overflow: "auto"
+            }}
+          />
+          <div
+            onMouseDown={(event) => startResize("result", event)}
+            style={{
+              position: "absolute",
+              left: 8,
+              right: 8,
+              bottom: 1,
+              height: 10,
+              cursor: "ns-resize"
+            }}
+            title="拖拽调整高度"
+          />
         </div>
       </WidgetShell>
     );

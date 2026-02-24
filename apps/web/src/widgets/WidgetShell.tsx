@@ -21,7 +21,7 @@ export function WidgetShell({
           : "default";
   return (
     <Card title={definition.name} tone={tone}>
-      <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>
+      <div style={{ fontSize: 12, color: "#334155", marginBottom: 8 }}>
         {definition.description ?? definition.type}
       </div>
       {children}

@@ -11,6 +11,9 @@ export function Card({
   return (
     <section
       style={{
+        position: "relative",
+        isolation: "isolate",
+        overflow: "hidden",
         border: isSticky
           ? "1px solid rgba(255, 210, 77, 0.62)"
           : isTodo
@@ -20,12 +23,13 @@ export function Card({
               : "1px solid rgba(255, 255, 255, 0.58)",
         borderRadius: 18,
         background: isSticky
-          ? "linear-gradient(165deg, rgba(255, 240, 168, 0.68), rgba(255, 226, 102, 0.52))"
+          ? "linear-gradient(165deg, rgba(255, 240, 168, 0.52), rgba(255, 226, 102, 0.34))"
           : isTodo
-            ? "linear-gradient(165deg, rgba(187, 247, 208, 0.62), rgba(74, 222, 128, 0.35))"
+            ? "linear-gradient(165deg, rgba(187, 247, 208, 0.48), rgba(74, 222, 128, 0.24))"
             : isRecorder
-              ? "linear-gradient(165deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.18))"
-              : "linear-gradient(165deg, rgba(255, 255, 255, 0.48), rgba(255, 255, 255, 0.22))",
+              ? "linear-gradient(165deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.1))"
+              : "linear-gradient(165deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.14))",
+        WebkitBackdropFilter: "blur(20px) saturate(140%)",
         backdropFilter: "blur(20px) saturate(140%)",
         padding: 12,
         boxShadow: isSticky

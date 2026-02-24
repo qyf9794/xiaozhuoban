@@ -81,6 +81,35 @@ const baseWidgets: Array<Omit<WidgetDefinition, "id" | "createdAt" | "updatedAt"
   },
   {
     kind: "system",
+    type: "music",
+    name: "音乐播放器",
+    version: 1,
+    inputSchema: { fields: [{ key: "playlistUrl", label: "播放列表链接", type: "text" }] },
+    outputSchema: { fields: [] },
+    uiSchema: { layout: "single-column" },
+    logicSpec: {},
+    storagePolicy: { strategy: "local" }
+  },
+  {
+    kind: "system",
+    type: "translate",
+    name: "快速翻译",
+    version: 1,
+    description: "中英快速互译",
+    inputSchema: {
+      fields: [
+        { key: "sourceText", label: "原文", type: "textarea" },
+        { key: "sourceLang", label: "源语言", type: "select", options: ["自动", "中文", "英文"] },
+        { key: "targetLang", label: "目标语言", type: "select", options: ["中文", "英文"] }
+      ]
+    },
+    outputSchema: { fields: [{ key: "translatedText", label: "译文", type: "textarea" }] },
+    uiSchema: { layout: "single-column" },
+    logicSpec: {},
+    storagePolicy: { strategy: "local" }
+  },
+  {
+    kind: "system",
     type: "recorder",
     name: "录音机",
     version: 1,
