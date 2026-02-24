@@ -36,6 +36,27 @@ const CONVERTER_CATEGORY_OPTIONS = [
   { value: "temperature", label: "温度" }
 ] as const;
 
+const SELECT_CHEVRON_ICON =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2364758b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E\")";
+
+const glassSelectStyle: CSSProperties = {
+  borderRadius: 10,
+  border: "1px solid rgba(203, 213, 225, 0.65)",
+  padding: "6px 34px 6px 10px",
+  width: "100%",
+  minWidth: 86,
+  color: "#0f172a",
+  lineHeight: 1.35,
+  appearance: "none",
+  WebkitAppearance: "none",
+  MozAppearance: "none",
+  backgroundImage: `${SELECT_CHEVRON_ICON}, linear-gradient(160deg, rgba(255,255,255,0.68), rgba(255,255,255,0.36))`,
+  backgroundRepeat: "no-repeat, no-repeat",
+  backgroundPosition: "right 14px center, 0 0",
+  backgroundSize: "12px 12px, 100% 100%",
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.4), 0 6px 12px rgba(15,23,42,0.06)"
+};
+
 const CONVERTER_UNIT_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
   length: [
     { value: "m", label: "米(m)" },
@@ -1055,13 +1076,7 @@ export function BuiltinWidgetView({
           <select
             value={selectedCityCode}
             onChange={(event) => onStateChange({ ...instance.state, cityCode: event.target.value })}
-            style={{
-              borderRadius: 10,
-              border: "1px solid rgba(203, 213, 225, 0.65)",
-              padding: "6px 8px",
-              width: "100%",
-              background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
-            }}
+            style={glassSelectStyle}
           >
             {MAJOR_CITIES.map((city) => (
               <option key={city.value} value={city.value}>
@@ -1647,13 +1662,7 @@ export function BuiltinWidgetView({
                 toUnit: nextUnits[1]?.value ?? nextUnits[0]?.value ?? ""
               });
             }}
-            style={{
-              borderRadius: 10,
-              border: "1px solid rgba(203, 213, 225, 0.65)",
-              padding: "6px 8px",
-              width: "100%",
-              background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
-            }}
+            style={glassSelectStyle}
           >
             {CONVERTER_CATEGORY_OPTIONS.map((item) => (
               <option key={item.value} value={item.value}>
@@ -1680,13 +1689,7 @@ export function BuiltinWidgetView({
             <select
               value={fromUnit}
               onChange={(event) => onStateChange({ ...instance.state, fromUnit: event.target.value })}
-              style={{
-                borderRadius: 10,
-                border: "1px solid rgba(203, 213, 225, 0.65)",
-                padding: "6px 8px",
-                width: "100%",
-                background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
-              }}
+              style={glassSelectStyle}
             >
               {units.map((item) => (
                 <option key={item.value} value={item.value}>
@@ -1711,13 +1714,7 @@ export function BuiltinWidgetView({
             <select
               value={toUnit}
               onChange={(event) => onStateChange({ ...instance.state, toUnit: event.target.value })}
-              style={{
-                borderRadius: 10,
-                border: "1px solid rgba(203, 213, 225, 0.65)",
-                padding: "6px 8px",
-                width: "100%",
-                background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
-              }}
+              style={glassSelectStyle}
             >
               {units.map((item) => (
                 <option key={item.value} value={item.value}>
@@ -1734,6 +1731,7 @@ export function BuiltinWidgetView({
               padding: "8px 10px",
               minHeight: 40,
               color: "#0f172a",
+              fontSize: 13,
               background: "linear-gradient(160deg, rgba(255,255,255,0.6), rgba(255,255,255,0.3))"
             }}
           >
@@ -1773,13 +1771,7 @@ export function BuiltinWidgetView({
           <select
             value={sourceLang}
             onChange={(event) => onStateChange({ ...instance.state, sourceLang: event.target.value })}
-            style={{
-              borderRadius: 10,
-              border: "1px solid rgba(203, 213, 225, 0.65)",
-              padding: "6px 8px",
-              width: "100%",
-              background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
-            }}
+            style={glassSelectStyle}
           >
             {TRANSLATE_LANG_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -1816,13 +1808,7 @@ export function BuiltinWidgetView({
           <select
             value={targetLang}
             onChange={(event) => onStateChange({ ...instance.state, targetLang: event.target.value })}
-            style={{
-              borderRadius: 10,
-              border: "1px solid rgba(203, 213, 225, 0.65)",
-              padding: "6px 8px",
-              width: "100%",
-              background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
-            }}
+            style={glassSelectStyle}
           >
             {TRANSLATE_LANG_OPTIONS.filter((option) => option.value !== "auto").map((option) => (
               <option key={option.value} value={option.value}>
@@ -2377,7 +2363,7 @@ export function AIFormWidgetView({
           }
           if (field.type === "select") {
             return (
-              <select {...common}>
+              <select {...common} style={{ ...common.style, ...glassSelectStyle }}>
                 {(field.options ?? []).map((option) => (
                   <option key={option} value={option}>
                     {option}

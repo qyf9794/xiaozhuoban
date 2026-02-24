@@ -26,6 +26,7 @@ export function App() {
     toggleLayoutMode,
     updateWidgetPosition,
     updateWidgetState,
+    autoAlignWidgets,
     setCommandPaletteOpen,
     setAiDialogOpen,
     generateAiWidget,
@@ -133,6 +134,35 @@ export function App() {
           onStateChange={(widgetId, state) => void updateWidgetState(widgetId, state)}
           onRemoveWidget={(widgetId) => void removeWidgetInstance(widgetId)}
         />
+
+        <button
+          onClick={() => {
+            const sidebarWidth = sidebarOpen && !fullscreen ? 280 : 0;
+            const canvasWidth = Math.max(360, window.innerWidth - sidebarWidth - 24);
+            void autoAlignWidgets(canvasWidth);
+          }}
+          title="自动对齐"
+          style={{
+            position: "fixed",
+            right: 14,
+            bottom: 14,
+            width: 26,
+            height: 26,
+            borderRadius: "50%",
+            border: "1px solid rgba(255,255,255,0.58)",
+            background: "linear-gradient(165deg, rgba(255,255,255,0.62), rgba(255,255,255,0.34))",
+            backdropFilter: "blur(12px)",
+            color: "#64748b",
+            fontSize: 14,
+            lineHeight: 1,
+            cursor: "pointer",
+            zIndex: 1500,
+            display: "grid",
+            placeItems: "center"
+          }}
+        >
+          ⊞
+        </button>
       </main>
 
       <CommandPalette

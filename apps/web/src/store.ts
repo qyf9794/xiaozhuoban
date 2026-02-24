@@ -171,6 +171,7 @@ interface AppState {
   removeWidgetInstance: (widgetId: string) => Promise<void>;
   updateWidgetPosition: (widgetId: string, x: number, y: number) => Promise<void>;
   updateWidgetState: (widgetId: string, state: Record<string, unknown>) => Promise<void>;
+  autoAlignWidgets: (viewportWidth: number) => Promise<void>;
   setCommandPaletteOpen: (open: boolean) => void;
   setAiDialogOpen: (open: boolean) => void;
   generateAiWidget: (prompt: string) => Promise<void>;
@@ -405,6 +406,138 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
     await repository.upsertInstance(next);
     set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)) });
+  },
+  async autoAlignWidgets(_viewportWidth) {
+    const { repository, widgetInstances } = get();
+    if (widgetInstances.length === 0) return;
+
+    const margin = 20;
+    const horizontalGap = 18;
+    const verticalGap = horizontalGap / 3;
+    const toNumber = (value: unknown) => {
+      if (typeof value === "number") return value;
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        const direct = Number(trimmed);
+        if (Number.isFinite(direct)) return direct;
+        const parsed = Number.parseFloat(trimmed);
+        if (Number.isFinite(parsed)) return parsed;
+      }
+      return Number.NaN;
+    };
+    const safeW = (w: unknown) => {
+      const n = toNumber(w);
+      return Number.isFinite(n) ? Math.max(120, n) : 240;
+    };
+    const safeH = (h: unknown) => {
+      const n = toNumber(h);
+      return Number.isFinite(n) ? Math.max(90, n) : 180;
+    };
+
+    const measuredHeights =
+      typeof document === "undefined"
+        ? new Map<string, number>()
+        : new Map(
+            widgetInstances.map((item) => {
+              const element = document.querySelector<HTMLElement>(`.widget-box[data-widget-id="${item.id}"]`);
+              const card = element?.querySelector<HTMLElement>("section");
+              const boxRectHeight = element?.getBoundingClientRect().height ?? 0;
+              const cardRectHeight = card?.getBoundingClientRect().height ?? 0;
+              const measured =
+                cardRectHeight > 0 ? cardRectHeight : boxRectHeight;
+              return [item.id, measured];
+            })
+          );
+
+    const normalized = widgetInstances.map((item) => ({
+      ...item,
+      size: {
+        w: safeW(item.size.w),
+        h: (() => {
+          const measured = measuredHeights.get(item.id) ?? 0;
+          return measured > 0 ? Math.max(90, measured) : safeH(item.size.h);
+        })()
+      }
+    }));
+
+    const measuredHeightOf = (id: string, fallback: number) => {
+      const measured = measuredHeights.get(id) ?? 0;
+      return measured > 0 ? Math.max(90, measured) : fallback;
+    };
+
+    const normalizedById = new Map(normalized.map((item) => [item.id, item]));
+    const normalizedInstances = widgetInstances.map((item) => normalizedById.get(item.id) ?? item);
+
+    const sortedByX = [...normalizedInstances].sort((a, b) => a.position.x - b.position.x);
+
+    type Column = { center: number; width: number; items: WidgetInstance[] };
+    const columns: Column[] = [];
+
+    sortedByX.forEach((item) => {
+      const itemCenter = item.position.x + item.size.w / 2;
+      let nearestIndex = -1;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < columns.length; i += 1) {
+        const distance = Math.abs(itemCenter - columns[i].center);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestIndex = i;
+        }
+      }
+
+      const nearest = nearestIndex >= 0 ? columns[nearestIndex] : null;
+      const threshold = nearest ? (nearest.width + item.size.w + horizontalGap) / 4 : 0;
+      if (!nearest || nearestDistance > threshold) {
+        columns.push({
+          center: itemCenter,
+          width: item.size.w,
+          items: [item]
+        });
+      } else {
+        nearest.items.push(item);
+        nearest.width = Math.max(nearest.width, item.size.w);
+      }
+    });
+
+    columns.sort((a, b) => a.center - b.center);
+    let xCursor = margin;
+    columns.forEach((column) => {
+      column.center = xCursor + column.width / 2;
+      xCursor += column.width + horizontalGap;
+    });
+
+    const nextById = new Map<string, WidgetInstance>();
+    columns.forEach((column) => {
+      const inColumn = [...column.items].sort((a, b) => a.position.y - b.position.y);
+      if (!inColumn.length) return;
+      let previousBottom = margin;
+
+      inColumn.forEach((item, rowIndex) => {
+        const w = safeW(item.size.w);
+        const h = measuredHeightOf(item.id, safeH(item.size.h));
+        const alignedY = Math.round(rowIndex === 0 ? margin : previousBottom + verticalGap);
+        const targetX = Math.round(column.center - w / 2);
+
+        nextById.set(item.id, {
+          ...item,
+          size: { w, h },
+          position: {
+            x: targetX,
+            y: alignedY
+          },
+          updatedAt: nowIso()
+        });
+        previousBottom = alignedY + h;
+      });
+    });
+
+    const nextInstances = widgetInstances.map((item) => nextById.get(item.id) ?? item);
+
+    await Promise.all(nextInstances.map((item) => repository.upsertInstance(item)));
+    const byId = new Map(nextInstances.map((item) => [item.id, item]));
+    set({
+      widgetInstances: widgetInstances.map((item) => byId.get(item.id) ?? item)
+    });
   },
   setCommandPaletteOpen(open) {
     set({ commandPaletteOpen: open });

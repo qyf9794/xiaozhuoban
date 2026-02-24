@@ -14,6 +14,8 @@ export function Card({
         position: "relative",
         isolation: "isolate",
         overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
         border: isSticky
           ? "1px solid rgba(255, 210, 77, 0.62)"
           : isTodo

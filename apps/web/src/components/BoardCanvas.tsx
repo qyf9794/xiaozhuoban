@@ -81,6 +81,7 @@ export function BoardCanvas({
         return (
           <div
             key={widget.id}
+            data-widget-id={widget.id}
             style={{
               position: "absolute",
               width: widget.size.w,
