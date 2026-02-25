@@ -45,26 +45,128 @@ const CONVERTER_CATEGORY_OPTIONS = [
   { value: "temperature", label: "温度" }
 ] as const;
 
-const SELECT_CHEVRON_ICON =
-  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2364758b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E\")";
+type GlassSelectOption = { value: string; label: string };
 
-const glassSelectStyle: CSSProperties = {
-  borderRadius: 10,
-  border: "1px solid rgba(203, 213, 225, 0.65)",
-  padding: "6px 34px 6px 10px",
-  width: "100%",
-  minWidth: 86,
-  color: "#0f172a",
-  lineHeight: 1.35,
-  appearance: "none",
-  WebkitAppearance: "none",
-  MozAppearance: "none",
-  backgroundImage: `${SELECT_CHEVRON_ICON}, linear-gradient(160deg, rgba(255,255,255,0.68), rgba(255,255,255,0.36))`,
-  backgroundRepeat: "no-repeat, no-repeat",
-  backgroundPosition: "right 14px center, 0 0",
-  backgroundSize: "12px 12px, 100% 100%",
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.4), 0 6px 12px rgba(15,23,42,0.06)"
-};
+function GlassSelect({
+  value,
+  options,
+  onChange,
+  style,
+  menuWidth
+}: {
+  value: string;
+  options: GlassSelectOption[];
+  onChange: (next: string) => void;
+  style?: CSSProperties;
+  menuWidth?: number | string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const prevWidgetZRef = useRef<string>("");
+  const selected = options.find((item) => item.value === value) ?? options[0];
+
+  useEffect(() => {
+    const onDocClick = (event: MouseEvent) => {
+      if (!rootRef.current) return;
+      if (!rootRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const widgetBox = root.closest(".widget-box") as HTMLElement | null;
+    if (!widgetBox) return;
+    if (open) {
+      prevWidgetZRef.current = widgetBox.style.zIndex || "";
+      widgetBox.style.zIndex = "99990";
+    } else if (prevWidgetZRef.current !== "") {
+      widgetBox.style.zIndex = prevWidgetZRef.current;
+      prevWidgetZRef.current = "";
+    }
+    return () => {
+      if (prevWidgetZRef.current !== "") {
+        widgetBox.style.zIndex = prevWidgetZRef.current;
+        prevWidgetZRef.current = "";
+      }
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} style={{ position: "relative", ...style }}>
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        style={{
+          width: "100%",
+          minHeight: 34,
+          borderRadius: 12,
+          border: "1px solid rgba(203, 213, 225, 0.65)",
+          padding: "6px 28px 6px 10px",
+          color: "#0f172a",
+          lineHeight: 1.35,
+          textAlign: "left",
+          cursor: "pointer",
+          background: "linear-gradient(160deg, rgba(255,255,255,0.68), rgba(255,255,255,0.36))",
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.4), 0 6px 12px rgba(15,23,42,0.06)",
+          fontSize: 12,
+          position: "relative"
+        }}
+      >
+        {selected?.label ?? ""}
+        <span
+          style={{
+            position: "absolute",
+            right: 10,
+            top: "50%",
+            transform: "translateY(-50%)",
+            color: "#64748b",
+            fontSize: 11
+          }}
+        >
+          ▾
+        </span>
+      </button>
+      {open ? (
+        <div
+          className="glass-dropdown-panel"
+          style={{
+            position: "absolute",
+            right: 0,
+            top: 36,
+            width: menuWidth ?? "100%",
+            minWidth: "100%",
+            padding: 4,
+            zIndex: 99991,
+            maxHeight: 260,
+            overflowY: "auto"
+          }}
+        >
+          {options.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              className="glass-dropdown-item"
+              onClick={() => {
+                onChange(item.value);
+                setOpen(false);
+              }}
+              style={{
+                background: item.value === value ? "rgba(148,163,184,0.18)" : "transparent"
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 const CONVERTER_UNIT_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
   length: [
@@ -1324,17 +1426,11 @@ export function BuiltinWidgetView({
           <div className="weather-anim" title={weatherText}>
             {weatherIcon}
           </div>
-          <select
+          <GlassSelect
             value={selectedCityCode}
-            onChange={(event) => onStateChange({ ...instance.state, cityCode: event.target.value })}
-            style={glassSelectStyle}
-          >
-            {MAJOR_CITIES.map((city) => (
-              <option key={city.value} value={city.value}>
-                {city.label}
-              </option>
-            ))}
-          </select>
+            onChange={(next) => onStateChange({ ...instance.state, cityCode: next })}
+            options={MAJOR_CITIES.map((city) => ({ value: city.value, label: city.label }))}
+          />
 
           <div style={{ marginTop: 10, fontSize: 13, color: "#1f2937" }}>
             {loading ? (
@@ -1576,13 +1672,11 @@ export function BuiltinWidgetView({
       <WidgetShell definition={definition} instance={instance}>
         <div style={{ display: "grid", gap: 8 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center" }}>
-            <select value={addCode} onChange={(event) => setAddCode(event.target.value)} style={glassSelectStyle}>
-              {GLOBAL_INDICES.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
+            <GlassSelect
+              value={addCode}
+              onChange={setAddCode}
+              options={GLOBAL_INDICES.map((item) => ({ value: item.value, label: item.label }))}
+            />
             <button
               onClick={() => {
                 if (selectedIndexCodes.includes(addCode)) return;
@@ -2246,10 +2340,9 @@ export function BuiltinWidgetView({
     return (
       <WidgetShell definition={definition} instance={instance}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
-          <select
+          <GlassSelect
             value={category}
-            onChange={(event) => {
-              const nextCategory = event.target.value;
+            onChange={(nextCategory) => {
               const nextUnits = CONVERTER_UNIT_OPTIONS[nextCategory] ?? CONVERTER_UNIT_OPTIONS.length;
               onStateChange({
                 ...instance.state,
@@ -2258,14 +2351,8 @@ export function BuiltinWidgetView({
                 toUnit: nextUnits[1]?.value ?? nextUnits[0]?.value ?? ""
               });
             }}
-            style={glassSelectStyle}
-          >
-            {CONVERTER_CATEGORY_OPTIONS.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
+            options={CONVERTER_CATEGORY_OPTIONS.map((item) => ({ value: item.value, label: item.label }))}
+          />
 
           <input
             value={rawValue}
@@ -2282,17 +2369,11 @@ export function BuiltinWidgetView({
           />
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 6, alignItems: "center" }}>
-            <select
+            <GlassSelect
               value={fromUnit}
-              onChange={(event) => onStateChange({ ...instance.state, fromUnit: event.target.value })}
-              style={glassSelectStyle}
-            >
-              {units.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
+              onChange={(next) => onStateChange({ ...instance.state, fromUnit: next })}
+              options={units.map((item) => ({ value: item.value, label: item.label }))}
+            />
             <button
               onClick={() => onStateChange({ ...instance.state, fromUnit: toUnit, toUnit: fromUnit })}
               style={{
@@ -2307,17 +2388,11 @@ export function BuiltinWidgetView({
             >
               ⇄
             </button>
-            <select
+            <GlassSelect
               value={toUnit}
-              onChange={(event) => onStateChange({ ...instance.state, toUnit: event.target.value })}
-              style={glassSelectStyle}
-            >
-              {units.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
+              onChange={(next) => onStateChange({ ...instance.state, toUnit: next })}
+              options={units.map((item) => ({ value: item.value, label: item.label }))}
+            />
           </div>
 
           <div
@@ -2364,17 +2439,11 @@ export function BuiltinWidgetView({
     return (
       <WidgetShell definition={definition} instance={instance}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 6, alignItems: "center", marginBottom: 8 }}>
-          <select
+          <GlassSelect
             value={sourceLang}
-            onChange={(event) => onStateChange({ ...instance.state, sourceLang: event.target.value })}
-            style={glassSelectStyle}
-          >
-            {TRANSLATE_LANG_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            onChange={(next) => onStateChange({ ...instance.state, sourceLang: next })}
+            options={TRANSLATE_LANG_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+          />
           <button
             onClick={() => {
               const nextSourceLang = targetLang;
@@ -2401,17 +2470,14 @@ export function BuiltinWidgetView({
           >
             ⇄
           </button>
-          <select
+          <GlassSelect
             value={targetLang}
-            onChange={(event) => onStateChange({ ...instance.state, targetLang: event.target.value })}
-            style={glassSelectStyle}
-          >
-            {TRANSLATE_LANG_OPTIONS.filter((option) => option.value !== "auto").map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            onChange={(next) => onStateChange({ ...instance.state, targetLang: next })}
+            options={TRANSLATE_LANG_OPTIONS.filter((option) => option.value !== "auto").map((option) => ({
+              value: option.value,
+              label: option.label
+            }))}
+          />
         </div>
 
         <VerticalResizableTextarea
@@ -2561,23 +2627,10 @@ export function BuiltinWidgetView({
     const streamRef = useRef<MediaStream | null>(null);
     const chunksRef = useRef<BlobPart[]>([]);
     const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
-    const menuRootRef = useRef<HTMLDivElement | null>(null);
     const recordings = (Array.isArray(instance.state.recordings) ? instance.state.recordings : []) as RecordingItem[];
     const recording = instance.state.recording === true;
     const [playingId, setPlayingId] = useState("");
     const [progressMap, setProgressMap] = useState<Record<string, number>>({});
-    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-
-    useEffect(() => {
-      const onDocClick = (event: MouseEvent) => {
-        if (!menuRootRef.current) return;
-        if (!menuRootRef.current.contains(event.target as Node)) {
-          setOpenMenuId(null);
-        }
-      };
-      document.addEventListener("mousedown", onDocClick);
-      return () => document.removeEventListener("mousedown", onDocClick);
-    }, []);
 
     return (
       <WidgetShell definition={definition} instance={instance}>
@@ -2663,7 +2716,7 @@ export function BuiltinWidgetView({
           <div style={{ color: "#b91c1c", marginBottom: 8 }}>{asString(instance.state.recordError)}</div>
         ) : null}
 
-        <div ref={menuRootRef} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {recordings.length === 0 ? null : (
             recordings.map((item, index) => (
               <div
@@ -2672,10 +2725,7 @@ export function BuiltinWidgetView({
                   padding: "3px 2px 5px",
                   minHeight: 28,
                   borderBottom: "1px solid rgba(100, 116, 139, 0.22)",
-                  display: "grid",
-                  gridTemplateColumns: "1fr auto",
-                  alignItems: "center",
-                  gap: 6
+                  display: "block"
                 }}
               >
                 <div style={{ minWidth: 0 }}>
@@ -2780,6 +2830,60 @@ export function BuiltinWidgetView({
                       }}
                       className="recorder-progress-line"
                     />
+                    <button
+                      onClick={() => {
+                        const anchor = document.createElement("a");
+                        anchor.href = item.dataUrl;
+                        anchor.download = `recording-${new Date(item.createdAt).toISOString()}.webm`;
+                        document.body.appendChild(anchor);
+                        anchor.click();
+                        anchor.remove();
+                      }}
+                      style={{
+                        border: "none",
+                        background: "transparent",
+                        color: "#64748b",
+                        cursor: "pointer",
+                        fontSize: 12,
+                        lineHeight: 1,
+                        padding: 0
+                      }}
+                      title="下载"
+                    >
+                      <span className="icon-download-mark">
+                        <span>↓</span>
+                        <i />
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        const nextRecordings = recordings.filter((record) => record.id !== item.id);
+                        const audio = audioRefs.current[item.id];
+                        if (audio) {
+                          audio.pause();
+                          audio.currentTime = 0;
+                        }
+                        if (playingId === item.id) {
+                          setPlayingId("");
+                        }
+                        onStateChange({
+                          ...instance.state,
+                          recordings: nextRecordings
+                        });
+                      }}
+                      style={{
+                        border: "none",
+                        background: "transparent",
+                        color: "#b91c1c",
+                        cursor: "pointer",
+                        fontSize: 13,
+                        lineHeight: 1,
+                        padding: 0
+                      }}
+                      title="删除"
+                    >
+                      🗑
+                    </button>
                   </div>
                   <audio
                     ref={(el) => {
@@ -2795,98 +2899,6 @@ export function BuiltinWidgetView({
                     src={item.dataUrl}
                     style={{ display: "none" }}
                   />
-                </div>
-                <div style={{ position: "relative" }}>
-                  <button
-                    onClick={() => setOpenMenuId((prev) => (prev === item.id ? null : item.id))}
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      cursor: "pointer",
-                      color: "#64748b",
-                      fontSize: 14,
-                      lineHeight: 1
-                    }}
-                  >
-                    ⋮
-                  </button>
-                  {openMenuId === item.id ? (
-                    <div
-                      style={{
-                        position: "absolute",
-                        right: 0,
-                        top: 18,
-                        border: "1px solid rgba(148,163,184,0.42)",
-                        borderRadius: 8,
-                        background: "linear-gradient(170deg, rgba(255,255,255,0.95), rgba(255,255,255,0.9))",
-                        padding: 4,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 2,
-                        zIndex: 2
-                      }}
-                    >
-                      <button
-                        onClick={() => {
-                          const anchor = document.createElement("a");
-                          anchor.href = item.dataUrl;
-                          anchor.download = `recording-${new Date(item.createdAt).toISOString()}.webm`;
-                          document.body.appendChild(anchor);
-                          anchor.click();
-                          anchor.remove();
-                          setOpenMenuId(null);
-                        }}
-                        style={{
-                          border: "none",
-                          background: "transparent",
-                          color: "#0f172a",
-                          padding: "4px 8px",
-                          textAlign: "center",
-                          cursor: "pointer",
-                          fontSize: 14,
-                          lineHeight: 1
-                        }}
-                        title="下载"
-                      >
-                        <span className="icon-download-mark">
-                          <span>↓</span>
-                          <i />
-                        </span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          const nextRecordings = recordings.filter((record) => record.id !== item.id);
-                          const audio = audioRefs.current[item.id];
-                          if (audio) {
-                            audio.pause();
-                            audio.currentTime = 0;
-                          }
-                          if (playingId === item.id) {
-                            setPlayingId("");
-                          }
-                          onStateChange({
-                            ...instance.state,
-                            recordings: nextRecordings
-                          });
-                          setOpenMenuId(null);
-                        }}
-                        style={{
-                          border: "none",
-                          background: "transparent",
-                          color: "#b91c1c",
-                          padding: "4px 8px",
-                          textAlign: "center",
-                          cursor: "pointer",
-                          fontSize: 14,
-                          lineHeight: 1,
-                          fontWeight: 700
-                        }}
-                        title="删除"
-                      >
-                        🗑
-                      </button>
-                    </div>
-                  ) : null}
                 </div>
               </div>
             ))
@@ -2958,14 +2970,13 @@ export function AIFormWidgetView({
             );
           }
           if (field.type === "select") {
+            const selectOptions = (field.options ?? []).map((option) => ({ value: option, label: option }));
             return (
-              <select {...common} style={{ ...common.style, ...glassSelectStyle }}>
-                {(field.options ?? []).map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+              <GlassSelect
+                value={String(common.value)}
+                onChange={(next) => onStateChange({ ...instance.state, [field.key]: next })}
+                options={selectOptions}
+              />
             );
           }
           return <input {...common} type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"} />;

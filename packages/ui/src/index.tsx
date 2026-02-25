@@ -56,7 +56,7 @@ export function Card({
       style={{
         position: "relative",
         isolation: "isolate",
-        overflow: "hidden",
+        overflow: "visible",
         display: "flex",
         flexDirection: "column",
         border: theme.border,

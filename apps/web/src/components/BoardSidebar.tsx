@@ -120,31 +120,31 @@ function BoardRow({
           </span>
         </button>
         {menuOpen ? (
-          <button
-            onClick={() => {
-              setMenuOpen(false);
-              const ok = window.confirm(`确认删除桌板「${board.name}」吗？\n该桌板内所有工具、布局和内容将被永久删除。`);
-              if (ok) {
-                onDelete();
-              }
-            }}
+          <div
+            className="glass-dropdown-panel"
             style={{
               position: "absolute",
               right: 0,
               top: 24,
-              border: "1px solid rgba(248,113,113,0.5)",
-              borderRadius: 10,
-              background: "linear-gradient(170deg, rgba(254,226,226,0.98), rgba(254,202,202,0.92))",
-              color: "#b91c1c",
-              padding: "6px 10px",
-              fontWeight: 700,
-              cursor: "pointer",
-              zIndex: 5,
+              minWidth: 88,
+              padding: 4,
+              zIndex: 99992,
               whiteSpace: "nowrap"
             }}
           >
-            删除
-          </button>
+            <button
+              className="glass-dropdown-item glass-dropdown-item-danger"
+              onClick={() => {
+                setMenuOpen(false);
+                const ok = window.confirm(`确认删除桌板「${board.name}」吗？\n该桌板内所有工具、布局和内容将被永久删除。`);
+                if (ok) {
+                  onDelete();
+                }
+              }}
+            >
+              删除
+            </button>
+          </div>
         ) : null}
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Board, WidgetDefinition } from "@xiaozhuoban/domain";
 
 export function Toolbar({
@@ -9,7 +9,6 @@ export function Toolbar({
   onToggleFullscreen,
   onToggleSidebar,
   onOpenCommandPalette,
-  onToggleLayoutMode,
   onPickWallpaper,
   onBackup,
   onImportBackup,
@@ -23,21 +22,25 @@ export function Toolbar({
   onToggleFullscreen: () => void;
   onToggleSidebar: () => void;
   onOpenCommandPalette: () => void;
-  onToggleLayoutMode: () => void;
   onPickWallpaper: () => void;
   onBackup: () => void;
   onImportBackup: () => void;
   onAddWidget: (definitionId: string) => void;
   onOpenAiDialog: () => void;
 }) {
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const onDocClick = (event: MouseEvent) => {
-      if (!menuRef.current) return;
-      if (!menuRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (menuRef.current && !menuRef.current.contains(target)) {
         setMenuOpen(false);
+      }
+      if (addMenuRef.current && !addMenuRef.current.contains(target)) {
+        setAddMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", onDocClick);
@@ -93,35 +96,79 @@ export function Toolbar({
         <h1 style={{ margin: 0, fontSize: 18 }}>{board.name}</h1>
       </div>
       <div style={{ display: "flex", gap: 8 }}>
-        <select
-          onChange={(event) => {
-            if (event.target.value) {
-              if (event.target.value === "__ai__") {
-                onOpenAiDialog();
-              } else {
-                onAddWidget(event.target.value);
-              }
-              event.target.value = "";
-            }
-          }}
-          defaultValue=""
-          style={{
-            border: "1px solid rgba(255,255,255,0.58)",
-            borderRadius: 12,
-            padding: "6px 8px",
-            background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.36))"
-          }}
-        >
-          <option value="" disabled>
+        <div ref={addMenuRef} style={{ position: "relative" }}>
+          <button
+            aria-label="添加 Widget"
+            onClick={() => setAddMenuOpen((prev) => !prev)}
+            style={{
+              border: "1px solid rgba(255,255,255,0.62)",
+              borderRadius: 14,
+              padding: "7px 30px 7px 10px",
+              minWidth: 118,
+              background: "linear-gradient(170deg, rgba(255,255,255,0.9), rgba(255,255,255,0.72))",
+              boxShadow: "0 10px 24px rgba(15,23,42,0.12)",
+              backdropFilter: "blur(16px) saturate(130%)",
+              color: "#0f172a",
+              fontSize: 12,
+              lineHeight: 1.2,
+              cursor: "pointer",
+              position: "relative",
+              textAlign: "left"
+            }}
+          >
             添加 Widget
-          </option>
-          <option value="__ai__">✨ AI 生成</option>
-          {definitions.map((definition) => (
-            <option key={definition.id} value={definition.id}>
-              {definition.name}
-            </option>
-          ))}
-        </select>
+            <span
+              style={{
+                position: "absolute",
+                right: 10,
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: "#64748b",
+                fontSize: 12,
+                lineHeight: 1
+              }}
+            >
+              ▾
+            </span>
+          </button>
+          {addMenuOpen ? (
+            <div
+              className="glass-dropdown-panel"
+              style={{
+                position: "absolute",
+                right: 0,
+                top: 34,
+                width: 180,
+                padding: 6,
+                zIndex: 99992,
+                maxHeight: 320,
+                overflowY: "auto"
+              }}
+            >
+              <button
+                onClick={() => {
+                  setAddMenuOpen(false);
+                  onOpenAiDialog();
+                }}
+                className="glass-dropdown-item"
+              >
+                ✨ AI 生成
+              </button>
+              {definitions.map((definition) => (
+                <button
+                  key={definition.id}
+                  onClick={() => {
+                    setAddMenuOpen(false);
+                    onAddWidget(definition.id);
+                  }}
+                  className="glass-dropdown-item"
+                >
+                  {definition.name}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
         <div ref={menuRef} style={{ position: "relative" }}>
           <button
             aria-label="设置"
@@ -140,18 +187,14 @@ export function Toolbar({
           </button>
           {menuOpen ? (
             <div
+              className="glass-dropdown-panel"
               style={{
                 position: "absolute",
                 right: 0,
                 top: 28,
                 width: 180,
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.62)",
-                background: "linear-gradient(170deg, rgba(255,255,255,0.9), rgba(255,255,255,0.72))",
-                boxShadow: "0 10px 24px rgba(15,23,42,0.12)",
-                backdropFilter: "blur(16px)",
                 padding: 6,
-                zIndex: 1300
+                zIndex: 99992
               }}
             >
               <button
@@ -159,7 +202,7 @@ export function Toolbar({
                   setMenuOpen(false);
                   onOpenCommandPalette();
                 }}
-                style={menuItemStyle}
+                className="glass-dropdown-item"
               >
                 搜索
               </button>
@@ -168,25 +211,16 @@ export function Toolbar({
                   setMenuOpen(false);
                   onToggleSidebar();
                 }}
-                style={menuItemStyle}
+                className="glass-dropdown-item"
               >
                 {sidebarOpen ? "隐藏侧栏" : "显示侧栏"}
               </button>
               <button
                 onClick={() => {
                   setMenuOpen(false);
-                  onToggleLayoutMode();
-                }}
-                style={menuItemStyle}
-              >
-                {board.layoutMode === "grid" ? "切到自由布局" : "切到网格布局"}
-              </button>
-              <button
-                onClick={() => {
-                  setMenuOpen(false);
                   onPickWallpaper();
                 }}
-                style={menuItemStyle}
+                className="glass-dropdown-item"
               >
                 壁纸
               </button>
@@ -195,7 +229,7 @@ export function Toolbar({
                   setMenuOpen(false);
                   onBackup();
                 }}
-                style={menuItemStyle}
+                className="glass-dropdown-item"
               >
                 备份
               </button>
@@ -204,7 +238,7 @@ export function Toolbar({
                   setMenuOpen(false);
                   onImportBackup();
                 }}
-                style={menuItemStyle}
+                className="glass-dropdown-item"
               >
                 导入
               </button>
@@ -215,14 +249,3 @@ export function Toolbar({
     </header>
   );
 }
-
-const menuItemStyle: CSSProperties = {
-  width: "100%",
-  border: "none",
-  background: "transparent",
-  textAlign: "left",
-  padding: "8px 10px",
-  borderRadius: 8,
-  cursor: "pointer",
-  color: "#0f172a"
-};

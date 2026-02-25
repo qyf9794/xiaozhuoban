@@ -270,7 +270,7 @@ function makeBoard(workspaceId: string, name = defaultBoardName): Board {
     id: createId("board"),
     workspaceId,
     name,
-    layoutMode: "grid",
+    layoutMode: "free",
     zoom: 1,
     locked: false,
     background: {

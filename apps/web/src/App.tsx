@@ -23,7 +23,6 @@ export function App() {
     setActiveBoard,
     addWidgetInstance,
     removeWidgetInstance,
-    toggleLayoutMode,
     updateWidgetPosition,
     updateWidgetState,
     autoAlignWidgets,
@@ -106,7 +105,6 @@ export function App() {
             }}
             onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
             onOpenCommandPalette={() => setCommandPaletteOpen(true)}
-            onToggleLayoutMode={() => void toggleLayoutMode()}
             onPickWallpaper={() => wallpaperInputRef.current?.click()}
             onBackup={() => {
               void (async () => {
