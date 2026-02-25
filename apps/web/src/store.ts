@@ -81,6 +81,30 @@ const baseWidgets: Array<Omit<WidgetDefinition, "id" | "createdAt" | "updatedAt"
   },
   {
     kind: "system",
+    type: "headline",
+    name: "重大新闻",
+    version: 1,
+    description: "实时热点新闻",
+    inputSchema: { fields: [] },
+    outputSchema: { fields: [{ key: "items", label: "新闻", type: "text" }] },
+    uiSchema: { layout: "single-column" },
+    logicSpec: {},
+    storagePolicy: { strategy: "local" }
+  },
+  {
+    kind: "system",
+    type: "market",
+    name: "全球指数",
+    version: 1,
+    description: "实时全球指数与走势",
+    inputSchema: { fields: [{ key: "indexCode", label: "指数", type: "select" }] },
+    outputSchema: { fields: [{ key: "series", label: "走势", type: "text" }] },
+    uiSchema: { layout: "single-column" },
+    logicSpec: {},
+    storagePolicy: { strategy: "local" }
+  },
+  {
+    kind: "system",
     type: "music",
     name: "音乐播放器",
     version: 1,
@@ -176,6 +200,42 @@ interface AppState {
   setAiDialogOpen: (open: boolean) => void;
   generateAiWidget: (prompt: string) => Promise<void>;
   createBackupSnapshot: () => Promise<Record<string, unknown>>;
+  importBackupSnapshot: (snapshot: unknown, backupName?: string) => Promise<void>;
+}
+
+interface BackupSnapshotPayload {
+  workspaces: Workspace[];
+  boards: Board[];
+  widgetDefinitions: WidgetDefinition[];
+  widgetsByBoard: Record<string, WidgetInstance[]>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
+}
+
+function parseBackupSnapshot(value: unknown): BackupSnapshotPayload | null {
+  if (!isRecord(value)) return null;
+  const workspaces = Array.isArray(value.workspaces) ? (value.workspaces as Workspace[]) : null;
+  const boards = Array.isArray(value.boards) ? (value.boards as Board[]) : null;
+  const widgetDefinitions = Array.isArray(value.widgetDefinitions)
+    ? (value.widgetDefinitions as WidgetDefinition[])
+    : null;
+  const widgetsByBoard = isRecord(value.widgetsByBoard)
+    ? (value.widgetsByBoard as Record<string, WidgetInstance[]>)
+    : null;
+  if (!workspaces || !boards || !widgetDefinitions || !widgetsByBoard) {
+    return null;
+  }
+  if (workspaces.length === 0 || boards.length === 0) {
+    return null;
+  }
+  return {
+    workspaces,
+    boards,
+    widgetDefinitions,
+    widgetsByBoard
+  };
 }
 
 function createRepository(): AppRepository {
@@ -574,5 +634,97 @@ export const useAppStore = create<AppState>((set, get) => ({
       widgetDefinitions,
       widgetsByBoard
     };
+  },
+  async importBackupSnapshot(snapshot, backupName) {
+    const { repository, boards, widgetDefinitions, activeBoardId } = get();
+    const parsed = parseBackupSnapshot(snapshot);
+    if (!parsed) {
+      throw new Error("备份文件格式无效");
+    }
+
+    const workspaces = await repository.list();
+    const currentBoard = boards.find((item) => item.id === activeBoardId) ?? boards[0];
+    const workspaceId = currentBoard?.workspaceId ?? workspaces[0]?.id;
+    if (!workspaceId) {
+      throw new Error("当前无可用工作空间，无法导入");
+    }
+
+    const sourceBoard = parsed.boards[0];
+    const boardName = (backupName?.trim() || sourceBoard.name || "导入备份").trim();
+    const now = nowIso();
+    const newBoard: Board = {
+      ...sourceBoard,
+      id: createId("board"),
+      workspaceId,
+      name: boardName,
+      createdAt: now,
+      updatedAt: now
+    };
+    await repository.upsertBoard(newBoard);
+
+    const existingSystemByType = new Map(
+      widgetDefinitions.filter((item) => item.kind === "system").map((item) => [item.type, item])
+    );
+    const existingDefById = new Map(widgetDefinitions.map((item) => [item.id, item]));
+    const definitionIdMap = new Map<string, string>();
+    const importedDefinitions: WidgetDefinition[] = [];
+
+    for (const definition of parsed.widgetDefinitions) {
+      if (definition.kind === "system") {
+        const matched = existingSystemByType.get(definition.type);
+        if (matched) {
+          definitionIdMap.set(definition.id, matched.id);
+          continue;
+        }
+      }
+
+      if (existingDefById.has(definition.id)) {
+        const newDefinition: WidgetDefinition = {
+          ...definition,
+          id: createId("wd_import"),
+          createdAt: now,
+          updatedAt: now
+        };
+        await repository.upsertDefinition(newDefinition);
+        importedDefinitions.push(newDefinition);
+        definitionIdMap.set(definition.id, newDefinition.id);
+        continue;
+      }
+
+      await repository.upsertDefinition(definition);
+      importedDefinitions.push(definition);
+      definitionIdMap.set(definition.id, definition.id);
+    }
+
+    const sourceInstances = Array.isArray(parsed.widgetsByBoard[sourceBoard.id])
+      ? parsed.widgetsByBoard[sourceBoard.id]
+      : [];
+    const importedInstances: WidgetInstance[] = [];
+    for (const instance of sourceInstances) {
+      const newInstance: WidgetInstance = {
+        ...instance,
+        id: createId("wi"),
+        boardId: newBoard.id,
+        definitionId: definitionIdMap.get(instance.definitionId) ?? instance.definitionId,
+        createdAt: now,
+        updatedAt: now
+      };
+      await repository.upsertInstance(newInstance);
+      importedInstances.push(newInstance);
+    }
+
+    const mergedDefinitions = [...widgetDefinitions];
+    for (const item of importedDefinitions) {
+      if (!mergedDefinitions.some((d) => d.id === item.id)) {
+        mergedDefinitions.push(item);
+      }
+    }
+
+    set({
+      boards: [...boards, newBoard],
+      widgetDefinitions: mergedDefinitions,
+      widgetInstances: importedInstances,
+      activeBoardId: newBoard.id
+    });
   }
 }));

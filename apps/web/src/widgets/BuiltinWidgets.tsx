@@ -24,6 +24,15 @@ const MAJOR_CITIES = [
   { value: "xian", label: "西安", latitude: 34.3416, longitude: 108.9398 }
 ] as const;
 
+const GLOBAL_INDICES = [
+  { value: "usINX", label: "标普500", marketCode: "usINX" },
+  { value: "usNDX", label: "纳斯达克100", marketCode: "usNDX" },
+  { value: "usDJI", label: "道琼斯工业", marketCode: "usDJI" },
+  { value: "hkHSI", label: "恒生指数", marketCode: "hkHSI" },
+  { value: "sh000001", label: "上证指数", marketCode: "sh000001" },
+  { value: "sz399001", label: "深证成指", marketCode: "sz399001" }
+] as const;
+
 const TRANSLATE_LANG_OPTIONS = [
   { value: "auto", label: "自动" },
   { value: "zh-CN", label: "中文" },
@@ -200,6 +209,248 @@ async function searchITunesTracks(term: string): Promise<ITunesTrack[]> {
   }
   const payload = (await response.json()) as { results?: ITunesTrack[] };
   return (payload.results ?? []).filter((item) => Boolean(item.previewUrl));
+}
+
+interface MarketSeries {
+  points: number[];
+  last: number;
+  prev: number;
+  intraday: Array<{ t: number; v: number }>;
+  sessionStart: string;
+  sessionEnd: string;
+}
+
+interface HeadlineItem {
+  id: string;
+  title: string;
+  url: string;
+  source: string;
+  time: string;
+}
+
+function formatPublishedTime(raw: string): string {
+  const value = raw.trim();
+  if (!value) return "";
+  if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}$/.test(value)) {
+    // Source already provides local publish timestamp.
+    return value.slice(5, 16);
+  }
+  if (/^\d{10,13}$/.test(value)) {
+    const ts = Number(value);
+    if (Number.isFinite(ts)) {
+      const date = new Date(value.length === 13 ? ts : ts * 1000);
+      return new Intl.DateTimeFormat("zh-CN", {
+        timeZone: "Asia/Shanghai",
+        hour12: false,
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit"
+      }).format(date);
+    }
+  }
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return new Intl.DateTimeFormat("zh-CN", {
+      timeZone: "Asia/Shanghai",
+      hour12: false,
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit"
+    }).format(parsed);
+  }
+  return "";
+}
+
+async function fetchMarketSeries(marketCode: string): Promise<MarketSeries> {
+  const toMinute = (hhmm: string): number | null => {
+    if (!/^\d{4}$/.test(hhmm)) return null;
+    const h = Number(hhmm.slice(0, 2));
+    const m = Number(hhmm.slice(2, 4));
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+    return h * 60 + m;
+  };
+  const getSession = (
+    code: string
+  ): {
+    start: string;
+    end: string;
+  } => {
+    if (code.startsWith("sh") || code.startsWith("sz")) return { start: "0930", end: "1500" };
+    if (code.startsWith("hk")) return { start: "0930", end: "1600" };
+    return { start: "0930", end: "1600" };
+  };
+  const getTimeZone = (code: string): string => {
+    if (code.startsWith("sh") || code.startsWith("sz")) return "Asia/Shanghai";
+    if (code.startsWith("hk")) return "Asia/Hong_Kong";
+    return "America/New_York";
+  };
+  const isTradingTimeNow = (code: string, start: string, end: string): boolean => {
+    const timeZone = getTimeZone(code);
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).formatToParts(new Date());
+    const weekday = parts.find((part) => part.type === "weekday")?.value ?? "Mon";
+    const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0");
+    const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
+    const minuteOfDay = hour * 60 + minute;
+    const startMinute = toMinute(start) ?? 570;
+    const endMinute = toMinute(end) ?? 960;
+    const isWeekday = !["Sat", "Sun"].includes(weekday);
+    return isWeekday && minuteOfDay >= startMinute && minuteOfDay <= endMinute;
+  };
+
+  const minuteUrl = `https://web.ifzq.gtimg.cn/appstock/app/minute/query?code=${encodeURIComponent(marketCode)}`;
+  const minuteResponse = await fetch(minuteUrl);
+  if (!minuteResponse.ok) {
+    throw new Error(`行情请求失败 (${minuteResponse.status})`);
+  }
+  const minutePayload = (await minuteResponse.json()) as {
+    code?: number;
+    data?: Record<string, { data?: { data?: string[] }; qt?: Record<string, unknown> }>;
+  };
+  if (minutePayload.code !== 0 || !minutePayload.data?.[marketCode]) {
+    throw new Error("指数数据不可用");
+  }
+
+  const node = minutePayload.data[marketCode];
+  const minuteLines = Array.isArray(node.data?.data) ? node.data?.data ?? [] : [];
+  let pointSeries = minuteLines
+    .map((line) => {
+      const [time, price] = line.trim().split(/\s+/);
+      return { t: toMinute(time), v: Number(price) };
+    })
+    .filter((item) => item.t !== null && Number.isFinite(item.v) && item.v > 0) as Array<{ t: number; v: number }>;
+
+  const qtRaw = node.qt?.[marketCode];
+  const qtArray = Array.isArray(qtRaw) ? qtRaw : [];
+  const lastFromQt = Number(qtArray[3]);
+  const prevFromQt = Number(qtArray[4]);
+
+  let dayRows: string[][] = [];
+  const dailyUrl = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${encodeURIComponent(
+    marketCode
+  )},day,,,40,qfq`;
+  const dailyResponse = await fetch(dailyUrl);
+  if (dailyResponse.ok) {
+    const dailyPayload = (await dailyResponse.json()) as {
+      code?: number;
+      data?: Record<string, { day?: string[][] }>;
+    };
+    dayRows = dailyPayload.data?.[marketCode]?.day ?? [];
+  }
+
+  if (pointSeries.length < 2) {
+    const dayPoints = dayRows.map((row) => Number(row[2])).filter((value) => Number.isFinite(value) && value > 0);
+    if (dayPoints.length >= 2) {
+      pointSeries = dayPoints.slice(-40).map((value, index) => ({
+        t: index,
+        v: value
+      }));
+    }
+  }
+
+  if (pointSeries.length < 2) {
+    throw new Error("指数数据不足");
+  }
+
+  const last =
+    Number.isFinite(lastFromQt) && lastFromQt > 0 ? lastFromQt : pointSeries[pointSeries.length - 1].v;
+  const prev =
+    Number.isFinite(prevFromQt) && prevFromQt > 0
+      ? prevFromQt
+      : pointSeries.length >= 2
+        ? pointSeries[pointSeries.length - 2].v
+        : last;
+
+  const session = getSession(marketCode);
+  const startMin = toMinute(session.start) ?? 570;
+  const endMin = toMinute(session.end) ?? 960;
+  const liveIntraday = pointSeries.filter((item) => item.t >= startMin && item.t <= endMin);
+  const inTradingNow = isTradingTimeNow(marketCode, session.start, session.end);
+
+  let intraday = liveIntraday;
+  if (!inTradingNow && dayRows.length > 0) {
+    const prevRow = dayRows[dayRows.length - 1];
+    const dayOpen = Number(prevRow?.[1]);
+    const dayClose = Number(prevRow?.[2]);
+    const dayHigh = Number(prevRow?.[3]);
+    const dayLow = Number(prevRow?.[4]);
+    const valid = [dayOpen, dayClose, dayHigh, dayLow].every((n) => Number.isFinite(n) && n > 0);
+    if (valid) {
+      const span = Math.max(1, endMin - startMin);
+      intraday = [
+        { t: startMin, v: dayOpen },
+        { t: startMin + Math.round(span * 0.33), v: dayHigh },
+        { t: startMin + Math.round(span * 0.66), v: dayLow },
+        { t: endMin, v: dayClose }
+      ];
+    }
+  }
+
+  return {
+    points: pointSeries.map((item) => item.v),
+    last,
+    prev,
+    intraday,
+    sessionStart: session.start,
+    sessionEnd: session.end
+  };
+}
+
+async function fetchMajorHeadlines(): Promise<HeadlineItem[]> {
+  const fromRss = async (rssUrl: string, fallbackSource: string): Promise<HeadlineItem[]> => {
+    const response = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}`);
+    if (!response.ok) {
+      throw new Error(`RSS请求失败 (${response.status})`);
+    }
+    const payload = (await response.json()) as {
+      status?: string;
+      items?: Array<{ title?: string; link?: string; pubDate?: string; author?: string }>;
+    };
+    if (payload.status !== "ok") {
+      throw new Error("RSS服务返回异常");
+    }
+    return (payload.items ?? [])
+      .map((item, index) => {
+        const title = (item.title ?? "").trim();
+        const url = (item.link ?? "").trim();
+        if (!title || !url) return null;
+        return {
+          id: `rss_${index}_${Date.now()}`,
+          title,
+          url,
+          source: item.author || fallbackSource,
+          time: item.pubDate || ""
+        } satisfies HeadlineItem;
+      })
+      .filter((item): item is HeadlineItem => item !== null)
+      .slice(0, 9);
+  };
+
+  try {
+    const reuters = await fromRss(
+      "https://www.reutersagency.com/feed/?best-topics=top-news&post_type=best",
+      "Reuters"
+    );
+    if (reuters.length > 0) {
+      return reuters;
+    }
+  } catch {
+    // fallback to BBC
+  }
+
+  const bbc = await fromRss("https://feeds.bbci.co.uk/news/world/rss.xml", "BBC");
+  if (bbc.length > 0) {
+    return bbc;
+  }
+
+  throw new Error("Reuters/BBC 新闻源暂无可用数据");
 }
 
 interface TodoItem {
@@ -1099,6 +1350,351 @@ export function BuiltinWidgetView({
               </>
             )}
           </div>
+        </div>
+      </WidgetShell>
+    );
+  }
+
+  if (definition.type === "headline") {
+    const headlines = (Array.isArray(instance.state.headlines) ? instance.state.headlines : []) as HeadlineItem[];
+    const loading = instance.state.headlineLoading === true;
+    const error = asString(instance.state.headlineError);
+    const [cursor, setCursor] = useState(0);
+
+    useEffect(() => {
+      let cancelled = false;
+      const load = () => {
+        onStateChange({
+          ...instance.state,
+          headlineLoading: true,
+          headlineError: ""
+        });
+        void fetchMajorHeadlines()
+          .then((items) => {
+            if (cancelled) return;
+            onStateChange({
+              ...instance.state,
+              headlineLoading: false,
+              headlineError: "",
+              headlines: items,
+              headlineFetchedAt: new Date().toISOString()
+            });
+          })
+          .catch((fetchError) => {
+            if (cancelled) return;
+            onStateChange({
+              ...instance.state,
+              headlineLoading: false,
+              headlineError: fetchError instanceof Error ? fetchError.message : "获取新闻失败"
+            });
+          });
+      };
+
+      load();
+      const timer = window.setInterval(load, 120_000);
+      return () => {
+        cancelled = true;
+        window.clearInterval(timer);
+      };
+      // run once per widget instance
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+      if (headlines.length <= 3) {
+        setCursor(0);
+        return;
+      }
+      const timer = window.setInterval(() => {
+        setCursor((prev) => (prev + 1) % headlines.length);
+      }, 15_000);
+      return () => window.clearInterval(timer);
+    }, [headlines.length]);
+
+    const visible =
+      headlines.length <= 3
+        ? headlines
+        : [0, 1, 2].map((offset) => headlines[(cursor - offset + headlines.length) % headlines.length]);
+
+    return (
+      <WidgetShell definition={definition} instance={instance}>
+        <div style={{ display: "grid", gap: 8 }}>
+          {error ? <div style={{ fontSize: 12, color: "#b91c1c" }}>{error}</div> : null}
+          <div style={{ display: "grid", gap: 6, minHeight: 74 }}>
+            {visible.map((item) => (
+              <a
+                key={item.id}
+                href={item.url || "#"}
+                target={item.url ? "_blank" : undefined}
+                rel={item.url ? "noreferrer" : undefined}
+                onClick={(event) => {
+                  if (!item.url) {
+                    event.preventDefault();
+                  }
+                }}
+                style={{
+                  textDecoration: "none",
+                  display: "grid",
+                  gap: 2,
+                  padding: "2px 0"
+                }}
+              >
+                {item.title.length > 26 ? (
+                  <div className="headline-marquee">
+                    <span className="headline-marquee-track">
+                      <span>{item.title}</span>
+                      <span aria-hidden="true">{item.title}</span>
+                    </span>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#0f172a",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis"
+                    }}
+                  >
+                    {item.title}
+                  </div>
+                )}
+                <div style={{ fontSize: 10, color: "#64748b" }}>
+                  {item.source
+                    ? `${item.source}${item.time ? ` · ${formatPublishedTime(item.time)}` : ""}`
+                    : item.time
+                      ? `${formatPublishedTime(item.time)}`
+                      : ""}
+                </div>
+              </a>
+            ))}
+            {!loading && !error && visible.length === 0 ? (
+              <div style={{ fontSize: 12, color: "#94a3b8" }}>暂无新闻</div>
+            ) : null}
+          </div>
+        </div>
+      </WidgetShell>
+    );
+  }
+
+  if (definition.type === "market") {
+    const allowedCodes = new Set<string>(GLOBAL_INDICES.map((item) => item.value));
+    const oldSingleCode = asString(instance.state.indexCode);
+    const selectedIndexCodesRaw = asArray(instance.state.indexCodes);
+    const selectedIndexCodes = (selectedIndexCodesRaw.length ? selectedIndexCodesRaw : [oldSingleCode || "usINX"]).filter(
+      (code, idx, arr) => allowedCodes.has(code) && arr.indexOf(code) === idx
+    );
+    const [addCode, setAddCode] = useState(selectedIndexCodes[0] ?? "usINX");
+    const marketMapRaw = instance.state.marketMap as
+      | Record<
+          string,
+          MarketSeries & {
+            fetchedAt: string;
+            label: string;
+          }
+        >
+      | undefined;
+    const marketMap = marketMapRaw ?? {};
+    const loading = instance.state.marketLoading === true;
+
+    useEffect(() => {
+      if (!selectedIndexCodes.length) {
+        return;
+      }
+      let cancelled = false;
+
+      const load = () => {
+        onStateChange({
+          ...instance.state,
+          indexCodes: selectedIndexCodes,
+          marketLoading: true,
+          marketError: ""
+        });
+        void Promise.allSettled(
+          selectedIndexCodes.map(async (code) => {
+            const index = GLOBAL_INDICES.find((item) => item.value === code) ?? GLOBAL_INDICES[0];
+            const series = await fetchMarketSeries(index.marketCode);
+            return { code, label: index.label, series };
+          })
+        )
+          .then((results) => {
+            if (cancelled) return;
+            const nextMap: Record<string, MarketSeries & { fetchedAt: string; label: string }> = {};
+            results.forEach((item, idx) => {
+              if (item.status === "fulfilled") {
+                nextMap[item.value.code] = {
+                  ...item.value.series,
+                  fetchedAt: new Date().toISOString(),
+                  label: item.value.label
+                };
+              }
+            });
+            onStateChange({
+              ...instance.state,
+              indexCodes: selectedIndexCodes,
+              marketLoading: false,
+              marketError: "",
+              marketMap: nextMap
+            });
+          })
+          .catch((fetchError) => {
+            if (cancelled) return;
+            onStateChange({
+              ...instance.state,
+              indexCodes: selectedIndexCodes,
+              marketLoading: false,
+              marketError: ""
+            });
+          });
+      };
+
+      load();
+      const timer = window.setInterval(load, 60_000);
+      return () => {
+        cancelled = true;
+        window.clearInterval(timer);
+      };
+      // refetch when selected codes change
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedIndexCodes.join(",")]);
+
+    const toMinute = (hhmm: string): number | null => {
+      if (!/^\d{4}$/.test(hhmm)) return null;
+      const h = Number(hhmm.slice(0, 2));
+      const m = Number(hhmm.slice(2, 4));
+      if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+      return h * 60 + m;
+    };
+
+    const width = 260;
+    const height = 20;
+    const selectedRows = selectedIndexCodes
+      .map((code) => ({ code, data: marketMap[code] }))
+      .filter((row) => Boolean(row.data));
+
+    return (
+      <WidgetShell definition={definition} instance={instance}>
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center" }}>
+            <select value={addCode} onChange={(event) => setAddCode(event.target.value)} style={glassSelectStyle}>
+              {GLOBAL_INDICES.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => {
+                if (selectedIndexCodes.includes(addCode)) return;
+                onStateChange({
+                  ...instance.state,
+                  indexCodes: [...selectedIndexCodes, addCode]
+                });
+              }}
+              style={{
+                border: "1px solid rgba(96,165,250,0.6)",
+                borderRadius: 12,
+                padding: "0 10px",
+                height: 32,
+                background: "linear-gradient(155deg, rgba(37,99,235,0.78), rgba(56,189,248,0.7))",
+                color: "#eff6ff",
+                fontSize: 18,
+                lineHeight: 1,
+                cursor: "pointer"
+              }}
+              title="增加指数"
+            >
+              +
+            </button>
+          </div>
+
+          {loading ? <div style={{ fontSize: 12, color: "#64748b" }}>正在更新指数...</div> : null}
+
+          {selectedRows.map((row) => {
+            const data = row.data!;
+            const values = (data.intraday?.length ? data.intraday.map((p) => p.v) : data.points).filter((v) =>
+              Number.isFinite(v)
+            );
+            const min = values.length ? Math.min(...values) : 0;
+            const max = values.length ? Math.max(...values) : 0;
+            const range = max - min || 1;
+            const sessionStartMin = toMinute(data.sessionStart || "0930") ?? 570;
+            const sessionEndMin = toMinute(data.sessionEnd || "1600") ?? 960;
+            const sessionRange = Math.max(1, sessionEndMin - sessionStartMin);
+            const intraday = Array.isArray(data.intraday) ? data.intraday : [];
+            const path =
+              intraday.length > 1
+                ? intraday
+                    .map((point) => {
+                      const x = ((point.t - sessionStartMin) / sessionRange) * width;
+                      const y = height - ((point.v - min) / range) * height;
+                      return `${x.toFixed(2)},${y.toFixed(2)}`;
+                    })
+                    .join(" ")
+                : data.points.length > 1
+                  ? data.points
+                      .map((value, idx, arr) => {
+                        const x = (idx / (arr.length - 1)) * width;
+                        const y = height - ((value - min) / range) * height;
+                        return `${x.toFixed(2)},${y.toFixed(2)}`;
+                      })
+                      .join(" ")
+                  : "";
+            const diff = data.last - data.prev;
+            const diffPct = data.prev ? (diff / data.prev) * 100 : 0;
+            const up = diff >= 0;
+            return (
+              <div key={row.code} style={{ display: "grid", gap: 4, paddingBottom: 4 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ fontSize: 12, color: "#334155" }}>{data.label}</div>
+                  <button
+                    onClick={() =>
+                      onStateChange({
+                        ...instance.state,
+                        indexCodes: selectedIndexCodes.filter((code) => code !== row.code)
+                      })
+                    }
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      color: "#94a3b8",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      lineHeight: 1
+                    }}
+                    title="移除"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ fontSize: 16, lineHeight: 1, color: "#0f172a", fontWeight: 600 }}>
+                    {data.last.toFixed(2)}
+                  </div>
+                  <div style={{ fontSize: 11, color: up ? "#15803d" : "#b91c1c" }}>
+                    {up ? "+" : ""}
+                    {diff.toFixed(2)} ({up ? "+" : ""}
+                    {diffPct.toFixed(2)}%)
+                  </div>
+                </div>
+                <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={20} role="img" aria-label={`${data.label}走势`}>
+                  {path ? (
+                    <polyline
+                      points={path}
+                      fill="none"
+                      stroke={up ? "rgba(22, 163, 74, 0.95)" : "rgba(220, 38, 38, 0.95)"}
+                      strokeWidth={2}
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                    />
+                  ) : null}
+                </svg>
+                <div style={{ fontSize: 10, color: "#64748b" }}>
+                  更新于 {new Date(data.fetchedAt).toLocaleTimeString()}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </WidgetShell>
     );

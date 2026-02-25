@@ -12,6 +12,7 @@ export function Toolbar({
   onToggleLayoutMode,
   onPickWallpaper,
   onBackup,
+  onImportBackup,
   onAddWidget,
   onOpenAiDialog
 }: {
@@ -25,6 +26,7 @@ export function Toolbar({
   onToggleLayoutMode: () => void;
   onPickWallpaper: () => void;
   onBackup: () => void;
+  onImportBackup: () => void;
   onAddWidget: (definitionId: string) => void;
   onOpenAiDialog: () => void;
 }) {
@@ -196,6 +198,15 @@ export function Toolbar({
                 style={menuItemStyle}
               >
                 备份
+              </button>
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  onImportBackup();
+                }}
+                style={menuItemStyle}
+              >
+                导入
               </button>
             </div>
           ) : null}

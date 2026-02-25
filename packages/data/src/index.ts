@@ -20,7 +20,9 @@ export interface WidgetRepository {
   upsertDefinition(definition: WidgetDefinition): Promise<void>;
 }
 
-export interface AppRepository extends WorkspaceRepository, BoardRepository, WidgetRepository {}
+export interface AppRepository extends WorkspaceRepository, BoardRepository, WidgetRepository {
+  clearAll(): Promise<void>;
+}
 
 export class InMemoryRepository implements AppRepository {
   private workspaces = new Map<string, Workspace>();
@@ -71,6 +73,13 @@ export class InMemoryRepository implements AppRepository {
 
   async upsertDefinition(definition: WidgetDefinition): Promise<void> {
     this.widgetDefs.set(definition.id, definition);
+  }
+
+  async clearAll(): Promise<void> {
+    this.workspaces.clear();
+    this.boards.clear();
+    this.widgetDefs.clear();
+    this.widgetInstances.clear();
   }
 }
 
@@ -141,5 +150,21 @@ export class DexieRepository implements AppRepository {
 
   async upsertDefinition(definition: WidgetDefinition): Promise<void> {
     await this.db.widgetDefs.put(definition);
+  }
+
+  async clearAll(): Promise<void> {
+    await this.db.transaction(
+      "rw",
+      this.db.workspaces,
+      this.db.boards,
+      this.db.widgetDefs,
+      this.db.widgetInstances,
+      async () => {
+        await this.db.widgetInstances.clear();
+        await this.db.widgetDefs.clear();
+        await this.db.boards.clear();
+        await this.db.workspaces.clear();
+      }
+    );
   }
 }

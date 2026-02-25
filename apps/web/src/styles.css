@@ -171,6 +171,27 @@ body {
   z-index: 2;
 }
 
+.headline-marquee {
+  position: relative;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 12px;
+  color: #0f172a;
+  line-height: 1.2;
+}
+
+.headline-marquee-track {
+  display: inline-flex;
+  align-items: center;
+  gap: 28px;
+  min-width: max-content;
+  animation: headline-marquee-move 24s linear infinite;
+}
+
+.headline-marquee-track > span {
+  display: inline-block;
+}
+
 /* Global thin vertical rail + glass droplet thumb */
 * {
   scrollbar-width: thin;
@@ -218,5 +239,14 @@ body {
   50% {
     transform: translateY(-3px) scale(1.08);
     opacity: 1;
+  }
+}
+
+@keyframes headline-marquee-move {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(calc(-50% - 14px));
   }
 }
