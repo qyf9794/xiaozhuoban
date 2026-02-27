@@ -168,3 +168,5 @@ export class DexieRepository implements AppRepository {
     );
   }
 }
+
+export { SupabaseRepository } from "./supabaseRepository";

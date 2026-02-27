@@ -13,6 +13,7 @@ import { LocalTemplateAIBuilder } from "@xiaozhuoban/ai-builder";
 
 const defaultWorkspaceName = "默认工作空间";
 const defaultBoardName = "我的桌板";
+let initializingPromise: Promise<void> | null = null;
 
 const baseWidgets: Array<Omit<WidgetDefinition, "id" | "createdAt" | "updatedAt">> = [
   {
@@ -184,6 +185,7 @@ interface AppState {
   activeBoardId?: string;
   commandPaletteOpen: boolean;
   aiDialogOpen: boolean;
+  setRepository: (repository: AppRepository) => void;
   initialize: () => Promise<void>;
   toggleLayoutMode: () => Promise<void>;
   addBoard: (name?: string) => Promise<void>;
@@ -291,52 +293,78 @@ export const useAppStore = create<AppState>((set, get) => ({
   widgetInstances: [],
   commandPaletteOpen: false,
   aiDialogOpen: false,
-  async initialize() {
-    const { repository } = get();
-    let workspaces = await repository.list();
-
-    if (workspaces.length === 0) {
-      const workspace = makeWorkspace();
-      await repository.upsertWorkspace(workspace);
-      workspaces = [workspace];
-    }
-
-    const workspaceId = workspaces[0].id;
-    let boards = await repository.listByWorkspace(workspaceId);
-
-    if (boards.length === 0) {
-      const board = makeBoard(workspaceId);
-      await repository.upsertBoard(board);
-      boards = [board];
-    }
-
-    let definitions = await repository.listDefinitions();
-    const now = nowIso();
-    const systemTypes = new Set(definitions.filter((d) => d.kind === "system").map((d) => d.type));
-    const missingBase = baseWidgets.filter((widget) => !systemTypes.has(widget.type));
-    if (definitions.length === 0 || missingBase.length > 0) {
-      const toInsert = (definitions.length === 0 ? baseWidgets : missingBase).map((item) => ({
-        ...item,
-        id: createId(`wd_${item.type}`),
-        createdAt: now,
-        updatedAt: now
-      }));
-      for (const definition of toInsert) {
-        await repository.upsertDefinition(definition);
-      }
-      definitions = await repository.listDefinitions();
-    }
-
-    const boardId = boards[0].id;
-    const widgetInstances = await repository.listByBoard(boardId);
-
+  setRepository(repository) {
+    initializingPromise = null;
     set({
-      ready: true,
-      boards,
-      widgetDefinitions: definitions,
-      widgetInstances,
-      activeBoardId: boardId
+      repository,
+      ready: false,
+      boards: [],
+      widgetDefinitions: [],
+      widgetInstances: [],
+      activeBoardId: undefined,
+      commandPaletteOpen: false,
+      aiDialogOpen: false
     });
+  },
+  async initialize() {
+    if (initializingPromise) {
+      await initializingPromise;
+      return;
+    }
+
+    initializingPromise = (async () => {
+      const { repository } = get();
+      let workspaces = await repository.list();
+
+      if (workspaces.length === 0) {
+        const workspace = makeWorkspace();
+        await repository.upsertWorkspace(workspace);
+        workspaces = [workspace];
+      }
+
+      const workspaceId = workspaces[0].id;
+      let boards = await repository.listByWorkspace(workspaceId);
+
+      if (boards.length === 0) {
+        const board = makeBoard(workspaceId);
+        await repository.upsertBoard(board);
+        boards = [board];
+      }
+
+      let definitions = await repository.listDefinitions();
+      const now = nowIso();
+      const systemTypes = new Set(definitions.filter((d) => d.kind === "system").map((d) => d.type));
+      const missingBase = baseWidgets.filter((widget) => !systemTypes.has(widget.type));
+      if (definitions.length === 0 || missingBase.length > 0) {
+        const toInsert = (definitions.length === 0 ? baseWidgets : missingBase).map((item) => ({
+          ...item,
+          id: createId(`wd_${item.type}`),
+          createdAt: now,
+          updatedAt: now
+        }));
+        for (const definition of toInsert) {
+          await repository.upsertDefinition(definition);
+        }
+        definitions = await repository.listDefinitions();
+      }
+
+      const boardId = boards[0].id;
+      const widgetInstances = await repository.listByBoard(boardId);
+
+      set({
+        ready: true,
+        boards,
+        widgetDefinitions: definitions,
+        widgetInstances,
+        activeBoardId: boardId
+      });
+    })();
+
+    try {
+      await initializingPromise;
+    } finally {
+      initializingPromise = null;
+    }
   },
   async toggleLayoutMode() {
     const { boards, activeBoardId, repository } = get();

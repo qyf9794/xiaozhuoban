@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.98.0",
     "@xiaozhuoban/domain": "workspace:*",
     "dexie": "^4.0.10"
   }

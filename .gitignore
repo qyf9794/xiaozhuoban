@@ -9,3 +9,8 @@ apps/desktop/src-tauri/target
 apps/web/.vite
 .npm-cache
 package-lock.json
+.env
+.env.local
+.env.*
+!.env.example
+!apps/web/.env.example

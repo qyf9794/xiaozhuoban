@@ -5,11 +5,43 @@ import { Toolbar } from "./components/Toolbar";
 import { AIGeneratorDialog } from "./components/AIGeneratorDialog";
 import { CommandPalette } from "./components/CommandPalette";
 import { useAppStore } from "./store";
+import { useAuthStore } from "./auth/authStore";
+import { supabase } from "./lib/supabase";
+import { DexieRepository, SupabaseRepository, type AppRepository } from "@xiaozhuoban/data";
+
+async function createSnapshotFromRepository(repository: AppRepository): Promise<Record<string, unknown>> {
+  const workspaces = await repository.list();
+  const boards = (await Promise.all(workspaces.map((workspace) => repository.listByWorkspace(workspace.id)))).flat();
+  const widgetsByBoard: Record<string, unknown[]> = {};
+  for (const board of boards) {
+    widgetsByBoard[board.id] = await repository.listByBoard(board.id);
+  }
+  const widgetDefinitions = await repository.listDefinitions();
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    workspaces,
+    boards,
+    widgetDefinitions,
+    widgetsByBoard
+  };
+}
+
+function hasBackupContent(snapshot: Record<string, unknown>): boolean {
+  const boards = Array.isArray(snapshot.boards) ? snapshot.boards : [];
+  const widgetsByBoard =
+    snapshot.widgetsByBoard && typeof snapshot.widgetsByBoard === "object"
+      ? (snapshot.widgetsByBoard as Record<string, unknown[]>)
+      : {};
+  if (boards.length > 0) return true;
+  return Object.values(widgetsByBoard).some((items) => Array.isArray(items) && items.length > 0);
+}
 
 export function App() {
   const {
     ready,
     initialize,
+    setRepository,
     boards,
     widgetDefinitions,
     widgetInstances,
@@ -32,6 +64,8 @@ export function App() {
     createBackupSnapshot,
     importBackupSnapshot
   } = useAppStore();
+  const { user, signOut } = useAuthStore();
+  const userId = user?.id;
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
   const wallpaperInputRef = useRef<HTMLInputElement | null>(null);
@@ -40,8 +74,35 @@ export function App() {
   const activeBoard = useMemo(() => boards.find((item) => item.id === activeBoardId), [activeBoardId, boards]);
 
   useEffect(() => {
+    if (!userId) return;
+    const repository = new SupabaseRepository(supabase, userId);
+    setRepository(repository);
     void initialize();
-  }, [initialize]);
+  }, [initialize, setRepository, userId]);
+
+  useEffect(() => {
+    if (!ready || !userId) return;
+    const importHintKey = `xiaozhuoban_import_prompted_${userId}`;
+    if (localStorage.getItem(importHintKey)) return;
+    localStorage.setItem(importHintKey, "1");
+
+    void (async () => {
+      const legacy = new DexieRepository("xiaozhuoban");
+      const snapshot = await createSnapshotFromRepository(legacy);
+      if (!hasBackupContent(snapshot)) {
+        return;
+      }
+      const ok = window.confirm("检测到本地历史数据，是否导入到云端账号？");
+      if (!ok) {
+        return;
+      }
+      await importBackupSnapshot(snapshot, "本地历史导入");
+      window.alert("本地历史数据导入完成");
+    })().catch((error) => {
+      const message = error instanceof Error ? error.message : "本地数据导入失败";
+      window.alert(message);
+    });
+  }, [importBackupSnapshot, ready, userId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -106,6 +167,12 @@ export function App() {
             onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
             onOpenCommandPalette={() => setCommandPaletteOpen(true)}
             onPickWallpaper={() => wallpaperInputRef.current?.click()}
+            onSignOut={() => {
+              void signOut().catch((error) => {
+                const message = error instanceof Error ? error.message : "退出登录失败";
+                window.alert(message);
+              });
+            }}
             onBackup={() => {
               void (async () => {
                 const snapshot = await createBackupSnapshot();

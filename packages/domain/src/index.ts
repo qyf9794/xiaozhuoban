@@ -162,6 +162,17 @@ export interface SearchHit {
   snippet?: string;
 }
 
+export interface AuthUser {
+  id: UUID;
+  email: string;
+}
+
+export interface SessionState {
+  user: AuthUser | null;
+  accessToken?: string;
+  expiresAt?: number;
+}
+
 export function nowIso(): string {
   return new Date().toISOString();
 }

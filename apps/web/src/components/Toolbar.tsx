@@ -10,6 +10,7 @@ export function Toolbar({
   onToggleSidebar,
   onOpenCommandPalette,
   onPickWallpaper,
+  onSignOut,
   onBackup,
   onImportBackup,
   onAddWidget,
@@ -23,6 +24,7 @@ export function Toolbar({
   onToggleSidebar: () => void;
   onOpenCommandPalette: () => void;
   onPickWallpaper: () => void;
+  onSignOut: () => void;
   onBackup: () => void;
   onImportBackup: () => void;
   onAddWidget: (definitionId: string) => void;
@@ -241,6 +243,15 @@ export function Toolbar({
                 className="glass-dropdown-item"
               >
                 导入
+              </button>
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  onSignOut();
+                }}
+                className="glass-dropdown-item"
+              >
+                退出登录
               </button>
             </div>
           ) : null}
