@@ -122,6 +122,9 @@ importers:
 
   packages/data:
     dependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.98.0
+        version: 2.98.0
       '@xiaozhuoban/domain':
         specifier: workspace:*
         version: link:../domain
