@@ -30,3 +30,11 @@ pnpm --filter @xiaozhuoban/web dev
 
 路由回退已配置：
 - `apps/web/vercel.json`
+
+
+## CI 检查
+仓库会在 CI 执行以下命令，确保不会再出现 Vercel 的 lockfile 不一致问题：
+```bash
+pnpm install --frozen-lockfile
+```
+
