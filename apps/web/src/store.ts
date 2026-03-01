@@ -478,8 +478,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       position: { x, y },
       updatedAt: nowIso()
     };
-    await repository.upsertInstance(next);
     set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)) });
+    void repository.upsertInstance(next);
   },
   async updateWidgetState(widgetId, state) {
     const { repository, widgetInstances } = get();
@@ -492,8 +492,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       state,
       updatedAt: nowIso()
     };
-    await repository.upsertInstance(next);
     set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)) });
+    void repository.upsertInstance(next);
   },
   async autoAlignWidgets(_viewportWidth) {
     const { repository, widgetInstances } = get();
