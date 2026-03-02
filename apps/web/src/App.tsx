@@ -7,7 +7,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { useAppStore } from "./store";
 import { useAuthStore } from "./auth/authStore";
 import { supabase } from "./lib/supabase";
-import { DexieRepository, SupabaseRepository } from "@xiaozhuoban/data";
+import { SupabaseRepository } from "@xiaozhuoban/data";
 
 export function App() {
   const {
@@ -52,12 +52,6 @@ export function App() {
     void initialize();
   }, [initialize, setRepository, userId]);
 
-  useEffect(() => {
-    if (!ready || !userId) return;
-    void new DexieRepository("xiaozhuoban").clearAll().catch(() => {
-      // ignore local cleanup failures
-    });
-  }, [ready, userId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
