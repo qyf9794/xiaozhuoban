@@ -5,8 +5,11 @@ import { AIFormWidgetView, BuiltinWidgetView } from "../widgets/BuiltinWidgets";
 
 interface DragState {
   id: string;
-  lastX: number;
-  lastY: number;
+  pointerId: number;
+  lastClientX: number;
+  lastClientY: number;
+  currentX: number;
+  currentY: number;
 }
 
 export function BoardCanvas({
@@ -36,6 +39,11 @@ export function BoardCanvas({
 
   const byId = useMemo(() => new Map(definitions.map((item) => [item.id, item])), [definitions]);
 
+  const dragPosition = useMemo(() => {
+    if (!drag) return null;
+    return { x: drag.currentX, y: drag.currentY };
+  }, [drag]);
+
   return (
     <div
       style={{
@@ -45,38 +53,56 @@ export function BoardCanvas({
         borderRadius: fullscreen ? 0 : 16,
         userSelect: drag ? "none" : "auto",
         WebkitUserSelect: drag ? "none" : "auto",
+        touchAction: "none",
         background:
           board.background.type === "color"
             ? board.background.value
             : `center / cover no-repeat url(${board.background.value})`
       }}
-      onMouseMove={(event) => {
-        if (!drag) {
+      onPointerMove={(event) => {
+        if (!drag || event.pointerId !== drag.pointerId) {
           return;
         }
-        const deltaX = event.clientX - drag.lastX;
-        const deltaY = event.clientY - drag.lastY;
+        const deltaX = event.clientX - drag.lastClientX;
+        const deltaY = event.clientY - drag.lastClientY;
         if (deltaX === 0 && deltaY === 0) {
           return;
         }
         const moved = engine.move(drag.id, { x: deltaX, y: deltaY });
-        if (moved) {
-          onMove(drag.id, moved.position.x, moved.position.y);
-          setDrag({
-            id: drag.id,
-            lastX: event.clientX,
-            lastY: event.clientY
-          });
-        }
+        if (!moved) return;
+        setDrag((prev) =>
+          prev
+            ? {
+                ...prev,
+                lastClientX: event.clientX,
+                lastClientY: event.clientY,
+                currentX: moved.position.x,
+                currentY: moved.position.y
+              }
+            : prev
+        );
       }}
-      onMouseUp={() => setDrag(null)}
-      onMouseLeave={() => setDrag(null)}
+      onPointerUp={(event) => {
+        if (!drag || event.pointerId !== drag.pointerId) {
+          return;
+        }
+        onMove(drag.id, drag.currentX, drag.currentY);
+        setDrag(null);
+      }}
+      onPointerCancel={(event) => {
+        if (!drag || event.pointerId !== drag.pointerId) {
+          return;
+        }
+        setDrag(null);
+      }}
     >
       {widgets.map((widget) => {
         const definition = byId.get(widget.definitionId);
         if (!definition) {
           return null;
         }
+
+        const position = drag?.id === widget.id && dragPosition ? dragPosition : widget.position;
 
         return (
           <div
@@ -86,29 +112,31 @@ export function BoardCanvas({
               position: "absolute",
               width: widget.size.w,
               height: widget.size.h,
-              left: widget.position.x,
-              top: widget.position.y,
+              left: position.x,
+              top: position.y,
               zIndex: widget.zIndex,
-              cursor: board.locked ? "default" : "grab"
+              cursor: board.locked ? "default" : drag?.id === widget.id ? "grabbing" : "grab"
             }}
             className="widget-box"
-            onMouseDown={(event) => {
+            onPointerDown={(event) => {
               if (board.locked || widget.locked) {
                 return;
               }
               const target = event.target as HTMLElement;
-              if (
-                target.closest(
-                  "input, textarea, select, button, [contenteditable='true'], [data-no-drag='true']"
-                )
-              ) {
+              if (target.closest("input, textarea, select, button, [contenteditable='true'], [data-no-drag='true']")) {
                 return;
               }
+
               event.preventDefault();
+              const container = event.currentTarget;
+              container.setPointerCapture(event.pointerId);
               setDrag({
                 id: widget.id,
-                lastX: event.clientX,
-                lastY: event.clientY
+                pointerId: event.pointerId,
+                lastClientX: event.clientX,
+                lastClientY: event.clientY,
+                currentX: widget.position.x,
+                currentY: widget.position.y
               });
             }}
           >

@@ -72,24 +72,6 @@ abstract class BaseEngine implements LayoutEngine {
   protected abstract onMove(item: LayoutItem, delta: Point): LayoutItem;
 }
 
-export class GridLayoutEngine extends BaseEngine {
-  constructor(private readonly step = 8) {
-    super("grid");
-  }
-
-  protected onMove(item: LayoutItem, delta: Point): LayoutItem {
-    const nextX = item.position.x + delta.x;
-    const nextY = item.position.y + delta.y;
-    return {
-      ...item,
-      position: {
-        x: Math.max(0, Math.round(nextX / this.step) * this.step),
-        y: Math.max(0, Math.round(nextY / this.step) * this.step)
-      }
-    };
-  }
-}
-
 export class FreeLayoutEngine extends BaseEngine {
   constructor() {
     super("free");
@@ -106,8 +88,8 @@ export class FreeLayoutEngine extends BaseEngine {
   }
 }
 
-export function createLayoutEngine(mode: LayoutMode): LayoutEngine {
-  return mode === "grid" ? new GridLayoutEngine() : new FreeLayoutEngine();
+export function createLayoutEngine(_mode: LayoutMode): LayoutEngine {
+  return new FreeLayoutEngine();
 }
 
 export function fromWidgetInstances(widgets: WidgetInstance[]): LayoutItem[] {

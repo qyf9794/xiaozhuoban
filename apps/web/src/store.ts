@@ -3,7 +3,6 @@ import {
   createId,
   nowIso,
   type Board,
-  type LayoutMode,
   type WidgetDefinition,
   type WidgetInstance,
   type Workspace
@@ -369,13 +368,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   async toggleLayoutMode() {
     const { boards, activeBoardId, repository } = get();
     const target = boards.find((board) => board.id === activeBoardId);
-    if (!target) {
+    if (!target || target.layoutMode === "free") {
       return;
     }
-    const nextMode: LayoutMode = target.layoutMode === "grid" ? "free" : "grid";
     const next: Board = {
       ...target,
-      layoutMode: nextMode,
+      layoutMode: "free",
       updatedAt: nowIso()
     };
     await repository.upsertBoard(next);
@@ -478,8 +476,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       position: { x, y },
       updatedAt: nowIso()
     };
-    await repository.upsertInstance(next);
     set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)) });
+    void repository.upsertInstance(next);
   },
   async updateWidgetState(widgetId, state) {
     const { repository, widgetInstances } = get();
@@ -492,8 +490,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       state,
       updatedAt: nowIso()
     };
-    await repository.upsertInstance(next);
     set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)) });
+    void repository.upsertInstance(next);
   },
   async autoAlignWidgets(_viewportWidth) {
     const { repository, widgetInstances } = get();

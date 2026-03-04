@@ -244,22 +244,19 @@ export class SupabaseRepository {
   }
 
   async deleteBoard(boardId: string): Promise<void> {
-    const now = new Date().toISOString();
-    const { error: boardError } = await this.client
-      .from("boards")
-      .update({ deleted_at: now, updated_at: now })
-      .eq("id", boardId)
-      .eq("user_id", this.userId)
-      .is("deleted_at", null);
-    throwIfError(boardError);
-
     const { error: widgetError } = await this.client
       .from("widget_instances")
-      .update({ deleted_at: now, updated_at: now })
+      .delete()
       .eq("board_id", boardId)
-      .eq("user_id", this.userId)
-      .is("deleted_at", null);
+      .eq("user_id", this.userId);
     throwIfError(widgetError);
+
+    const { error: boardError } = await this.client
+      .from("boards")
+      .delete()
+      .eq("id", boardId)
+      .eq("user_id", this.userId);
+    throwIfError(boardError);
   }
 
   async listByBoard(boardId: string): Promise<WidgetInstance[]> {
