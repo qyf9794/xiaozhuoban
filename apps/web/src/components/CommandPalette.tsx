@@ -46,7 +46,12 @@ export function CommandPalette({
       clipboard: ["剪贴板", "复制", "粘贴", "历史"]
     };
 
-    const widgetAddResults = definitions
+    const uniqueDefinitions = definitions.filter((item, index, all) => {
+      const key = item.name.trim().toLowerCase();
+      return all.findIndex((other) => other.name.trim().toLowerCase() === key) === index;
+    });
+
+    const widgetAddResults = uniqueDefinitions
       .filter((item) => {
         const hitByName =
           item.name.toLowerCase().includes(q) ||
