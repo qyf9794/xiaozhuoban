@@ -1,5 +1,5 @@
-export const ONLINE_USERS_CHANNEL = "xiaozhuoban:presence:online-users";
-export const MESSAGE_BOARD_CHANNEL = "xiaozhuoban:broadcast:message-board";
+export const ONLINE_USERS_CHANNEL = "online-users";
+export const MESSAGE_BOARD_CHANNEL = "message-board";
 
 export interface MessageBoardItem {
   id: string;

@@ -2892,6 +2892,7 @@ export function BuiltinWidgetView({
     const [channelReady, setChannelReady] = useState(false);
     const [messageError, setMessageError] = useState("");
     const [channelStatusText, setChannelStatusText] = useState("连接中...");
+    const [retrySeed, setRetrySeed] = useState(0);
     const channelRef = useRef<RealtimeChannel | null>(null);
     const userId = user?.id ?? "";
     const userName = resolveUserName({
@@ -2925,17 +2926,21 @@ export function BuiltinWidgetView({
 
     useEffect(() => {
       if (!userId) return;
-      // Prevent stale duplicated channel topics from blocking new subscriptions.
-      supabase
-        .getChannels()
-        .filter((item) => item.topic === `realtime:${MESSAGE_BOARD_CHANNEL}`)
-        .forEach((item) => {
-          void supabase.removeChannel(item);
-        });
 
       const channel = supabase.channel(MESSAGE_BOARD_CHANNEL, {
-        config: { broadcast: { self: true } }
+        config: { broadcast: { self: true, ack: true } }
       });
+      let retryTimer: number | null = null;
+      let disposed = false;
+      const scheduleRetry = () => {
+        if (disposed || retryTimer !== null) return;
+        retryTimer = window.setTimeout(() => {
+          retryTimer = null;
+          if (!disposed) {
+            setRetrySeed((prev) => prev + 1);
+          }
+        }, 1000);
+      };
       channelRef.current = channel;
       channel
         .on("broadcast", { event: "message" }, ({ payload }) => {
@@ -2944,6 +2949,7 @@ export function BuiltinWidgetView({
           setMessages((prev) => normalizeMessageList([message, ...prev]));
         })
         .subscribe((status) => {
+          if (disposed) return;
           if (status === "SUBSCRIBED") {
             setChannelReady(true);
             setChannelStatusText("已连接");
@@ -2952,11 +2958,18 @@ export function BuiltinWidgetView({
           if (status === "CHANNEL_ERROR") {
             setChannelReady(false);
             setChannelStatusText("连接异常，重试中...");
+            scheduleRetry();
             return;
           }
           if (status === "TIMED_OUT") {
             setChannelReady(false);
             setChannelStatusText("连接超时，重试中...");
+            scheduleRetry();
+            return;
+          }
+          if (status === "CLOSED") {
+            setChannelReady(false);
+            setChannelStatusText("连接中...");
             return;
           }
           setChannelReady(false);
@@ -2964,12 +2977,16 @@ export function BuiltinWidgetView({
         });
 
       return () => {
+        disposed = true;
+        if (retryTimer !== null) {
+          window.clearTimeout(retryTimer);
+        }
         setChannelReady(false);
         setChannelStatusText("连接中...");
         channelRef.current = null;
         void supabase.removeChannel(channel);
       };
-    }, [userId]);
+    }, [userId, retrySeed]);
 
     const sendMessage = () => {
       const text = draft.trim();

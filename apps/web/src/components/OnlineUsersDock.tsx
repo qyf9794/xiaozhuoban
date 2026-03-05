@@ -12,6 +12,7 @@ interface PresencePayload {
 export function OnlineUsersDock() {
   const { user } = useAuthStore();
   const [onlineNames, setOnlineNames] = useState<string[]>([]);
+  const [retrySeed, setRetrySeed] = useState(0);
 
   const currentUserId = user?.id ?? "";
   const currentUserName = useMemo(
@@ -32,6 +33,18 @@ export function OnlineUsersDock() {
     const channel: RealtimeChannel = supabase.channel(ONLINE_USERS_CHANNEL, {
       config: { presence: { key: currentUserId } }
     });
+    let retryTimer: number | null = null;
+    let disposed = false;
+
+    const scheduleRetry = () => {
+      if (disposed || retryTimer !== null) return;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        if (!disposed) {
+          setRetrySeed((prev) => prev + 1);
+        }
+      }, 1000);
+    };
 
     const updatePresenceNames = () => {
       const state = channel.presenceState<PresencePayload>();
@@ -53,16 +66,25 @@ export function OnlineUsersDock() {
       .on("presence", { event: "join" }, updatePresenceNames)
       .on("presence", { event: "leave" }, updatePresenceNames)
       .subscribe(async (status) => {
+        if (disposed) return;
         if (status === "SUBSCRIBED") {
           await channel.track({ userId: currentUserId, userName: currentUserName });
+          return;
+        }
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          scheduleRetry();
         }
       });
 
     return () => {
+      disposed = true;
+      if (retryTimer !== null) {
+        window.clearTimeout(retryTimer);
+      }
       void channel.untrack();
       void supabase.removeChannel(channel);
     };
-  }, [currentUserId, currentUserName]);
+  }, [currentUserId, currentUserName, retrySeed]);
 
   return (
     <div
