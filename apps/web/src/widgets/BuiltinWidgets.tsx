@@ -2902,10 +2902,7 @@ export function BuiltinWidgetView({
   if (definition.type === "messageBoard") {
     const { user } = useAuthStore();
     const [draft, setDraft] = useState("");
-    const [messages, setMessages] = useState<MessageBoardItem[]>(() => {
-      const initial = Array.isArray(instance.state.messages) ? (instance.state.messages as MessageBoardItem[]) : [];
-      return normalizeMessageList(initial);
-    });
+    const [messages, setMessages] = useState<MessageBoardItem[]>([]);
     const [sending, setSending] = useState(false);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [channelReady, setChannelReady] = useState(false);
@@ -2950,30 +2947,6 @@ export function BuiltinWidgetView({
         cancelled = true;
       };
     }, [userId]);
-
-    useEffect(() => {
-      const normalized = normalizeMessageList(messages);
-      const changed =
-        normalized.length !== messages.length ||
-        normalized.some((item, index) => item.id !== messages[index]?.id || item.text !== messages[index]?.text);
-      if (changed) {
-        setMessages(normalized);
-        return;
-      }
-      const current = Array.isArray(instance.state.messages) ? (instance.state.messages as MessageBoardItem[]) : [];
-      const currentNormalized = normalizeMessageList(current);
-      const same =
-        currentNormalized.length === normalized.length &&
-        currentNormalized.every((item, index) => item.id === normalized[index]?.id);
-      if (!same) {
-        onStateChange({
-          ...instance.state,
-          messages: normalized
-        });
-      }
-      // sync widget state when message list changed
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [messages]);
 
     useEffect(() => {
       if (!userId) return;
@@ -3063,14 +3036,6 @@ export function BuiltinWidgetView({
       setMessages((prev) => normalizeMessageList([message, ...prev]));
       void (async () => {
         try {
-          const { error } = await supabase.from("message_board_messages").insert({
-            id: message.id,
-            sender_id: message.senderId,
-            sender_name: message.senderName,
-            message: message.text,
-            created_at: message.createdAt
-          });
-          if (error) throw error;
           const result = await channel.send({
             type: "broadcast",
             event: "message",
@@ -3079,6 +3044,14 @@ export function BuiltinWidgetView({
           if (result !== "ok" && channelReady) {
             throw new Error(result);
           }
+          // Persist in background without blocking realtime delivery.
+          void supabase.from("message_board_messages").insert({
+            id: message.id,
+            sender_id: message.senderId,
+            sender_name: message.senderName,
+            message: message.text,
+            created_at: message.createdAt
+          });
           setDraft("");
         } catch {
           setMessageError(channelReady ? "发送失败，请重试" : "通道连接中，发送失败，请重试");
@@ -3120,9 +3093,9 @@ export function BuiltinWidgetView({
                   style={{
                     fontSize: index === 0 ? 14 : 12,
                     lineHeight: 1.5,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    overflowWrap: "anywhere",
                     color: colorForUser(item.senderId || item.senderName)
                   }}
                 >

@@ -396,7 +396,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         boards = [board];
       }
 
-      let definitions = await repository.listDefinitions();
+      const boardId = boards[0].id;
+      let [definitions, widgetInstances] = await Promise.all([
+        repository.listDefinitions(),
+        repository.listByBoard(boardId)
+      ]);
       const now = nowIso();
       const systemTypes = new Set(definitions.filter((d) => d.kind === "system").map((d) => d.type));
       const missingBase = baseWidgets.filter((widget) => !systemTypes.has(widget.type));
@@ -407,14 +411,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           createdAt: now,
           updatedAt: now
         }));
-        for (const definition of toInsert) {
-          await repository.upsertDefinition(definition);
-        }
+        await Promise.all(toInsert.map((definition) => repository.upsertDefinition(definition)));
         definitions = await repository.listDefinitions();
       }
-
-      const boardId = boards[0].id;
-      let widgetInstances = await repository.listByBoard(boardId);
       if (widgetInstances.length === 0) {
         const messageBoardDef = definitions.find((item) => item.kind === "system" && item.type === "messageBoard");
         if (messageBoardDef) {
