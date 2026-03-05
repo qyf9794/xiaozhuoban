@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Board, WidgetDefinition } from "@xiaozhuoban/domain";
 
 export function Toolbar({
@@ -48,6 +48,18 @@ export function Toolbar({
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
+
+  const uniqueDefinitions = useMemo(() => {
+    const seen = new Set<string>();
+    return definitions.filter((definition) => {
+      const key = definition.name.trim().toLowerCase();
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }, [definitions]);
 
   return (
     <header
@@ -156,7 +168,7 @@ export function Toolbar({
               >
                 ✨ AI 生成
               </button>
-              {definitions.map((definition) => (
+              {uniqueDefinitions.map((definition) => (
                 <button
                   key={definition.id}
                   onClick={() => {
