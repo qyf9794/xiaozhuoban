@@ -123,7 +123,7 @@ export function Toolbar({
               boxShadow: "0 10px 24px rgba(15,23,42,0.12)",
               backdropFilter: "blur(16px) saturate(130%)",
               color: "#0f172a",
-              fontSize: 12,
+              fontSize: 14,
               lineHeight: 1.2,
               cursor: "pointer",
               position: "relative",
@@ -138,7 +138,7 @@ export function Toolbar({
                 top: "50%",
                 transform: "translateY(-50%)",
                 color: "#64748b",
-                fontSize: 12,
+                fontSize: 14,
                 lineHeight: 1
               }}
             >

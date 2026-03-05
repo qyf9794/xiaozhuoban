@@ -28,6 +28,7 @@ export function App() {
     addWidgetInstance,
     removeWidgetInstance,
     updateWidgetPosition,
+    updateWidgetSize,
     updateWidgetState,
     autoAlignWidgets,
     setCommandPaletteOpen,
@@ -152,6 +153,7 @@ export function App() {
           widgets={widgetInstances}
           fullscreen={fullscreen}
           onMove={(widgetId, x, y) => void updateWidgetPosition(widgetId, x, y)}
+          onResize={(widgetId, w, h) => void updateWidgetSize(widgetId, w, h)}
           onStateChange={(widgetId, state) => void updateWidgetState(widgetId, state)}
           onRemoveWidget={(widgetId) => void removeWidgetInstance(widgetId)}
         />

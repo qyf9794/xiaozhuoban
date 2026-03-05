@@ -88,6 +88,7 @@ function BoardRow({
             background: "transparent",
             textAlign: "left",
             fontWeight: 600,
+            fontSize: 14,
             width: "100%",
             padding: 0,
             cursor: "pointer"
@@ -184,7 +185,7 @@ export function BoardSidebar({
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
           <strong>桌板</strong>
           <Button variant="ghost" onClick={onAddBoard}>
-            + 新建
+            <span style={{ fontSize: 14, lineHeight: 1.1 }}>+ 新建</span>
           </Button>
         </div>
 

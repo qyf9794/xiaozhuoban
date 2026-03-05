@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent } fro
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { Button } from "@xiaozhuoban/ui";
 import { WidgetShell } from "./WidgetShell";
+import { DEFAULT_TV_PLAYLIST_URL, parseM3UPlaylist, type TvChannel } from "./tvShared";
 
 function asString(v: unknown): string {
   return typeof v === "string" ? v : "";
@@ -1814,7 +1815,8 @@ export function BuiltinWidgetView({
       borderRadius: 12,
       border: "1px solid rgba(203, 213, 225, 0.65)",
       padding: "6px 8px",
-      background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
+      background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))",
+      fontSize: 12
     };
 
     useEffect(() => {
@@ -2075,6 +2077,253 @@ export function BuiltinWidgetView({
           {!loading && !results.length && !error ? (
             <div style={{ fontSize: 12, color: "#64748b" }}>输入关键词后搜索并试听 30 秒。</div>
           ) : null}
+        </div>
+      </WidgetShell>
+    );
+  }
+
+  if (definition.type === "tv") {
+    const playlistUrl = asString(instance.state.playlistUrl).trim() || DEFAULT_TV_PLAYLIST_URL;
+    const selectedChannelUrl = asString(instance.state.selectedChannelUrl);
+    const [playlistDraft, setPlaylistDraft] = useState(playlistUrl);
+    const [channels, setChannels] = useState<TvChannel[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
+    const [playbackError, setPlaybackError] = useState("");
+    const videoRef = useRef<HTMLVideoElement | null>(null);
+    const hlsRef = useRef<import("hls.js").default | null>(null);
+    const latestStateRef = useRef(instance.state);
+
+    useEffect(() => {
+      latestStateRef.current = instance.state;
+    }, [instance.state]);
+
+    useEffect(() => {
+      setPlaylistDraft(playlistUrl);
+    }, [playlistUrl]);
+
+    const destroyHls = () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+
+    const loadPlaylist = (sourceUrl?: string) => {
+      const source = (sourceUrl ?? playlistDraft).trim() || DEFAULT_TV_PLAYLIST_URL;
+      setLoading(true);
+      setError("");
+      void fetch(source)
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error(`订阅加载失败 (${response.status})`);
+          }
+          return response.text();
+        })
+        .then((content) => {
+          const parsed = parseM3UPlaylist(content);
+          setChannels(parsed);
+          if (parsed.length === 0) {
+            onStateChange({
+              ...latestStateRef.current,
+              playlistUrl: source,
+              selectedChannelUrl: "",
+              selectedChannelName: ""
+            });
+            setError("未解析到频道");
+            return;
+          }
+
+          const preferredUrl = asString(latestStateRef.current.selectedChannelUrl);
+          const preferredName = asString(latestStateRef.current.selectedChannelName);
+          const selected =
+            parsed.find((item) => item.url === preferredUrl) ??
+            parsed.find((item) => item.name === preferredName) ??
+            parsed[0];
+          onStateChange({
+            ...latestStateRef.current,
+            playlistUrl: source,
+            selectedChannelUrl: selected.url,
+            selectedChannelName: selected.name
+          });
+        })
+        .catch((fetchError) => {
+          setError(fetchError instanceof Error ? fetchError.message : "加载订阅失败");
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    };
+
+    useEffect(() => {
+      const source = playlistUrl || DEFAULT_TV_PLAYLIST_URL;
+      if (!asString(instance.state.playlistUrl).trim()) {
+        onStateChange({
+          ...instance.state,
+          playlistUrl: source
+        });
+      }
+      loadPlaylist(source);
+      // initialize once for this widget instance
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+      return () => destroyHls();
+      // cleanup only on unmount
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+      const video = videoRef.current;
+      if (!video) return;
+      destroyHls();
+      setPlaybackError("");
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+
+      if (!selectedChannelUrl) {
+        return;
+      }
+
+      const source = selectedChannelUrl;
+      const nativePlay = () => {
+        video.src = source;
+        video.load();
+        void video.play().catch(() => {
+          // Autoplay may be blocked; keep controls available for manual play.
+        });
+      };
+
+      const isM3u8 = /\.m3u8($|\?)/i.test(source);
+      if (!isM3u8) {
+        nativePlay();
+        return;
+      }
+
+      if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        nativePlay();
+        return;
+      }
+
+      void import("hls.js")
+        .then((mod) => {
+          const Hls = mod.default;
+          const media = videoRef.current;
+          if (!media) return;
+          if (!Hls.isSupported()) {
+            setPlaybackError("当前浏览器不支持该直播流格式");
+            return;
+          }
+          const hls = new Hls();
+          hlsRef.current = hls;
+          hls.loadSource(source);
+          hls.attachMedia(media);
+          hls.on(Hls.Events.ERROR, (_event, data) => {
+            if (data?.fatal) {
+              setPlaybackError("直播流播放失败，请切换频道重试");
+            }
+          });
+          void media.play().catch(() => {
+            // Autoplay may be blocked; keep controls available for manual play.
+          });
+        })
+        .catch(() => {
+          setPlaybackError("播放器加载失败");
+        });
+    }, [selectedChannelUrl]);
+
+    const contentHeight = Math.max(240, Number(instance.size.h) - 74);
+
+    return (
+      <WidgetShell definition={definition} instance={instance}>
+        <div style={{ height: contentHeight, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="tv-video-box">
+            <video
+              ref={videoRef}
+              data-no-drag="true"
+              controls
+              playsInline
+              preload="none"
+              onError={() => setPlaybackError("视频播放失败，请切换频道重试")}
+              style={{
+                width: "100%",
+                height: "100%",
+                borderRadius: 10,
+                background: "#020617"
+              }}
+            />
+            {!selectedChannelUrl ? <div className="tv-video-overlay">请选择频道开始播放</div> : null}
+            {playbackError ? <div className="tv-video-overlay tv-video-overlay-error">{playbackError}</div> : null}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+            <input
+              value={playlistDraft}
+              onChange={(event) => setPlaylistDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+                event.preventDefault();
+                const source = playlistDraft.trim() || DEFAULT_TV_PLAYLIST_URL;
+                onStateChange({
+                  ...latestStateRef.current,
+                  playlistUrl: source
+                });
+                loadPlaylist(source);
+              }}
+              placeholder="输入 m3u 订阅地址"
+              style={{
+                width: "100%",
+                borderRadius: 12,
+                border: "1px solid rgba(203, 213, 225, 0.65)",
+                padding: "6px 8px",
+                background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
+              }}
+            />
+            <Button
+              onClick={() => {
+                const source = playlistDraft.trim() || DEFAULT_TV_PLAYLIST_URL;
+                onStateChange({
+                  ...latestStateRef.current,
+                  playlistUrl: source
+                });
+                loadPlaylist(source);
+              }}
+            >
+              ↻
+            </Button>
+          </div>
+
+          {loading ? <div style={{ fontSize: 12, color: "#64748b" }}>正在解析频道...</div> : null}
+          {error ? <div style={{ fontSize: 12, color: "#b91c1c" }}>{error}</div> : null}
+
+          <div className="tv-channel-list">
+            {channels.map((channel, index) => {
+              const active = channel.url === selectedChannelUrl;
+              return (
+                <button
+                  key={channel.id}
+                  type="button"
+                  className={`tv-channel-item${active ? " is-active" : ""}`}
+                  onClick={() => {
+                    setPlaybackError("");
+                    onStateChange({
+                      ...latestStateRef.current,
+                      selectedChannelUrl: channel.url,
+                      selectedChannelName: channel.name
+                    });
+                  }}
+                >
+                  <span>{channel.name}</span>
+                  <small>#{index + 1}</small>
+                </button>
+              );
+            })}
+            {!loading && !error && channels.length === 0 ? (
+              <div style={{ fontSize: 12, color: "#64748b" }}>暂无可播放频道</div>
+            ) : null}
+          </div>
         </div>
       </WidgetShell>
     );

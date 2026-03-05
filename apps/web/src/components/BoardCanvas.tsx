@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { createLayoutEngine, fromWidgetInstances } from "@xiaozhuoban/layout-engine";
 import type { Board, WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { AIFormWidgetView, BuiltinWidgetView } from "../widgets/BuiltinWidgets";
+import { clampTvWidgetSize } from "../widgets/tvShared";
 
 interface DragState {
   id: string;
@@ -12,12 +13,21 @@ interface DragState {
   currentY: number;
 }
 
+interface ResizeState {
+  id: string;
+  pointerId: number;
+  startClientX: number;
+  startW: number;
+  currentW: number;
+}
+
 export function BoardCanvas({
   board,
   definitions,
   widgets,
   fullscreen = false,
   onMove,
+  onResize,
   onStateChange,
   onRemoveWidget
 }: {
@@ -26,10 +36,12 @@ export function BoardCanvas({
   widgets: WidgetInstance[];
   fullscreen?: boolean;
   onMove: (widgetId: string, x: number, y: number) => void;
+  onResize: (widgetId: string, w: number, h: number) => void;
   onStateChange: (widgetId: string, state: Record<string, unknown>) => void;
   onRemoveWidget: (widgetId: string) => void;
 }) {
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [resize, setResize] = useState<ResizeState | null>(null);
 
   const engine = useMemo(() => {
     const e = createLayoutEngine(board.layoutMode);
@@ -51,8 +63,8 @@ export function BoardCanvas({
         overflow: "auto",
         height: fullscreen ? "100vh" : "calc(100vh - 120px)",
         borderRadius: fullscreen ? 0 : 16,
-        userSelect: drag ? "none" : "auto",
-        WebkitUserSelect: drag ? "none" : "auto",
+        userSelect: drag || resize ? "none" : "auto",
+        WebkitUserSelect: drag || resize ? "none" : "auto",
         touchAction: "none",
         background:
           board.background.type === "color"
@@ -60,6 +72,19 @@ export function BoardCanvas({
             : `center / cover no-repeat url(${board.background.value})`
       }}
       onPointerMove={(event) => {
+        if (resize && event.pointerId === resize.pointerId) {
+          const deltaX = event.clientX - resize.startClientX;
+          const next = clampTvWidgetSize(resize.startW + deltaX, 480);
+          setResize((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  currentW: next.w
+                }
+              : prev
+          );
+          return;
+        }
         if (!drag || event.pointerId !== drag.pointerId) {
           return;
         }
@@ -83,6 +108,11 @@ export function BoardCanvas({
         );
       }}
       onPointerUp={(event) => {
+        if (resize && event.pointerId === resize.pointerId) {
+          onResize(resize.id, resize.currentW, 480);
+          setResize(null);
+          return;
+        }
         if (!drag || event.pointerId !== drag.pointerId) {
           return;
         }
@@ -90,6 +120,10 @@ export function BoardCanvas({
         setDrag(null);
       }}
       onPointerCancel={(event) => {
+        if (resize && event.pointerId === resize.pointerId) {
+          setResize(null);
+          return;
+        }
         if (!drag || event.pointerId !== drag.pointerId) {
           return;
         }
@@ -103,6 +137,15 @@ export function BoardCanvas({
         }
 
         const position = drag?.id === widget.id && dragPosition ? dragPosition : widget.position;
+        const isTvWidget = definition.type === "tv";
+        const baseSize = isTvWidget ? clampTvWidgetSize(widget.size.w, 480) : widget.size;
+        const size =
+          resize?.id === widget.id
+            ? {
+                w: resize.currentW,
+                h: 480
+              }
+            : baseSize;
 
         return (
           <div
@@ -110,8 +153,8 @@ export function BoardCanvas({
             data-widget-id={widget.id}
             style={{
               position: "absolute",
-              width: widget.size.w,
-              height: widget.size.h,
+              width: size.w,
+              height: size.h,
               left: position.x,
               top: position.y,
               zIndex: widget.zIndex,
@@ -119,11 +162,15 @@ export function BoardCanvas({
             }}
             className="widget-box"
             onPointerDown={(event) => {
-              if (board.locked || widget.locked) {
+              if (resize || board.locked || widget.locked) {
                 return;
               }
               const target = event.target as HTMLElement;
-              if (target.closest("input, textarea, select, button, [contenteditable='true'], [data-no-drag='true']")) {
+              if (
+                target.closest(
+                  "input, textarea, select, button, video, audio, iframe, [contenteditable='true'], [data-no-drag='true']"
+                )
+              ) {
                 return;
               }
 
@@ -151,6 +198,27 @@ export function BoardCanvas({
             >
               ×
             </button>
+            {isTvWidget ? (
+              <div
+                className="widget-resize-edge"
+                data-no-drag="true"
+                title="拖拽调整大小"
+                onPointerDown={(event) => {
+                  if (board.locked || widget.locked) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  const start = clampTvWidgetSize(baseSize.w, 480);
+                  setResize({
+                    id: widget.id,
+                    pointerId: event.pointerId,
+                    startClientX: event.clientX,
+                    startW: start.w,
+                    currentW: start.w
+                  });
+                }}
+              />
+            ) : null}
             {definition.kind === "ai" ? (
               <AIFormWidgetView
                 definition={definition}

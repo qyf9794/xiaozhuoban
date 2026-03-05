@@ -9,6 +9,7 @@ import {
 } from "@xiaozhuoban/domain";
 import { DexieRepository, InMemoryRepository, type AppRepository } from "@xiaozhuoban/data";
 import { LocalTemplateAIBuilder } from "@xiaozhuoban/ai-builder";
+import { DEFAULT_TV_PLAYLIST_URL, clampTvWidgetSize } from "./widgets/tvShared";
 
 const defaultWorkspaceName = "默认工作空间";
 const defaultBoardName = "我的桌板";
@@ -116,6 +117,20 @@ const baseWidgets: Array<Omit<WidgetDefinition, "id" | "createdAt" | "updatedAt"
   },
   {
     kind: "system",
+    type: "tv",
+    name: "电视播放",
+    version: 1,
+    description: "订阅 m3u 直播源并按频道播放",
+    inputSchema: {
+      fields: [{ key: "playlistUrl", label: "直播订阅链接", type: "text", defaultValue: DEFAULT_TV_PLAYLIST_URL }]
+    },
+    outputSchema: { fields: [] },
+    uiSchema: { layout: "single-column" },
+    logicSpec: {},
+    storagePolicy: { strategy: "local" }
+  },
+  {
+    kind: "system",
     type: "translate",
     name: "快速翻译",
     version: 1,
@@ -195,6 +210,7 @@ interface AppState {
   addWidgetInstance: (definitionId: string) => Promise<void>;
   removeWidgetInstance: (widgetId: string) => Promise<void>;
   updateWidgetPosition: (widgetId: string, x: number, y: number) => Promise<void>;
+  updateWidgetSize: (widgetId: string, w: number, h: number) => Promise<void>;
   updateWidgetState: (widgetId: string, state: Record<string, unknown>) => Promise<void>;
   autoAlignWidgets: (viewportWidth: number) => Promise<void>;
   setCommandPaletteOpen: (open: boolean) => void;
@@ -281,6 +297,13 @@ function makeBoard(workspaceId: string, name = defaultBoardName): Board {
     createdAt: now,
     updatedAt: now
   };
+}
+
+function getDefaultWidgetSize(type?: string): { w: number; h: number } {
+  if (type === "tv") {
+    return { w: 240, h: 480 };
+  }
+  return { w: 240, h: 180 };
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -439,10 +462,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ activeBoardId: boardId, widgetInstances });
   },
   async addWidgetInstance(definitionId) {
-    const { repository, activeBoardId, widgetInstances } = get();
+    const { repository, activeBoardId, widgetInstances, widgetDefinitions } = get();
     if (!activeBoardId) {
       return;
     }
+    const definition = widgetDefinitions.find((item) => item.id === definitionId);
+    const defaultSize = getDefaultWidgetSize(definition?.type);
     const now = nowIso();
     const instance: WidgetInstance = {
       id: createId("wi"),
@@ -451,7 +476,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       state: {},
       bindings: [],
       position: { x: 20 + widgetInstances.length * 20, y: 20 + widgetInstances.length * 20 },
-      size: { w: 240, h: 180 },
+      size: defaultSize,
       zIndex: widgetInstances.length + 1,
       locked: false,
       createdAt: now,
@@ -479,6 +504,30 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)) });
     void repository.upsertInstance(next);
   },
+  async updateWidgetSize(widgetId, w, h) {
+    const { repository, widgetInstances, widgetDefinitions } = get();
+    const target = widgetInstances.find((item) => item.id === widgetId);
+    if (!target) {
+      return;
+    }
+    const definition = widgetDefinitions.find((item) => item.id === target.definitionId);
+    const roundedW = Math.round(w);
+    const roundedH = Math.round(h);
+    const size =
+      definition?.type === "tv"
+        ? clampTvWidgetSize(roundedW, roundedH)
+        : {
+            w: Math.max(120, roundedW),
+            h: Math.max(90, roundedH)
+          };
+    const next = {
+      ...target,
+      size,
+      updatedAt: nowIso()
+    };
+    set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)) });
+    void repository.upsertInstance(next);
+  },
   async updateWidgetState(widgetId, state) {
     const { repository, widgetInstances } = get();
     const target = widgetInstances.find((item) => item.id === widgetId);
@@ -494,7 +543,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     void repository.upsertInstance(next);
   },
   async autoAlignWidgets(_viewportWidth) {
-    const { repository, widgetInstances } = get();
+    const { repository, widgetInstances, widgetDefinitions } = get();
     if (widgetInstances.length === 0) return;
 
     const margin = 20;
@@ -511,12 +560,22 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       return Number.NaN;
     };
-    const safeW = (w: unknown) => {
-      const n = toNumber(w);
-      return Number.isFinite(n) ? Math.max(120, n) : 240;
+    const definitionById = new Map(widgetDefinitions.map((item) => [item.id, item]));
+    const typeOf = (widget: WidgetInstance): string =>
+      definitionById.get(widget.definitionId)?.type ?? "";
+    const safeW = (widget: WidgetInstance) => {
+      const n = toNumber(widget.size.w);
+      const normalized = Number.isFinite(n) ? Math.max(120, n) : 240;
+      if (typeOf(widget) === "tv") {
+        return clampTvWidgetSize(normalized, 480).w;
+      }
+      return normalized;
     };
-    const safeH = (h: unknown) => {
-      const n = toNumber(h);
+    const safeH = (widget: WidgetInstance) => {
+      if (typeOf(widget) === "tv") {
+        return 480;
+      }
+      const n = toNumber(widget.size.h);
       return Number.isFinite(n) ? Math.max(90, n) : 180;
     };
 
@@ -538,15 +597,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     const normalized = widgetInstances.map((item) => ({
       ...item,
       size: {
-        w: safeW(item.size.w),
+        w: safeW(item),
         h: (() => {
+          if (typeOf(item) === "tv") {
+            return 480;
+          }
           const measured = measuredHeights.get(item.id) ?? 0;
-          return measured > 0 ? Math.max(90, measured) : safeH(item.size.h);
+          return measured > 0 ? Math.max(90, measured) : safeH(item);
         })()
       }
     }));
 
-    const measuredHeightOf = (id: string, fallback: number) => {
+    const measuredHeightOf = (item: WidgetInstance, fallback: number) => {
+      if (typeOf(item) === "tv") {
+        return 480;
+      }
+      const id = item.id;
       const measured = measuredHeights.get(id) ?? 0;
       return measured > 0 ? Math.max(90, measured) : fallback;
     };
@@ -556,7 +622,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const sortedByX = [...normalizedInstances].sort((a, b) => a.position.x - b.position.x);
 
-    type Column = { center: number; width: number; items: WidgetInstance[] };
+    type Column = { center: number; left: number; width: number; items: WidgetInstance[] };
     const columns: Column[] = [];
 
     sortedByX.forEach((item) => {
@@ -576,6 +642,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!nearest || nearestDistance > threshold) {
         columns.push({
           center: itemCenter,
+          left: item.position.x,
           width: item.size.w,
           items: [item]
         });
@@ -588,6 +655,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     columns.sort((a, b) => a.center - b.center);
     let xCursor = margin;
     columns.forEach((column) => {
+      column.left = xCursor;
       column.center = xCursor + column.width / 2;
       xCursor += column.width + horizontalGap;
     });
@@ -599,10 +667,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       let previousBottom = margin;
 
       inColumn.forEach((item, rowIndex) => {
-        const w = safeW(item.size.w);
-        const h = measuredHeightOf(item.id, safeH(item.size.h));
+        const w = safeW(item);
+        const h = measuredHeightOf(item, safeH(item));
         const alignedY = Math.round(rowIndex === 0 ? margin : previousBottom + verticalGap);
-        const targetX = Math.round(column.center - w / 2);
+        const targetX = Math.round(column.left);
 
         nextById.set(item.id, {
           ...item,

@@ -69,6 +69,74 @@ body {
   transform: translate(0, 0);
 }
 
+.widget-resize-edge {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 10px;
+  height: 100%;
+  cursor: ew-resize;
+  z-index: 9;
+  background: transparent;
+}
+
+.tv-video-box {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
+
+.tv-video-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: rgba(2, 6, 23, 0.45);
+  color: #f8fafc;
+  font-size: 12px;
+  text-align: center;
+  padding: 8px;
+}
+
+.tv-video-overlay-error {
+  background: rgba(127, 29, 29, 0.62);
+}
+
+.tv-channel-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.tv-channel-item {
+  border: 1px solid rgba(203, 213, 225, 0.6);
+  border-radius: 10px;
+  padding: 6px 8px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.3));
+  text-align: left;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.tv-channel-item.is-active {
+  border-color: rgba(59, 130, 246, 0.72);
+  background: linear-gradient(160deg, rgba(219, 234, 254, 0.84), rgba(191, 219, 254, 0.54));
+}
+
+.tv-channel-item small {
+  color: #64748b;
+  font-size: 11px;
+}
+
 .recorder-play-btn {
   width: 16px;
   height: 16px;
@@ -220,7 +288,7 @@ select:focus-visible {
   border-radius: 8px;
   cursor: pointer;
   color: #0f172a;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.2;
 }
 
