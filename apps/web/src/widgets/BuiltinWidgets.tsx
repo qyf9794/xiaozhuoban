@@ -2957,13 +2957,13 @@ export function BuiltinWidgetView({
           }
           if (status === "CHANNEL_ERROR") {
             setChannelReady(false);
-            setChannelStatusText("连接异常，重试中...");
+            setChannelStatusText("连接中...");
             scheduleRetry();
             return;
           }
           if (status === "TIMED_OUT") {
             setChannelReady(false);
-            setChannelStatusText("连接超时，重试中...");
+            setChannelStatusText("连接中...");
             scheduleRetry();
             return;
           }
