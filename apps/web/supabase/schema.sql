@@ -68,18 +68,30 @@ create table if not exists public.widget_instances (
   deleted_at timestamptz null
 );
 
+create table if not exists public.message_board_messages (
+  id text primary key,
+  sender_id uuid not null references auth.users(id) on delete cascade,
+  sender_name text not null,
+  message text not null,
+  created_at timestamptz not null default now()
+);
+
+drop trigger if exists trg_workspaces_updated_at on public.workspaces;
 create trigger trg_workspaces_updated_at
 before update on public.workspaces
 for each row execute function public.set_updated_at();
 
+drop trigger if exists trg_boards_updated_at on public.boards;
 create trigger trg_boards_updated_at
 before update on public.boards
 for each row execute function public.set_updated_at();
 
+drop trigger if exists trg_widget_definitions_updated_at on public.widget_definitions;
 create trigger trg_widget_definitions_updated_at
 before update on public.widget_definitions
 for each row execute function public.set_updated_at();
 
+drop trigger if exists trg_widget_instances_updated_at on public.widget_instances;
 create trigger trg_widget_instances_updated_at
 before update on public.widget_instances
 for each row execute function public.set_updated_at();
@@ -98,11 +110,13 @@ create index if not exists idx_widget_instances_user_updated on public.widget_in
 create index if not exists idx_widget_instances_user_deleted on public.widget_instances(user_id, deleted_at);
 create index if not exists idx_widget_instances_board on public.widget_instances(board_id);
 create index if not exists idx_widget_instances_definition on public.widget_instances(definition_id);
+create index if not exists idx_message_board_messages_created_at on public.message_board_messages(created_at desc);
 
 alter table public.workspaces enable row level security;
 alter table public.boards enable row level security;
 alter table public.widget_definitions enable row level security;
 alter table public.widget_instances enable row level security;
+alter table public.message_board_messages enable row level security;
 
 drop policy if exists workspaces_owner_all on public.workspaces;
 create policy workspaces_owner_all on public.workspaces
@@ -127,3 +141,15 @@ create policy widget_instances_owner_all on public.widget_instances
 for all
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
+
+drop policy if exists message_board_messages_auth_select on public.message_board_messages;
+create policy message_board_messages_auth_select on public.message_board_messages
+for select
+to authenticated
+using (true);
+
+drop policy if exists message_board_messages_auth_insert on public.message_board_messages;
+create policy message_board_messages_auth_insert on public.message_board_messages
+for insert
+to authenticated
+with check (auth.uid() = sender_id);

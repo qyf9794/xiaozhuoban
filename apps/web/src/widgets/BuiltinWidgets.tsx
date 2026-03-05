@@ -598,6 +598,24 @@ interface ClipboardRecord {
   createdAt: string;
 }
 
+interface MessageBoardRow {
+  id: string;
+  sender_id: string;
+  sender_name: string;
+  message: string;
+  created_at: string;
+}
+
+function messageFromRow(row: MessageBoardRow): MessageBoardItem {
+  return {
+    id: row.id,
+    senderId: row.sender_id,
+    senderName: row.sender_name,
+    text: row.message,
+    createdAt: row.created_at
+  };
+}
+
 function normalizeClipboardRecords(raw: unknown): ClipboardRecord[] {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -2889,6 +2907,7 @@ export function BuiltinWidgetView({
       return normalizeMessageList(initial);
     });
     const [sending, setSending] = useState(false);
+    const [historyLoading, setHistoryLoading] = useState(false);
     const [channelReady, setChannelReady] = useState(false);
     const [messageError, setMessageError] = useState("");
     const [channelStatusText, setChannelStatusText] = useState("连接中...");
@@ -2899,6 +2918,38 @@ export function BuiltinWidgetView({
       email: user?.email ?? null,
       userMetadata: (user?.user_metadata as Record<string, unknown> | undefined) ?? null
     });
+
+    useEffect(() => {
+      if (!userId) return;
+      let cancelled = false;
+      setHistoryLoading(true);
+      void (async () => {
+        try {
+          const { data, error } = await supabase
+            .from("message_board_messages")
+            .select("id,sender_id,sender_name,message,created_at")
+            .order("created_at", { ascending: false })
+            .limit(50);
+          if (cancelled) return;
+          if (error) {
+            throw error;
+          }
+          const history = ((data as MessageBoardRow[] | null) ?? []).map(messageFromRow);
+          setMessages((prev) => normalizeMessageList([...history, ...prev]));
+        } catch (error) {
+          if (cancelled) return;
+          setMessageError(error instanceof Error ? `历史加载失败：${error.message}` : "历史加载失败");
+        } finally {
+          if (!cancelled) {
+            setHistoryLoading(false);
+          }
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [userId]);
 
     useEffect(() => {
       const normalized = normalizeMessageList(messages);
@@ -2946,6 +2997,10 @@ export function BuiltinWidgetView({
         .on("broadcast", { event: "message" }, ({ payload }) => {
           const message = payload as MessageBoardItem;
           if (!message || typeof message.text !== "string") return;
+          setMessages((prev) => normalizeMessageList([message, ...prev]));
+        })
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "message_board_messages" }, ({ new: row }) => {
+          const message = messageFromRow(row as MessageBoardRow);
           setMessages((prev) => normalizeMessageList([message, ...prev]));
         })
         .subscribe((status) => {
@@ -3005,36 +3060,52 @@ export function BuiltinWidgetView({
       };
       setSending(true);
       setMessageError("");
-      void channel
-        .send({
-          type: "broadcast",
-          event: "message",
-          payload: message
-        })
-        .then((result) => {
-          if (result !== "ok") {
+      setMessages((prev) => normalizeMessageList([message, ...prev]));
+      void (async () => {
+        try {
+          const { error } = await supabase.from("message_board_messages").insert({
+            id: message.id,
+            sender_id: message.senderId,
+            sender_name: message.senderName,
+            message: message.text,
+            created_at: message.createdAt
+          });
+          if (error) throw error;
+          const result = await channel.send({
+            type: "broadcast",
+            event: "message",
+            payload: message
+          });
+          if (result !== "ok" && channelReady) {
             throw new Error(result);
           }
           setDraft("");
-        })
-        .catch(() => {
+        } catch {
           setMessageError(channelReady ? "发送失败，请重试" : "通道连接中，发送失败，请重试");
-        })
-        .finally(() => {
+        } finally {
           setSending(false);
-        });
+        }
+      })();
     };
 
-    const contentHeight = Math.max(300, Number(instance.size.h) - 74);
+    const panelMaxHeight = 480 - 74;
 
     return (
       <WidgetShell definition={definition} instance={instance}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, height: contentHeight }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            maxHeight: panelMaxHeight
+          }}
+        >
           <div
             className="glass-scrollbar"
             style={{
-              flex: 1,
+              flex: "0 1 auto",
               minHeight: 0,
+              maxHeight: panelMaxHeight - 90,
               overflowY: "auto",
               display: "flex",
               flexDirection: "column",
@@ -3043,12 +3114,12 @@ export function BuiltinWidgetView({
             }}
           >
             {messages.length > 0 ? (
-              messages.map((item) => (
+              messages.map((item, index) => (
                 <div
                   key={item.id}
                   style={{
-                    fontSize: 12,
-                    lineHeight: 1.55,
+                    fontSize: index === 0 ? 14 : 12,
+                    lineHeight: 1.5,
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -3060,7 +3131,9 @@ export function BuiltinWidgetView({
                 </div>
               ))
             ) : (
-              <div style={{ fontSize: 12, color: "#64748b" }}>还没有留言，来发布第一条吧。</div>
+              <div style={{ fontSize: 12, color: "#64748b" }}>
+                {historyLoading ? "正在加载历史留言..." : "还没有留言，来发布第一条吧。"}
+              </div>
             )}
           </div>
           {messageError ? <div style={{ fontSize: 12, color: "#b91c1c" }}>{messageError}</div> : null}

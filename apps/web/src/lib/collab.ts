@@ -36,17 +36,6 @@ export function normalizeMessageList(items: MessageBoardItem[]): MessageBoardIte
     .slice(0, 50);
 }
 
-const MESSAGE_COLOR_PALETTE = [
-  "#0f766e",
-  "#2563eb",
-  "#9333ea",
-  "#b45309",
-  "#be123c",
-  "#15803d",
-  "#7c3aed",
-  "#0369a1"
-] as const;
-
 function hashString(input: string): number {
   let hash = 0;
   for (let i = 0; i < input.length; i += 1) {
@@ -57,6 +46,7 @@ function hashString(input: string): number {
 
 export function colorForUser(userKey: string): string {
   if (!userKey) return "#334155";
-  const idx = hashString(userKey) % MESSAGE_COLOR_PALETTE.length;
-  return MESSAGE_COLOR_PALETTE[idx];
+  const hash = hashString(userKey);
+  const hue = hash % 360;
+  return `hsl(${hue} 68% 36%)`;
 }

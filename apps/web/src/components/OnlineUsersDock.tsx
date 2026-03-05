@@ -51,9 +51,9 @@ export function OnlineUsersDock() {
       const names = new Set<string>();
       Object.values(state).forEach((sessions) => {
         sessions.forEach((session) => {
-          const isSelf = session.userId === currentUserId;
-          const userName = (session.userName ?? "").trim();
-          if (!isSelf && userName) {
+          const userName =
+            session.userId === currentUserId ? currentUserName : (session.userName ?? "").trim();
+          if (userName) {
             names.add(userName);
           }
         });
