@@ -11,7 +11,7 @@ interface PresencePayload {
 
 export function OnlineUsersDock() {
   const { user } = useAuthStore();
-  const [onlineNames, setOnlineNames] = useState<string[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<Record<string, string>>({});
   const [retrySeed, setRetrySeed] = useState(0);
 
   const currentUserId = user?.id ?? "";
@@ -26,7 +26,7 @@ export function OnlineUsersDock() {
 
   useEffect(() => {
     if (!currentUserId) {
-      setOnlineNames([]);
+      setOnlineUsers({});
       return;
     }
 
@@ -43,32 +43,62 @@ export function OnlineUsersDock() {
         if (!disposed) {
           setRetrySeed((prev) => prev + 1);
         }
-      }, 1000);
+      }, 300);
     };
 
     const updatePresenceNames = () => {
       const state = channel.presenceState<PresencePayload>();
-      const names = new Set<string>();
+      const nextUsers: Record<string, string> = {};
       Object.values(state).forEach((sessions) => {
         sessions.forEach((session) => {
           const userName =
             session.userId === currentUserId ? currentUserName : (session.userName ?? "").trim();
-          if (userName) {
-            names.add(userName);
+          const userKey = (session.userId ?? "").trim();
+          if (userName && userKey) {
+            nextUsers[userKey] = userName;
           }
         });
       });
-      setOnlineNames([...names].sort((a, b) => a.localeCompare(b, "zh-Hans-CN")));
+      if (!nextUsers[currentUserId]) {
+        nextUsers[currentUserId] = currentUserName;
+      }
+      setOnlineUsers(nextUsers);
     };
 
     channel
       .on("presence", { event: "sync" }, updatePresenceNames)
-      .on("presence", { event: "join" }, updatePresenceNames)
-      .on("presence", { event: "leave" }, updatePresenceNames)
+      .on("presence", { event: "join" }, ({ key, newPresences }) => {
+        const joinedName =
+          newPresences?.[0]?.userId === currentUserId
+            ? currentUserName
+            : (newPresences?.[0]?.userName ?? "").trim();
+        const joinedId = (newPresences?.[0]?.userId ?? key ?? "").trim();
+        if (joinedId && joinedName) {
+          setOnlineUsers((prev) => ({ ...prev, [joinedId]: joinedName }));
+        } else {
+          updatePresenceNames();
+        }
+      })
+      .on("presence", { event: "leave" }, ({ key, leftPresences }) => {
+        const leftId = (leftPresences?.[0]?.userId ?? key ?? "").trim();
+        if (!leftId) {
+          updatePresenceNames();
+          return;
+        }
+        setOnlineUsers((prev) => {
+          const next = { ...prev };
+          delete next[leftId];
+          if (!next[currentUserId]) {
+            next[currentUserId] = currentUserName;
+          }
+          return next;
+        });
+      })
       .subscribe(async (status) => {
         if (disposed) return;
         if (status === "SUBSCRIBED") {
           await channel.track({ userId: currentUserId, userName: currentUserName });
+          setOnlineUsers((prev) => ({ ...prev, [currentUserId]: currentUserName }));
           return;
         }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
@@ -81,10 +111,16 @@ export function OnlineUsersDock() {
       if (retryTimer !== null) {
         window.clearTimeout(retryTimer);
       }
+      setOnlineUsers({});
       void channel.untrack();
       void supabase.removeChannel(channel);
     };
   }, [currentUserId, currentUserName, retrySeed]);
+
+  const onlineNames = useMemo(
+    () => Object.values(onlineUsers).sort((a, b) => a.localeCompare(b, "zh-Hans-CN")),
+    [onlineUsers]
+  );
 
   return (
     <div
