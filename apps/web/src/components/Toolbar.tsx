@@ -14,7 +14,8 @@ export function Toolbar({
   onBackup,
   onImportBackup,
   onAddWidget,
-  onOpenAiDialog
+  onOpenAiDialog,
+  onEditDisplayName
 }: {
   board: Board;
   definitions: WidgetDefinition[];
@@ -29,6 +30,7 @@ export function Toolbar({
   onImportBackup: () => void;
   onAddWidget: (definitionId: string) => void;
   onOpenAiDialog: () => void;
+  onEditDisplayName: () => void;
 }) {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -255,6 +257,15 @@ export function Toolbar({
                 className="glass-dropdown-item"
               >
                 导入
+              </button>
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  onEditDisplayName();
+                }}
+                className="glass-dropdown-item"
+              >
+                修改用户名
               </button>
               <button
                 onClick={() => {

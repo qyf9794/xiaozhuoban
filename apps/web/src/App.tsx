@@ -4,9 +4,11 @@ import { BoardSidebar } from "./components/BoardSidebar";
 import { Toolbar } from "./components/Toolbar";
 import { AIGeneratorDialog } from "./components/AIGeneratorDialog";
 import { CommandPalette } from "./components/CommandPalette";
+import { OnlineUsersDock } from "./components/OnlineUsersDock";
 import { useAppStore } from "./store";
 import { useAuthStore } from "./auth/authStore";
 import { supabase } from "./lib/supabase";
+import { resolveUserName } from "./lib/collab";
 import { SupabaseRepository } from "@xiaozhuoban/data";
 
 export function App() {
@@ -37,8 +39,12 @@ export function App() {
     createBackupSnapshot,
     importBackupSnapshot
   } = useAppStore();
-  const { user, signOut } = useAuthStore();
+  const { user, signOut, updateDisplayName } = useAuthStore();
   const userId = user?.id;
+  const currentDisplayName = resolveUserName({
+    email: user?.email ?? null,
+    userMetadata: (user?.user_metadata as Record<string, unknown> | undefined) ?? null
+  });
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
   const wallpaperInputRef = useRef<HTMLInputElement | null>(null);
@@ -144,6 +150,14 @@ export function App() {
             onImportBackup={() => backupInputRef.current?.click()}
             onAddWidget={(definitionId) => void addWidgetInstance(definitionId)}
             onOpenAiDialog={() => setAiDialogOpen(true)}
+            onEditDisplayName={() => {
+              const next = window.prompt("请输入新的用户名", currentDisplayName)?.trim();
+              if (!next || next === currentDisplayName) return;
+              void updateDisplayName(next).catch((error) => {
+                const message = error instanceof Error ? error.message : "修改用户名失败";
+                window.alert(message);
+              });
+            }}
           />
         ) : null}
 
@@ -202,6 +216,8 @@ export function App() {
         onClose={() => setAiDialogOpen(false)}
         onGenerate={generateAiWidget}
       />
+
+      <OnlineUsersDock />
 
       <input
         ref={wallpaperInputRef}

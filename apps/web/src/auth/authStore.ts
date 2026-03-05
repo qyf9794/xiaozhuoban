@@ -11,6 +11,7 @@ interface AuthState {
   initialize: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
+  updateDisplayName: (displayName: string) => Promise<void>;
   signOut: () => Promise<void>;
   clearError: () => void;
 }
@@ -65,6 +66,25 @@ export const useAuthStore = create<AuthState>((set) => ({
       throw error;
     }
     set({ loading: false, error: "" });
+  },
+  async updateDisplayName(displayName) {
+    const nextName = displayName.trim();
+    if (!nextName) {
+      throw new Error("用户名不能为空");
+    }
+    set({ loading: true, error: "" });
+    const { data, error } = await supabase.auth.updateUser({
+      data: { name: nextName }
+    });
+    if (error) {
+      set({ loading: false, error: error.message });
+      throw error;
+    }
+    set({
+      loading: false,
+      error: "",
+      user: data.user ?? null
+    });
   },
   async signOut() {
     set({ loading: true, error: "" });

@@ -42,6 +42,7 @@ export function CommandPalette({
       music: ["音乐", "歌曲", "播放", "听歌"],
       tv: ["电视", "直播", "频道", "m3u", "m3u8", "iptv"],
       recorder: ["录音", "语音", "音频"],
+      messageBoard: ["留言", "留言板", "聊天", "消息", "公告"],
       translate: ["翻译", "中英", "英文", "中文"],
       converter: ["单位", "换算", "长度", "温度", "重量"],
       clipboard: ["剪贴板", "复制", "粘贴", "历史"]

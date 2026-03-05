@@ -186,6 +186,18 @@ const baseWidgets: Array<Omit<WidgetDefinition, "id" | "createdAt" | "updatedAt"
     uiSchema: { layout: "single-column" },
     logicSpec: {},
     storagePolicy: { strategy: "local" }
+  },
+  {
+    kind: "system",
+    type: "messageBoard",
+    name: "留言板",
+    version: 1,
+    description: "在线用户可实时同步留言",
+    inputSchema: { fields: [{ key: "message", label: "留言内容", type: "textarea" }] },
+    outputSchema: { fields: [{ key: "messages", label: "留言列表", type: "textarea" }] },
+    uiSchema: { layout: "single-column" },
+    logicSpec: {},
+    storagePolicy: { strategy: "local" }
   }
 ];
 
@@ -303,7 +315,38 @@ function getDefaultWidgetSize(type?: string): { w: number; h: number } {
   if (type === "tv") {
     return { w: 240, h: 480 };
   }
+  if (type === "messageBoard") {
+    return { w: 240, h: 480 };
+  }
   return { w: 240, h: 180 };
+}
+
+function normalizeMessageBoardHeights(
+  instances: WidgetInstance[],
+  definitions: WidgetDefinition[]
+): { nextInstances: WidgetInstance[]; changedInstances: WidgetInstance[] } {
+  const typeByDefId = new Map(definitions.map((item) => [item.id, item.type]));
+  const changedInstances: WidgetInstance[] = [];
+  const nextInstances = instances.map((instance) => {
+    const type = typeByDefId.get(instance.definitionId);
+    if (type !== "messageBoard") {
+      return instance;
+    }
+    if (instance.size.h === 480) {
+      return instance;
+    }
+    const next = {
+      ...instance,
+      size: {
+        ...instance.size,
+        h: 480
+      },
+      updatedAt: nowIso()
+    };
+    changedInstances.push(next);
+    return next;
+  });
+  return { nextInstances, changedInstances };
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -371,7 +414,34 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       const boardId = boards[0].id;
-      const widgetInstances = await repository.listByBoard(boardId);
+      let widgetInstances = await repository.listByBoard(boardId);
+      if (widgetInstances.length === 0) {
+        const messageBoardDef = definitions.find((item) => item.kind === "system" && item.type === "messageBoard");
+        if (messageBoardDef) {
+          const nowForWidget = nowIso();
+          const messageBoardInstance: WidgetInstance = {
+            id: createId("wi"),
+            boardId,
+            definitionId: messageBoardDef.id,
+            state: {},
+            bindings: [],
+            position: { x: 20, y: 20 },
+            size: { w: 240, h: 480 },
+            zIndex: 1,
+            locked: false,
+            createdAt: nowForWidget,
+            updatedAt: nowForWidget
+          };
+          await repository.upsertInstance(messageBoardInstance);
+          widgetInstances = [messageBoardInstance];
+        }
+      }
+
+      const normalized = normalizeMessageBoardHeights(widgetInstances, definitions);
+      widgetInstances = normalized.nextInstances;
+      if (normalized.changedInstances.length > 0) {
+        await Promise.all(normalized.changedInstances.map((item) => repository.upsertInstance(item)));
+      }
 
       set({
         ready: true,
@@ -416,8 +486,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     const target = boards.find((board) => board.id === boardId);
     if (!target) return;
     const next = { ...target, name, updatedAt: nowIso() };
-    await repository.upsertBoard(next);
-    set({ boards: boards.map((board) => (board.id === boardId ? next : board)) });
+    const optimisticBoards = boards.map((board) => (board.id === boardId ? next : board));
+    set({ boards: optimisticBoards });
+    try {
+      await repository.upsertBoard(next);
+    } catch (error) {
+      // Keep local UX responsive, but roll back if cloud persistence fails.
+      set({ boards });
+      throw error;
+    }
   },
   async deleteBoard(boardId) {
     const { repository, boards, activeBoardId } = get();
@@ -457,9 +534,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ boards: boards.map((board) => (board.id === target.id ? next : board)) });
   },
   async setActiveBoard(boardId) {
-    const { repository } = get();
+    const { repository, widgetDefinitions } = get();
     const widgetInstances = await repository.listByBoard(boardId);
-    set({ activeBoardId: boardId, widgetInstances });
+    const normalized = normalizeMessageBoardHeights(widgetInstances, widgetDefinitions);
+    if (normalized.changedInstances.length > 0) {
+      await Promise.all(normalized.changedInstances.map((item) => repository.upsertInstance(item)));
+    }
+    set({ activeBoardId: boardId, widgetInstances: normalized.nextInstances });
   },
   async addWidgetInstance(definitionId) {
     const { repository, activeBoardId, widgetInstances, widgetDefinitions } = get();

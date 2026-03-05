@@ -1,8 +1,18 @@
 import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent } from "react";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { Button } from "@xiaozhuoban/ui";
 import { WidgetShell } from "./WidgetShell";
 import { DEFAULT_TV_PLAYLIST_URL, parseM3UPlaylist, type TvChannel } from "./tvShared";
+import { useAuthStore } from "../auth/authStore";
+import { supabase } from "../lib/supabase";
+import {
+  colorForUser,
+  MESSAGE_BOARD_CHANNEL,
+  normalizeMessageList,
+  resolveUserName,
+  type MessageBoardItem
+} from "../lib/collab";
 
 function asString(v: unknown): string {
   return typeof v === "string" ? v : "";
@@ -2867,6 +2877,204 @@ export function BuiltinWidgetView({
             background: "linear-gradient(160deg, rgba(255,255,255,0.6), rgba(255,255,255,0.3))"
           }}
         />
+      </WidgetShell>
+    );
+  }
+
+  if (definition.type === "messageBoard") {
+    const { user } = useAuthStore();
+    const [draft, setDraft] = useState("");
+    const [messages, setMessages] = useState<MessageBoardItem[]>(() => {
+      const initial = Array.isArray(instance.state.messages) ? (instance.state.messages as MessageBoardItem[]) : [];
+      return normalizeMessageList(initial);
+    });
+    const [sending, setSending] = useState(false);
+    const [channelReady, setChannelReady] = useState(false);
+    const [messageError, setMessageError] = useState("");
+    const [channelStatusText, setChannelStatusText] = useState("连接中...");
+    const channelRef = useRef<RealtimeChannel | null>(null);
+    const userId = user?.id ?? "";
+    const userName = resolveUserName({
+      email: user?.email ?? null,
+      userMetadata: (user?.user_metadata as Record<string, unknown> | undefined) ?? null
+    });
+
+    useEffect(() => {
+      const normalized = normalizeMessageList(messages);
+      const changed =
+        normalized.length !== messages.length ||
+        normalized.some((item, index) => item.id !== messages[index]?.id || item.text !== messages[index]?.text);
+      if (changed) {
+        setMessages(normalized);
+        return;
+      }
+      const current = Array.isArray(instance.state.messages) ? (instance.state.messages as MessageBoardItem[]) : [];
+      const currentNormalized = normalizeMessageList(current);
+      const same =
+        currentNormalized.length === normalized.length &&
+        currentNormalized.every((item, index) => item.id === normalized[index]?.id);
+      if (!same) {
+        onStateChange({
+          ...instance.state,
+          messages: normalized
+        });
+      }
+      // sync widget state when message list changed
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [messages]);
+
+    useEffect(() => {
+      if (!userId) return;
+      // Prevent stale duplicated channel topics from blocking new subscriptions.
+      supabase
+        .getChannels()
+        .filter((item) => item.topic === `realtime:${MESSAGE_BOARD_CHANNEL}`)
+        .forEach((item) => {
+          void supabase.removeChannel(item);
+        });
+
+      const channel = supabase.channel(MESSAGE_BOARD_CHANNEL, {
+        config: { broadcast: { self: true } }
+      });
+      channelRef.current = channel;
+      channel
+        .on("broadcast", { event: "message" }, ({ payload }) => {
+          const message = payload as MessageBoardItem;
+          if (!message || typeof message.text !== "string") return;
+          setMessages((prev) => normalizeMessageList([message, ...prev]));
+        })
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            setChannelReady(true);
+            setChannelStatusText("已连接");
+            return;
+          }
+          if (status === "CHANNEL_ERROR") {
+            setChannelReady(false);
+            setChannelStatusText("连接异常，重试中...");
+            return;
+          }
+          if (status === "TIMED_OUT") {
+            setChannelReady(false);
+            setChannelStatusText("连接超时，重试中...");
+            return;
+          }
+          setChannelReady(false);
+          setChannelStatusText("连接中...");
+        });
+
+      return () => {
+        setChannelReady(false);
+        setChannelStatusText("连接中...");
+        channelRef.current = null;
+        void supabase.removeChannel(channel);
+      };
+    }, [userId]);
+
+    const sendMessage = () => {
+      const text = draft.trim();
+      if (!text) return;
+      const channel = channelRef.current;
+      if (!channel) {
+        setMessageError("实时通道初始化中，请稍后重试");
+        return;
+      }
+      const message: MessageBoardItem = {
+        id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        senderId: userId,
+        senderName: userName,
+        text,
+        createdAt: new Date().toISOString()
+      };
+      setSending(true);
+      setMessageError("");
+      void channel
+        .send({
+          type: "broadcast",
+          event: "message",
+          payload: message
+        })
+        .then((result) => {
+          if (result !== "ok") {
+            throw new Error(result);
+          }
+          setDraft("");
+        })
+        .catch(() => {
+          setMessageError(channelReady ? "发送失败，请重试" : "通道连接中，发送失败，请重试");
+        })
+        .finally(() => {
+          setSending(false);
+        });
+    };
+
+    const contentHeight = Math.max(300, Number(instance.size.h) - 74);
+
+    return (
+      <WidgetShell definition={definition} instance={instance}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, height: contentHeight }}>
+          <div
+            className="glass-scrollbar"
+            style={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+              paddingRight: 2
+            }}
+          >
+            {messages.length > 0 ? (
+              messages.map((item) => (
+                <div
+                  key={item.id}
+                  style={{
+                    fontSize: 12,
+                    lineHeight: 1.55,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    color: colorForUser(item.senderId || item.senderName)
+                  }}
+                >
+                  <strong>{item.senderName || "匿名用户"}</strong>
+                  <span style={{ opacity: 0.9 }}>：{item.text}</span>
+                </div>
+              ))
+            ) : (
+              <div style={{ fontSize: 12, color: "#64748b" }}>还没有留言，来发布第一条吧。</div>
+            )}
+          </div>
+          {messageError ? <div style={{ fontSize: 12, color: "#b91c1c" }}>{messageError}</div> : null}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "end" }}>
+            <textarea
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  sendMessage();
+                }
+              }}
+              placeholder="输入留言，按 Enter 发送"
+              style={{
+                minHeight: 54,
+                resize: "none",
+                borderRadius: 12,
+                border: "1px solid rgba(203,213,225,0.72)",
+                background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.34))",
+                padding: "8px 10px",
+                color: "#0f172a",
+                fontSize: 12
+              }}
+            />
+            <Button onClick={sendMessage}>{sending ? "发送中..." : "发送"}</Button>
+          </div>
+          <div style={{ fontSize: 10, color: "#64748b" }}>
+            状态：{channelStatusText}（当前用户：{userName}）
+          </div>
+        </div>
       </WidgetShell>
     );
   }
