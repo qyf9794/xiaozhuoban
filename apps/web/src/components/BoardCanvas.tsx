@@ -75,23 +75,26 @@ export function BoardCanvas({
       className={isMobileMode ? "board-canvas board-canvas-mobile" : "board-canvas"}
       style={{
         position: "relative",
-        overflow: "auto",
-        overflowX: isMobileMode ? "hidden" : "auto",
+        overflow: isMobileMode ? "visible" : "auto",
+        overflowX: isMobileMode ? "visible" : "auto",
         display: isMobileMode ? "flex" : "block",
-        flex: isMobileMode ? 1 : undefined,
         flexDirection: isMobileMode ? "column" : "row",
         gap: isMobileMode ? 16 : 0,
-        padding: isMobileMode ? "12px 10px calc(env(safe-area-inset-bottom) + 72px)" : 0,
+        padding: isMobileMode
+          ? "calc(env(safe-area-inset-top) + 74px) 10px calc(env(safe-area-inset-bottom) + 84px)"
+          : 0,
         minHeight: 0,
-        height: isMobileMode ? "100%" : fullscreen ? "100dvh" : "calc(100vh - 120px)",
+        height: isMobileMode ? "auto" : fullscreen ? "100dvh" : "calc(100vh - 120px)",
         borderRadius: fullscreen ? 0 : 16,
         userSelect: drag || resize ? "none" : "auto",
         WebkitUserSelect: drag || resize ? "none" : "auto",
         touchAction: isMobileMode ? "pan-y" : "none",
         background:
-          board.background.type === "color"
-            ? board.background.value
-            : `center / cover no-repeat url(${board.background.value})`
+          isMobileMode
+            ? "transparent"
+            : board.background.type === "color"
+              ? board.background.value
+              : `center / cover no-repeat url(${board.background.value})`
       }}
       onPointerMove={
         isMobileMode

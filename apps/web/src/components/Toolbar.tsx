@@ -69,8 +69,10 @@ export function Toolbar({
 
   return (
     <header
+      className={isMobileMode ? "toolbar-mobile" : undefined}
       style={{
-        position: "relative",
+        position: isMobileMode ? "sticky" : "relative",
+        top: isMobileMode ? 0 : undefined,
         zIndex: 1200,
         display: "flex",
         alignItems: "center",
@@ -101,23 +103,25 @@ export function Toolbar({
         >
           {isMobileMode ? "☰" : sidebarOpen ? "◧" : "◨"}
         </button>
-        <button
-          aria-label={isMobileMode ? (fullscreen ? "退出沉浸模式" : "展开桌面") : fullscreen ? "退出全屏" : "全屏"}
-          onClick={onToggleFullscreen}
-          style={{
-            border: "none",
-            background: "transparent",
-            color: "#94a3b8",
-            fontSize: 17,
-            lineHeight: 1,
-            cursor: "pointer",
-            padding: 2,
-            minWidth: 28,
-            minHeight: 28
-          }}
-        >
-          {fullscreen ? "🗗" : isMobileMode ? "⬚" : "⛶"}
-        </button>
+        {!isMobileMode ? (
+          <button
+            aria-label={fullscreen ? "退出全屏" : "全屏"}
+            onClick={onToggleFullscreen}
+            style={{
+              border: "none",
+              background: "transparent",
+              color: "#94a3b8",
+              fontSize: 17,
+              lineHeight: 1,
+              cursor: "pointer",
+              padding: 2,
+              minWidth: 28,
+              minHeight: 28
+            }}
+          >
+            {fullscreen ? "🗗" : "⛶"}
+          </button>
+        ) : null}
         <h1
           style={{
             margin: 0,
