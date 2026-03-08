@@ -81,7 +81,7 @@ export function BoardCanvas({
         flexDirection: isMobileMode ? "column" : "row",
         gap: isMobileMode ? 16 : 0,
         padding: isMobileMode
-          ? "calc(env(safe-area-inset-top) + 74px) 10px calc(env(safe-area-inset-bottom) + 84px)"
+          ? "calc(env(safe-area-inset-top) + 74px) 14px calc(env(safe-area-inset-bottom) + 84px)"
           : 0,
         minHeight: 0,
         height: isMobileMode ? "auto" : fullscreen ? "100dvh" : "calc(100vh - 120px)",
@@ -190,12 +190,13 @@ export function BoardCanvas({
             data-widget-id={widget.id}
             style={{
               position: isMobileMode ? "relative" : "absolute",
-              width: isMobileMode ? "100%" : size.w,
+              width: isMobileMode ? "min(350px, 100%)" : size.w,
               height: isMobileMode ? Math.max(size.h, 180) : size.h,
               left: isMobileMode ? undefined : position.x,
               top: isMobileMode ? undefined : position.y,
               zIndex: isMobileMode ? "auto" : widget.zIndex,
-              cursor: isMobileMode ? "default" : board.locked ? "default" : drag?.id === widget.id ? "grabbing" : "grab"
+              cursor: isMobileMode ? "default" : board.locked ? "default" : drag?.id === widget.id ? "grabbing" : "grab",
+              margin: isMobileMode ? "0 auto" : undefined
             }}
             className={isMobileMode ? "widget-box widget-box-mobile" : "widget-box"}
             onPointerDown={(event) => {

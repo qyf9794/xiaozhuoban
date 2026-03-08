@@ -65,6 +65,11 @@ export function App() {
   const isMobileMode = isMobileUa || viewportWidth <= MOBILE_VIEWPORT_MAX;
 
   const activeBoard = useMemo(() => boards.find((item) => item.id === activeBoardId), [activeBoardId, boards]);
+  const mobileBackground = activeBoard
+    ? activeBoard.background.type === "color"
+      ? activeBoard.background.value
+      : `center / cover no-repeat url(${activeBoard.background.value})`
+    : "#eceff3";
 
   useEffect(() => {
     if (!userId) return;
@@ -123,6 +128,25 @@ export function App() {
   }, [isMobileMode]);
 
   useEffect(() => {
+    const previousBackground = document.body.style.background;
+    const previousBackgroundColor = document.body.style.backgroundColor;
+    const previousBackgroundAttachment = document.body.style.backgroundAttachment;
+
+    if (isMobileMode && activeBoard) {
+      document.body.style.background = mobileBackground;
+      document.body.style.backgroundColor =
+        activeBoard.background.type === "color" ? activeBoard.background.value : "#0f172a";
+      document.body.style.backgroundAttachment = "fixed";
+    }
+
+    return () => {
+      document.body.style.background = previousBackground;
+      document.body.style.backgroundColor = previousBackgroundColor;
+      document.body.style.backgroundAttachment = previousBackgroundAttachment;
+    };
+  }, [activeBoard, isMobileMode, mobileBackground]);
+
+  useEffect(() => {
     if (!mobileSidebarOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -174,11 +198,6 @@ export function App() {
   if (!ready || !activeBoard) {
     return <div className="loading">初始化中...</div>;
   }
-
-  const mobileBackground =
-    activeBoard.background.type === "color"
-      ? activeBoard.background.value
-      : `center / cover no-repeat url(${activeBoard.background.value})`;
 
   return (
     <div className={`app-shell ${isMobileMode ? "app-shell-mobile" : ""}`}>
@@ -278,8 +297,9 @@ export function App() {
               void autoAlignWidgets(canvasWidth);
             }}
             title="自动对齐"
+            className={isMobileMode ? "mobile-floating-action" : undefined}
             style={{
-              position: isMobileMode ? "absolute" : "fixed",
+              position: "fixed",
               right: 14,
               bottom: isMobileMode ? "calc(env(safe-area-inset-bottom) + 12px)" : 14,
               width: 26,
