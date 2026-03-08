@@ -572,6 +572,25 @@ interface TodoItem {
   dueAt?: string;
 }
 
+function normalizeTodoItems(raw: unknown): TodoItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item, index) => {
+      if (!item || typeof item !== "object") return null;
+      const candidate = item as Partial<TodoItem>;
+      const text = typeof candidate.text === "string" ? candidate.text : "";
+      if (!text.trim()) return null;
+      const dueAt = typeof candidate.dueAt === "string" ? candidate.dueAt : undefined;
+      const fallbackId = `todo_${index}_${text}_${dueAt ?? ""}`;
+      return {
+        id: typeof candidate.id === "string" && candidate.id.trim() ? candidate.id : fallbackId,
+        text,
+        dueAt
+      } as TodoItem;
+    })
+    .filter((item): item is TodoItem => item !== null);
+}
+
 function fmtRemaining(ms: number): string {
   if (ms <= 0) return "已到期";
   const totalSec = Math.floor(ms / 1000);
@@ -905,7 +924,7 @@ export function BuiltinWidgetView({
   }
 
   if (definition.type === "todo") {
-    const items = (Array.isArray(instance.state.items) ? instance.state.items : []) as TodoItem[];
+    const items = normalizeTodoItems(instance.state.items);
     const [now, setNow] = useState(Date.now());
     useEffect(() => {
       const timer = window.setInterval(() => setNow(Date.now()), 1000);

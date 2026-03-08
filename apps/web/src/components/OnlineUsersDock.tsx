@@ -127,8 +127,8 @@ export function OnlineUsersDock({ isMobileMode = false }: { isMobileMode?: boole
       <div
         style={{
           position: "fixed",
-          right: 10,
-          top: "calc(env(safe-area-inset-top) + 10px)",
+          left: 10,
+          bottom: "calc(env(safe-area-inset-bottom) + 12px)",
           zIndex: 1600,
           borderRadius: 999,
           border: "1px solid rgba(255,255,255,0.58)",
