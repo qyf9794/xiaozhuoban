@@ -102,7 +102,7 @@ export function Toolbar({
           {isMobileMode ? "☰" : sidebarOpen ? "◧" : "◨"}
         </button>
         <button
-          aria-label={fullscreen ? "退出全屏" : "全屏"}
+          aria-label={isMobileMode ? (fullscreen ? "退出沉浸模式" : "展开桌面") : fullscreen ? "退出全屏" : "全屏"}
           onClick={onToggleFullscreen}
           style={{
             border: "none",
@@ -116,7 +116,7 @@ export function Toolbar({
             minHeight: 28
           }}
         >
-          {fullscreen ? "🗗" : "⛶"}
+          {fullscreen ? "🗗" : isMobileMode ? "⬚" : "⛶"}
         </button>
         <h1
           style={{
