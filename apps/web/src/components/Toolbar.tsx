@@ -5,9 +5,11 @@ export function Toolbar({
   board,
   definitions,
   sidebarOpen,
+  isMobileMode = false,
   fullscreen,
   onToggleFullscreen,
   onToggleSidebar,
+  onOpenMobileMenu,
   onOpenCommandPalette,
   onPickWallpaper,
   onSignOut,
@@ -20,9 +22,11 @@ export function Toolbar({
   board: Board;
   definitions: WidgetDefinition[];
   sidebarOpen: boolean;
+  isMobileMode?: boolean;
   fullscreen: boolean;
   onToggleFullscreen: () => void;
   onToggleSidebar: () => void;
+  onOpenMobileMenu?: () => void;
   onOpenCommandPalette: () => void;
   onPickWallpaper: () => void;
   onSignOut: () => void;
@@ -75,24 +79,27 @@ export function Toolbar({
         padding: "10px 14px",
         background: "linear-gradient(170deg, rgba(255,255,255,0.5), rgba(255,255,255,0.28))",
         borderBottom: "1px solid rgba(255,255,255,0.6)",
-        backdropFilter: "blur(18px) saturate(130%)"
+        backdropFilter: "blur(18px) saturate(130%)",
+        paddingTop: isMobileMode ? "calc(env(safe-area-inset-top) + 8px)" : "10px"
       }}
     >
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button
-          aria-label={sidebarOpen ? "隐藏侧栏" : "显示侧栏"}
-          onClick={onToggleSidebar}
+          aria-label={isMobileMode ? "打开桌板菜单" : sidebarOpen ? "隐藏侧栏" : "显示侧栏"}
+          onClick={isMobileMode ? onOpenMobileMenu : onToggleSidebar}
           style={{
             border: "none",
             background: "transparent",
             color: "#94a3b8",
-            fontSize: 18,
+            fontSize: isMobileMode ? 20 : 18,
             lineHeight: 1,
             cursor: "pointer",
-            padding: 2
+            padding: 2,
+            minWidth: 28,
+            minHeight: 28
           }}
         >
-          {sidebarOpen ? "◧" : "◨"}
+          {isMobileMode ? "☰" : sidebarOpen ? "◧" : "◨"}
         </button>
         <button
           aria-label={fullscreen ? "退出全屏" : "全屏"}
@@ -104,12 +111,25 @@ export function Toolbar({
             fontSize: 17,
             lineHeight: 1,
             cursor: "pointer",
-            padding: 2
+            padding: 2,
+            minWidth: 28,
+            minHeight: 28
           }}
         >
           {fullscreen ? "🗗" : "⛶"}
         </button>
-        <h1 style={{ margin: 0, fontSize: 18 }}>{board.name}</h1>
+        <h1
+          style={{
+            margin: 0,
+            fontSize: isMobileMode ? 16 : 18,
+            maxWidth: isMobileMode ? 150 : "none",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap"
+          }}
+        >
+          {board.name}
+        </h1>
       </div>
       <div style={{ display: "flex", gap: 8 }}>
         <div ref={addMenuRef} style={{ position: "relative" }}>
@@ -120,12 +140,12 @@ export function Toolbar({
               border: "1px solid rgba(255,255,255,0.62)",
               borderRadius: 14,
               padding: "7px 30px 7px 10px",
-              minWidth: 118,
+              minWidth: isMobileMode ? 102 : 118,
               background: "linear-gradient(170deg, rgba(255,255,255,0.9), rgba(255,255,255,0.72))",
               boxShadow: "0 10px 24px rgba(15,23,42,0.12)",
               backdropFilter: "blur(16px) saturate(130%)",
               color: "#0f172a",
-              fontSize: 14,
+              fontSize: isMobileMode ? 13 : 14,
               lineHeight: 1.2,
               cursor: "pointer",
               position: "relative",
@@ -222,15 +242,17 @@ export function Toolbar({
               >
                 搜索
               </button>
-              <button
-                onClick={() => {
-                  setMenuOpen(false);
-                  onToggleSidebar();
-                }}
-                className="glass-dropdown-item"
-              >
-                {sidebarOpen ? "隐藏侧栏" : "显示侧栏"}
-              </button>
+              {!isMobileMode ? (
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onToggleSidebar();
+                  }}
+                  className="glass-dropdown-item"
+                >
+                  {sidebarOpen ? "隐藏侧栏" : "显示侧栏"}
+                </button>
+              ) : null}
               <button
                 onClick={() => {
                   setMenuOpen(false);

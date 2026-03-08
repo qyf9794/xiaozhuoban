@@ -9,7 +9,7 @@ interface PresencePayload {
   userName?: string;
 }
 
-export function OnlineUsersDock() {
+export function OnlineUsersDock({ isMobileMode = false }: { isMobileMode?: boolean }) {
   const { user } = useAuthStore();
   const [onlineUsers, setOnlineUsers] = useState<Record<string, string>>({});
   const [retrySeed, setRetrySeed] = useState(0);
@@ -121,6 +121,29 @@ export function OnlineUsersDock() {
     () => Object.values(onlineUsers).sort((a, b) => a.localeCompare(b, "zh-Hans-CN")),
     [onlineUsers]
   );
+
+  if (isMobileMode) {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          left: 10,
+          bottom: "calc(env(safe-area-inset-bottom) + 12px)",
+          zIndex: 1600,
+          borderRadius: 999,
+          border: "1px solid rgba(255,255,255,0.58)",
+          background: "linear-gradient(170deg, rgba(255,255,255,0.74), rgba(255,255,255,0.42))",
+          backdropFilter: "blur(12px)",
+          boxShadow: "0 8px 18px rgba(15,23,42,0.12)",
+          padding: "4px 10px",
+          fontSize: 12,
+          color: "#334155"
+        }}
+      >
+        在线 {onlineNames.length}
+      </div>
+    );
+  }
 
   return (
     <div

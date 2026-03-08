@@ -26,6 +26,7 @@ export function BoardCanvas({
   definitions,
   widgets,
   fullscreen = false,
+  isMobileMode = false,
   onMove,
   onResize,
   onStateChange,
@@ -35,6 +36,7 @@ export function BoardCanvas({
   definitions: WidgetDefinition[];
   widgets: WidgetInstance[];
   fullscreen?: boolean;
+  isMobileMode?: boolean;
   onMove: (widgetId: string, x: number, y: number) => void;
   onResize: (widgetId: string, w: number, h: number) => void;
   onStateChange: (widgetId: string, state: Record<string, unknown>) => void;
@@ -56,81 +58,111 @@ export function BoardCanvas({
     return { x: drag.currentX, y: drag.currentY };
   }, [drag]);
 
+  const mobileWidgets = useMemo(
+    () =>
+      [...widgets].sort((a, b) => {
+        if (a.position.y !== b.position.y) return a.position.y - b.position.y;
+        if (a.position.x !== b.position.x) return a.position.x - b.position.x;
+        return a.zIndex - b.zIndex;
+      }),
+    [widgets]
+  );
+
+  const renderedWidgets = isMobileMode ? mobileWidgets : widgets;
+
   return (
     <div
+      className={isMobileMode ? "board-canvas board-canvas-mobile" : "board-canvas"}
       style={{
         position: "relative",
         overflow: "auto",
-        height: fullscreen ? "100vh" : "calc(100vh - 120px)",
+        overflowX: isMobileMode ? "hidden" : "auto",
+        display: isMobileMode ? "flex" : "block",
+        flexDirection: isMobileMode ? "column" : "row",
+        gap: isMobileMode ? 16 : 0,
+        padding: isMobileMode ? "12px 10px calc(env(safe-area-inset-bottom) + 72px)" : 0,
+        height: fullscreen ? "100dvh" : isMobileMode ? "calc(100dvh - 112px)" : "calc(100vh - 120px)",
         borderRadius: fullscreen ? 0 : 16,
         userSelect: drag || resize ? "none" : "auto",
         WebkitUserSelect: drag || resize ? "none" : "auto",
-        touchAction: "none",
+        touchAction: isMobileMode ? "pan-y" : "none",
         background:
           board.background.type === "color"
             ? board.background.value
             : `center / cover no-repeat url(${board.background.value})`
       }}
-      onPointerMove={(event) => {
-        if (resize && event.pointerId === resize.pointerId) {
-          const deltaX = event.clientX - resize.startClientX;
-          const next = clampTvWidgetSize(resize.startW + deltaX, 480);
-          setResize((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  currentW: next.w
-                }
-              : prev
-          );
-          return;
-        }
-        if (!drag || event.pointerId !== drag.pointerId) {
-          return;
-        }
-        const deltaX = event.clientX - drag.lastClientX;
-        const deltaY = event.clientY - drag.lastClientY;
-        if (deltaX === 0 && deltaY === 0) {
-          return;
-        }
-        const moved = engine.move(drag.id, { x: deltaX, y: deltaY });
-        if (!moved) return;
-        setDrag((prev) =>
-          prev
-            ? {
-                ...prev,
-                lastClientX: event.clientX,
-                lastClientY: event.clientY,
-                currentX: moved.position.x,
-                currentY: moved.position.y
+      onPointerMove={
+        isMobileMode
+          ? undefined
+          : (event) => {
+              if (resize && event.pointerId === resize.pointerId) {
+                const deltaX = event.clientX - resize.startClientX;
+                const next = clampTvWidgetSize(resize.startW + deltaX, 480);
+                setResize((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        currentW: next.w
+                      }
+                    : prev
+                );
+                return;
               }
-            : prev
-        );
-      }}
-      onPointerUp={(event) => {
-        if (resize && event.pointerId === resize.pointerId) {
-          onResize(resize.id, resize.currentW, 480);
-          setResize(null);
-          return;
-        }
-        if (!drag || event.pointerId !== drag.pointerId) {
-          return;
-        }
-        onMove(drag.id, drag.currentX, drag.currentY);
-        setDrag(null);
-      }}
-      onPointerCancel={(event) => {
-        if (resize && event.pointerId === resize.pointerId) {
-          setResize(null);
-          return;
-        }
-        if (!drag || event.pointerId !== drag.pointerId) {
-          return;
-        }
-        setDrag(null);
-      }}
+              if (!drag || event.pointerId !== drag.pointerId) {
+                return;
+              }
+              const deltaX = event.clientX - drag.lastClientX;
+              const deltaY = event.clientY - drag.lastClientY;
+              if (deltaX === 0 && deltaY === 0) {
+                return;
+              }
+              const moved = engine.move(drag.id, { x: deltaX, y: deltaY });
+              if (!moved) return;
+              setDrag((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      lastClientX: event.clientX,
+                      lastClientY: event.clientY,
+                      currentX: moved.position.x,
+                      currentY: moved.position.y
+                    }
+                  : prev
+              );
+            }
+      }
+      onPointerUp={
+        isMobileMode
+          ? undefined
+          : (event) => {
+              if (resize && event.pointerId === resize.pointerId) {
+                onResize(resize.id, resize.currentW, 480);
+                setResize(null);
+                return;
+              }
+              if (!drag || event.pointerId !== drag.pointerId) {
+                return;
+              }
+              onMove(drag.id, drag.currentX, drag.currentY);
+              setDrag(null);
+            }
+      }
+      onPointerCancel={
+        isMobileMode
+          ? undefined
+          : (event) => {
+              if (resize && event.pointerId === resize.pointerId) {
+                setResize(null);
+                return;
+              }
+              if (!drag || event.pointerId !== drag.pointerId) {
+                return;
+              }
+              setDrag(null);
+            }
+      }
     >
-      {widgets.map((widget) => {
+      {renderedWidgets.map((widget) => {
         const definition = byId.get(widget.definitionId);
         if (!definition) {
           return null;
@@ -152,17 +184,17 @@ export function BoardCanvas({
             key={widget.id}
             data-widget-id={widget.id}
             style={{
-              position: "absolute",
-              width: size.w,
-              height: size.h,
-              left: position.x,
-              top: position.y,
-              zIndex: widget.zIndex,
-              cursor: board.locked ? "default" : drag?.id === widget.id ? "grabbing" : "grab"
+              position: isMobileMode ? "relative" : "absolute",
+              width: isMobileMode ? "100%" : size.w,
+              height: isMobileMode ? Math.max(size.h, 180) : size.h,
+              left: isMobileMode ? undefined : position.x,
+              top: isMobileMode ? undefined : position.y,
+              zIndex: isMobileMode ? "auto" : widget.zIndex,
+              cursor: isMobileMode ? "default" : board.locked ? "default" : drag?.id === widget.id ? "grabbing" : "grab"
             }}
-            className="widget-box"
+            className={isMobileMode ? "widget-box widget-box-mobile" : "widget-box"}
             onPointerDown={(event) => {
-              if (resize || board.locked || widget.locked) {
+              if (isMobileMode || resize || board.locked || widget.locked) {
                 return;
               }
               const target = event.target as HTMLElement;
@@ -198,7 +230,7 @@ export function BoardCanvas({
             >
               ×
             </button>
-            {isTvWidget ? (
+            {isTvWidget && !isMobileMode ? (
               <div
                 className="widget-resize-edge"
                 data-no-drag="true"

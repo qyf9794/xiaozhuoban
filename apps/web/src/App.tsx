@@ -11,6 +11,14 @@ import { supabase } from "./lib/supabase";
 import { resolveUserName } from "./lib/collab";
 import { SupabaseRepository } from "@xiaozhuoban/data";
 
+const MOBILE_FRAME_WIDTH = 390;
+const MOBILE_VIEWPORT_MAX = 900;
+
+function isLikelyMobileUA() {
+  if (typeof navigator === "undefined") return false;
+  return /android|iphone|ipad|ipod|mobile|windows phone/i.test(navigator.userAgent);
+}
+
 export function App() {
   const {
     ready,
@@ -46,9 +54,15 @@ export function App() {
     userMetadata: (user?.user_metadata as Record<string, unknown> | undefined) ?? null
   });
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window === "undefined" ? MOBILE_FRAME_WIDTH : window.innerWidth
+  );
   const wallpaperInputRef = useRef<HTMLInputElement | null>(null);
   const backupInputRef = useRef<HTMLInputElement | null>(null);
+  const isMobileUa = useMemo(() => isLikelyMobileUA(), []);
+  const isMobileMode = isMobileUa || viewportWidth <= MOBILE_VIEWPORT_MAX;
 
   const activeBoard = useMemo(() => boards.find((item) => item.id === activeBoardId), [activeBoardId, boards]);
 
@@ -90,117 +104,176 @@ export function App() {
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
 
+  useEffect(() => {
+    const onResize = () => {
+      setViewportWidth(window.innerWidth);
+    };
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileMode) {
+      setMobileSidebarOpen(false);
+    }
+  }, [isMobileMode]);
+
+  useEffect(() => {
+    if (!mobileSidebarOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileSidebarOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mobileSidebarOpen]);
+
   if (!ready || !activeBoard) {
     return <div className="loading">初始化中...</div>;
   }
 
   return (
-    <div className="app-shell">
-      {sidebarOpen && !fullscreen ? (
-        <BoardSidebar
-          boards={boards}
-          activeBoardId={activeBoardId}
-          onSelectBoard={(boardId) => void setActiveBoard(boardId)}
-          onAddBoard={() => void addBoard()}
-          onRenameBoard={(boardId, name) => void renameBoard(boardId, name)}
-          onDeleteBoard={(boardId) => void deleteBoard(boardId)}
-        />
-      ) : null}
-      <main style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-        {!fullscreen ? (
-          <Toolbar
-            board={activeBoard}
-            definitions={widgetDefinitions}
-            sidebarOpen={sidebarOpen}
-            fullscreen={fullscreen}
-            onToggleFullscreen={() => {
-              if (document.fullscreenElement) {
-                void document.exitFullscreen();
-              } else {
-                void document.documentElement.requestFullscreen();
-              }
-            }}
-            onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
-            onOpenCommandPalette={() => setCommandPaletteOpen(true)}
-            onPickWallpaper={() => wallpaperInputRef.current?.click()}
-            onSignOut={() => {
-              void signOut().catch((error) => {
-                const message = error instanceof Error ? error.message : "退出登录失败";
-                window.alert(message);
-              });
-            }}
-            onBackup={() => {
-              void (async () => {
-                const snapshot = await createBackupSnapshot();
-                const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
-                const url = URL.createObjectURL(blob);
-                const anchor = document.createElement("a");
-                anchor.href = url;
-                const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-                const safeBoardName = (activeBoard.name || "小桌板")
-                  .replace(/[\\/:*?"<>|]/g, "_")
-                  .trim();
-                anchor.download = `${safeBoardName}-备份-${timestamp}.json`;
-                document.body.appendChild(anchor);
-                anchor.click();
-                anchor.remove();
-                URL.revokeObjectURL(url);
-              })();
-            }}
-            onImportBackup={() => backupInputRef.current?.click()}
-            onAddWidget={(definitionId) => void addWidgetInstance(definitionId)}
-            onOpenAiDialog={() => setAiDialogOpen(true)}
-            onEditDisplayName={() => {
-              const next = window.prompt("请输入新的用户名", currentDisplayName)?.trim();
-              if (!next || next === currentDisplayName) return;
-              void updateDisplayName(next).catch((error) => {
-                const message = error instanceof Error ? error.message : "修改用户名失败";
-                window.alert(message);
-              });
-            }}
+    <div className={`app-shell ${isMobileMode ? "app-shell-mobile" : ""}`}>
+      <div className={isMobileMode ? "mobile-stage" : "desktop-stage"}>
+        {sidebarOpen && !fullscreen && !isMobileMode ? (
+          <BoardSidebar
+            boards={boards}
+            activeBoardId={activeBoardId}
+            onSelectBoard={(boardId) => void setActiveBoard(boardId)}
+            onAddBoard={() => void addBoard()}
+            onRenameBoard={(boardId, name) => void renameBoard(boardId, name)}
+            onDeleteBoard={(boardId) => void deleteBoard(boardId)}
           />
         ) : null}
+        <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative" }}>
+          {!fullscreen ? (
+            <Toolbar
+              board={activeBoard}
+              definitions={widgetDefinitions}
+              sidebarOpen={sidebarOpen}
+              isMobileMode={isMobileMode}
+              fullscreen={fullscreen}
+              onToggleFullscreen={() => {
+                if (document.fullscreenElement) {
+                  void document.exitFullscreen();
+                } else {
+                  void document.documentElement.requestFullscreen();
+                }
+              }}
+              onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
+              onOpenMobileMenu={() => setMobileSidebarOpen(true)}
+              onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+              onPickWallpaper={() => wallpaperInputRef.current?.click()}
+              onSignOut={() => {
+                void signOut().catch((error) => {
+                  const message = error instanceof Error ? error.message : "退出登录失败";
+                  window.alert(message);
+                });
+              }}
+              onBackup={() => {
+                void (async () => {
+                  const snapshot = await createBackupSnapshot();
+                  const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
+                  const url = URL.createObjectURL(blob);
+                  const anchor = document.createElement("a");
+                  anchor.href = url;
+                  const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+                  const safeBoardName = (activeBoard.name || "小桌板")
+                    .replace(/[\\/:*?"<>|]/g, "_")
+                    .trim();
+                  anchor.download = `${safeBoardName}-备份-${timestamp}.json`;
+                  document.body.appendChild(anchor);
+                  anchor.click();
+                  anchor.remove();
+                  URL.revokeObjectURL(url);
+                })();
+              }}
+              onImportBackup={() => backupInputRef.current?.click()}
+              onAddWidget={(definitionId) => void addWidgetInstance(definitionId)}
+              onOpenAiDialog={() => setAiDialogOpen(true)}
+              onEditDisplayName={() => {
+                const next = window.prompt("请输入新的用户名", currentDisplayName)?.trim();
+                if (!next || next === currentDisplayName) return;
+                void updateDisplayName(next).catch((error) => {
+                  const message = error instanceof Error ? error.message : "修改用户名失败";
+                  window.alert(message);
+                });
+              }}
+            />
+          ) : null}
 
-        <BoardCanvas
-          board={activeBoard}
-          definitions={widgetDefinitions}
-          widgets={widgetInstances}
-          fullscreen={fullscreen}
-          onMove={(widgetId, x, y) => void updateWidgetPosition(widgetId, x, y)}
-          onResize={(widgetId, w, h) => void updateWidgetSize(widgetId, w, h)}
-          onStateChange={(widgetId, state) => void updateWidgetState(widgetId, state)}
-          onRemoveWidget={(widgetId) => void removeWidgetInstance(widgetId)}
-        />
+          <BoardCanvas
+            board={activeBoard}
+            definitions={widgetDefinitions}
+            widgets={widgetInstances}
+            fullscreen={fullscreen}
+            isMobileMode={isMobileMode}
+            onMove={(widgetId, x, y) => void updateWidgetPosition(widgetId, x, y)}
+            onResize={(widgetId, w, h) => void updateWidgetSize(widgetId, w, h)}
+            onStateChange={(widgetId, state) => void updateWidgetState(widgetId, state)}
+            onRemoveWidget={(widgetId) => void removeWidgetInstance(widgetId)}
+          />
 
-        <button
-          onClick={() => {
-            const sidebarWidth = sidebarOpen && !fullscreen ? 280 : 0;
-            const canvasWidth = Math.max(360, window.innerWidth - sidebarWidth - 24);
-            void autoAlignWidgets(canvasWidth);
-          }}
-          title="自动对齐"
-          style={{
-            position: "fixed",
-            right: 14,
-            bottom: 14,
-            width: 26,
-            height: 26,
-            borderRadius: "50%",
-            border: "1px solid rgba(255,255,255,0.58)",
-            background: "linear-gradient(165deg, rgba(255,255,255,0.62), rgba(255,255,255,0.34))",
-            backdropFilter: "blur(12px)",
-            color: "#64748b",
-            fontSize: 14,
-            lineHeight: 1,
-            cursor: "pointer",
-            zIndex: 1500,
-            display: "grid",
-            placeItems: "center"
-          }}
-        >
-          ⊞
-        </button>
-      </main>
+          <button
+            onClick={() => {
+              const sidebarWidth = sidebarOpen && !fullscreen && !isMobileMode ? 280 : 0;
+              const stageWidth = isMobileMode ? Math.min(MOBILE_FRAME_WIDTH, window.innerWidth) : window.innerWidth;
+              const canvasWidth = Math.max(320, stageWidth - sidebarWidth - 24);
+              void autoAlignWidgets(canvasWidth);
+            }}
+            title="自动对齐"
+            style={{
+              position: isMobileMode ? "absolute" : "fixed",
+              right: 14,
+              bottom: isMobileMode ? "calc(env(safe-area-inset-bottom) + 12px)" : 14,
+              width: 26,
+              height: 26,
+              borderRadius: "50%",
+              border: "1px solid rgba(255,255,255,0.58)",
+              background: "linear-gradient(165deg, rgba(255,255,255,0.62), rgba(255,255,255,0.34))",
+              backdropFilter: "blur(12px)",
+              color: "#64748b",
+              fontSize: 14,
+              lineHeight: 1,
+              cursor: "pointer",
+              zIndex: 1500,
+              display: "grid",
+              placeItems: "center"
+            }}
+          >
+            ⊞
+          </button>
+        </main>
+
+        {isMobileMode && !fullscreen && mobileSidebarOpen ? (
+          <>
+            <button
+              type="button"
+              className="mobile-sidebar-backdrop"
+              aria-label="关闭桌板菜单"
+              onClick={() => setMobileSidebarOpen(false)}
+            />
+            <div className="mobile-sidebar-drawer" role="dialog" aria-modal="true" aria-label="桌板菜单">
+              <BoardSidebar
+                boards={boards}
+                activeBoardId={activeBoardId}
+                onSelectBoard={(boardId) => {
+                  void setActiveBoard(boardId);
+                  setMobileSidebarOpen(false);
+                }}
+                onAddBoard={() => void addBoard()}
+                onRenameBoard={(boardId, name) => void renameBoard(boardId, name)}
+                onDeleteBoard={(boardId) => void deleteBoard(boardId)}
+              />
+            </div>
+          </>
+        ) : null}
+      </div>
 
       <CommandPalette
         open={commandPaletteOpen}
@@ -217,7 +290,7 @@ export function App() {
         onGenerate={generateAiWidget}
       />
 
-      <OnlineUsersDock />
+      <OnlineUsersDock isMobileMode={isMobileMode} />
 
       <input
         ref={wallpaperInputRef}
