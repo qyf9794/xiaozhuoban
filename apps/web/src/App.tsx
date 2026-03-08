@@ -123,6 +123,12 @@ export function App() {
   }, [isMobileMode]);
 
   useEffect(() => {
+    if (fullscreen) {
+      setMobileSidebarOpen(false);
+    }
+  }, [fullscreen]);
+
+  useEffect(() => {
     if (!mobileSidebarOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -150,7 +156,17 @@ export function App() {
             onDeleteBoard={(boardId) => void deleteBoard(boardId)}
           />
         ) : null}
-        <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative" }}>
+        <main
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+            minHeight: 0,
+            height: isMobileMode ? "100%" : undefined,
+            position: "relative"
+          }}
+        >
           {!fullscreen ? (
             <Toolbar
               board={activeBoard}
@@ -159,6 +175,10 @@ export function App() {
               isMobileMode={isMobileMode}
               fullscreen={fullscreen}
               onToggleFullscreen={() => {
+                if (isMobileMode) {
+                  setFullscreen((prev) => !prev);
+                  return;
+                }
                 if (document.fullscreenElement) {
                   void document.exitFullscreen();
                 } else {
