@@ -191,7 +191,8 @@ export function BoardCanvas({
             style={{
               position: isMobileMode ? "relative" : "absolute",
               width: isMobileMode ? "min(350px, 100%)" : size.w,
-              height: isMobileMode ? Math.max(size.h, 180) : size.h,
+              height: isMobileMode ? "auto" : size.h,
+              minHeight: isMobileMode ? 180 : undefined,
               left: isMobileMode ? undefined : position.x,
               top: isMobileMode ? undefined : position.y,
               zIndex: isMobileMode ? "auto" : widget.zIndex,
