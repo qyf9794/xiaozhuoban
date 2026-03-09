@@ -15,6 +15,7 @@ export interface BoardRepository {
 export interface WidgetRepository {
   listByBoard(boardId: string): Promise<WidgetInstance[]>;
   upsertInstance(instance: WidgetInstance): Promise<void>;
+  upsertInstances(instances: WidgetInstance[]): Promise<void>;
   deleteInstance(instanceId: string): Promise<void>;
   listDefinitions(): Promise<WidgetDefinition[]>;
   upsertDefinition(definition: WidgetDefinition): Promise<void>;
@@ -61,6 +62,12 @@ export class InMemoryRepository implements AppRepository {
 
   async upsertInstance(instance: WidgetInstance): Promise<void> {
     this.widgetInstances.set(instance.id, instance);
+  }
+
+  async upsertInstances(instances: WidgetInstance[]): Promise<void> {
+    instances.forEach((instance) => {
+      this.widgetInstances.set(instance.id, instance);
+    });
   }
 
   async deleteInstance(instanceId: string): Promise<void> {
@@ -138,6 +145,10 @@ export class DexieRepository implements AppRepository {
 
   async upsertInstance(instance: WidgetInstance): Promise<void> {
     await this.db.widgetInstances.put(instance);
+  }
+
+  async upsertInstances(instances: WidgetInstance[]): Promise<void> {
+    await this.db.widgetInstances.bulkPut(instances);
   }
 
   async deleteInstance(instanceId: string): Promise<void> {

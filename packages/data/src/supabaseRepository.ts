@@ -278,6 +278,15 @@ export class SupabaseRepository {
     throwIfError(error);
   }
 
+  async upsertInstances(instances: WidgetInstance[]): Promise<void> {
+    if (instances.length === 0) return;
+    const rows = instances.map((instance) => widgetInstanceToRow(instance, this.userId));
+    const { error } = await this.client.from("widget_instances").upsert(rows, {
+      onConflict: "id"
+    });
+    throwIfError(error);
+  }
+
   async deleteInstance(instanceId: string): Promise<void> {
     const now = new Date().toISOString();
     const { error } = await this.client
