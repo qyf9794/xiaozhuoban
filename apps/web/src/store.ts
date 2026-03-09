@@ -219,15 +219,15 @@ interface AppState {
   deleteBoard: (boardId: string) => Promise<void>;
   setBoardWallpaper: (imageDataUrl: string) => Promise<void>;
   setActiveBoard: (boardId: string) => Promise<void>;
-  addWidgetInstance: (definitionId: string) => Promise<void>;
+  addWidgetInstance: (definitionId: string, options?: { mobileMode?: boolean }) => Promise<void>;
   removeWidgetInstance: (widgetId: string) => Promise<void>;
   updateWidgetPosition: (widgetId: string, x: number, y: number) => Promise<void>;
   updateWidgetSize: (widgetId: string, w: number, h: number) => Promise<void>;
   updateWidgetState: (widgetId: string, state: Record<string, unknown>) => Promise<void>;
-  autoAlignWidgets: (viewportWidth: number) => Promise<void>;
+  autoAlignWidgets: (viewportWidth: number, options?: { mobileMode?: boolean }) => Promise<void>;
   setCommandPaletteOpen: (open: boolean) => void;
   setAiDialogOpen: (open: boolean) => void;
-  generateAiWidget: (prompt: string) => Promise<void>;
+  generateAiWidget: (prompt: string, options?: { mobileMode?: boolean }) => Promise<void>;
   createBackupSnapshot: () => Promise<Record<string, unknown>>;
   importBackupSnapshot: (snapshot: unknown, backupName?: string) => Promise<void>;
 }
@@ -239,8 +239,17 @@ interface BackupSnapshotPayload {
   widgetsByBoard: Record<string, WidgetInstance[]>;
 }
 
+const MOBILE_STACK_MARGIN = 20;
+const MOBILE_STACK_GAP = 16;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
+}
+
+function persistInBackground(task: Promise<void>, label: string) {
+  void task.catch((error) => {
+    console.error(`[store] ${label} failed`, error);
+  });
 }
 
 function parseBackupSnapshot(value: unknown): BackupSnapshotPayload | null {
@@ -319,6 +328,64 @@ function getDefaultWidgetSize(type?: string): { w: number; h: number } {
     return { w: 240, h: 480 };
   }
   return { w: 240, h: 180 };
+}
+
+function buildDefinitionTypeMap(definitions: WidgetDefinition[]) {
+  return new Map(definitions.map((item) => [item.id, item.type]));
+}
+
+function safeWidgetWidth(widget: WidgetInstance, definitionType?: string) {
+  const normalized = Math.max(120, Number(widget.size.w) || 240);
+  return definitionType === "tv" ? clampTvWidgetSize(normalized, 480).w : normalized;
+}
+
+function safeWidgetHeight(widget: WidgetInstance, definitionType?: string) {
+  if (definitionType === "tv") {
+    return 480;
+  }
+  return Math.max(90, Number(widget.size.h) || 180);
+}
+
+function measureWidgetLayout(
+  widgets: WidgetInstance[],
+  definitionTypeById: Map<string, string>
+): Map<string, { top: number; left: number; height: number }> {
+  if (typeof document === "undefined") {
+    return new Map();
+  }
+
+  return new Map(
+    widgets.map((item) => {
+      const element = document.querySelector<HTMLElement>(`.widget-box[data-widget-id="${item.id}"]`);
+      const rect = element?.getBoundingClientRect();
+      const top = rect ? rect.top + window.scrollY : item.position.y;
+      const left = rect ? rect.left + window.scrollX : item.position.x;
+      const height = rect?.height ?? safeWidgetHeight(item, definitionTypeById.get(item.definitionId));
+      return [item.id, { top, left, height }];
+    })
+  );
+}
+
+function getNextMobileWidgetPosition(
+  widgets: WidgetInstance[],
+  definitionTypeById: Map<string, string>
+): { x: number; y: number } {
+  if (widgets.length === 0) {
+    return { x: MOBILE_STACK_MARGIN, y: MOBILE_STACK_MARGIN };
+  }
+
+  const measured = measureWidgetLayout(widgets, definitionTypeById);
+  const maxBottom = widgets.reduce((currentMax, item) => {
+    const layout = measured.get(item.id);
+    const height = layout?.height ?? safeWidgetHeight(item, definitionTypeById.get(item.definitionId));
+    const top = layout?.top ?? item.position.y;
+    return Math.max(currentMax, top + height);
+  }, MOBILE_STACK_MARGIN - MOBILE_STACK_GAP);
+
+  return {
+    x: MOBILE_STACK_MARGIN,
+    y: Math.round(maxBottom + MOBILE_STACK_GAP)
+  };
 }
 
 function normalizeMessageBoardHeights(
@@ -431,7 +498,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             createdAt: nowForWidget,
             updatedAt: nowForWidget
           };
-          await repository.upsertInstance(messageBoardInstance);
+          persistInBackground(repository.upsertInstance(messageBoardInstance), "initialize message board");
           widgetInstances = [messageBoardInstance];
         }
       }
@@ -439,7 +506,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const normalized = normalizeMessageBoardHeights(widgetInstances, definitions);
       widgetInstances = normalized.nextInstances;
       if (normalized.changedInstances.length > 0) {
-        await Promise.all(normalized.changedInstances.map((item) => repository.upsertInstance(item)));
+        persistInBackground(repository.upsertInstances(normalized.changedInstances), "normalize message board heights");
       }
 
       set({
@@ -537,11 +604,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     const widgetInstances = await repository.listByBoard(boardId);
     const normalized = normalizeMessageBoardHeights(widgetInstances, widgetDefinitions);
     if (normalized.changedInstances.length > 0) {
-      await Promise.all(normalized.changedInstances.map((item) => repository.upsertInstance(item)));
+      persistInBackground(repository.upsertInstances(normalized.changedInstances), "normalize active board widgets");
     }
     set({ activeBoardId: boardId, widgetInstances: normalized.nextInstances });
   },
-  async addWidgetInstance(definitionId) {
+  async addWidgetInstance(definitionId, options) {
     const { repository, activeBoardId, widgetInstances, widgetDefinitions } = get();
     if (!activeBoardId) {
       return;
@@ -549,26 +616,31 @@ export const useAppStore = create<AppState>((set, get) => ({
     const definition = widgetDefinitions.find((item) => item.id === definitionId);
     const defaultSize = getDefaultWidgetSize(definition?.type);
     const now = nowIso();
+    const definitionTypeById = buildDefinitionTypeMap(widgetDefinitions);
+    const nextMobilePosition = options?.mobileMode
+      ? getNextMobileWidgetPosition(widgetInstances, definitionTypeById)
+      : null;
     const instance: WidgetInstance = {
       id: createId("wi"),
       boardId: activeBoardId,
       definitionId,
       state: {},
       bindings: [],
-      position: { x: 20 + widgetInstances.length * 20, y: 20 + widgetInstances.length * 20 },
+      position:
+        nextMobilePosition ?? { x: 20 + widgetInstances.length * 20, y: 20 + widgetInstances.length * 20 },
       size: defaultSize,
       zIndex: widgetInstances.length + 1,
       locked: false,
       createdAt: now,
       updatedAt: now
     };
-    await repository.upsertInstance(instance);
     set({ widgetInstances: [...widgetInstances, instance] });
+    persistInBackground(repository.upsertInstance(instance), "add widget");
   },
   async removeWidgetInstance(widgetId) {
     const { repository, widgetInstances } = get();
-    await repository.deleteInstance(widgetId);
     set({ widgetInstances: widgetInstances.filter((item) => item.id !== widgetId) });
+    persistInBackground(repository.deleteInstance(widgetId), "remove widget");
   },
   async updateWidgetPosition(widgetId, x, y) {
     const { repository, widgetInstances } = get();
@@ -622,13 +694,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)) });
     void repository.upsertInstance(next);
   },
-  async autoAlignWidgets(_viewportWidth) {
+  async autoAlignWidgets(_viewportWidth, options) {
     const { repository, widgetInstances, widgetDefinitions } = get();
     if (widgetInstances.length === 0) return;
 
     const margin = 20;
     const horizontalGap = 18;
-    const verticalGap = horizontalGap / 3;
+    const verticalGap = MOBILE_STACK_GAP;
     const toNumber = (value: unknown) => {
       if (typeof value === "number") return value;
       if (typeof value === "string") {
@@ -640,9 +712,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       return Number.NaN;
     };
-    const definitionById = new Map(widgetDefinitions.map((item) => [item.id, item]));
+    const definitionTypeById = buildDefinitionTypeMap(widgetDefinitions);
     const typeOf = (widget: WidgetInstance): string =>
-      definitionById.get(widget.definitionId)?.type ?? "";
+      definitionTypeById.get(widget.definitionId) ?? "";
     const safeW = (widget: WidgetInstance) => {
       const n = toNumber(widget.size.w);
       const normalized = Number.isFinite(n) ? Math.max(120, n) : 240;
@@ -659,20 +731,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       return Number.isFinite(n) ? Math.max(90, n) : 180;
     };
 
-    const measuredHeights =
-      typeof document === "undefined"
-        ? new Map<string, number>()
-        : new Map(
-            widgetInstances.map((item) => {
-              const element = document.querySelector<HTMLElement>(`.widget-box[data-widget-id="${item.id}"]`);
-              const card = element?.querySelector<HTMLElement>("section");
-              const boxRectHeight = element?.getBoundingClientRect().height ?? 0;
-              const cardRectHeight = card?.getBoundingClientRect().height ?? 0;
-              const measured =
-                cardRectHeight > 0 ? cardRectHeight : boxRectHeight;
-              return [item.id, measured];
-            })
-          );
+    const measuredLayout = measureWidgetLayout(widgetInstances, definitionTypeById);
+    const measuredHeights = new Map(
+      widgetInstances.map((item) => [item.id, measuredLayout.get(item.id)?.height ?? 0])
+    );
 
     const normalized = widgetInstances.map((item) => ({
       ...item,
@@ -699,6 +761,45 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const normalizedById = new Map(normalized.map((item) => [item.id, item]));
     const normalizedInstances = widgetInstances.map((item) => normalizedById.get(item.id) ?? item);
+
+    if (options?.mobileMode) {
+      const ordered = [...normalizedInstances].sort((a, b) => {
+        const aLayout = measuredLayout.get(a.id);
+        const bLayout = measuredLayout.get(b.id);
+        const topDelta = (aLayout?.top ?? a.position.y) - (bLayout?.top ?? b.position.y);
+        if (topDelta !== 0) return topDelta;
+        const leftDelta = (aLayout?.left ?? a.position.x) - (bLayout?.left ?? b.position.x);
+        if (leftDelta !== 0) return leftDelta;
+        return a.zIndex - b.zIndex;
+      });
+
+      let yCursor = MOBILE_STACK_MARGIN;
+      const nextInstances = ordered.map((item) => {
+        const definitionType = typeOf(item);
+        const h = measuredHeightOf(item, safeH(item));
+        const next = {
+          ...item,
+          size: {
+            w: safeWidgetWidth(item, definitionType),
+            h
+          },
+          position: {
+            x: MOBILE_STACK_MARGIN,
+            y: Math.round(yCursor)
+          },
+          updatedAt: nowIso()
+        };
+        yCursor += h + MOBILE_STACK_GAP;
+        return next;
+      });
+
+      const nextById = new Map(nextInstances.map((item) => [item.id, item]));
+      set({
+        widgetInstances: widgetInstances.map((item) => nextById.get(item.id) ?? item)
+      });
+      persistInBackground(repository.upsertInstances(nextInstances), "auto align mobile widgets");
+      return;
+    }
 
     const sortedByX = [...normalizedInstances].sort((a, b) => a.position.x - b.position.x);
 
@@ -767,11 +868,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const nextInstances = widgetInstances.map((item) => nextById.get(item.id) ?? item);
 
-    await Promise.all(nextInstances.map((item) => repository.upsertInstance(item)));
     const byId = new Map(nextInstances.map((item) => [item.id, item]));
     set({
       widgetInstances: widgetInstances.map((item) => byId.get(item.id) ?? item)
     });
+    persistInBackground(repository.upsertInstances(nextInstances), "auto align widgets");
   },
   setCommandPaletteOpen(open) {
     set({ commandPaletteOpen: open });
@@ -779,7 +880,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setAiDialogOpen(open) {
     set({ aiDialogOpen: open });
   },
-  async generateAiWidget(prompt) {
+  async generateAiWidget(prompt, options) {
     const { aiBuilder, repository, widgetDefinitions } = get();
     const draft = aiBuilder.generate(prompt);
     await repository.upsertDefinition(draft.definition);
@@ -787,7 +888,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       widgetDefinitions: [...widgetDefinitions, draft.definition],
       aiDialogOpen: false
     });
-    await get().addWidgetInstance(draft.definition.id);
+    await get().addWidgetInstance(draft.definition.id, options);
   },
   async createBackupSnapshot() {
     const { repository } = get();

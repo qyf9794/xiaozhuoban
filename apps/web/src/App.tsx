@@ -65,11 +65,8 @@ export function App() {
   const isMobileMode = isMobileUa || viewportWidth <= MOBILE_VIEWPORT_MAX;
 
   const activeBoard = useMemo(() => boards.find((item) => item.id === activeBoardId), [activeBoardId, boards]);
-  const mobileBackground = activeBoard
-    ? activeBoard.background.type === "color"
-      ? activeBoard.background.value
-      : `center / cover no-repeat url(${activeBoard.background.value})`
-    : "#eceff3";
+  const mobileBackgroundColor = activeBoard?.background.type === "color" ? activeBoard.background.value : "#0f172a";
+  const mobileBackgroundImage = activeBoard?.background.type === "image" ? activeBoard.background.value : null;
 
   useEffect(() => {
     if (!userId) return;
@@ -131,20 +128,22 @@ export function App() {
     const previousBackground = document.body.style.background;
     const previousBackgroundColor = document.body.style.backgroundColor;
     const previousBackgroundAttachment = document.body.style.backgroundAttachment;
+    const previousRootBackgroundColor = document.documentElement.style.backgroundColor;
 
     if (isMobileMode && activeBoard) {
-      document.body.style.background = mobileBackground;
-      document.body.style.backgroundColor =
-        activeBoard.background.type === "color" ? activeBoard.background.value : "#0f172a";
-      document.body.style.backgroundAttachment = "fixed";
+      document.body.style.background = "none";
+      document.body.style.backgroundColor = mobileBackgroundColor;
+      document.body.style.backgroundAttachment = "scroll";
+      document.documentElement.style.backgroundColor = mobileBackgroundColor;
     }
 
     return () => {
       document.body.style.background = previousBackground;
       document.body.style.backgroundColor = previousBackgroundColor;
       document.body.style.backgroundAttachment = previousBackgroundAttachment;
+      document.documentElement.style.backgroundColor = previousRootBackgroundColor;
     };
-  }, [activeBoard, isMobileMode, mobileBackground]);
+  }, [activeBoard, isMobileMode, mobileBackgroundColor]);
 
   useEffect(() => {
     if (!mobileSidebarOpen) return;
@@ -201,7 +200,11 @@ export function App() {
 
   return (
     <div className={`app-shell ${isMobileMode ? "app-shell-mobile" : ""}`}>
-      {isMobileMode ? <div className="mobile-background-layer" style={{ background: mobileBackground }} /> : null}
+      {isMobileMode ? (
+        <div className="mobile-background-layer" style={{ backgroundColor: mobileBackgroundColor }}>
+          {mobileBackgroundImage ? <img className="mobile-background-image" src={mobileBackgroundImage} alt="" /> : null}
+        </div>
+      ) : null}
       <div className={isMobileMode ? "mobile-stage" : "desktop-stage"}>
         {sidebarOpen && !fullscreen && !isMobileMode ? (
           <BoardSidebar
@@ -265,7 +268,7 @@ export function App() {
               })();
             }}
             onImportBackup={() => backupInputRef.current?.click()}
-            onAddWidget={(definitionId) => void addWidgetInstance(definitionId)}
+            onAddWidget={(definitionId) => void addWidgetInstance(definitionId, { mobileMode: isMobileMode })}
             onOpenAiDialog={() => setAiDialogOpen(true)}
             onEditDisplayName={() => {
               const next = window.prompt("请输入新的用户名", currentDisplayName)?.trim();
@@ -294,7 +297,7 @@ export function App() {
               const sidebarWidth = sidebarOpen && !fullscreen && !isMobileMode ? 280 : 0;
               const stageWidth = isMobileMode ? Math.min(MOBILE_FRAME_WIDTH, window.innerWidth) : window.innerWidth;
               const canvasWidth = Math.max(320, stageWidth - sidebarWidth - 24);
-              void autoAlignWidgets(canvasWidth);
+              void autoAlignWidgets(canvasWidth, { mobileMode: isMobileMode });
             }}
             title="自动对齐"
             className={isMobileMode ? "mobile-floating-action" : undefined}
@@ -353,13 +356,13 @@ export function App() {
         boards={boards}
         definitions={widgetDefinitions}
         widgets={widgetInstances}
-        onAddWidget={(definitionId) => void addWidgetInstance(definitionId)}
+        onAddWidget={(definitionId) => void addWidgetInstance(definitionId, { mobileMode: isMobileMode })}
       />
 
       <AIGeneratorDialog
         open={aiDialogOpen}
         onClose={() => setAiDialogOpen(false)}
-        onGenerate={generateAiWidget}
+        onGenerate={(prompt) => generateAiWidget(prompt, { mobileMode: isMobileMode })}
       />
 
       <OnlineUsersDock isMobileMode={isMobileMode} />
