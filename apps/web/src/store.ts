@@ -358,9 +358,15 @@ function measureWidgetLayout(
     widgets.map((item) => {
       const element = document.querySelector<HTMLElement>(`.widget-box[data-widget-id="${item.id}"]`);
       const rect = element?.getBoundingClientRect();
+      const cardRect = element?.querySelector<HTMLElement>("section")?.getBoundingClientRect();
       const top = rect ? rect.top + window.scrollY : item.position.y;
       const left = rect ? rect.left + window.scrollX : item.position.x;
-      const height = rect?.height ?? safeWidgetHeight(item, definitionTypeById.get(item.definitionId));
+      const renderedHeight = Math.max(
+        rect?.height ?? 0,
+        cardRect?.height ?? 0,
+        rect && cardRect ? cardRect.bottom - rect.top : 0
+      );
+      const height = renderedHeight || safeWidgetHeight(item, definitionTypeById.get(item.definitionId));
       return [item.id, { top, left, height }];
     })
   );
