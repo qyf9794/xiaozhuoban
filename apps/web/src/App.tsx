@@ -353,36 +353,36 @@ export function App() {
             onRemoveWidget={(widgetId) => void removeWidgetInstance(widgetId)}
           />
 
-          <button
-            onClick={() => {
-              const sidebarWidth = sidebarOpen && !fullscreen && !isMobileMode ? 280 : 0;
-              const stageWidth = isMobileMode ? Math.min(MOBILE_FRAME_WIDTH, window.innerWidth) : window.innerWidth;
-              const canvasWidth = Math.max(320, stageWidth - sidebarWidth - 24);
-              void autoAlignWidgets(canvasWidth, { mobileMode: isMobileMode });
-            }}
-            title="自动对齐"
-            className={isMobileMode ? "mobile-floating-action" : undefined}
-            style={{
-              position: "fixed",
-              right: 14,
-              bottom: isMobileMode ? "calc(env(safe-area-inset-bottom) + 12px)" : 14,
-              width: 26,
-              height: 26,
-              borderRadius: "50%",
-              border: "1px solid rgba(255,255,255,0.58)",
-              background: "linear-gradient(165deg, rgba(255,255,255,0.62), rgba(255,255,255,0.34))",
-              backdropFilter: "blur(12px)",
-              color: "#64748b",
-              fontSize: 14,
-              lineHeight: 1,
-              cursor: "pointer",
-              zIndex: 1500,
-              display: "grid",
-              placeItems: "center"
-            }}
-          >
-            ⊞
-          </button>
+          {!isMobileMode ? (
+            <button
+              onClick={() => {
+                const sidebarWidth = sidebarOpen && !fullscreen ? 280 : 0;
+                const canvasWidth = Math.max(320, window.innerWidth - sidebarWidth - 24);
+                void autoAlignWidgets(canvasWidth, { mobileMode: false });
+              }}
+              title="自动对齐"
+              style={{
+                position: "fixed",
+                right: 14,
+                bottom: 14,
+                width: 26,
+                height: 26,
+                borderRadius: "50%",
+                border: "1px solid rgba(255,255,255,0.58)",
+                background: "linear-gradient(165deg, rgba(255,255,255,0.62), rgba(255,255,255,0.34))",
+                backdropFilter: "blur(12px)",
+                color: "#64748b",
+                fontSize: 14,
+                lineHeight: 1,
+                cursor: "pointer",
+                zIndex: 1500,
+                display: "grid",
+                placeItems: "center"
+              }}
+            >
+              ⊞
+            </button>
+          ) : null}
 
         </main>
 
