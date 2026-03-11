@@ -2549,34 +2549,37 @@ export function BuiltinWidgetView({
               }));
               return (
                 <div key={timeZone} className={`world-clock-cell ${toneClass}`}>
-                  {index === 0 ? (
-                    <div className="world-clock-city world-clock-city-fixed">{getWorldClockOptionLabel(timeZone)}</div>
-                  ) : (
-                    <GlassSelect
-                      value={timeZone}
-                      options={optionItems}
-                      onChange={(next) =>
-                        onStateChange({
-                          ...instance.state,
-                          zones: updateWorldClockSlot(zones, index, next)
-                        })
-                      }
-                      style={{ width: "fit-content", maxWidth: "100%" }}
-                      menuWidth={124}
-                      buttonStyle={{
-                        width: "auto",
-                        minHeight: 0,
-                        padding: "0 14px 0 0",
-                        border: "none",
-                        borderRadius: 0,
-                        background: "transparent",
-                        boxShadow: "none",
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color: "rgba(15, 23, 42, 0.8)"
-                      }}
-                    />
-                  )}
+                  <div className="world-clock-city-row">
+                    {index === 0 ? (
+                      <div className="world-clock-city world-clock-city-fixed">{getWorldClockOptionLabel(timeZone)}</div>
+                    ) : (
+                      <GlassSelect
+                        value={timeZone}
+                        options={optionItems}
+                        onChange={(next) =>
+                          onStateChange({
+                            ...instance.state,
+                            zones: updateWorldClockSlot(zones, index, next)
+                          })
+                        }
+                        style={{ width: "fit-content", maxWidth: "100%" }}
+                        menuWidth={124}
+                        buttonStyle={{
+                          width: "auto",
+                          minHeight: 18,
+                          padding: "0 14px 0 0",
+                          border: "none",
+                          borderRadius: 0,
+                          background: "transparent",
+                          boxShadow: "none",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          lineHeight: 1.1,
+                          color: "rgba(15, 23, 42, 0.8)"
+                        }}
+                      />
+                    )}
+                  </div>
                   <div className="world-clock-time">{display.time}</div>
                   <div className="world-clock-meta">{metaText}</div>
                 </div>
