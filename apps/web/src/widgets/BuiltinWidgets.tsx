@@ -2976,6 +2976,31 @@ export function BuiltinWidgetView({
 
     useEffect(() => {
       if (!userId) return;
+      let disposed = false;
+      const syncHistory = () => {
+        if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+          return;
+        }
+        void fetchMessageBoardHistory()
+          .then((history) => {
+            if (disposed) return;
+            setMessages((prev) => normalizeMessageList([...history, ...prev]));
+          })
+          .catch((error) => {
+            if (disposed) return;
+            console.warn("[messageBoard] poll history failed", error);
+          });
+      };
+      const timer = window.setInterval(syncHistory, 2500);
+      syncHistory();
+      return () => {
+        disposed = true;
+        window.clearInterval(timer);
+      };
+    }, [userId]);
+
+    useEffect(() => {
+      if (!userId) return;
 
       const channel = supabase.channel(MESSAGE_BOARD_CHANNEL, {
         config: { broadcast: { self: true, ack: true } }
@@ -3100,24 +3125,35 @@ export function BuiltinWidgetView({
       })();
     };
 
-    const panelMaxHeight = 480 - 74;
-
     return (
-      <WidgetShell definition={definition} instance={instance}>
+      <WidgetShell
+        definition={definition}
+        instance={instance}
+        cardStyle={{
+          height: "auto",
+          minHeight: 260,
+          maxHeight: 480,
+          overflow: "hidden"
+        }}
+      >
         <div
           style={{
             display: "flex",
             flexDirection: "column",
             gap: 8,
-            maxHeight: panelMaxHeight
+            flex: 1,
+            minHeight: 0
           }}
         >
+          <div style={{ fontSize: 10, color: "#64748b" }}>
+            状态：{channelStatusText}（当前用户：{userName}）
+          </div>
+          {messageError ? <div style={{ fontSize: 12, color: "#b91c1c" }}>{messageError}</div> : null}
           <div
             className="glass-scrollbar"
             style={{
-              flex: "0 1 auto",
+              flex: 1,
               minHeight: 0,
-              maxHeight: panelMaxHeight - 90,
               overflowY: "auto",
               display: "flex",
               flexDirection: "column",
@@ -3126,12 +3162,12 @@ export function BuiltinWidgetView({
             }}
           >
             {messages.length > 0 ? (
-              messages.map((item, index) => (
+              messages.map((item) => (
                 <div
                   key={item.id}
                   style={{
-                    fontSize: index === 0 ? 14 : 12,
-                    lineHeight: 1.5,
+                    fontSize: 14,
+                    lineHeight: 1.6,
                     whiteSpace: "pre-wrap",
                     wordBreak: "break-word",
                     overflowWrap: "anywhere",
@@ -3148,8 +3184,7 @@ export function BuiltinWidgetView({
               </div>
             )}
           </div>
-          {messageError ? <div style={{ fontSize: 12, color: "#b91c1c" }}>{messageError}</div> : null}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "end" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "end", marginTop: "auto" }}>
             <textarea
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
@@ -3172,9 +3207,6 @@ export function BuiltinWidgetView({
               }}
             />
             <Button onClick={sendMessage}>{sending ? "发送中..." : "发送"}</Button>
-          </div>
-          <div style={{ fontSize: 10, color: "#64748b" }}>
-            状态：{channelStatusText}（当前用户：{userName}）
           </div>
         </div>
       </WidgetShell>

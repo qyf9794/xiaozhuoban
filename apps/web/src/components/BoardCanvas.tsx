@@ -175,6 +175,7 @@ export function BoardCanvas({
 
         const position = drag?.id === widget.id && dragPosition ? dragPosition : widget.position;
         const isTvWidget = definition.type === "tv";
+        const isDynamicHeightWidget = definition.type === "messageBoard";
         const baseSize = isTvWidget ? clampTvWidgetSize(widget.size.w, 480) : widget.size;
         const size =
           resize?.id === widget.id
@@ -191,7 +192,7 @@ export function BoardCanvas({
             style={{
               position: isMobileMode ? "relative" : "absolute",
               width: isMobileMode ? "min(350px, 100%)" : size.w,
-              height: isMobileMode ? "auto" : size.h,
+              height: isMobileMode || isDynamicHeightWidget ? "auto" : size.h,
               left: isMobileMode ? undefined : position.x,
               top: isMobileMode ? undefined : position.y,
               zIndex: isMobileMode ? "auto" : widget.zIndex,

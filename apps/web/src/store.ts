@@ -326,7 +326,7 @@ function getDefaultWidgetSize(type?: string): { w: number; h: number } {
     return { w: 240, h: 480 };
   }
   if (type === "messageBoard") {
-    return { w: 240, h: 480 };
+    return { w: 240, h: 260 };
   }
   return { w: 240, h: 180 };
 }
@@ -370,7 +370,8 @@ function measureWidgetLayout(
       const element = document.querySelector<HTMLElement>(`.widget-box[data-widget-id="${item.id}"]`);
       const canvas = element?.closest<HTMLElement>(".board-canvas");
       const rect = element?.getBoundingClientRect();
-      const cardRect = element?.querySelector<HTMLElement>("section")?.getBoundingClientRect();
+      const card = element?.querySelector<HTMLElement>("section");
+      const cardRect = card?.getBoundingClientRect();
       const canvasRect = canvas?.getBoundingClientRect();
       const canvasStyles = canvas ? window.getComputedStyle(canvas) : null;
       const canvasPaddingTop = canvasStyles ? Number.parseFloat(canvasStyles.paddingTop) || 0 : 0;
@@ -393,12 +394,21 @@ function measureWidgetLayout(
         canvasPosition?.top ?? item.position.y;
       const left =
         canvasPosition?.left ?? item.position.x;
+      const visibleContentBottom = card
+        ? Array.from(card.querySelectorAll<HTMLElement>("*")).reduce((currentMax, node) => {
+            const nodeRect = node.getBoundingClientRect();
+            if (nodeRect.height <= 0 || nodeRect.width <= 0) {
+              return currentMax;
+            }
+            return Math.max(currentMax, nodeRect.bottom);
+          }, cardRect?.bottom ?? 0)
+        : 0;
       const renderedHeight = Math.max(
-        rect?.height ?? 0,
-        cardRect?.height ?? 0,
-        rect && cardRect ? cardRect.bottom - rect.top : 0
+        rect && cardRect ? cardRect.bottom - rect.top : 0,
+        rect && visibleContentBottom ? visibleContentBottom - rect.top : 0,
+        cardRect?.height ?? 0
       );
-      const height = renderedHeight || safeWidgetHeight(item, definitionTypeById.get(item.definitionId));
+      const height = renderedHeight > 0 ? renderedHeight : safeWidgetHeight(item, definitionTypeById.get(item.definitionId));
       return [item.id, { top, left, height }];
     })
   );
@@ -439,7 +449,7 @@ function createDefaultMessageBoardInstance(
     state: {},
     bindings: [],
     position: { x: DEFAULT_BOARD_WIDGET_OFFSET, y: DEFAULT_BOARD_WIDGET_OFFSET },
-    size: { w: 240, h: 480 },
+    size: { w: 240, h: 260 },
     zIndex,
     locked: false,
     createdAt: now,
@@ -455,32 +465,32 @@ export function createDefaultBoardWidgets(boardId: string, definitions: WidgetDe
   return [createDefaultMessageBoardInstance(boardId, messageBoardDef.id)];
 }
 
-function normalizeMessageBoardHeights(
-  instances: WidgetInstance[],
-  definitions: WidgetDefinition[]
-): { nextInstances: WidgetInstance[]; changedInstances: WidgetInstance[] } {
-  const typeByDefId = new Map(definitions.map((item) => [item.id, item.type]));
-  const changedInstances: WidgetInstance[] = [];
-  const nextInstances = instances.map((instance) => {
-    const type = typeByDefId.get(instance.definitionId);
-    if (type !== "messageBoard") {
-      return instance;
-    }
-    if (instance.size.h === 480) {
-      return instance;
-    }
-    const next = {
-      ...instance,
-      size: {
-        ...instance.size,
-        h: 480
-      },
-      updatedAt: nowIso()
-    };
-    changedInstances.push(next);
-    return next;
-  });
-  return { nextInstances, changedInstances };
+async function ensureBoardDefaultWidgets(
+  repository: AppRepository,
+  boardId: string,
+  definitions: WidgetDefinition[],
+  widgetInstances: WidgetInstance[]
+): Promise<WidgetInstance[]> {
+  if (widgetInstances.length > 0) {
+    return widgetInstances;
+  }
+  const defaultWidgets = createDefaultBoardWidgets(boardId, definitions);
+  if (defaultWidgets.length === 0) {
+    return widgetInstances;
+  }
+  await repository.upsertInstances(defaultWidgets);
+  return defaultWidgets;
+}
+
+async function persistBoardWithWidgets(
+  repository: AppRepository,
+  board: Board,
+  widgetInstances: WidgetInstance[]
+): Promise<void> {
+  await repository.upsertBoard(board);
+  if (widgetInstances.length > 0) {
+    await repository.upsertInstances(widgetInstances);
+  }
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -549,17 +559,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         definitions = await repository.listDefinitions();
       }
       if (widgetInstances.length === 0) {
-        const defaultWidgets = createDefaultBoardWidgets(boardId, definitions);
-        if (defaultWidgets.length > 0) {
-          persistInBackground(repository.upsertInstances(defaultWidgets), "initialize message board");
-          widgetInstances = defaultWidgets;
-        }
-      }
-
-      const normalized = normalizeMessageBoardHeights(widgetInstances, definitions);
-      widgetInstances = normalized.nextInstances;
-      if (normalized.changedInstances.length > 0) {
-        persistInBackground(repository.upsertInstances(normalized.changedInstances), "normalize message board heights");
+        widgetInstances = await ensureBoardDefaultWidgets(repository, boardId, definitions, widgetInstances);
       }
 
       set({
@@ -593,16 +593,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   async addBoard(name = "新桌板") {
     const { repository, boards, widgetDefinitions } = get();
-    const workspaces = await repository.list();
-    const workspaceId = workspaces[0]?.id;
+    const workspaceId = boards[0]?.workspaceId ?? (await repository.list())[0]?.id;
     if (!workspaceId) return;
     const board = makeBoard(workspaceId, name);
     const defaultWidgets = createDefaultBoardWidgets(board.id, widgetDefinitions);
-    await repository.upsertBoard(board);
-    if (defaultWidgets.length > 0) {
-      await repository.upsertInstances(defaultWidgets);
-    }
     set({ boards: [...boards, board], activeBoardId: board.id, widgetInstances: defaultWidgets });
+    persistInBackground(persistBoardWithWidgets(repository, board, defaultWidgets), "add board");
   },
   async renameBoard(boardId, name) {
     const { repository, boards } = get();
@@ -620,31 +616,56 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
   async deleteBoard(boardId) {
-    const { repository, boards, activeBoardId } = get();
-    await repository.deleteBoard(boardId);
+    const { repository, boards, activeBoardId, widgetInstances, widgetDefinitions } = get();
+    const target = boards.find((board) => board.id === boardId);
+    if (!target) return;
     const nextBoards = boards.filter((board) => board.id !== boardId);
 
     if (nextBoards.length === 0) {
-      const { widgetDefinitions } = get();
-      const workspaces = await repository.list();
-      const workspaceId = workspaces[0]?.id;
+      const workspaceId = target.workspaceId;
       if (!workspaceId) {
         set({ boards: [], activeBoardId: undefined, widgetInstances: [] });
         return;
       }
       const fallback = makeBoard(workspaceId, "默认桌板");
       const defaultWidgets = createDefaultBoardWidgets(fallback.id, widgetDefinitions);
-      await repository.upsertBoard(fallback);
-      if (defaultWidgets.length > 0) {
-        await repository.upsertInstances(defaultWidgets);
-      }
       set({ boards: [fallback], activeBoardId: fallback.id, widgetInstances: defaultWidgets });
+      persistInBackground(
+        (async () => {
+          await repository.deleteBoard(boardId);
+          await persistBoardWithWidgets(repository, fallback, defaultWidgets);
+        })(),
+        "delete board with fallback"
+      );
       return;
     }
 
     const nextActiveBoardId = activeBoardId === boardId ? nextBoards[0].id : activeBoardId;
-    const widgetInstances = nextActiveBoardId ? await repository.listByBoard(nextActiveBoardId) : [];
-    set({ boards: nextBoards, activeBoardId: nextActiveBoardId, widgetInstances });
+    const deletingActiveBoard = activeBoardId === boardId;
+    set({
+      boards: nextBoards,
+      activeBoardId: nextActiveBoardId,
+      widgetInstances: deletingActiveBoard ? [] : widgetInstances
+    });
+    persistInBackground(
+      (async () => {
+        await repository.deleteBoard(boardId);
+        if (!deletingActiveBoard || !nextActiveBoardId) {
+          return;
+        }
+        const nextInstances = await repository.listByBoard(nextActiveBoardId);
+        const resolvedInstances = await ensureBoardDefaultWidgets(
+          repository,
+          nextActiveBoardId,
+          widgetDefinitions,
+          nextInstances
+        );
+        if (get().activeBoardId === nextActiveBoardId) {
+          set({ widgetInstances: resolvedInstances });
+        }
+      })(),
+      "delete board"
+    );
   },
   async setBoardWallpaper(imageDataUrl) {
     const { repository, boards, activeBoardId } = get();
@@ -663,12 +684,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   async setActiveBoard(boardId) {
     const { repository, widgetDefinitions } = get();
-    const widgetInstances = await repository.listByBoard(boardId);
-    const normalized = normalizeMessageBoardHeights(widgetInstances, widgetDefinitions);
-    if (normalized.changedInstances.length > 0) {
-      persistInBackground(repository.upsertInstances(normalized.changedInstances), "normalize active board widgets");
-    }
-    set({ activeBoardId: boardId, widgetInstances: normalized.nextInstances });
+    const existingInstances = await repository.listByBoard(boardId);
+    const widgetInstances = await ensureBoardDefaultWidgets(repository, boardId, widgetDefinitions, existingInstances);
+    set({ activeBoardId: boardId, widgetInstances });
   },
   async addWidgetInstance(definitionId, options) {
     const { repository, activeBoardId, widgetInstances, widgetDefinitions } = get();

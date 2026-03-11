@@ -1,12 +1,14 @@
-import type { PropsWithChildren } from "react";
+import type { CSSProperties, PropsWithChildren } from "react";
 
 export function Card({
   children,
   title,
-  tone = "default"
+  tone = "default",
+  style
 }: PropsWithChildren<{
   title?: string;
   tone?: "default" | "sticky" | "mint" | "sky" | "peach" | "slate" | "aqua" | "rose";
+  style?: CSSProperties;
 }>) {
   const palette = {
     default: {
@@ -59,13 +61,18 @@ export function Card({
         overflow: "visible",
         display: "flex",
         flexDirection: "column",
+        boxSizing: "border-box",
+        width: "100%",
+        height: "100%",
+        minHeight: 0,
         border: theme.border,
         borderRadius: 18,
         background: theme.background,
         WebkitBackdropFilter: "blur(14px) saturate(130%)",
         backdropFilter: "blur(14px) saturate(130%)",
         padding: 12,
-        boxShadow: theme.boxShadow
+        boxShadow: theme.boxShadow,
+        ...style
       }}
     >
       {title ? (

@@ -31,9 +31,8 @@ export function normalizeMessageList(items: MessageBoardItem[]): MessageBoardIte
     if (!item.id || !item.text.trim()) return;
     deduped.set(item.id, item);
   });
-  return [...deduped.values()]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 50);
+  const ordered = [...deduped.values()].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return ordered.slice(0, 50);
 }
 
 function hashString(input: string): number {

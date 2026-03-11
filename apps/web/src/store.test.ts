@@ -30,7 +30,7 @@ describe("createDefaultBoardWidgets", () => {
       boardId: "board_1",
       definitionId: "wd_messageBoard",
       position: { x: 20, y: 20 },
-      size: { w: 240, h: 480 },
+      size: { w: 240, h: 260 },
       zIndex: 1
     });
   });
