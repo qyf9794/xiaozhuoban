@@ -625,6 +625,8 @@ interface MessageBoardRow {
   created_at: string;
 }
 
+let messageBoardAudioContext: AudioContext | null = null;
+
 function messageFromRow(row: MessageBoardRow): MessageBoardItem {
   return {
     id: row.id,
@@ -647,6 +649,35 @@ async function fetchMessageBoardHistory(): Promise<MessageBoardItem[]> {
   }
 
   return ((data as MessageBoardRow[] | null) ?? []).map(messageFromRow);
+}
+
+async function playMessageBoardChime() {
+  if (typeof window === "undefined") return;
+  const AudioContextCtor = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextCtor) return;
+  if (!messageBoardAudioContext) {
+    messageBoardAudioContext = new AudioContextCtor();
+  }
+  const ctx = messageBoardAudioContext;
+  if (ctx.state === "suspended") {
+    await ctx.resume();
+  }
+
+  const startAt = ctx.currentTime + 0.01;
+  const duration = 0.16;
+  const gainNode = ctx.createGain();
+  gainNode.connect(ctx.destination);
+  gainNode.gain.setValueAtTime(0.0001, startAt);
+  gainNode.gain.exponentialRampToValueAtTime(0.06, startAt + 0.02);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+
+  const oscillator = ctx.createOscillator();
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(740, startAt);
+  oscillator.frequency.exponentialRampToValueAtTime(988, startAt + duration);
+  oscillator.connect(gainNode);
+  oscillator.start(startAt);
+  oscillator.stop(startAt + duration);
 }
 
 function normalizeClipboardRecords(raw: unknown): ClipboardRecord[] {
@@ -2943,11 +2974,33 @@ export function BuiltinWidgetView({
     const [channelStatusText, setChannelStatusText] = useState("连接中...");
     const [retrySeed, setRetrySeed] = useState(0);
     const channelRef = useRef<RealtimeChannel | null>(null);
+    const latestMessageIdRef = useRef("");
+    const initializedMessageRef = useRef(false);
     const userId = user?.id ?? "";
     const userName = resolveUserName({
       email: user?.email ?? null,
       userMetadata: (user?.user_metadata as Record<string, unknown> | undefined) ?? null
     });
+
+    useEffect(() => {
+      const latest = messages[0];
+      if (!latest) return;
+      if (!initializedMessageRef.current) {
+        initializedMessageRef.current = true;
+        latestMessageIdRef.current = latest.id;
+        return;
+      }
+      if (latest.id === latestMessageIdRef.current) {
+        return;
+      }
+      latestMessageIdRef.current = latest.id;
+      if (latest.senderId === userId) {
+        return;
+      }
+      void playMessageBoardChime().catch((error) => {
+        console.warn("[messageBoard] chime failed", error);
+      });
+    }, [messages, userId]);
 
     useEffect(() => {
       if (!userId) return;
