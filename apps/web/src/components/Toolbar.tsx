@@ -119,7 +119,7 @@ export function Toolbar({
               minHeight: 28
             }}
           >
-            {fullscreen ? "🗗" : "⛶"}
+            ⛶
           </button>
         ) : null}
         <h1
