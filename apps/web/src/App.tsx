@@ -168,6 +168,25 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    if (isMobileMode || !fullscreen) {
+      return;
+    }
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [fullscreen, isMobileMode]);
+
+  useEffect(() => {
     const onResize = () => {
       setViewportWidth(window.innerWidth);
     };
@@ -287,59 +306,61 @@ export function App() {
             position: "relative"
           }}
         >
-          <Toolbar
-            board={activeBoard}
-            definitions={widgetDefinitions}
-            sidebarOpen={sidebarOpen}
-            isMobileMode={isMobileMode}
-            fullscreen={fullscreen}
-            onToggleFullscreen={() => {
-              if (document.fullscreenElement) {
-                void document.exitFullscreen();
-              } else {
-                void document.documentElement.requestFullscreen();
-              }
-            }}
-            onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
-            onOpenMobileMenu={() => setMobileSidebarOpen(true)}
-            onOpenCommandPalette={() => setCommandPaletteOpen(true)}
-            onPickWallpaper={() => wallpaperInputRef.current?.click()}
-            onSignOut={() => {
-              void signOut().catch((error) => {
-                const message = error instanceof Error ? error.message : "退出登录失败";
-                window.alert(message);
-              });
-            }}
-            onBackup={() => {
-              void (async () => {
-                const snapshot = await createBackupSnapshot();
-                const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
-                const url = URL.createObjectURL(blob);
-                const anchor = document.createElement("a");
-                anchor.href = url;
-                const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-                const safeBoardName = (activeBoard.name || "小桌板")
-                  .replace(/[\\/:*?"<>|]/g, "_")
-                  .trim();
-                anchor.download = `${safeBoardName}-备份-${timestamp}.json`;
-                document.body.appendChild(anchor);
-                anchor.click();
-                anchor.remove();
-                URL.revokeObjectURL(url);
-              })();
-            }}
-            onImportBackup={() => backupInputRef.current?.click()}
-            onAddWidget={(definitionId) => void addWidgetInstance(definitionId, { mobileMode: isMobileMode })}
-            onOpenAiDialog={() => setAiDialogOpen(true)}
-            onEditDisplayName={() => {
-              const next = window.prompt("请输入新的用户名", currentDisplayName)?.trim();
-              if (!next || next === currentDisplayName) return;
-              void updateDisplayName(next).catch((error) => {
-                const message = error instanceof Error ? error.message : "修改用户名失败";
-                window.alert(message);
-              });
-            }}
-          />
+          {isMobileMode || !fullscreen ? (
+            <Toolbar
+              board={activeBoard}
+              definitions={widgetDefinitions}
+              sidebarOpen={sidebarOpen}
+              isMobileMode={isMobileMode}
+              fullscreen={fullscreen}
+              onToggleFullscreen={() => {
+                if (document.fullscreenElement) {
+                  void document.exitFullscreen();
+                } else {
+                  void document.documentElement.requestFullscreen();
+                }
+              }}
+              onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
+              onOpenMobileMenu={() => setMobileSidebarOpen(true)}
+              onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+              onPickWallpaper={() => wallpaperInputRef.current?.click()}
+              onSignOut={() => {
+                void signOut().catch((error) => {
+                  const message = error instanceof Error ? error.message : "退出登录失败";
+                  window.alert(message);
+                });
+              }}
+              onBackup={() => {
+                void (async () => {
+                  const snapshot = await createBackupSnapshot();
+                  const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
+                  const url = URL.createObjectURL(blob);
+                  const anchor = document.createElement("a");
+                  anchor.href = url;
+                  const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+                  const safeBoardName = (activeBoard.name || "小桌板")
+                    .replace(/[\\/:*?"<>|]/g, "_")
+                    .trim();
+                  anchor.download = `${safeBoardName}-备份-${timestamp}.json`;
+                  document.body.appendChild(anchor);
+                  anchor.click();
+                  anchor.remove();
+                  URL.revokeObjectURL(url);
+                })();
+              }}
+              onImportBackup={() => backupInputRef.current?.click()}
+              onAddWidget={(definitionId) => void addWidgetInstance(definitionId, { mobileMode: isMobileMode })}
+              onOpenAiDialog={() => setAiDialogOpen(true)}
+              onEditDisplayName={() => {
+                const next = window.prompt("请输入新的用户名", currentDisplayName)?.trim();
+                if (!next || next === currentDisplayName) return;
+                void updateDisplayName(next).catch((error) => {
+                  const message = error instanceof Error ? error.message : "修改用户名失败";
+                  window.alert(message);
+                });
+              }}
+            />
+          ) : null}
 
           <BoardCanvas
             board={activeBoard}

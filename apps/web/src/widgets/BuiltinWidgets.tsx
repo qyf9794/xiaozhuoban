@@ -2567,7 +2567,7 @@ export function BuiltinWidgetView({
                         buttonStyle={{
                           width: "auto",
                           minHeight: 18,
-                          padding: "0 14px 0 0",
+                          padding: "0 20px 0 0",
                           border: "none",
                           borderRadius: 0,
                           background: "transparent",

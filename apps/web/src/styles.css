@@ -246,7 +246,7 @@ body {
   flex: 1;
   min-height: 0;
   display: grid;
-  gap: 12px 10px;
+  gap: 8px 10px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: repeat(2, minmax(0, 1fr));
   align-items: start;

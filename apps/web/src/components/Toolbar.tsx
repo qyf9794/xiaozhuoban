@@ -1,6 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Board, WidgetDefinition } from "@xiaozhuoban/domain";
 
+function SidebarToggleIcon({ open }: { open: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="2" y="2.25" width="12" height="11.5" rx="2" fill="none" stroke="currentColor" strokeWidth="1.25" />
+      {open ? <rect x="2.75" y="3" width="3.25" height="10" rx="1" fill="currentColor" opacity="0.88" /> : null}
+      {!open ? <rect x="10" y="3" width="3.25" height="10" rx="1" fill="currentColor" opacity="0.88" /> : null}
+      <path d="M8 3v10" stroke="currentColor" strokeWidth="1" opacity="0.42" />
+    </svg>
+  );
+}
+
+function FullscreenIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.75 6V2.75H6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M10 2.75h3.25V6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M13.25 10v3.25H10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M6 13.25H2.75V10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function Toolbar({
   board,
   definitions,
@@ -85,7 +107,7 @@ export function Toolbar({
         paddingTop: isMobileMode ? "calc(env(safe-area-inset-top) + 8px)" : "10px"
       }}
     >
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
         <button
           aria-label={isMobileMode ? "打开桌板菜单" : sidebarOpen ? "隐藏侧栏" : "显示侧栏"}
           onClick={isMobileMode ? onOpenMobileMenu : onToggleSidebar}
@@ -96,12 +118,14 @@ export function Toolbar({
             fontSize: isMobileMode ? 20 : 18,
             lineHeight: 1,
             cursor: "pointer",
-            padding: 2,
-            minWidth: 28,
-            minHeight: 28
+            padding: 0,
+            width: 28,
+            height: 28,
+            display: "grid",
+            placeItems: "center"
           }}
         >
-          {isMobileMode ? "☰" : sidebarOpen ? "◧" : "◨"}
+          {isMobileMode ? "☰" : <SidebarToggleIcon open={sidebarOpen} />}
         </button>
         {!isMobileMode ? (
           <button
@@ -111,15 +135,15 @@ export function Toolbar({
               border: "none",
               background: "transparent",
               color: "#94a3b8",
-              fontSize: 17,
-              lineHeight: 1,
               cursor: "pointer",
-              padding: 2,
-              minWidth: 28,
-              minHeight: 28
+              padding: 0,
+              width: 28,
+              height: 28,
+              display: "grid",
+              placeItems: "center"
             }}
           >
-            ⛶
+            <FullscreenIcon />
           </button>
         ) : null}
         <h1
