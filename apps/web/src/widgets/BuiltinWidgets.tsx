@@ -627,6 +627,21 @@ interface MessageBoardRow {
 
 let messageBoardAudioContext: AudioContext | null = null;
 
+async function getMessageBoardAudioContext() {
+  if (typeof window === "undefined") return null;
+  const AudioContextCtor =
+    window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextCtor) return null;
+  if (!messageBoardAudioContext) {
+    messageBoardAudioContext = new AudioContextCtor();
+  }
+  const ctx = messageBoardAudioContext;
+  if (ctx.state === "suspended") {
+    await ctx.resume();
+  }
+  return ctx;
+}
+
 function messageFromRow(row: MessageBoardRow): MessageBoardItem {
   return {
     id: row.id,
@@ -652,32 +667,45 @@ async function fetchMessageBoardHistory(): Promise<MessageBoardItem[]> {
 }
 
 async function playMessageBoardChime() {
-  if (typeof window === "undefined") return;
-  const AudioContextCtor = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AudioContextCtor) return;
-  if (!messageBoardAudioContext) {
-    messageBoardAudioContext = new AudioContextCtor();
-  }
-  const ctx = messageBoardAudioContext;
-  if (ctx.state === "suspended") {
-    await ctx.resume();
-  }
+  const ctx = await getMessageBoardAudioContext();
+  if (!ctx) return;
 
   const startAt = ctx.currentTime + 0.01;
-  const duration = 0.16;
+  const duration = 0.22;
   const gainNode = ctx.createGain();
   gainNode.connect(ctx.destination);
   gainNode.gain.setValueAtTime(0.0001, startAt);
-  gainNode.gain.exponentialRampToValueAtTime(0.06, startAt + 0.02);
+  gainNode.gain.exponentialRampToValueAtTime(0.14, startAt + 0.02);
   gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
 
+  const first = ctx.createOscillator();
+  first.type = "triangle";
+  first.frequency.setValueAtTime(880, startAt);
+  first.connect(gainNode);
+  first.start(startAt);
+  first.stop(startAt + 0.09);
+
+  const second = ctx.createOscillator();
+  second.type = "triangle";
+  second.frequency.setValueAtTime(1318, startAt + 0.1);
+  second.connect(gainNode);
+  second.start(startAt + 0.1);
+  second.stop(startAt + duration);
+}
+
+async function primeMessageBoardAudio() {
+  const ctx = await getMessageBoardAudioContext();
+  if (!ctx) return;
+  const startAt = ctx.currentTime + 0.005;
+  const gainNode = ctx.createGain();
+  gainNode.connect(ctx.destination);
+  gainNode.gain.setValueAtTime(0.00001, startAt);
   const oscillator = ctx.createOscillator();
   oscillator.type = "sine";
-  oscillator.frequency.setValueAtTime(740, startAt);
-  oscillator.frequency.exponentialRampToValueAtTime(988, startAt + duration);
+  oscillator.frequency.setValueAtTime(440, startAt);
   oscillator.connect(gainNode);
   oscillator.start(startAt);
-  oscillator.stop(startAt + duration);
+  oscillator.stop(startAt + 0.01);
 }
 
 function normalizeClipboardRecords(raw: unknown): ClipboardRecord[] {
@@ -3001,6 +3029,22 @@ export function BuiltinWidgetView({
         console.warn("[messageBoard] chime failed", error);
       });
     }, [messages, userId]);
+
+    useEffect(() => {
+      const unlock = () => {
+        void primeMessageBoardAudio().catch((error) => {
+          console.warn("[messageBoard] audio unlock failed", error);
+        });
+      };
+      window.addEventListener("pointerdown", unlock, { passive: true });
+      window.addEventListener("keydown", unlock);
+      window.addEventListener("touchstart", unlock, { passive: true });
+      return () => {
+        window.removeEventListener("pointerdown", unlock);
+        window.removeEventListener("keydown", unlock);
+        window.removeEventListener("touchstart", unlock);
+      };
+    }, []);
 
     useEffect(() => {
       if (!userId) return;
