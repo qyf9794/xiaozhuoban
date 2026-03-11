@@ -235,6 +235,93 @@ body {
   font-size: 11px;
 }
 
+.world-clock-widget {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.world-clock-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  gap: 12px 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.world-clock-cell {
+  min-width: 0;
+  min-height: 74px;
+  padding: 6px 2px 4px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.world-clock-city {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.8);
+  letter-spacing: 0.02em;
+}
+
+.world-clock-city-fixed {
+  cursor: default;
+}
+
+.world-clock-time {
+  font-family: "JetBrains Mono", "IBM Plex Mono", monospace;
+  font-size: 26px;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.world-clock-meta {
+  font-size: 10px;
+  color: rgba(15, 23, 42, 0.55);
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.world-clock-tone-sun .world-clock-time {
+  color: #f97316;
+  text-shadow:
+    0 0 10px rgba(249, 115, 22, 0.36),
+    0 0 18px rgba(251, 146, 60, 0.28);
+}
+
+.world-clock-tone-mint .world-clock-time {
+  color: #10b981;
+  text-shadow:
+    0 0 10px rgba(16, 185, 129, 0.34),
+    0 0 18px rgba(52, 211, 153, 0.26);
+}
+
+.world-clock-tone-blue .world-clock-time {
+  color: #2563eb;
+  text-shadow:
+    0 0 10px rgba(37, 99, 235, 0.32),
+    0 0 18px rgba(96, 165, 250, 0.24);
+}
+
+.world-clock-tone-rose .world-clock-time {
+  color: #e11d48;
+  text-shadow:
+    0 0 10px rgba(225, 29, 72, 0.3),
+    0 0 18px rgba(251, 113, 133, 0.24);
+}
+
 .recorder-play-btn {
   width: 16px;
   height: 16px;

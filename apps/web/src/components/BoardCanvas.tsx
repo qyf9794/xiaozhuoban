@@ -175,7 +175,7 @@ export function BoardCanvas({
 
         const position = drag?.id === widget.id && dragPosition ? dragPosition : widget.position;
         const isTvWidget = definition.type === "tv";
-        const isDynamicHeightWidget = definition.type === "messageBoard";
+        const isDynamicHeightWidget = definition.type === "messageBoard" || definition.type === "note";
         const baseSize = isTvWidget ? clampTvWidgetSize(widget.size.w, 480) : widget.size;
         const size =
           resize?.id === widget.id

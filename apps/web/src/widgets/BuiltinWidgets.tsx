@@ -4,6 +4,17 @@ import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { Button } from "@xiaozhuoban/ui";
 import { WidgetShell } from "./WidgetShell";
 import { DEFAULT_TV_PLAYLIST_URL, parseM3UPlaylist, type TvChannel } from "./tvShared";
+import {
+  CHINA_TIME_ZONE,
+  WORLD_CLOCK_ZONE_OPTIONS,
+  formatWorldClockDisplay,
+  getRandomWorldClockToneClasses,
+  getWorldClockLayoutClass,
+  getWorldClockOptionLabel,
+  normalizeWorldClockZones,
+  toWorldClockSlots,
+  updateWorldClockSlot
+} from "./worldClockShared";
 import { useAuthStore } from "../auth/authStore";
 import { supabase } from "../lib/supabase";
 import {
@@ -20,6 +31,10 @@ function asString(v: unknown): string {
 
 function asArray(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((i) => typeof i === "string") as string[] : [];
+}
+
+function stringArraysEqual(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((item, index) => item === b[index]);
 }
 
 const MAJOR_CITIES = [
@@ -63,13 +78,15 @@ function GlassSelect({
   options,
   onChange,
   style,
-  menuWidth
+  menuWidth,
+  buttonStyle
 }: {
   value: string;
   options: GlassSelectOption[];
   onChange: (next: string) => void;
   style?: CSSProperties;
   menuWidth?: number | string;
+  buttonStyle?: CSSProperties;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -125,7 +142,8 @@ function GlassSelect({
           background: "linear-gradient(160deg, rgba(255,255,255,0.68), rgba(255,255,255,0.36))",
           boxShadow: "inset 0 1px 0 rgba(255,255,255,0.4), 0 6px 12px rgba(15,23,42,0.06)",
           fontSize: 12,
-          position: "relative"
+          position: "relative",
+          ...buttonStyle
         }}
       >
         {selected?.label ?? ""}
@@ -850,6 +868,7 @@ function VerticalResizableTextarea({
   minHeight = 74,
   height,
   onHeightCommit,
+  autoSize = false,
   style
 }: {
   value: string;
@@ -859,6 +878,7 @@ function VerticalResizableTextarea({
   minHeight?: number;
   height: number;
   onHeightCommit: (height: number) => void;
+  autoSize?: boolean;
   style?: CSSProperties;
 }) {
   const [draft, setDraft] = useState(value);
@@ -884,6 +904,26 @@ function VerticalResizableTextarea({
   }, [height, minHeight]);
 
   useEffect(() => {
+    if (!autoSize || !textareaRef.current) {
+      return;
+    }
+    const textarea = textareaRef.current;
+    textarea.style.height = "0px";
+    const nextHeight = Math.max(minHeight, textarea.scrollHeight);
+    textarea.style.height = `${nextHeight}px`;
+    if (heightRef.current !== nextHeight) {
+      heightRef.current = nextHeight;
+      setLiveHeight(nextHeight);
+      onHeightCommit(nextHeight);
+    } else if (liveHeight !== nextHeight) {
+      setLiveHeight(nextHeight);
+    }
+  }, [autoSize, draft, liveHeight, minHeight, onHeightCommit]);
+
+  useEffect(() => {
+    if (autoSize) {
+      return;
+    }
     const onMove = (event: MouseEvent) => {
       const drag = dragRef.current;
       if (!drag) return;
@@ -905,7 +945,7 @@ function VerticalResizableTextarea({
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
-  }, [minHeight, onHeightCommit]);
+  }, [autoSize, minHeight, onHeightCommit]);
 
   return (
     <div style={{ position: "relative" }}>
@@ -942,23 +982,25 @@ function VerticalResizableTextarea({
           ...style
         }}
       />
-      <div
-        onMouseDown={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          dragRef.current = { startY: event.clientY, startHeight: heightRef.current };
-        }}
-        data-no-drag="true"
-        style={{
-          position: "absolute",
-          left: 8,
-          right: 8,
-          bottom: 1,
-          height: 10,
-          cursor: "ns-resize"
-        }}
-        title="拖拽调整高度"
-      />
+      {autoSize ? null : (
+        <div
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            dragRef.current = { startY: event.clientY, startHeight: heightRef.current };
+          }}
+          data-no-drag="true"
+          style={{
+            position: "absolute",
+            left: 8,
+            right: 8,
+            bottom: 1,
+            height: 10,
+            cursor: "ns-resize"
+          }}
+          title="拖拽调整高度"
+        />
+      )}
     </div>
   );
 }
@@ -977,7 +1019,14 @@ export function BuiltinWidgetView({
     const noteHeight = Number(instance.state.noteHeight ?? 110);
 
     return (
-      <WidgetShell definition={definition} instance={instance}>
+      <WidgetShell
+        definition={definition}
+        instance={instance}
+        cardStyle={{
+          height: "auto",
+          minHeight: 0
+        }}
+      >
         <VerticalResizableTextarea
           value={noteText}
           onCommit={(next) => onStateChange({ ...instance.state, content: next })}
@@ -985,11 +1034,13 @@ export function BuiltinWidgetView({
           minHeight={90}
           height={noteHeight}
           onHeightCommit={(nextHeight) => onStateChange({ ...instance.state, noteHeight: nextHeight })}
+          autoSize
           style={{
             borderRadius: 12,
             border: "1px solid rgba(250, 204, 21, 0.5)",
             padding: "6px 8px",
-            background: "linear-gradient(165deg, rgba(255, 247, 196, 0.68), rgba(255, 233, 133, 0.46))"
+            background: "linear-gradient(165deg, rgba(255, 247, 196, 0.68), rgba(255, 233, 133, 0.46))",
+            marginBottom: 0
           }}
         />
       </WidgetShell>
@@ -2443,6 +2494,94 @@ export function BuiltinWidgetView({
             {!loading && !error && channels.length === 0 ? (
               <div style={{ fontSize: 12, color: "#64748b" }}>暂无可播放频道</div>
             ) : null}
+          </div>
+        </div>
+      </WidgetShell>
+    );
+  }
+
+  if (definition.type === "worldClock") {
+    const zones = normalizeWorldClockZones(instance.state.zones);
+    const slots = toWorldClockSlots(zones);
+    const [now, setNow] = useState(() => new Date());
+    const [toneClasses] = useState(() => getRandomWorldClockToneClasses());
+
+    useEffect(() => {
+      let timer: number | null = null;
+      const schedule = () => {
+        const current = new Date();
+        setNow(current);
+        const delay = Math.max(1000, 60000 - (current.getSeconds() * 1000 + current.getMilliseconds()));
+        timer = window.setTimeout(schedule, delay);
+      };
+      schedule();
+      return () => {
+        if (timer !== null) {
+          window.clearTimeout(timer);
+        }
+      };
+    }, []);
+
+    useEffect(() => {
+      const rawZones = asArray(instance.state.zones);
+      if (stringArraysEqual(rawZones, zones)) {
+        return;
+      }
+      onStateChange({
+        ...instance.state,
+        zones
+      });
+    }, [instance.state, onStateChange, zones]);
+
+    return (
+      <WidgetShell definition={definition} instance={instance}>
+        <div className="world-clock-widget">
+          <div className={`world-clock-grid ${getWorldClockLayoutClass(slots.length)}`}>
+            {slots.map((timeZone, index) => {
+              const display = formatWorldClockDisplay(now, timeZone);
+              const toneClass = toneClasses[index % toneClasses.length];
+              const metaText = display.zoneName === display.offset ? display.offset : `${display.zoneName} ${display.offset}`;
+              const optionItems = WORLD_CLOCK_ZONE_OPTIONS.filter(
+                (item) => item.value !== CHINA_TIME_ZONE && (item.value === timeZone || !slots.includes(item.value))
+              ).map((item) => ({
+                value: item.value,
+                label: item.shortLabel
+              }));
+              return (
+                <div key={timeZone} className={`world-clock-cell ${toneClass}`}>
+                  {index === 0 ? (
+                    <div className="world-clock-city world-clock-city-fixed">{getWorldClockOptionLabel(timeZone)}</div>
+                  ) : (
+                    <GlassSelect
+                      value={timeZone}
+                      options={optionItems}
+                      onChange={(next) =>
+                        onStateChange({
+                          ...instance.state,
+                          zones: updateWorldClockSlot(zones, index, next)
+                        })
+                      }
+                      style={{ width: "fit-content", maxWidth: "100%" }}
+                      menuWidth={124}
+                      buttonStyle={{
+                        width: "auto",
+                        minHeight: 0,
+                        padding: "0 14px 0 0",
+                        border: "none",
+                        borderRadius: 0,
+                        background: "transparent",
+                        boxShadow: "none",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: "rgba(15, 23, 42, 0.8)"
+                      }}
+                    />
+                  )}
+                  <div className="world-clock-time">{display.time}</div>
+                  <div className="world-clock-meta">{metaText}</div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </WidgetShell>

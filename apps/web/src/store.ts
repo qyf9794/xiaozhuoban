@@ -10,6 +10,7 @@ import {
 import { DexieRepository, InMemoryRepository, type AppRepository } from "@xiaozhuoban/data";
 import { LocalTemplateAIBuilder } from "@xiaozhuoban/ai-builder";
 import { DEFAULT_TV_PLAYLIST_URL, clampTvWidgetSize } from "./widgets/tvShared";
+import { DEFAULT_WORLD_CLOCK_ZONES } from "./widgets/worldClockShared";
 
 const defaultWorkspaceName = "默认工作空间";
 const defaultBoardName = "我的桌板";
@@ -123,6 +124,20 @@ const baseWidgets: Array<Omit<WidgetDefinition, "id" | "createdAt" | "updatedAt"
     description: "订阅 m3u 直播源并按频道播放",
     inputSchema: {
       fields: [{ key: "playlistUrl", label: "直播订阅链接", type: "text", defaultValue: DEFAULT_TV_PLAYLIST_URL }]
+    },
+    outputSchema: { fields: [] },
+    uiSchema: { layout: "single-column" },
+    logicSpec: {},
+    storagePolicy: { strategy: "local" }
+  },
+  {
+    kind: "system",
+    type: "worldClock",
+    name: "世界时钟",
+    version: 1,
+    description: "显示中国与世界主要城市的数字时钟",
+    inputSchema: {
+      fields: [{ key: "zones", label: "时区列表", type: "text", defaultValue: DEFAULT_WORLD_CLOCK_ZONES.join(",") }]
     },
     outputSchema: { fields: [] },
     uiSchema: { layout: "single-column" },
@@ -324,6 +339,9 @@ function makeBoard(workspaceId: string, name = defaultBoardName): Board {
 function getDefaultWidgetSize(type?: string): { w: number; h: number } {
   if (type === "tv") {
     return { w: 240, h: 480 };
+  }
+  if (type === "worldClock") {
+    return { w: 240, h: 240 };
   }
   if (type === "messageBoard") {
     return { w: 240, h: 260 };
