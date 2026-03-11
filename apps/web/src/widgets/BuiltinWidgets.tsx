@@ -635,6 +635,20 @@ function messageFromRow(row: MessageBoardRow): MessageBoardItem {
   };
 }
 
+async function fetchMessageBoardHistory(): Promise<MessageBoardItem[]> {
+  const { data, error } = await supabase
+    .from("message_board_messages")
+    .select("id,sender_id,sender_name,message,created_at")
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data as MessageBoardRow[] | null) ?? []).map(messageFromRow);
+}
+
 function normalizeClipboardRecords(raw: unknown): ClipboardRecord[] {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -2941,16 +2955,9 @@ export function BuiltinWidgetView({
       setHistoryLoading(true);
       void (async () => {
         try {
-          const { data, error } = await supabase
-            .from("message_board_messages")
-            .select("id,sender_id,sender_name,message,created_at")
-            .order("created_at", { ascending: false })
-            .limit(50);
+          const history = await fetchMessageBoardHistory();
           if (cancelled) return;
-          if (error) {
-            throw error;
-          }
-          const history = ((data as MessageBoardRow[] | null) ?? []).map(messageFromRow);
+          setMessageError("");
           setMessages((prev) => normalizeMessageList([...history, ...prev]));
         } catch (error) {
           if (cancelled) return;
@@ -3000,6 +3007,17 @@ export function BuiltinWidgetView({
           if (status === "SUBSCRIBED") {
             setChannelReady(true);
             setChannelStatusText("已连接");
+            setMessageError("");
+            void (async () => {
+              try {
+                const history = await fetchMessageBoardHistory();
+                if (disposed) return;
+                setMessages((prev) => normalizeMessageList([...history, ...prev]));
+              } catch (error) {
+                if (disposed) return;
+                setMessageError(error instanceof Error ? `历史同步失败：${error.message}` : "历史同步失败");
+              }
+            })();
             return;
           }
           if (status === "CHANNEL_ERROR") {
@@ -3038,11 +3056,6 @@ export function BuiltinWidgetView({
     const sendMessage = () => {
       const text = draft.trim();
       if (!text) return;
-      const channel = channelRef.current;
-      if (!channel) {
-        setMessageError("实时通道初始化中，请稍后重试");
-        return;
-      }
       const message: MessageBoardItem = {
         id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         senderId: userId,
@@ -3053,27 +3066,34 @@ export function BuiltinWidgetView({
       setSending(true);
       setMessageError("");
       setMessages((prev) => normalizeMessageList([message, ...prev]));
+      setDraft("");
       void (async () => {
         try {
-          const result = await channel.send({
-            type: "broadcast",
-            event: "message",
-            payload: message
-          });
-          if (result !== "ok" && channelReady) {
-            throw new Error(result);
-          }
-          // Persist in background without blocking realtime delivery.
-          void supabase.from("message_board_messages").insert({
+          const { error } = await supabase.from("message_board_messages").insert({
             id: message.id,
             sender_id: message.senderId,
             sender_name: message.senderName,
             message: message.text,
             created_at: message.createdAt
           });
-          setDraft("");
-        } catch {
-          setMessageError(channelReady ? "发送失败，请重试" : "通道连接中，发送失败，请重试");
+          if (error) {
+            throw error;
+          }
+          const channel = channelRef.current;
+          if (channel) {
+            const result = await channel.send({
+              type: "broadcast",
+              event: "message",
+              payload: message
+            });
+            if (result !== "ok" && channelReady) {
+              console.warn("[messageBoard] broadcast send failed", result);
+            }
+          }
+        } catch (error) {
+          setMessages((prev) => prev.filter((item) => item.id !== message.id));
+          setDraft(text);
+          setMessageError(error instanceof Error ? `发送失败：${error.message}` : "发送失败，请重试");
         } finally {
           setSending(false);
         }
