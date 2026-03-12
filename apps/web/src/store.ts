@@ -343,6 +343,9 @@ function getDefaultWidgetSize(type?: string): { w: number; h: number } {
   if (type === "worldClock") {
     return { w: 240, h: 240 };
   }
+  if (type === "headline") {
+    return { w: 240, h: 320 };
+  }
   if (type === "messageBoard") {
     return { w: 240, h: 260 };
   }

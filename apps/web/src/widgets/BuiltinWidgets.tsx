@@ -354,10 +354,13 @@ interface MarketSeries {
 interface HeadlineItem {
   id: string;
   title: string;
+  translatedTitle?: string;
   url: string;
   source: string;
   time: string;
 }
+
+const headlineTranslationCache = new Map<string, Promise<string> | string>();
 
 function formatPublishedTime(raw: string): string {
   const value = raw.trim();
@@ -435,45 +438,96 @@ async function fetchMarketSeries(marketCode: string): Promise<MarketSeries> {
     const isWeekday = !["Sat", "Sun"].includes(weekday);
     return isWeekday && minuteOfDay >= startMinute && minuteOfDay <= endMinute;
   };
-
-  const minuteUrl = `https://web.ifzq.gtimg.cn/appstock/app/minute/query?code=${encodeURIComponent(marketCode)}`;
-  const minuteResponse = await fetch(minuteUrl);
-  if (!minuteResponse.ok) {
-    throw new Error(`行情请求失败 (${minuteResponse.status})`);
-  }
-  const minutePayload = (await minuteResponse.json()) as {
-    code?: number;
-    data?: Record<string, { data?: { data?: string[] }; qt?: Record<string, unknown> }>;
-  };
-  if (minutePayload.code !== 0 || !minutePayload.data?.[marketCode]) {
+  const parseMinuteLines = (lines: string[]): Array<{ t: number; v: number }> =>
+    lines
+      .map((line) => {
+        const [time, price] = line.trim().split(/\s+/);
+        return { t: toMinute(time), v: Number(price) };
+      })
+      .filter((item) => item.t !== null && Number.isFinite(item.v) && item.v > 0) as Array<{ t: number; v: number }>;
+  const readIntradayNode = async (
+    urls: string[]
+  ): Promise<{ lines: string[]; qt: Record<string, unknown> | undefined }> => {
+    for (const url of urls) {
+      const response = await fetch(url);
+      if (!response.ok) {
+        continue;
+      }
+      const payload = (await response.json()) as {
+        code?: number;
+        data?: Record<string, { data?: { data?: string[] }; qt?: Record<string, unknown> }>;
+      };
+      if (payload.code !== 0 || !payload.data) {
+        continue;
+      }
+      const node =
+        payload.data[marketCode] ??
+        Object.values(payload.data).find((item) => item && typeof item === "object" && "data" in item);
+      if (!node) {
+        continue;
+      }
+      const lines = Array.isArray(node.data?.data) ? node.data.data ?? [] : [];
+      return { lines, qt: node.qt };
+    }
     throw new Error("指数数据不可用");
-  }
+  };
+  const fetchRecentSessionLines = async (): Promise<string[]> => {
+    if (marketCode.startsWith("us")) {
+      const { lines } = await readIntradayNode([
+        `https://web.ifzq.gtimg.cn/appstock/app/UsMinute/query?code=${encodeURIComponent(marketCode)}`
+      ]);
+      return lines;
+    }
+    const response = await fetch(
+      `https://web.ifzq.gtimg.cn/appstock/app/day/query?code=${encodeURIComponent(marketCode)}`
+    );
+    if (!response.ok) {
+      return [];
+    }
+    const payload = (await response.json()) as {
+      code?: number;
+      data?: Record<string, { data?: Array<{ date?: string; data?: string[] }> }>;
+    };
+    const node = payload.data?.[marketCode];
+    const latest = Array.isArray(node?.data) ? node.data[node.data.length - 1] : undefined;
+    return Array.isArray(latest?.data) ? latest.data : [];
+  };
 
-  const node = minutePayload.data[marketCode];
-  const minuteLines = Array.isArray(node.data?.data) ? node.data?.data ?? [] : [];
-  let pointSeries = minuteLines
-    .map((line) => {
-      const [time, price] = line.trim().split(/\s+/);
-      return { t: toMinute(time), v: Number(price) };
-    })
-    .filter((item) => item.t !== null && Number.isFinite(item.v) && item.v > 0) as Array<{ t: number; v: number }>;
+  const intradayNode = await readIntradayNode(
+    marketCode.startsWith("us")
+      ? [
+          `https://web.ifzq.gtimg.cn/appstock/app/UsMinute/query?code=${encodeURIComponent(marketCode)}`,
+          `https://web.ifzq.gtimg.cn/appstock/app/minute/query?code=${encodeURIComponent(marketCode)}`
+        ]
+      : [`https://web.ifzq.gtimg.cn/appstock/app/minute/query?code=${encodeURIComponent(marketCode)}`]
+  );
+  const minuteLines = intradayNode.lines;
+  let pointSeries = parseMinuteLines(minuteLines);
 
-  const qtRaw = node.qt?.[marketCode];
+  const qtRaw = intradayNode.qt?.[marketCode];
   const qtArray = Array.isArray(qtRaw) ? qtRaw : [];
   const lastFromQt = Number(qtArray[3]);
   const prevFromQt = Number(qtArray[4]);
 
   let dayRows: string[][] = [];
-  const dailyUrl = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${encodeURIComponent(
-    marketCode
-  )},day,,,40,qfq`;
-  const dailyResponse = await fetch(dailyUrl);
-  if (dailyResponse.ok) {
+  const dailyUrls = [
+    `https://web.ifzq.gtimg.cn/appstock/app/newfqkline/get?param=${encodeURIComponent(marketCode)},day,,,40,qfq`,
+    `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${encodeURIComponent(marketCode)},day,,,40,qfq`
+  ];
+  for (const dailyUrl of dailyUrls) {
+    const dailyResponse = await fetch(dailyUrl);
+    if (!dailyResponse.ok) {
+      continue;
+    }
     const dailyPayload = (await dailyResponse.json()) as {
       code?: number;
       data?: Record<string, { day?: string[][] }>;
     };
-    dayRows = dailyPayload.data?.[marketCode]?.day ?? [];
+    const rows = dailyPayload.data?.[marketCode]?.day ?? [];
+    if (rows.length > 0) {
+      dayRows = rows;
+      break;
+    }
   }
 
   if (pointSeries.length < 2) {
@@ -506,7 +560,14 @@ async function fetchMarketSeries(marketCode: string): Promise<MarketSeries> {
   const inTradingNow = isTradingTimeNow(marketCode, session.start, session.end);
 
   let intraday = liveIntraday;
-  if (!inTradingNow && dayRows.length > 0) {
+  if (!inTradingNow && intraday.length < 2) {
+    const recentSessionLines = await fetchRecentSessionLines();
+    const recentSessionSeries = parseMinuteLines(recentSessionLines).filter((item) => item.t >= startMin && item.t <= endMin);
+    if (recentSessionSeries.length >= 2) {
+      intraday = recentSessionSeries;
+    }
+  }
+  if (!inTradingNow && intraday.length < 2 && dayRows.length > 0) {
     const prevRow = dayRows[dayRows.length - 1];
     const dayOpen = Number(prevRow?.[1]);
     const dayClose = Number(prevRow?.[2]);
@@ -523,7 +584,6 @@ async function fetchMarketSeries(marketCode: string): Promise<MarketSeries> {
       ];
     }
   }
-
   return {
     points: pointSeries.map((item) => item.v),
     last,
@@ -536,7 +596,9 @@ async function fetchMarketSeries(marketCode: string): Promise<MarketSeries> {
 
 async function fetchMajorHeadlines(): Promise<HeadlineItem[]> {
   const fromRss = async (rssUrl: string, fallbackSource: string): Promise<HeadlineItem[]> => {
-    const response = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}`);
+    const response = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}&t=${Date.now()}`, {
+      cache: "no-store"
+    });
     if (!response.ok) {
       throw new Error(`RSS请求失败 (${response.status})`);
     }
@@ -561,27 +623,112 @@ async function fetchMajorHeadlines(): Promise<HeadlineItem[]> {
         } satisfies HeadlineItem;
       })
       .filter((item): item is HeadlineItem => item !== null)
-      .slice(0, 9);
+      .slice(0, 12);
   };
 
-  try {
-    const reuters = await fromRss(
-      "https://www.reutersagency.com/feed/?best-topics=top-news&post_type=best",
-      "Reuters"
-    );
-    if (reuters.length > 0) {
-      return reuters;
-    }
-  } catch {
-    // fallback to BBC
+  const feeds = await Promise.allSettled([
+    fromRss("https://feeds.skynews.com/feeds/rss/world.xml", "Sky News"),
+    fromRss("https://feeds.bloomberg.com/markets/news.rss", "Bloomberg"),
+    fromRss("https://feeds.bbci.co.uk/news/world/rss.xml", "BBC")
+  ]);
+
+  const merged = feeds
+    .filter((result): result is PromiseFulfilledResult<HeadlineItem[]> => result.status === "fulfilled")
+    .flatMap((result) => result.value);
+
+  const deduped = merged.filter((item, index, list) => {
+    const key = `${item.title}::${item.url}`;
+    return list.findIndex((candidate) => `${candidate.title}::${candidate.url}` === key) === index;
+  });
+
+  const sorted = deduped.sort((a, b) => {
+    const timeA = Date.parse(a.time || "");
+    const timeB = Date.parse(b.time || "");
+    if (Number.isNaN(timeA) && Number.isNaN(timeB)) return 0;
+    if (Number.isNaN(timeA)) return 1;
+    if (Number.isNaN(timeB)) return -1;
+    return timeB - timeA;
+  });
+
+  if (sorted.length > 0) {
+    return sorted.slice(0, 12);
   }
 
-  const bbc = await fromRss("https://feeds.bbci.co.uk/news/world/rss.xml", "BBC");
-  if (bbc.length > 0) {
-    return bbc;
+  throw new Error("Sky News/Bloomberg/BBC 新闻源暂无可用数据");
+}
+
+async function translateHeadlineTitle(title: string): Promise<string> {
+  const input = title.trim();
+  if (!input) return "";
+  if (/[\u3400-\u9fff]/.test(input)) {
+    return input;
   }
 
-  throw new Error("Reuters/BBC 新闻源暂无可用数据");
+  const cached = headlineTranslationCache.get(input);
+  if (typeof cached === "string") {
+    return cached;
+  }
+  if (cached) {
+    return cached;
+  }
+
+  const request = quickTranslate(input, "en", "zh-CN")
+    .then((translated) => {
+      headlineTranslationCache.set(input, translated);
+      return translated;
+    })
+    .catch(() => {
+      headlineTranslationCache.set(input, "");
+      return "";
+    });
+
+  headlineTranslationCache.set(input, request);
+  return request;
+}
+
+async function fetchLocalizedHeadlines(): Promise<HeadlineItem[]> {
+  const headlines = await fetchMajorHeadlines();
+  return Promise.all(
+    headlines.map(async (item) => ({
+      ...item,
+      translatedTitle: await translateHeadlineTitle(item.title)
+    }))
+  );
+}
+
+function sortHeadlinesByTime(items: HeadlineItem[]): HeadlineItem[] {
+  return [...items].sort((a, b) => {
+    const timeA = Date.parse(a.time || "");
+    const timeB = Date.parse(b.time || "");
+    if (Number.isNaN(timeA) && Number.isNaN(timeB)) return 0;
+    if (Number.isNaN(timeA)) return 1;
+    if (Number.isNaN(timeB)) return -1;
+    return timeB - timeA;
+  });
+}
+
+function mergeLatestHeadline(current: HeadlineItem[], incoming: HeadlineItem[]): HeadlineItem[] {
+  const currentOrdered = current.slice(0, 5);
+  const incomingSorted = sortHeadlinesByTime(incoming);
+
+  if (currentOrdered.length === 0) {
+    return incomingSorted.slice(0, 5);
+  }
+
+  const currentKeys = new Set(currentOrdered.map((item) => `${item.title}::${item.url}`));
+  const newestIncoming = incomingSorted.find((item) => !currentKeys.has(`${item.title}::${item.url}`));
+
+  if (!newestIncoming) {
+    return currentOrdered;
+  }
+
+  const merged = [newestIncoming, ...currentOrdered];
+  const deduped = merged.filter((item, index, list) => {
+    const key = `${item.title}::${item.url}`;
+    return list.findIndex((candidate) => `${candidate.title}::${candidate.url}` === key) === index;
+  });
+
+  return deduped.slice(0, 5);
 }
 
 interface TodoItem {
@@ -1629,32 +1776,38 @@ export function BuiltinWidgetView({
     const headlines = (Array.isArray(instance.state.headlines) ? instance.state.headlines : []) as HeadlineItem[];
     const loading = instance.state.headlineLoading === true;
     const error = asString(instance.state.headlineError);
-    const [cursor, setCursor] = useState(0);
-    const desktopContentHeight = Math.max(106, Number(instance.size.h) - 74);
+    const headlinesRef = useRef(headlines);
+    const stateRef = useRef(instance.state);
+
+    useEffect(() => {
+      headlinesRef.current = headlines;
+      stateRef.current = instance.state;
+    }, [headlines, instance.state]);
 
     useEffect(() => {
       let cancelled = false;
       const load = () => {
         onStateChange({
-          ...instance.state,
+          ...stateRef.current,
           headlineLoading: true,
           headlineError: ""
         });
-        void fetchMajorHeadlines()
+        void fetchLocalizedHeadlines()
           .then((items) => {
             if (cancelled) return;
+            const nextHeadlines = mergeLatestHeadline(headlinesRef.current, items);
             onStateChange({
-              ...instance.state,
+              ...stateRef.current,
               headlineLoading: false,
               headlineError: "",
-              headlines: items,
+              headlines: nextHeadlines,
               headlineFetchedAt: new Date().toISOString()
             });
           })
           .catch((fetchError) => {
             if (cancelled) return;
             onStateChange({
-              ...instance.state,
+              ...stateRef.current,
               headlineLoading: false,
               headlineError: fetchError instanceof Error ? fetchError.message : "获取新闻失败"
             });
@@ -1662,7 +1815,7 @@ export function BuiltinWidgetView({
       };
 
       load();
-      const timer = window.setInterval(load, 120_000);
+      const timer = window.setInterval(load, 30_000);
       return () => {
         cancelled = true;
         window.clearInterval(timer);
@@ -1671,21 +1824,7 @@ export function BuiltinWidgetView({
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    useEffect(() => {
-      if (headlines.length <= 3) {
-        setCursor(0);
-        return;
-      }
-      const timer = window.setInterval(() => {
-        setCursor((prev) => (prev + 1) % headlines.length);
-      }, 15_000);
-      return () => window.clearInterval(timer);
-    }, [headlines.length]);
-
-    const visible =
-      headlines.length <= 3
-        ? headlines
-        : [0, 1, 2].map((offset) => headlines[(cursor - offset + headlines.length) % headlines.length]);
+    const visible = headlines.slice(0, 5);
 
     return (
       <WidgetShell definition={definition} instance={instance}>
@@ -1693,7 +1832,7 @@ export function BuiltinWidgetView({
           style={{
             display: "grid",
             gap: 8,
-            height: isMobileMode ? "auto" : desktopContentHeight,
+            height: "auto",
             minHeight: 0
           }}
         >
@@ -1703,12 +1842,14 @@ export function BuiltinWidgetView({
             style={{
               display: "grid",
               gap: 6,
-              minHeight: isMobileMode ? 74 : 0,
-              overflowY: isMobileMode ? "visible" : "auto",
-              paddingRight: isMobileMode ? 0 : 2
+              minHeight: isMobileMode ? 74 : undefined,
+              overflow: "visible",
+              paddingRight: 0
             }}
           >
-            {visible.map((item) => (
+            {visible.map((item) => {
+              const displayTitle = item.translatedTitle?.trim() || item.title;
+              return (
               <a
                 key={item.id}
                 href={item.url || "#"}
@@ -1726,26 +1867,12 @@ export function BuiltinWidgetView({
                   padding: "2px 0"
                 }}
               >
-                {item.title.length > 26 ? (
-                  <div className="headline-marquee">
-                    <span className="headline-marquee-track">
-                      <span>{item.title}</span>
-                      <span aria-hidden="true">{item.title}</span>
-                    </span>
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: "#0f172a",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis"
-                    }}
-                  >
-                    {item.title}
-                  </div>
-                )}
+                <div className="headline-marquee">
+                  <span className="headline-marquee-track">
+                    <span>{displayTitle}</span>
+                    <span aria-hidden="true">{displayTitle}</span>
+                  </span>
+                </div>
                 <div style={{ fontSize: 10, color: "#64748b" }}>
                   {item.source
                     ? `${item.source}${item.time ? ` · ${formatPublishedTime(item.time)}` : ""}`
@@ -1754,7 +1881,8 @@ export function BuiltinWidgetView({
                       : ""}
                 </div>
               </a>
-            ))}
+              );
+            })}
             {!loading && !error && visible.length === 0 ? (
               <div style={{ fontSize: 12, color: "#94a3b8" }}>暂无新闻</div>
             ) : null}
@@ -1974,9 +2102,6 @@ export function BuiltinWidgetView({
                     />
                   ) : null}
                 </svg>
-                <div style={{ fontSize: 10, color: "#64748b" }}>
-                  更新于 {new Date(data.fetchedAt).toLocaleTimeString()}
-                </div>
               </div>
             );
           })}
