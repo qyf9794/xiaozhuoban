@@ -1008,10 +1008,12 @@ function VerticalResizableTextarea({
 export function BuiltinWidgetView({
   definition,
   instance,
+  isMobileMode = false,
   onStateChange
 }: {
   definition: WidgetDefinition;
   instance: WidgetInstance;
+  isMobileMode?: boolean;
   onStateChange: (nextState: Record<string, unknown>) => void;
 }) {
   if (definition.type === "note") {
@@ -1628,6 +1630,7 @@ export function BuiltinWidgetView({
     const loading = instance.state.headlineLoading === true;
     const error = asString(instance.state.headlineError);
     const [cursor, setCursor] = useState(0);
+    const desktopContentHeight = Math.max(106, Number(instance.size.h) - 74);
 
     useEffect(() => {
       let cancelled = false;
@@ -1686,9 +1689,25 @@ export function BuiltinWidgetView({
 
     return (
       <WidgetShell definition={definition} instance={instance}>
-        <div style={{ display: "grid", gap: 8 }}>
+        <div
+          style={{
+            display: "grid",
+            gap: 8,
+            height: isMobileMode ? "auto" : desktopContentHeight,
+            minHeight: 0
+          }}
+        >
           {error ? <div style={{ fontSize: 12, color: "#b91c1c" }}>{error}</div> : null}
-          <div style={{ display: "grid", gap: 6, minHeight: 74 }}>
+          <div
+            className={isMobileMode ? undefined : "glass-scrollbar"}
+            style={{
+              display: "grid",
+              gap: 6,
+              minHeight: isMobileMode ? 74 : 0,
+              overflowY: isMobileMode ? "visible" : "auto",
+              paddingRight: isMobileMode ? 0 : 2
+            }}
+          >
             {visible.map((item) => (
               <a
                 key={item.id}
@@ -2551,7 +2570,19 @@ export function BuiltinWidgetView({
                 <div key={timeZone} className={`world-clock-cell ${toneClass}`}>
                   <div className="world-clock-city-row">
                     {index === 0 ? (
-                      <div className="world-clock-city world-clock-city-fixed">{getWorldClockOptionLabel(timeZone)}</div>
+                      <div
+                        className="world-clock-city world-clock-city-fixed"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          minHeight: 18,
+                          lineHeight: 1.1,
+                          paddingTop: 8,
+                          paddingRight: isMobileMode ? 16 : 20
+                        }}
+                      >
+                        {getWorldClockOptionLabel(timeZone)}
+                      </div>
                     ) : (
                       <GlassSelect
                         value={timeZone}
@@ -2567,7 +2598,7 @@ export function BuiltinWidgetView({
                         buttonStyle={{
                           width: "auto",
                           minHeight: 18,
-                          padding: "0 20px 0 0",
+                          padding: isMobileMode ? "0 16px 0 0" : "0 20px 0 0",
                           border: "none",
                           borderRadius: 0,
                           background: "transparent",

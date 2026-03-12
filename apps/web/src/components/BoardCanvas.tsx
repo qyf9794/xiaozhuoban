@@ -175,7 +175,8 @@ export function BoardCanvas({
 
         const position = drag?.id === widget.id && dragPosition ? dragPosition : widget.position;
         const isTvWidget = definition.type === "tv";
-        const isDynamicHeightWidget = definition.type === "messageBoard" || definition.type === "note";
+        const isFixedHeightDesktopWidget = definition.type === "tv" || definition.type === "worldClock";
+        const isDynamicHeightWidget = !isMobileMode && !isFixedHeightDesktopWidget;
         const baseSize = isTvWidget ? clampTvWidgetSize(widget.size.w, 480) : widget.size;
         const size =
           resize?.id === widget.id
@@ -268,6 +269,7 @@ export function BoardCanvas({
               <BuiltinWidgetView
                 definition={definition}
                 instance={widget}
+                isMobileMode={isMobileMode}
                 onStateChange={(nextState) => onStateChange(widget.id, nextState)}
               />
             )}
