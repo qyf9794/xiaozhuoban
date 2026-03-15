@@ -130,35 +130,38 @@ function GlassSelect({
   useEffect(() => {
     if (!open) return;
     const updateMenuPosition = () => {
+      const root = rootRef.current;
       const button = buttonRef.current;
       const panel = panelRef.current;
-      if (!button || !panel) return;
-      const rect = button.getBoundingClientRect();
+      if (!root || !button || !panel) return;
+      const rootRect = root.getBoundingClientRect();
+      const buttonRect = button.getBoundingClientRect();
       const viewportPadding = 8;
       const preferredWidth =
         typeof menuWidth === "number"
           ? menuWidth
           : typeof menuWidth === "string" && menuWidth.trim() && menuWidth !== "100%"
             ? Number.parseFloat(menuWidth)
-            : rect.width;
+            : buttonRect.width;
       const nextWidth = Math.min(
-        Math.max(Number.isFinite(preferredWidth) ? preferredWidth : rect.width, rect.width),
+        Math.max(Number.isFinite(preferredWidth) ? preferredWidth : buttonRect.width, buttonRect.width),
         window.innerWidth - viewportPadding * 2
       );
       panel.style.width = `${nextWidth}px`;
-      panel.style.minWidth = `${Math.min(rect.width, nextWidth)}px`;
+      panel.style.minWidth = `${Math.min(buttonRect.width, nextWidth)}px`;
 
       const panelHeight = panel.offsetHeight;
-      const openBelowTop = rect.bottom + 6;
-      const openAboveTop = rect.top - panelHeight - 6;
-      const top =
-        openBelowTop + panelHeight <= window.innerHeight - viewportPadding || openAboveTop < viewportPadding
-          ? Math.min(openBelowTop, window.innerHeight - panelHeight - viewportPadding)
-          : Math.max(viewportPadding, openAboveTop);
-      const left = Math.min(
-        Math.max(viewportPadding, rect.right - nextWidth),
-        window.innerWidth - nextWidth - viewportPadding
-      );
+      const canOpenBelow = buttonRect.bottom + 6 + panelHeight <= window.innerHeight - viewportPadding;
+      const canOpenAbove = buttonRect.top - 6 - panelHeight >= viewportPadding;
+      const top = canOpenBelow || !canOpenAbove ? rootRect.height + 6 : -panelHeight - 6;
+
+      let left = 0;
+      if (rootRect.left + nextWidth > window.innerWidth - viewportPadding) {
+        left = window.innerWidth - viewportPadding - rootRect.left - nextWidth;
+      }
+      if (rootRect.left + left < viewportPadding) {
+        left = viewportPadding - rootRect.left;
+      }
 
       panel.style.top = `${top}px`;
       panel.style.left = `${left}px`;
@@ -217,11 +220,11 @@ function GlassSelect({
           ref={panelRef}
           className="glass-dropdown-panel"
           style={{
-            position: "fixed",
-            top: -9999,
-            left: -9999,
-            width: typeof menuWidth === "number" ? menuWidth : "auto",
-            minWidth: "max-content",
+            position: "absolute",
+            top: 36,
+            left: 0,
+            width: typeof menuWidth === "number" ? menuWidth : "100%",
+            minWidth: "100%",
             padding: 4,
             zIndex: 99991,
             maxHeight: 260,
