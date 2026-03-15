@@ -1574,7 +1574,7 @@ export function BuiltinWidgetView({
               }}
               style={mediaIconBtnStyle({ size: 20, fontSize: 18 })}
             >
-              ▶
+              {renderMediaControlIcon("play")}
             </button>
             <button
               onClick={() => {
@@ -1582,7 +1582,7 @@ export function BuiltinWidgetView({
               }}
               style={mediaIconBtnStyle({ size: 20, fontSize: 18 })}
             >
-              ⏸
+              {renderMediaControlIcon("pause")}
             </button>
             <button
               onClick={() => {
@@ -1596,7 +1596,7 @@ export function BuiltinWidgetView({
               }}
               style={mediaIconBtnStyle({ size: 20, fontSize: 18 })}
             >
-              ↺
+              {renderMediaControlIcon("reset")}
             </button>
           </div>
         </div>
@@ -2334,7 +2334,7 @@ export function BuiltinWidgetView({
                   style={mediaIconBtnStyle({ size: 16, fontSize: 14 })}
                   title={active && isPlaying ? "暂停" : "播放"}
                 >
-                  {active && isPlaying ? "⏸" : "▶"}
+                  {renderMediaControlIcon(active && isPlaying ? "pause" : "play")}
                 </button>
                 <div style={{ minWidth: 0 }}>
                   <div
@@ -3756,32 +3756,26 @@ export function BuiltinWidgetView({
               })();
             }}
             title={recording ? "停止录音" : "开始录音"}
-            style={
-              isMobileMode
-                ? mediaIconBtnStyle({ size: 24, fontSize: recording ? 15 : 18 })
-                : {
-                    width: recording ? 27 : 33,
-                    height: recording ? 27 : 33,
-                    borderRadius: recording ? 4 : "50%",
-                    border: recording ? "1px solid rgba(15,23,42,0.9)" : "1px solid rgba(248,113,113,0.95)",
-                    background: recording
-                      ? "linear-gradient(165deg, rgba(15,23,42,0.96), rgba(0,0,0,0.9))"
-                      : "linear-gradient(165deg, rgba(248,113,113,0.96), rgba(220,38,38,0.92))",
-                    boxShadow: recording
-                      ? "0 4px 10px rgba(0,0,0,0.35)"
-                      : "0 4px 10px rgba(220,38,38,0.35)",
-                    cursor: "pointer",
-                    display: "grid",
-                    placeItems: "center",
-                    color: "white",
-                    fontWeight: 700,
-                    fontSize: 13,
-                    lineHeight: 1
-                  }
-            }
-          >
-            {isMobileMode ? (recording ? "⏹" : "⏺") : null}
-          </button>
+            style={{
+              width: recording ? 27 : 33,
+              height: recording ? 27 : 33,
+              borderRadius: recording ? 4 : "50%",
+              border: recording ? "1px solid rgba(15,23,42,0.9)" : "1px solid rgba(248,113,113,0.95)",
+              background: recording
+                ? "linear-gradient(165deg, rgba(15,23,42,0.96), rgba(0,0,0,0.9))"
+                : "linear-gradient(165deg, rgba(248,113,113,0.96), rgba(220,38,38,0.92))",
+              boxShadow: recording
+                ? "0 4px 10px rgba(0,0,0,0.35)"
+                : "0 4px 10px rgba(220,38,38,0.35)",
+              cursor: "pointer",
+              display: "grid",
+              placeItems: "center",
+              color: "white",
+              fontWeight: 700,
+              fontSize: 13,
+              lineHeight: 1
+            }}
+          />
         </div>
 
         {recording ? <div style={{ color: "#fda4af", marginBottom: 8, textAlign: "center" }}>录音中...</div> : null}
@@ -3883,11 +3877,10 @@ export function BuiltinWidgetView({
                           setPlayingId("");
                         };
                       }}
-                      className={isMobileMode ? undefined : "recorder-play-btn"}
-                      style={isMobileMode ? mediaIconBtnStyle({ size: 16, fontSize: 12 }) : undefined}
+                      className="recorder-play-btn"
                       title={playingId === item.id ? "暂停" : "播放"}
                     >
-                      {playingId === item.id ? "⏸" : "▶"}
+                      {renderMediaControlIcon(playingId === item.id ? "pause" : "play")}
                     </button>
                     <input
                       type="range"
@@ -4088,17 +4081,40 @@ function mediaIconBtnStyle({
   };
 }
 
-const timerIconBtnStyle: CSSProperties = {
-  border: "none",
-  background: "transparent",
-  color: "#0f172a",
-  fontSize: 18,
-  lineHeight: 1,
-  width: 20,
-  height: 20,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: 0,
-  cursor: "pointer"
-};
+function renderMediaControlIcon(kind: "play" | "pause" | "reset") {
+  if (kind === "play") {
+    return (
+      <svg width="11" height="12" viewBox="0 0 11 12" fill="none" aria-hidden="true">
+        <path d="M2 1.6L9 6L2 10.4V1.6Z" fill="#0f172a" />
+      </svg>
+    );
+  }
+  if (kind === "pause") {
+    return (
+      <span
+        aria-hidden="true"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 2
+        }}
+      >
+        <span style={{ width: 3, height: 12, borderRadius: 999, background: "#0f172a", display: "block" }} />
+        <span style={{ width: 3, height: 12, borderRadius: 999, background: "#0f172a", display: "block" }} />
+      </span>
+    );
+  }
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path
+        d="M11.5 7A4.5 4.5 0 1 1 7 2.5c1.2 0 2.28.47 3.08 1.24"
+        stroke="#0f172a"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M11.5 2.75v2.5H9" stroke="#0f172a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
