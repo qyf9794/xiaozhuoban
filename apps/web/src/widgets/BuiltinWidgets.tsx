@@ -1572,7 +1572,7 @@ export function BuiltinWidgetView({
                   running: total > 0
                 });
               }}
-              style={timerIconBtnStyle}
+              style={mediaIconBtnStyle({ size: 20, fontSize: 18 })}
             >
               ▶
             </button>
@@ -1580,7 +1580,7 @@ export function BuiltinWidgetView({
               onClick={() => {
                 onStateChange({ ...instance.state, running: false });
               }}
-              style={timerIconBtnStyle}
+              style={mediaIconBtnStyle({ size: 20, fontSize: 18 })}
             >
               ⏸
             </button>
@@ -1594,7 +1594,7 @@ export function BuiltinWidgetView({
                   running: false
                 });
               }}
-              style={timerIconBtnStyle}
+              style={mediaIconBtnStyle({ size: 20, fontSize: 18 })}
             >
               ↺
             </button>
@@ -2331,15 +2331,7 @@ export function BuiltinWidgetView({
                       setError("播放失败，请重试");
                     });
                   }}
-                  style={{
-                    border: "none",
-                    background: "transparent",
-                    color: "#111827",
-                    fontSize: 14,
-                    cursor: "pointer",
-                    padding: 0,
-                    width: 16
-                  }}
+                  style={mediaIconBtnStyle({ size: 16, fontSize: 14 })}
                   title={active && isPlaying ? "暂停" : "播放"}
                 >
                   {active && isPlaying ? "⏸" : "▶"}
@@ -2704,7 +2696,7 @@ export function BuiltinWidgetView({
                           minHeight: 18,
                           lineHeight: 1.1,
                           paddingTop: 8,
-                          paddingRight: isMobileMode ? 16 : 20
+                          paddingRight: isMobileMode ? 20 : 20
                         }}
                       >
                         {getWorldClockOptionLabel(timeZone)}
@@ -2724,7 +2716,7 @@ export function BuiltinWidgetView({
                         buttonStyle={{
                           width: "auto",
                           minHeight: 18,
-                          padding: isMobileMode ? "0 16px 0 0" : "0 20px 0 0",
+                          padding: isMobileMode ? "0 20px 0 0" : "0 20px 0 0",
                           border: "none",
                           borderRadius: 0,
                           background: "transparent",
@@ -3103,6 +3095,28 @@ export function BuiltinWidgetView({
     const canNext = historyIndex >= 0 && historyIndex < history.length - 1;
     const sourceHeight = Number(instance.state.sourceHeight ?? 108);
     const resultHeight = Number(instance.state.resultHeight ?? 96);
+    const pasteSourceText = async () => {
+      if (!navigator.clipboard?.readText) {
+        onStateChange({
+          ...instance.state,
+          translateError: "当前浏览器不支持读取剪贴板"
+        });
+        return;
+      }
+      try {
+        const text = await navigator.clipboard.readText();
+        onStateChange({
+          ...instance.state,
+          sourceText: text,
+          translateError: ""
+        });
+      } catch (error) {
+        onStateChange({
+          ...instance.state,
+          translateError: error instanceof Error ? error.message : "读取剪贴板失败"
+        });
+      }
+    };
 
     return (
       <WidgetShell definition={definition} instance={instance}>
@@ -3162,53 +3176,100 @@ export function BuiltinWidgetView({
             background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
           }}
         />
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, marginBottom: 8 }}>
-          <Button
-            onClick={() => {
-              if (!sourceText.trim()) return;
-              onStateChange({ ...instance.state, translating: true, translateError: "" });
-              void quickTranslate(sourceText, sourceLang, targetLang)
-                .then((text) => {
-                  const currentHistory = (Array.isArray(instance.state.translateHistory)
-                    ? instance.state.translateHistory
-                    : []) as TranslateHistoryItem[];
-                  const currentIndex = Number(instance.state.translateHistoryIndex ?? (currentHistory.length ? currentHistory.length - 1 : -1));
-                  const normalizedIndex = Number.isFinite(currentIndex) ? currentIndex : currentHistory.length - 1;
-                  const baseHistory =
-                    normalizedIndex >= 0 && normalizedIndex < currentHistory.length - 1
-                      ? currentHistory.slice(0, normalizedIndex + 1)
-                      : currentHistory;
-                  const nextHistory = [
-                    ...baseHistory,
-                    {
-                      sourceText,
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr auto 1fr",
+            alignItems: "center",
+            gap: 8,
+            marginTop: 8,
+            marginBottom: 8
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "flex-start" }}>
+            <button
+              type="button"
+              onClick={() => void pasteSourceText()}
+              style={{
+                border: "none",
+                background: "transparent",
+                padding: 0,
+                width: 18,
+                height: 18,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#475569",
+                cursor: "pointer"
+              }}
+              title="粘贴剪贴板内容"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path
+                  d="M5.5 2.5H4.75A1.75 1.75 0 0 0 3 4.25v7A1.75 1.75 0 0 0 4.75 13h6.5A1.75 1.75 0 0 0 13 11.25v-7A1.75 1.75 0 0 0 11.25 2.5H10.5"
+                  stroke="currentColor"
+                  strokeWidth="1.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M6 2.75C6 2.06 6.56 1.5 7.25 1.5h1.5C9.44 1.5 10 2.06 10 2.75v.5H6v-.5Z"
+                  stroke="currentColor"
+                  strokeWidth="1.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <Button
+              onClick={() => {
+                if (!sourceText.trim()) return;
+                onStateChange({ ...instance.state, translating: true, translateError: "" });
+                void quickTranslate(sourceText, sourceLang, targetLang)
+                  .then((text) => {
+                    const currentHistory = (Array.isArray(instance.state.translateHistory)
+                      ? instance.state.translateHistory
+                      : []) as TranslateHistoryItem[];
+                    const currentIndex = Number(instance.state.translateHistoryIndex ?? (currentHistory.length ? currentHistory.length - 1 : -1));
+                    const normalizedIndex = Number.isFinite(currentIndex) ? currentIndex : currentHistory.length - 1;
+                    const baseHistory =
+                      normalizedIndex >= 0 && normalizedIndex < currentHistory.length - 1
+                        ? currentHistory.slice(0, normalizedIndex + 1)
+                        : currentHistory;
+                    const nextHistory = [
+                      ...baseHistory,
+                      {
+                        sourceText,
+                        translatedText: text,
+                        sourceLang,
+                        targetLang,
+                        translatedAt: new Date().toISOString()
+                      }
+                    ];
+                    onStateChange({
+                      ...instance.state,
+                      translating: false,
+                      translateError: "",
                       translatedText: text,
-                      sourceLang,
-                      targetLang,
-                      translatedAt: new Date().toISOString()
-                    }
-                  ];
-                  onStateChange({
-                    ...instance.state,
-                    translating: false,
-                    translateError: "",
-                    translatedText: text,
-                    translateHistory: nextHistory,
-                    translateHistoryIndex: nextHistory.length - 1
+                      translateHistory: nextHistory,
+                      translateHistoryIndex: nextHistory.length - 1
+                    });
+                  })
+                  .catch((error) => {
+                    onStateChange({
+                      ...instance.state,
+                      translating: false,
+                      translateError: error instanceof Error ? error.message : "翻译失败"
+                    });
                   });
-                })
-                .catch((error) => {
-                  onStateChange({
-                    ...instance.state,
-                    translating: false,
-                    translateError: error instanceof Error ? error.message : "翻译失败"
-                  });
-                });
-            }}
-          >
-            {translating ? "…" : "⇢"}
-          </Button>
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+              }}
+            >
+              {translating ? "…" : "⇢"}
+            </Button>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10 }}>
             <button
               onClick={() => {
                 if (!canPrev) return;
@@ -3695,26 +3756,32 @@ export function BuiltinWidgetView({
               })();
             }}
             title={recording ? "停止录音" : "开始录音"}
-            style={{
-              width: recording ? 27 : 33,
-              height: recording ? 27 : 33,
-              borderRadius: recording ? 4 : "50%",
-              border: recording ? "1px solid rgba(15,23,42,0.9)" : "1px solid rgba(248,113,113,0.95)",
-              background: recording
-                ? "linear-gradient(165deg, rgba(15,23,42,0.96), rgba(0,0,0,0.9))"
-                : "linear-gradient(165deg, rgba(248,113,113,0.96), rgba(220,38,38,0.92))",
-              boxShadow: recording
-                ? "0 4px 10px rgba(0,0,0,0.35)"
-                : "0 4px 10px rgba(220,38,38,0.35)",
-              cursor: "pointer",
-              display: "grid",
-              placeItems: "center",
-              color: "white",
-              fontWeight: 700,
-              fontSize: 13,
-              lineHeight: 1
-            }}
-          />
+            style={
+              isMobileMode
+                ? mediaIconBtnStyle({ size: 24, fontSize: recording ? 15 : 18 })
+                : {
+                    width: recording ? 27 : 33,
+                    height: recording ? 27 : 33,
+                    borderRadius: recording ? 4 : "50%",
+                    border: recording ? "1px solid rgba(15,23,42,0.9)" : "1px solid rgba(248,113,113,0.95)",
+                    background: recording
+                      ? "linear-gradient(165deg, rgba(15,23,42,0.96), rgba(0,0,0,0.9))"
+                      : "linear-gradient(165deg, rgba(248,113,113,0.96), rgba(220,38,38,0.92))",
+                    boxShadow: recording
+                      ? "0 4px 10px rgba(0,0,0,0.35)"
+                      : "0 4px 10px rgba(220,38,38,0.35)",
+                    cursor: "pointer",
+                    display: "grid",
+                    placeItems: "center",
+                    color: "white",
+                    fontWeight: 700,
+                    fontSize: 13,
+                    lineHeight: 1
+                  }
+            }
+          >
+            {isMobileMode ? (recording ? "⏹" : "⏺") : null}
+          </button>
         </div>
 
         {recording ? <div style={{ color: "#fda4af", marginBottom: 8, textAlign: "center" }}>录音中...</div> : null}
@@ -3816,7 +3883,8 @@ export function BuiltinWidgetView({
                           setPlayingId("");
                         };
                       }}
-                      className="recorder-play-btn"
+                      className={isMobileMode ? undefined : "recorder-play-btn"}
+                      style={isMobileMode ? mediaIconBtnStyle({ size: 16, fontSize: 12 }) : undefined}
                       title={playingId === item.id ? "暂停" : "播放"}
                     >
                       {playingId === item.id ? "⏸" : "▶"}
@@ -3996,10 +4064,34 @@ export function AIFormWidgetView({
   );
 }
 
+function mediaIconBtnStyle({
+  size,
+  fontSize
+}: {
+  size: number;
+  fontSize: number;
+}): CSSProperties {
+  return {
+    border: "none",
+    background: "transparent",
+    color: "#0f172a",
+    fontSize,
+    lineHeight: 1,
+    width: size,
+    height: size,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    cursor: "pointer",
+    boxShadow: "none"
+  };
+}
+
 const timerIconBtnStyle: CSSProperties = {
   border: "none",
   background: "transparent",
-  color: "#334155",
+  color: "#0f172a",
   fontSize: 18,
   lineHeight: 1,
   width: 20,

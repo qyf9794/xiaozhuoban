@@ -401,6 +401,9 @@ export function GomokuWidget({
   const selfStone = displayMatch ? stoneForUser(displayMatch, mode === "online" ? userId : LOCAL_HUMAN_ID) : null;
   const selfSlot = displayMatch ? playerSlotForUser(displayMatch, mode === "online" ? userId : LOCAL_HUMAN_ID) : null;
   const statusLineText = mode === "online" ? onlineError || statusText : statusText;
+  const cardPadding = isMobileMode ? 4 : 8;
+  const sectionGap = isMobileMode ? 4 : 8;
+  const boardPadding = isMobileMode ? 4 : 8;
 
   const occupiedPeers = useMemo(() => {
     const activePeerIds = new Set(
@@ -443,17 +446,17 @@ export function GomokuWidget({
       tone="peach"
       style={{
         height: "auto",
-        minHeight: isMobileMode ? 560 : undefined,
-        padding: 8
+        minHeight: 0,
+        padding: cardPadding
       }}
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: sectionGap, minHeight: 0 }}>
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "auto 1fr auto",
             alignItems: "center",
-            gap: 8
+            gap: sectionGap
           }}
         >
           <div style={{ display: "flex", gap: 6 }}>
@@ -500,10 +503,10 @@ export function GomokuWidget({
           style={{
             display: "grid",
             gridTemplateColumns: "1fr auto",
-            gap: 8,
+            gap: sectionGap,
             alignItems: "center",
             minHeight: 16,
-            fontSize: 11
+            fontSize: isMobileMode ? 10 : 11
           }}
         >
           <span style={{ color: "#475569", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -518,7 +521,7 @@ export function GomokuWidget({
           style={{
             display: "grid",
             gridTemplateRows: mode === "online" ? "auto auto auto auto" : "auto auto",
-            gap: 8
+            gap: sectionGap
           }}
         >
           {mode === "online" ? (
@@ -627,7 +630,7 @@ export function GomokuWidget({
               display: "grid",
               placeItems: "center",
               borderRadius: 18,
-              padding: 8,
+              padding: boardPadding,
               background: "linear-gradient(165deg, rgba(240, 207, 150, 0.78), rgba(214, 163, 101, 0.82))",
               boxShadow: "inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -8px 24px rgba(120,53,15,0.08)"
             }}
