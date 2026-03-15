@@ -442,12 +442,12 @@ export function cancelMatch(match: GomokuMatch, hostUserId: string, cancelledAt 
   };
 }
 
-export function exitFinishedMatch(match: GomokuMatch, userId: string, exitedAt = nowIso()) {
+export function exitMatch(match: GomokuMatch, userId: string, exitedAt = nowIso()) {
   if (playerSlotForUser(match, userId) === null) {
     throw new Error("当前用户不在该对局中");
   }
-  if (match.roundState !== "series_complete") {
-    throw new Error("当前比赛尚未结束");
+  if (match.status === "cancelled" || match.status === "declined" || match.status === "expired") {
+    throw new Error("当前对局已结束");
   }
   return {
     ...match,

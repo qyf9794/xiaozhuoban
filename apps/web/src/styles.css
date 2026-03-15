@@ -81,7 +81,7 @@ body {
 }
 
 .mobile-sidebar-backdrop {
-  position: absolute;
+  position: fixed;
   inset: 0;
   border: none;
   margin: 0;
@@ -91,7 +91,7 @@ body {
 }
 
 .mobile-sidebar-drawer {
-  position: absolute;
+  position: fixed;
   left: 0;
   top: 0;
   bottom: 0;

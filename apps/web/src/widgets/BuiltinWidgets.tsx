@@ -91,6 +91,8 @@ function GlassSelect({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const prevWidgetZRef = useRef<string>("");
   const selected = options.find((item) => item.value === value) ?? options[0];
 
@@ -125,9 +127,58 @@ function GlassSelect({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const updateMenuPosition = () => {
+      const button = buttonRef.current;
+      const panel = panelRef.current;
+      if (!button || !panel) return;
+      const rect = button.getBoundingClientRect();
+      const viewportPadding = 8;
+      const preferredWidth =
+        typeof menuWidth === "number"
+          ? menuWidth
+          : typeof menuWidth === "string" && menuWidth.trim() && menuWidth !== "100%"
+            ? Number.parseFloat(menuWidth)
+            : rect.width;
+      const nextWidth = Math.min(
+        Math.max(Number.isFinite(preferredWidth) ? preferredWidth : rect.width, rect.width),
+        window.innerWidth - viewportPadding * 2
+      );
+      panel.style.width = `${nextWidth}px`;
+      panel.style.minWidth = `${Math.min(rect.width, nextWidth)}px`;
+
+      const panelHeight = panel.offsetHeight;
+      const openBelowTop = rect.bottom + 6;
+      const openAboveTop = rect.top - panelHeight - 6;
+      const top =
+        openBelowTop + panelHeight <= window.innerHeight - viewportPadding || openAboveTop < viewportPadding
+          ? Math.min(openBelowTop, window.innerHeight - panelHeight - viewportPadding)
+          : Math.max(viewportPadding, openAboveTop);
+      const left = Math.min(
+        Math.max(viewportPadding, rect.right - nextWidth),
+        window.innerWidth - nextWidth - viewportPadding
+      );
+
+      panel.style.top = `${top}px`;
+      panel.style.left = `${left}px`;
+      panel.style.right = "auto";
+    };
+
+    const rafId = window.requestAnimationFrame(updateMenuPosition);
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [menuWidth, open, options.length]);
+
   return (
     <div ref={rootRef} style={{ position: "relative", ...style }}>
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         style={{
@@ -163,13 +214,14 @@ function GlassSelect({
       </button>
       {open ? (
         <div
+          ref={panelRef}
           className="glass-dropdown-panel"
           style={{
-            position: "absolute",
-            right: 0,
-            top: 36,
-            width: menuWidth ?? "100%",
-            minWidth: "100%",
+            position: "fixed",
+            top: -9999,
+            left: -9999,
+            width: typeof menuWidth === "number" ? menuWidth : "auto",
+            minWidth: "max-content",
             padding: 4,
             zIndex: 99991,
             maxHeight: 260,

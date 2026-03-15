@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { Card } from "@xiaozhuoban/ui";
 import { useAuthStore } from "../auth/authStore";
-import { resolveUserName } from "../lib/collab";
+import { colorForUser, resolveUserName } from "../lib/collab";
 import {
   applyMoveToMatch,
   BOARD_SIZE,
@@ -32,7 +32,8 @@ import {
   listRelevantMatches,
   removeMatchChannel,
   submitOnlineMove,
-  subscribeToUserMatches
+  subscribeToUserMatches,
+  toGomokuOnlineError
 } from "../lib/gomokuOnline";
 import { useOnlineUsers } from "../lib/useOnlineUsers";
 
@@ -172,18 +173,22 @@ function getScoreDisplay(match: GomokuMatch, userId: string, localMode = false) 
   const slot = playerSlotForUser(match, userId);
   if (!slot) {
     return {
+      leftUserKey: localMode ? LOCAL_HUMAN_ID : match.hostUserId,
       leftName: localMode ? "你" : match.hostUserName,
       leftScore: match.hostWins,
       rightScore: match.guestWins,
+      rightUserKey: localMode ? LOCAL_AI_ID : match.guestUserId,
       rightName: localMode ? "AI" : match.guestUserName
     };
   }
 
   const opponentSlot = slot === "host" ? "guest" : "host";
   return {
+    leftUserKey: localMode ? LOCAL_HUMAN_ID : slot === "host" ? match.hostUserId : match.guestUserId,
     leftName: slot === "host" ? (localMode ? "你" : "你") : localMode ? "你" : "你",
     leftScore: scoreForSlot(match, slot),
     rightScore: scoreForSlot(match, opponentSlot),
+    rightUserKey: localMode ? LOCAL_AI_ID : slot === "host" ? match.guestUserId : match.hostUserId,
     rightName: localMode ? "AI" : slot === "host" ? match.guestUserName : match.hostUserName
   };
 }
@@ -241,11 +246,17 @@ export function GomokuWidget({
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [onlineError, setOnlineError] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [invitePickerOpen, setInvitePickerOpen] = useState(false);
   const aiTimerRef = useRef<number | null>(null);
   const roundAdvanceTimerRef = useRef<number | null>(null);
   const onlineRoundAdvanceTimerRef = useRef<number | null>(null);
+  const invitePickerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (mode !== "online") {
+      setLoadingMatches(false);
+      return;
+    }
     if (!userId) return;
     let cancelled = false;
     setLoadingMatches(true);
@@ -258,7 +269,7 @@ export function GomokuWidget({
       })
       .catch((error) => {
         if (!cancelled) {
-          setOnlineError(error instanceof Error ? error.message : "在线对局加载失败");
+          setOnlineError(toGomokuOnlineError(error).message);
         }
       })
       .finally(() => {
@@ -273,7 +284,7 @@ export function GomokuWidget({
       cancelled = true;
       void removeMatchChannel(channel);
     };
-  }, [userId]);
+  }, [mode, userId]);
 
   useEffect(() => {
     if (mode !== "ai" || !localGame) return;
@@ -354,6 +365,24 @@ export function GomokuWidget({
     };
   }, [currentOnlineMatch, mode, userId]);
 
+  useEffect(() => {
+    if (mode !== "online" || currentOnlineMatch) {
+      setInvitePickerOpen(false);
+    }
+  }, [currentOnlineMatch, mode]);
+
+  useEffect(() => {
+    if (!invitePickerOpen) return;
+    const onDocClick = (event: MouseEvent) => {
+      if (!invitePickerRef.current) return;
+      if (!invitePickerRef.current.contains(event.target as Node)) {
+        setInvitePickerOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [invitePickerOpen]);
+
   const startLocalSeries = () => {
     onStateChange({
       ...instance.state,
@@ -371,11 +400,24 @@ export function GomokuWidget({
   };
 
   const persistMode = (nextMode: GomokuMode) => {
+    if (nextMode !== "online") {
+      setInvitePickerOpen(false);
+    }
     onStateChange({
       ...instance.state,
       gomokuMode: nextMode,
       gomokuLocalGame: nextMode === "ai" ? (instance.state.gomokuLocalGame ?? null) : instance.state.gomokuLocalGame
     });
+  };
+
+  const exitCurrentMatch = () => {
+    setOnlineError("");
+    if (mode === "online") {
+      if (!currentOnlineMatch) return;
+      void runOnlineAction(`exit:${currentOnlineMatch.id}`, () => exitOnlineSeries(currentOnlineMatch, userId));
+      return;
+    }
+    clearLocalSeries();
   };
 
   const runOnlineAction = async (actionId: string, task: () => Promise<GomokuMatch>) => {
@@ -385,7 +427,7 @@ export function GomokuWidget({
       const next = await task();
       setMatches((prev) => upsertMatchList(prev, next));
     } catch (error) {
-      setOnlineError(error instanceof Error ? error.message : "在线操作失败");
+      setOnlineError(toGomokuOnlineError(error, "在线操作失败").message);
     } finally {
       setBusyId("");
     }
@@ -401,6 +443,8 @@ export function GomokuWidget({
   const selfStone = displayMatch ? stoneForUser(displayMatch, mode === "online" ? userId : LOCAL_HUMAN_ID) : null;
   const selfSlot = displayMatch ? playerSlotForUser(displayMatch, mode === "online" ? userId : LOCAL_HUMAN_ID) : null;
   const statusLineText = mode === "online" ? onlineError || statusText : statusText;
+  const onlineUnavailable = onlineError.includes("在线对战未初始化");
+  const showStatusRow = Boolean(statusLineText || selfStone);
   const cardPadding = isMobileMode ? "8px 12px 6px" : 8;
   const sectionGap = isMobileMode ? 4 : 8;
   const boardPadding = isMobileMode ? 4 : 8;
@@ -414,6 +458,10 @@ export function GomokuWidget({
     );
     return activePeerIds;
   }, [matches, userId]);
+  const inviteableUsers = useMemo(
+    () => otherUsers.filter((entry) => !occupiedPeers.has(entry.userId)),
+    [occupiedPeers, otherUsers]
+  );
 
   const playLocalMove = (row: number, col: number) => {
     if (mode !== "ai" || !localGame) return;
@@ -455,12 +503,12 @@ export function GomokuWidget({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "auto 1fr auto",
+            gridTemplateColumns: "1fr auto 1fr",
             alignItems: "center",
             gap: sectionGap
           }}
         >
-          <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ display: "flex", gap: 6, justifySelf: "start" }}>
             <button type="button" style={modeButtonStyle(mode === "ai")} onClick={() => persistMode("ai")}>
               人机
             </button>
@@ -471,72 +519,113 @@ export function GomokuWidget({
           <div
             style={{
               minHeight: 18,
-              textAlign: "center",
-              fontSize: 12,
-              color: "#334155",
+              display: "flex",
+              alignItems: "baseline",
+              justifyContent: "center",
+              gap: isMobileMode ? 6 : 8,
               whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis"
+              overflow: "hidden"
             }}
           >
-            {scoreDisplay ? `${scoreDisplay.leftName} ${scoreDisplay.leftScore} : ${scoreDisplay.rightScore} ${scoreDisplay.rightName}` : ""}
+            {scoreDisplay ? (
+              <>
+                <span
+                  style={{
+                    fontSize: isMobileMode ? 14 : 17,
+                    fontWeight: 600,
+                    color: colorForUser(scoreDisplay.leftUserKey),
+                    overflow: "hidden",
+                    textOverflow: "ellipsis"
+                  }}
+                >
+                  {scoreDisplay.leftName}
+                </span>
+                <span
+                  style={{
+                    fontSize: isMobileMode ? 20 : 24,
+                    fontWeight: 700,
+                    lineHeight: 1,
+                    color: "#334155"
+                  }}
+                >
+                  {scoreDisplay.leftScore} : {scoreDisplay.rightScore}
+                </span>
+                <span
+                  style={{
+                    fontSize: isMobileMode ? 14 : 17,
+                    fontWeight: 600,
+                    color: colorForUser(scoreDisplay.rightUserKey),
+                    overflow: "hidden",
+                    textOverflow: "ellipsis"
+                  }}
+                >
+                  {scoreDisplay.rightName}
+                </span>
+              </>
+            ) : null}
           </div>
           {mode === "ai" ? (
             localGame ? (
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", justifySelf: "end", gap: 6 }}>
                 <button type="button" style={actionButtonStyle(false)} onClick={startLocalSeries}>
                   重新比赛
                 </button>
+                <button type="button" style={actionButtonStyle(false)} onClick={exitCurrentMatch}>
+                  退出
+                </button>
               </div>
             ) : (
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", justifySelf: "end" }}>
                 <button type="button" style={actionButtonStyle(false, true)} onClick={startLocalSeries}>
                   开始对战
                 </button>
               </div>
             )
-          ) : (
-            <div />
-          )}
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr auto",
-            gap: sectionGap,
-            alignItems: "center",
-            minHeight: 16,
-            fontSize: isMobileMode ? 10 : 11
-          }}
-        >
-          <span style={{ color: "#475569", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {statusLineText}
-          </span>
-          <span style={{ color: "#334155" }}>
-            {selfStone ? `你执${stoneLabel(selfStone)}` : ""}
-          </span>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateRows: mode === "online" ? "auto auto auto auto" : "auto auto",
-            gap: sectionGap
-          }}
-        >
-          {mode === "online" ? (
-            <>
-              <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
-                {otherUsers.length > 0 ? (
-                  otherUsers.map((entry) => {
-                    const disabled = occupiedPeers.has(entry.userId) || Boolean(busyId);
-                    return (
+          ) : mode === "online" ? (
+            <div
+              ref={invitePickerRef}
+              style={{ display: "flex", justifyContent: "flex-end", justifySelf: "end", position: "relative", gap: 6 }}
+            >
+              {!onlineUnavailable && !currentOnlineMatch ? (
+                <button
+                  type="button"
+                  style={actionButtonStyle(false, true)}
+                  onClick={() => setInvitePickerOpen((open) => !open)}
+                >
+                  邀请
+                </button>
+              ) : null}
+              {currentOnlineMatch ? (
+                <button type="button" style={actionButtonStyle(false)} onClick={exitCurrentMatch}>
+                  退出
+                </button>
+              ) : null}
+              {invitePickerOpen ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 6px)",
+                    right: 0,
+                    zIndex: 5,
+                    width: isMobileMode ? 220 : 240,
+                    display: "grid",
+                    gap: 6,
+                    padding: 8,
+                    borderRadius: 14,
+                    border: "1px solid rgba(148,163,184,0.22)",
+                    background: "rgba(255,255,255,0.88)",
+                    boxShadow: "0 14px 28px rgba(15,23,42,0.12)",
+                    backdropFilter: "blur(10px)"
+                  }}
+                >
+                  {inviteableUsers.length > 0 ? (
+                    inviteableUsers.map((entry) => (
                       <button
                         key={entry.userId}
                         type="button"
-                        disabled={disabled}
-                        onClick={() =>
+                        disabled={Boolean(busyId)}
+                        onClick={() => {
+                          setInvitePickerOpen(false);
                           void runOnlineAction(`invite:${entry.userId}`, () =>
                             createOnlineMatch({
                               hostUserId: userId,
@@ -544,87 +633,118 @@ export function GomokuWidget({
                               guestUserId: entry.userId,
                               guestUserName: entry.userName
                             })
-                          )
-                        }
-                        style={actionButtonStyle(disabled)}
+                          );
+                        }}
+                        style={{
+                          ...actionButtonStyle(Boolean(busyId)),
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "7px 10px"
+                        }}
                       >
                         邀请 {entry.userName}
                       </button>
-                    );
-                  })
-                ) : (
-                  <div style={{ fontSize: 11, color: "#64748b" }}>暂无其他在线用户</div>
-                )}
-              </div>
+                    ))
+                  ) : (
+                    <div style={{ fontSize: 11, color: "#64748b", padding: "2px 4px" }}>暂无可邀请的在线用户</div>
+                  )}
+                  {incomingInvites.slice(0, 2).map((match) => (
+                    <div
+                      key={match.id}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr auto auto",
+                        gap: 6,
+                        alignItems: "center",
+                        fontSize: 11,
+                        color: "#0f172a",
+                        padding: "6px 8px",
+                        borderRadius: 12,
+                        background: "rgba(255,255,255,0.5)"
+                      }}
+                    >
+                      <span>{match.hostUserName} 邀请你</span>
+                      <button
+                        type="button"
+                        style={actionButtonStyle(Boolean(busyId), true)}
+                        disabled={Boolean(busyId)}
+                        onClick={() => {
+                          setInvitePickerOpen(false);
+                          void runOnlineAction(`accept:${match.id}`, () => acceptOnlineMatch(match, userId));
+                        }}
+                      >
+                        接受
+                      </button>
+                      <button
+                        type="button"
+                        style={actionButtonStyle(Boolean(busyId))}
+                        disabled={Boolean(busyId)}
+                        onClick={() => void runOnlineAction(`decline:${match.id}`, () => declineOnlineMatch(match, userId))}
+                      >
+                        拒绝
+                      </button>
+                    </div>
+                  ))}
+                  {outgoingInvites.slice(0, 2).map((match) => (
+                    <div
+                      key={match.id}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr auto",
+                        gap: 6,
+                        alignItems: "center",
+                        fontSize: 11,
+                        color: "#475569",
+                        padding: "6px 8px",
+                        borderRadius: 12,
+                        background: "rgba(255,255,255,0.38)"
+                      }}
+                    >
+                      <span>等待 {match.guestUserName} 确认</span>
+                      <button
+                        type="button"
+                        style={actionButtonStyle(Boolean(busyId))}
+                        disabled={Boolean(busyId)}
+                        onClick={() => void runOnlineAction(`cancel:${match.id}`, () => cancelOnlineMatch(match, userId))}
+                      >
+                        取消
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div style={{ justifySelf: "end" }} />
+          )}
+        </div>
 
-              <div style={{ display: "grid", gap: 4 }}>
-                {incomingInvites.slice(0, 2).map((match) => (
-                  <div
-                    key={match.id}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr auto auto",
-                      gap: 6,
-                      alignItems: "center",
-                      fontSize: 11,
-                      color: "#0f172a",
-                      padding: "6px 8px",
-                      borderRadius: 12,
-                      background: "rgba(255,255,255,0.38)"
-                    }}
-                  >
-                    <span>{match.hostUserName} 邀请你对战</span>
-                    <button
-                      type="button"
-                      style={actionButtonStyle(Boolean(busyId), true)}
-                      disabled={Boolean(busyId)}
-                      onClick={() => void runOnlineAction(`accept:${match.id}`, () => acceptOnlineMatch(match, userId))}
-                    >
-                      接受
-                    </button>
-                    <button
-                      type="button"
-                      style={actionButtonStyle(Boolean(busyId))}
-                      disabled={Boolean(busyId)}
-                      onClick={() => void runOnlineAction(`decline:${match.id}`, () => declineOnlineMatch(match, userId))}
-                    >
-                      拒绝
-                    </button>
-                  </div>
-                ))}
-                {outgoingInvites.slice(0, 2).map((match) => (
-                  <div
-                    key={match.id}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr auto",
-                      gap: 6,
-                      alignItems: "center",
-                      fontSize: 11,
-                      color: "#475569",
-                      padding: "6px 8px",
-                      borderRadius: 12,
-                      background: "rgba(255,255,255,0.26)"
-                    }}
-                  >
-                    <span>等待 {match.guestUserName} 确认，黑白已随机分配</span>
-                    <button
-                      type="button"
-                      style={actionButtonStyle(Boolean(busyId))}
-                      disabled={Boolean(busyId)}
-                      onClick={() => void runOnlineAction(`cancel:${match.id}`, () => cancelOnlineMatch(match, userId))}
-                    >
-                      取消
-                    </button>
-                  </div>
-                ))}
-                {loadingMatches && incomingInvites.length === 0 && outgoingInvites.length === 0 ? (
-                  <div style={{ fontSize: 11, color: "#64748b" }}>正在同步在线对局...</div>
-                ) : null}
-              </div>
-            </>
-          ) : null}
+        {showStatusRow ? (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr auto",
+              gap: sectionGap,
+              alignItems: "center",
+              minHeight: 16,
+              fontSize: isMobileMode ? 10 : 11
+            }}
+          >
+            <span style={{ color: "#475569", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {statusLineText}
+            </span>
+            <span style={{ color: "#334155" }}>
+              {selfStone ? `你执${stoneLabel(selfStone)}` : ""}
+            </span>
+          </div>
+        ) : null}
 
+        <div
+          style={{
+            display: "grid",
+            gap: sectionGap
+          }}
+        >
           <div
             style={{
               position: "relative",

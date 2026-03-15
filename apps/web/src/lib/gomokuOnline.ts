@@ -7,7 +7,7 @@ import {
   confirmRematch,
   createPendingMatch,
   declineMatch,
-  exitFinishedMatch,
+  exitMatch,
   expireMatch,
   GOMOKU_ACTIVE_STATUSES,
   GOMOKU_VISIBLE_STATUSES,
@@ -53,6 +53,48 @@ interface GomokuMatchRow {
   finished_at: string | null;
   round_finished_at: string | null;
   expires_at: string | null;
+}
+
+function readErrorText(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return "";
+  }
+  const parts = ["message", "details", "hint", "code"]
+    .map((key) => {
+      const value = (error as Record<string, unknown>)[key];
+      return typeof value === "string" ? value : "";
+    })
+    .filter(Boolean);
+  return parts.join(" ").toLowerCase();
+}
+
+function isMissingGomokuTableError(error: unknown) {
+  const text = readErrorText(error);
+  return (
+    text.includes("gomoku_matches") &&
+    (text.includes("404") ||
+      text.includes("42p01") ||
+      text.includes("pgrst205") ||
+      text.includes("could not find the table") ||
+      text.includes("relation") ||
+      text.includes("schema cache"))
+  );
+}
+
+export function toGomokuOnlineError(error: unknown, fallback = "在线对局加载失败") {
+  if (isMissingGomokuTableError(error)) {
+    return new Error("在线对战未初始化，请先在 Supabase 执行最新 schema.sql 里的 gomoku_matches 建表语句");
+  }
+  if (error instanceof Error && error.message) {
+    return error;
+  }
+  if (error && typeof error === "object") {
+    const message = (error as Record<string, unknown>).message;
+    if (typeof message === "string" && message.trim()) {
+      return new Error(message);
+    }
+  }
+  return new Error(fallback);
 }
 
 export function normalizeGomokuMatchRow(row: GomokuMatchRow): GomokuMatch {
@@ -172,7 +214,7 @@ async function updateMatchWithRevision(current: GomokuMatch, next: GomokuMatch) 
     .maybeSingle();
 
   if (error) {
-    throw error;
+    throw toGomokuOnlineError(error, "在线操作失败");
   }
   if (!data) {
     throw new Error("对局状态已更新，请刷新后重试");
@@ -190,7 +232,7 @@ export async function listRelevantMatches(userId: string) {
     .limit(20);
 
   if (error) {
-    throw error;
+    throw toGomokuOnlineError(error);
   }
 
   const matches = ((data as GomokuMatchRow[] | null) ?? []).map(normalizeGomokuMatchRow);
@@ -217,7 +259,7 @@ export async function createOnlineMatch(params: {
     .limit(5);
 
   if (existingError) {
-    throw existingError;
+    throw toGomokuOnlineError(existingError, "在线对局加载失败");
   }
   const duplicates = await refreshExpiredMatches(((existing as GomokuMatchRow[] | null) ?? []).map(normalizeGomokuMatchRow));
   if (duplicates.some((match) => activeStatusSet.has(match.status))) {
@@ -227,7 +269,7 @@ export async function createOnlineMatch(params: {
   const match = createPendingMatch(params);
   const { data, error } = await supabase.from("gomoku_matches").insert(matchToInsertPayload(match)).select("*").single();
   if (error) {
-    throw error;
+    throw toGomokuOnlineError(error, "创建邀请失败");
   }
   return normalizeGomokuMatchRow(data as GomokuMatchRow);
 }
@@ -257,7 +299,7 @@ export async function confirmOnlineRematch(match: GomokuMatch, userId: string) {
 }
 
 export async function exitOnlineSeries(match: GomokuMatch, userId: string) {
-  return updateMatchWithRevision(match, exitFinishedMatch(match, userId));
+  return updateMatchWithRevision(match, exitMatch(match, userId));
 }
 
 export function subscribeToUserMatches(userId: string, onMatchChange: (match: GomokuMatch) => void) {
