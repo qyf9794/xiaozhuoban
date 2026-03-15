@@ -3,10 +3,14 @@ import { createId, nowIso } from "@xiaozhuoban/domain";
 export const BOARD_SIZE = 15;
 export const GOMOKU_INVITE_TTL_MS = 5 * 60 * 1000;
 export const GOMOKU_ACTIVE_STATUSES = ["pending", "active"] as const;
+export const GOMOKU_VISIBLE_STATUSES = ["pending", "active", "completed"] as const;
+export const GOMOKU_MATCH_POINT = 2;
 
 export type GomokuStone = "black" | "white";
 export type GomokuWinner = GomokuStone | "draw";
 export type GomokuMatchStatus = "pending" | "active" | "declined" | "cancelled" | "completed" | "expired";
+export type GomokuRoundState = "playing" | "round_complete" | "series_complete";
+export type GomokuSeriesWinner = "host" | "guest" | null;
 export type GomokuBoardCell = 0 | 1 | 2;
 export type GomokuBoardState = GomokuBoardCell[][];
 
@@ -17,15 +21,26 @@ export interface GomokuMatch {
   guestUserId: string;
   guestUserName: string;
   status: GomokuMatchStatus;
+  roundState: GomokuRoundState;
   boardState: GomokuBoardState;
   movesCount: number;
   currentTurn: GomokuStone;
   winner: GomokuWinner | null;
+  seriesWinner: GomokuSeriesWinner;
+  currentRound: number;
+  hostWins: number;
+  guestWins: number;
+  drawCount: number;
+  blackUserId: string;
+  whiteUserId: string;
+  rematchHostConfirmed: boolean;
+  rematchGuestConfirmed: boolean;
   revision: number;
   createdAt: string;
   updatedAt: string;
   acceptedAt: string | null;
   finishedAt: string | null;
+  roundFinishedAt: string | null;
   expiresAt: string | null;
 }
 
@@ -38,11 +53,11 @@ function toBoardCell(value: number): GomokuBoardCell {
   return value === 1 || value === 2 ? value : 0;
 }
 
-function toStoneValue(stone: GomokuStone): GomokuBoardCell {
+export function toStoneValue(stone: GomokuStone): GomokuBoardCell {
   return stone === "black" ? 1 : 2;
 }
 
-function fromStoneValue(value: GomokuBoardCell): GomokuStone | null {
+export function fromStoneValue(value: GomokuBoardCell): GomokuStone | null {
   if (value === 1) return "black";
   if (value === 2) return "white";
   return null;
@@ -68,17 +83,6 @@ export function normalizeBoardState(value: unknown): GomokuBoardState {
   }) as GomokuBoardState;
 }
 
-export function createInitialLocalGame() {
-  return {
-    boardState: createEmptyBoard(),
-    status: "playing" as const,
-    currentTurn: "black" as GomokuStone,
-    winner: null as GomokuWinner | null,
-    movesCount: 0,
-    lastMove: null as { row: number; col: number; stone: GomokuStone } | null
-  };
-}
-
 export function isInsideBoard(row: number, col: number) {
   return row >= 0 && row < BOARD_SIZE && col >= 0 && col < BOARD_SIZE;
 }
@@ -89,6 +93,28 @@ export function isBoardFull(board: GomokuBoardState) {
 
 export function getOpponentStone(stone: GomokuStone): GomokuStone {
   return stone === "black" ? "white" : "black";
+}
+
+export function getRandomStoneAssignment(hostUserId: string, guestUserId: string) {
+  return Math.random() < 0.5
+    ? { blackUserId: hostUserId, whiteUserId: guestUserId }
+    : { blackUserId: guestUserId, whiteUserId: hostUserId };
+}
+
+export function playerSlotForUser(match: GomokuMatch, userId: string): "host" | "guest" | null {
+  if (match.hostUserId === userId) return "host";
+  if (match.guestUserId === userId) return "guest";
+  return null;
+}
+
+export function stoneForUser(match: GomokuMatch, userId: string): GomokuStone | null {
+  if (match.blackUserId === userId) return "black";
+  if (match.whiteUserId === userId) return "white";
+  return null;
+}
+
+export function scoreForSlot(match: GomokuMatch, slot: "host" | "guest") {
+  return slot === "host" ? match.hostWins : match.guestWins;
 }
 
 function countDirection(board: GomokuBoardState, row: number, col: number, dx: number, dy: number, cell: GomokuBoardCell) {
@@ -277,6 +303,48 @@ export function chooseAiMove(board: GomokuBoardState, stone: GomokuStone) {
   return bestMove;
 }
 
+function createRoundReset(match: Pick<GomokuMatch, "hostUserId" | "guestUserId" | "currentRound">, updatedAt = nowIso()) {
+  const assignment = getRandomStoneAssignment(match.hostUserId, match.guestUserId);
+  return {
+    boardState: createEmptyBoard(),
+    movesCount: 0,
+    currentTurn: "black" as GomokuStone,
+    winner: null as GomokuWinner | null,
+    blackUserId: assignment.blackUserId,
+    whiteUserId: assignment.whiteUserId,
+    roundState: "playing" as GomokuRoundState,
+    roundFinishedAt: null as string | null,
+    updatedAt,
+    finishedAt: null as string | null,
+    currentRound: match.currentRound
+  };
+}
+
+export function createInitialLocalGame() {
+  const now = nowIso();
+  const round = createRoundReset({ hostUserId: "human", guestUserId: "ai", currentRound: 1 }, now);
+  return {
+    ...round,
+    id: "local",
+    hostUserId: "human",
+    hostUserName: "你",
+    guestUserId: "ai",
+    guestUserName: "AI",
+    status: "active" as GomokuMatchStatus,
+    seriesWinner: null,
+    hostWins: 0,
+    guestWins: 0,
+    drawCount: 0,
+    rematchHostConfirmed: false,
+    rematchGuestConfirmed: false,
+    revision: 0,
+    createdAt: now,
+    updatedAt: now,
+    acceptedAt: now,
+    expiresAt: null
+  } satisfies GomokuMatch;
+}
+
 export function createPendingMatch(params: {
   hostUserId: string;
   hostUserName: string;
@@ -287,22 +355,24 @@ export function createPendingMatch(params: {
 }) {
   const createdAt = params.createdAt ?? nowIso();
   const expiresAt = params.expiresAt ?? new Date(Date.parse(createdAt) + GOMOKU_INVITE_TTL_MS).toISOString();
+  const round = createRoundReset({ hostUserId: params.hostUserId, guestUserId: params.guestUserId, currentRound: 1 }, createdAt);
   return {
+    ...round,
     id: createId("gomoku"),
     hostUserId: params.hostUserId,
     hostUserName: params.hostUserName,
     guestUserId: params.guestUserId,
     guestUserName: params.guestUserName,
     status: "pending" as const,
-    boardState: createEmptyBoard(),
-    movesCount: 0,
-    currentTurn: "black" as GomokuStone,
-    winner: null,
+    seriesWinner: null,
+    hostWins: 0,
+    guestWins: 0,
+    drawCount: 0,
+    rematchHostConfirmed: false,
+    rematchGuestConfirmed: false,
     revision: 0,
     createdAt,
-    updatedAt: createdAt,
     acceptedAt: null,
-    finishedAt: null,
     expiresAt
   } satisfies GomokuMatch;
 }
@@ -372,10 +442,19 @@ export function cancelMatch(match: GomokuMatch, hostUserId: string, cancelledAt 
   };
 }
 
-export function stoneForUser(match: GomokuMatch, userId: string): GomokuStone | null {
-  if (match.hostUserId === userId) return "black";
-  if (match.guestUserId === userId) return "white";
-  return null;
+export function exitFinishedMatch(match: GomokuMatch, userId: string, exitedAt = nowIso()) {
+  if (playerSlotForUser(match, userId) === null) {
+    throw new Error("当前用户不在该对局中");
+  }
+  if (match.roundState !== "series_complete") {
+    throw new Error("当前比赛尚未结束");
+  }
+  return {
+    ...match,
+    status: "cancelled" as const,
+    updatedAt: exitedAt,
+    revision: match.revision + 1
+  };
 }
 
 export function applyMoveToMatch(
@@ -385,6 +464,9 @@ export function applyMoveToMatch(
   if (match.status !== "active") {
     throw new Error("当前对局未开始");
   }
+  if (match.roundState !== "playing") {
+    throw new Error("当前回合已结束");
+  }
   const playerStone = stoneForUser(match, params.userId);
   if (!playerStone) {
     throw new Error("当前用户不在该对局中");
@@ -392,18 +474,117 @@ export function applyMoveToMatch(
   if (match.currentTurn !== playerStone) {
     throw new Error("还没轮到你");
   }
+
   const movedAt = params.movedAt ?? nowIso();
   const nextBoard = placeStone(match.boardState, params.row, params.col, playerStone);
   const moveResult = getMoveResult(nextBoard, params.row, params.col);
-  return {
+  const base = {
     ...match,
     boardState: nextBoard,
     movesCount: match.movesCount + 1,
-    currentTurn: moveResult.status === "completed" ? match.currentTurn : getOpponentStone(playerStone),
-    winner: moveResult.winner,
-    status: moveResult.status === "completed" ? ("completed" as const) : match.status,
     updatedAt: movedAt,
-    finishedAt: moveResult.status === "completed" ? movedAt : null,
+    revision: match.revision + 1
+  };
+
+  if (moveResult.status !== "completed") {
+    return {
+      ...base,
+      currentTurn: getOpponentStone(playerStone)
+    };
+  }
+
+  const winningSlot =
+    moveResult.winner === "draw"
+      ? null
+      : playerSlotForUser(match, playerStone === "black" ? match.blackUserId : match.whiteUserId);
+  const hostWins = match.hostWins + (winningSlot === "host" ? 1 : 0);
+  const guestWins = match.guestWins + (winningSlot === "guest" ? 1 : 0);
+  const drawCount = match.drawCount + (moveResult.winner === "draw" ? 1 : 0);
+  const seriesWinner: GomokuSeriesWinner =
+    hostWins >= GOMOKU_MATCH_POINT ? "host" : guestWins >= GOMOKU_MATCH_POINT ? "guest" : null;
+
+  if (seriesWinner) {
+    return {
+      ...base,
+      currentTurn: playerStone,
+      winner: moveResult.winner,
+      hostWins,
+      guestWins,
+      drawCount,
+      seriesWinner,
+      roundState: "series_complete" as const,
+      status: "completed" as const,
+      roundFinishedAt: movedAt,
+      finishedAt: movedAt
+    };
+  }
+
+  return {
+    ...base,
+    currentTurn: playerStone,
+    winner: moveResult.winner,
+    hostWins,
+    guestWins,
+    drawCount,
+    roundState: "round_complete" as const,
+    roundFinishedAt: movedAt
+  };
+}
+
+export function startNextRound(match: GomokuMatch, userId: string, startedAt = nowIso()) {
+  if (playerSlotForUser(match, userId) === null) {
+    throw new Error("当前用户不在该对局中");
+  }
+  if (match.status !== "active" || match.roundState !== "round_complete") {
+    throw new Error("当前不需要开启下一局");
+  }
+  const round = createRoundReset(
+    { hostUserId: match.hostUserId, guestUserId: match.guestUserId, currentRound: match.currentRound + 1 },
+    startedAt
+  );
+  return {
+    ...match,
+    ...round,
+    revision: match.revision + 1
+  };
+}
+
+export function confirmRematch(match: GomokuMatch, userId: string, confirmedAt = nowIso()) {
+  const slot = playerSlotForUser(match, userId);
+  if (!slot) {
+    throw new Error("当前用户不在该对局中");
+  }
+  if (match.roundState !== "series_complete" || match.status !== "completed") {
+    throw new Error("比赛尚未结束");
+  }
+
+  const rematchHostConfirmed = slot === "host" ? true : match.rematchHostConfirmed;
+  const rematchGuestConfirmed = slot === "guest" ? true : match.rematchGuestConfirmed;
+  if (rematchHostConfirmed && rematchGuestConfirmed) {
+    const round = createRoundReset(
+      { hostUserId: match.hostUserId, guestUserId: match.guestUserId, currentRound: 1 },
+      confirmedAt
+    );
+    return {
+      ...match,
+      ...round,
+      status: "active" as const,
+      seriesWinner: null,
+      hostWins: 0,
+      guestWins: 0,
+      drawCount: 0,
+      rematchHostConfirmed: false,
+      rematchGuestConfirmed: false,
+      winner: null,
+      revision: match.revision + 1
+    };
+  }
+
+  return {
+    ...match,
+    rematchHostConfirmed,
+    rematchGuestConfirmed,
+    updatedAt: confirmedAt,
     revision: match.revision + 1
   };
 }
@@ -413,7 +594,8 @@ function sortMatches(items: GomokuMatch[]) {
     const priority = (status: GomokuMatchStatus) => {
       if (status === "active") return 0;
       if (status === "pending") return 1;
-      return 2;
+      if (status === "completed") return 2;
+      return 3;
     };
     const diff = priority(a.status) - priority(b.status);
     if (diff !== 0) return diff;
