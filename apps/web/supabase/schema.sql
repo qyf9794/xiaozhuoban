@@ -83,21 +83,46 @@ create table if not exists public.gomoku_matches (
   guest_user_id uuid not null references auth.users(id) on delete cascade,
   guest_user_name text not null,
   status text not null default 'pending',
+  round_state text not null default 'playing',
   board_state jsonb not null default '[]'::jsonb,
   moves_count integer not null default 0,
   current_turn text not null default 'black',
   winner text null,
+  series_winner text null,
+  current_round integer not null default 1,
+  host_wins integer not null default 0,
+  guest_wins integer not null default 0,
+  draw_count integer not null default 0,
+  black_user_id uuid null references auth.users(id) on delete cascade,
+  white_user_id uuid null references auth.users(id) on delete cascade,
+  rematch_host_confirmed boolean not null default false,
+  rematch_guest_confirmed boolean not null default false,
   revision integer not null default 0,
   accepted_at timestamptz null,
   finished_at timestamptz null,
+  round_finished_at timestamptz null,
   expires_at timestamptz null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint gomoku_matches_status_check check (status in ('pending', 'active', 'declined', 'cancelled', 'completed', 'expired')),
+  constraint gomoku_matches_round_state_check check (round_state in ('playing', 'round_complete', 'series_complete')),
   constraint gomoku_matches_turn_check check (current_turn in ('black', 'white')),
   constraint gomoku_matches_winner_check check (winner is null or winner in ('black', 'white', 'draw')),
+  constraint gomoku_matches_series_winner_check check (series_winner is null or series_winner in ('host', 'guest')),
   constraint gomoku_matches_host_guest_check check (host_user_id <> guest_user_id)
 );
+
+alter table public.gomoku_matches add column if not exists round_state text not null default 'playing';
+alter table public.gomoku_matches add column if not exists series_winner text null;
+alter table public.gomoku_matches add column if not exists current_round integer not null default 1;
+alter table public.gomoku_matches add column if not exists host_wins integer not null default 0;
+alter table public.gomoku_matches add column if not exists guest_wins integer not null default 0;
+alter table public.gomoku_matches add column if not exists draw_count integer not null default 0;
+alter table public.gomoku_matches add column if not exists black_user_id uuid null references auth.users(id) on delete cascade;
+alter table public.gomoku_matches add column if not exists white_user_id uuid null references auth.users(id) on delete cascade;
+alter table public.gomoku_matches add column if not exists rematch_host_confirmed boolean not null default false;
+alter table public.gomoku_matches add column if not exists rematch_guest_confirmed boolean not null default false;
+alter table public.gomoku_matches add column if not exists round_finished_at timestamptz null;
 
 drop trigger if exists trg_workspaces_updated_at on public.workspaces;
 create trigger trg_workspaces_updated_at

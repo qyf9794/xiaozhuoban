@@ -3525,12 +3525,20 @@ export function BuiltinWidgetView({
       <WidgetShell
         definition={definition}
         instance={instance}
-        cardStyle={{
-          height: "auto",
-          minHeight: 260,
-          maxHeight: 480,
-          overflow: "hidden"
-        }}
+        cardStyle={
+          isMobileMode
+            ? {
+                height: "auto",
+                minHeight: 260,
+                maxHeight: 480,
+                overflow: "hidden"
+              }
+            : {
+                height: "100%",
+                minHeight: 0,
+                overflow: "hidden"
+              }
+        }
       >
         <div
           style={{

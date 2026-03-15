@@ -176,7 +176,7 @@ export function BoardCanvas({
         const position = drag?.id === widget.id && dragPosition ? dragPosition : widget.position;
         const isTvWidget = definition.type === "tv";
         const isFixedHeightDesktopWidget =
-          definition.type === "tv" || definition.type === "worldClock" || definition.type === "gomoku";
+          definition.type === "tv" || definition.type === "worldClock" || definition.type === "messageBoard";
         const isDynamicHeightWidget = !isMobileMode && !isFixedHeightDesktopWidget;
         const baseSize = isTvWidget ? clampTvWidgetSize(widget.size.w, 480) : widget.size;
         const size =

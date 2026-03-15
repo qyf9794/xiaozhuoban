@@ -10,18 +10,25 @@ import {
   createEmptyBoard,
   createInitialLocalGame,
   normalizeBoardState,
+  playerSlotForUser,
+  scoreForSlot,
+  startNextRound,
+  stoneForUser,
   type GomokuBoardState,
   type GomokuMatch,
+  type GomokuRoundState,
+  type GomokuSeriesWinner,
   type GomokuWinner,
-  type GomokuStone,
-  stoneForUser,
   upsertMatchList
 } from "../lib/gomoku";
 import {
   acceptOnlineMatch,
+  advanceOnlineRound,
   cancelOnlineMatch,
+  confirmOnlineRematch,
   createOnlineMatch,
   declineOnlineMatch,
+  exitOnlineSeries,
   listRelevantMatches,
   removeMatchChannel,
   submitOnlineMove,
@@ -30,14 +37,8 @@ import {
 import { useOnlineUsers } from "../lib/useOnlineUsers";
 
 type GomokuMode = "ai" | "online";
-interface LocalGameState {
-  boardState: GomokuBoardState;
-  status: "playing" | "completed";
-  currentTurn: GomokuStone;
-  winner: GomokuWinner | null;
-  movesCount: number;
-  lastMove: { row: number; col: number; stone: GomokuStone } | null;
-}
+const LOCAL_HUMAN_ID = "human";
+const LOCAL_AI_ID = "ai";
 
 function normalizeMode(value: unknown): GomokuMode {
   return value === "online" ? "online" : "ai";
@@ -50,28 +51,55 @@ function normalizeWinner(value: unknown): GomokuWinner | null {
   return null;
 }
 
-function normalizeLocalGame(value: unknown): LocalGameState {
-  const fallback = createInitialLocalGame();
+function normalizeSeriesWinner(value: unknown): GomokuSeriesWinner {
+  return value === "host" || value === "guest" ? value : null;
+}
+
+function normalizeRoundState(value: unknown): GomokuRoundState {
+  if (value === "round_complete" || value === "series_complete") {
+    return value;
+  }
+  return "playing";
+}
+
+function normalizeLocalGame(value: unknown): GomokuMatch | null {
   if (!value || typeof value !== "object") {
-    return fallback;
+    return null;
   }
   const raw = value as Record<string, unknown>;
+  if (!raw.boardState) {
+    return null;
+  }
+  const fallback = createInitialLocalGame();
   return {
+    ...fallback,
+    id: typeof raw.id === "string" ? raw.id : fallback.id,
+    hostUserId: typeof raw.hostUserId === "string" ? raw.hostUserId : fallback.hostUserId,
+    hostUserName: typeof raw.hostUserName === "string" ? raw.hostUserName : fallback.hostUserName,
+    guestUserId: typeof raw.guestUserId === "string" ? raw.guestUserId : fallback.guestUserId,
+    guestUserName: typeof raw.guestUserName === "string" ? raw.guestUserName : fallback.guestUserName,
+    status: raw.status === "completed" ? "completed" : "active",
+    roundState: normalizeRoundState(raw.roundState),
     boardState: normalizeBoardState(raw.boardState),
-    status: raw.status === "completed" ? "completed" : "playing",
+    movesCount: typeof raw.movesCount === "number" ? raw.movesCount : 0,
     currentTurn: raw.currentTurn === "white" ? "white" : "black",
     winner: normalizeWinner(raw.winner),
-    movesCount: typeof raw.movesCount === "number" ? raw.movesCount : 0,
-    lastMove:
-      raw.lastMove && typeof raw.lastMove === "object"
-        ? ((raw.lastMove as { row?: number; col?: number; stone?: GomokuStone })?.stone
-            ? {
-                row: Number((raw.lastMove as { row?: number }).row ?? 0),
-                col: Number((raw.lastMove as { col?: number }).col ?? 0),
-                stone: (raw.lastMove as { stone?: GomokuStone }).stone === "white" ? "white" : "black"
-              }
-            : null)
-        : null
+    seriesWinner: normalizeSeriesWinner(raw.seriesWinner),
+    currentRound: typeof raw.currentRound === "number" ? raw.currentRound : 1,
+    hostWins: typeof raw.hostWins === "number" ? raw.hostWins : 0,
+    guestWins: typeof raw.guestWins === "number" ? raw.guestWins : 0,
+    drawCount: typeof raw.drawCount === "number" ? raw.drawCount : 0,
+    blackUserId: typeof raw.blackUserId === "string" ? raw.blackUserId : fallback.blackUserId,
+    whiteUserId: typeof raw.whiteUserId === "string" ? raw.whiteUserId : fallback.whiteUserId,
+    rematchHostConfirmed: raw.rematchHostConfirmed === true,
+    rematchGuestConfirmed: raw.rematchGuestConfirmed === true,
+    revision: typeof raw.revision === "number" ? raw.revision : 0,
+    createdAt: typeof raw.createdAt === "string" ? raw.createdAt : fallback.createdAt,
+    updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : fallback.updatedAt,
+    acceptedAt: typeof raw.acceptedAt === "string" ? raw.acceptedAt : fallback.acceptedAt,
+    finishedAt: typeof raw.finishedAt === "string" ? raw.finishedAt : null,
+    roundFinishedAt: typeof raw.roundFinishedAt === "string" ? raw.roundFinishedAt : null,
+    expiresAt: typeof raw.expiresAt === "string" ? raw.expiresAt : null
   };
 }
 
@@ -90,44 +118,103 @@ function modeButtonStyle(active: boolean): CSSProperties {
   };
 }
 
-function actionButtonStyle(disabled = false): CSSProperties {
+function actionButtonStyle(disabled = false, emphasis = false): CSSProperties {
   return {
-    border: "1px solid rgba(148,163,184,0.36)",
+    border: emphasis ? "1px solid rgba(59,130,246,0.5)" : "1px solid rgba(148,163,184,0.36)",
     borderRadius: 10,
     padding: "5px 8px",
     fontSize: 11,
     cursor: disabled ? "default" : "pointer",
     opacity: disabled ? 0.55 : 1,
-    background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.34))",
-    color: "#0f172a"
+    background: emphasis
+      ? "linear-gradient(155deg, rgba(37,99,235,0.82), rgba(14,165,233,0.72))"
+      : "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.34))",
+    color: emphasis ? "#eff6ff" : "#0f172a"
   };
 }
 
-function winnerText(winner: GomokuMatch["winner"]) {
-  if (winner === "black") return "黑棋获胜";
-  if (winner === "white") return "白棋获胜";
-  if (winner === "draw") return "平局";
+function stoneLabel(stone: GomokuMatch["currentTurn"] | null) {
+  if (stone === "black") return "黑棋";
+  if (stone === "white") return "白棋";
   return "";
 }
 
-function statusTextForOnlineMatch(match: GomokuMatch | null, userId: string) {
-  if (!match) return "选择在线用户发起邀请";
+function roundWinnerText(winner: GomokuWinner | null) {
+  if (winner === "black") return "黑棋获胜";
+  if (winner === "white") return "白棋获胜";
+  if (winner === "draw") return "本局平局";
+  return "";
+}
+
+function seriesWinnerText(match: GomokuMatch, userId: string, localMode = false) {
+  if (match.seriesWinner === "host") {
+    if (localMode) return "你赢得比赛";
+    return match.hostUserId === userId ? "你赢得比赛" : `${match.hostUserName} 赢得比赛`;
+  }
+  if (match.seriesWinner === "guest") {
+    if (localMode) return "AI 赢得比赛";
+    return match.guestUserId === userId ? "你赢得比赛" : `${match.guestUserName} 赢得比赛`;
+  }
+  return "";
+}
+
+function getScoreText(match: GomokuMatch, userId: string, localMode = false) {
+  const slot = playerSlotForUser(match, userId);
+  if (!slot) {
+    return `${match.hostWins} : ${match.guestWins}`;
+  }
+  const selfScore = scoreForSlot(match, slot);
+  const opponentScore = scoreForSlot(match, slot === "host" ? "guest" : "host");
+  return localMode ? `你 ${selfScore} : ${opponentScore} AI` : `你 ${selfScore} : ${opponentScore} 对手`;
+}
+
+function getScoreDisplay(match: GomokuMatch, userId: string, localMode = false) {
+  const slot = playerSlotForUser(match, userId);
+  if (!slot) {
+    return {
+      leftName: localMode ? "你" : match.hostUserName,
+      leftScore: match.hostWins,
+      rightScore: match.guestWins,
+      rightName: localMode ? "AI" : match.guestUserName
+    };
+  }
+
+  const opponentSlot = slot === "host" ? "guest" : "host";
+  return {
+    leftName: slot === "host" ? (localMode ? "你" : "你") : localMode ? "你" : "你",
+    leftScore: scoreForSlot(match, slot),
+    rightScore: scoreForSlot(match, opponentSlot),
+    rightName: localMode ? "AI" : slot === "host" ? match.guestUserName : match.hostUserName
+  };
+}
+
+function getStatusText(match: GomokuMatch | null, userId: string, localMode = false) {
+  if (!match) {
+    return localMode ? "点击开始人机对战" : "选择在线用户发起邀请";
+  }
   if (match.status === "pending") {
     return match.guestUserId === userId ? "收到邀请，确认后开始对局" : "邀请已发出，等待对方确认";
   }
-  if (match.status === "completed") {
-    return winnerText(match.winner);
+  if (match.roundState === "playing") {
+    const selfStone = stoneForUser(match, userId);
+    if (!selfStone) return localMode ? "准备开始" : "当前用户不在该对局中";
+    return match.currentTurn === selfStone ? `轮到你落子（${stoneLabel(selfStone)}）` : "等待对手落子";
   }
-  const playerStone = stoneForUser(match, userId);
-  if (!playerStone) return "当前用户不在该对局中";
-  return match.currentTurn === playerStone ? "轮到你落子" : "等待对手落子";
+  if (match.roundState === "round_complete") {
+    return `${roundWinnerText(match.winner)} · 比分 ${getScoreText(match, userId, localMode)}`;
+  }
+  return `${seriesWinnerText(match, userId, localMode)} · 总比分 ${getScoreText(match, userId, localMode)}`;
 }
 
-function localStatusText(localGame: LocalGameState) {
-  if (localGame.status === "completed") {
-    return winnerText(localGame.winner);
+function getOverlayTitle(match: GomokuMatch | null, userId: string, localMode = false) {
+  if (!match) return "";
+  if (match.roundState === "round_complete") {
+    return roundWinnerText(match.winner);
   }
-  return localGame.currentTurn === "white" ? "AI 思考中..." : "你执黑先手";
+  if (match.roundState === "series_complete") {
+    return seriesWinnerText(match, userId, localMode);
+  }
+  return "";
 }
 
 export function GomokuWidget({
@@ -155,6 +242,8 @@ export function GomokuWidget({
   const [onlineError, setOnlineError] = useState("");
   const [busyId, setBusyId] = useState("");
   const aiTimerRef = useRef<number | null>(null);
+  const roundAdvanceTimerRef = useRef<number | null>(null);
+  const onlineRoundAdvanceTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!userId) return;
@@ -187,55 +276,44 @@ export function GomokuWidget({
   }, [userId]);
 
   useEffect(() => {
-    if (mode !== "ai") return;
-    if (localGame.status !== "playing" || localGame.currentTurn !== "white") return;
+    if (mode !== "ai" || !localGame) return;
+    const aiStone = stoneForUser(localGame, LOCAL_AI_ID);
+    if (localGame.status !== "active" || localGame.roundState !== "playing" || localGame.currentTurn !== aiStone) return;
     if (aiTimerRef.current !== null) {
       window.clearTimeout(aiTimerRef.current);
     }
     aiTimerRef.current = window.setTimeout(() => {
-      const nextMove = chooseAiMove(localGame.boardState, "white");
-      const nextMatchLike = applyMoveToMatch(
-        {
-          id: "local",
-          hostUserId: "human",
-          hostUserName: "human",
-          guestUserId: "ai",
-          guestUserName: "ai",
-          status: "active",
-          boardState: localGame.boardState,
-          movesCount: localGame.movesCount,
-          currentTurn: localGame.currentTurn,
-          winner: localGame.winner,
-          revision: 0,
-          createdAt: instance.updatedAt,
-          updatedAt: instance.updatedAt,
-          acceptedAt: instance.updatedAt,
-          finishedAt: null,
-          expiresAt: null
-        },
-        { row: nextMove.row, col: nextMove.col, userId: "ai" }
-      );
-      onStateChange({
-        ...instance.state,
-        gomokuLocalGame: {
-          boardState: nextMatchLike.boardState,
-          status: nextMatchLike.status === "completed" ? "completed" : "playing",
-          currentTurn: nextMatchLike.currentTurn,
-          winner: nextMatchLike.winner,
-          movesCount: nextMatchLike.movesCount,
-          lastMove: { row: nextMove.row, col: nextMove.col, stone: "white" as const }
-        }
-      });
+      const nextMove = chooseAiMove(localGame.boardState, aiStone ?? "black");
+      const nextState = applyMoveToMatch(localGame, { row: nextMove.row, col: nextMove.col, userId: LOCAL_AI_ID });
+      onStateChange({ ...instance.state, gomokuLocalGame: nextState });
       aiTimerRef.current = null;
     }, 320);
-
     return () => {
       if (aiTimerRef.current !== null) {
         window.clearTimeout(aiTimerRef.current);
         aiTimerRef.current = null;
       }
     };
-  }, [instance.state, instance.updatedAt, localGame, mode, onStateChange]);
+  }, [instance.state, localGame, mode, onStateChange]);
+
+  useEffect(() => {
+    if (mode !== "ai" || !localGame) return;
+    if (localGame.status !== "active" || localGame.roundState !== "round_complete") return;
+    if (roundAdvanceTimerRef.current !== null) {
+      window.clearTimeout(roundAdvanceTimerRef.current);
+    }
+    roundAdvanceTimerRef.current = window.setTimeout(() => {
+      const nextState = startNextRound(localGame, LOCAL_HUMAN_ID);
+      onStateChange({ ...instance.state, gomokuLocalGame: nextState });
+      roundAdvanceTimerRef.current = null;
+    }, 1400);
+    return () => {
+      if (roundAdvanceTimerRef.current !== null) {
+        window.clearTimeout(roundAdvanceTimerRef.current);
+        roundAdvanceTimerRef.current = null;
+      }
+    };
+  }, [instance.state, localGame, mode, onStateChange]);
 
   const incomingInvites = useMemo(
     () => matches.filter((match) => match.status === "pending" && match.guestUserId === userId),
@@ -245,21 +323,38 @@ export function GomokuWidget({
     () => matches.filter((match) => match.status === "pending" && match.hostUserId === userId),
     [matches, userId]
   );
-  const activeMatches = useMemo(() => matches.filter((match) => match.status === "active"), [matches]);
-  const recentFinishedMatch = useMemo(() => matches.find((match) => match.status === "completed") ?? null, [matches]);
-  const currentOnlineMatch = activeMatches[0] ?? recentFinishedMatch;
-  const onlineBoard = currentOnlineMatch?.boardState ?? createEmptyBoard();
-  const onlineStatusText = statusTextForOnlineMatch(currentOnlineMatch, userId);
+  const currentOnlineMatch = useMemo(
+    () => matches.find((match) => match.status === "active") ?? matches.find((match) => match.status === "completed") ?? null,
+    [matches]
+  );
 
-  const persistMode = (nextMode: GomokuMode) => {
-    onStateChange({
-      ...instance.state,
-      gomokuMode: nextMode,
-      gomokuLocalGame: instance.state.gomokuLocalGame ?? createInitialLocalGame()
-    });
-  };
+  useEffect(() => {
+    if (mode !== "online" || !currentOnlineMatch) return;
+    if (currentOnlineMatch.status !== "active" || currentOnlineMatch.roundState !== "round_complete") return;
+    if (onlineRoundAdvanceTimerRef.current !== null) {
+      window.clearTimeout(onlineRoundAdvanceTimerRef.current);
+    }
+    onlineRoundAdvanceTimerRef.current = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const next = await advanceOnlineRound(currentOnlineMatch, userId);
+          setMatches((prev) => upsertMatchList(prev, next));
+        } catch {
+          // Another client may have already advanced the round.
+        } finally {
+          onlineRoundAdvanceTimerRef.current = null;
+        }
+      })();
+    }, 1400);
+    return () => {
+      if (onlineRoundAdvanceTimerRef.current !== null) {
+        window.clearTimeout(onlineRoundAdvanceTimerRef.current);
+        onlineRoundAdvanceTimerRef.current = null;
+      }
+    };
+  }, [currentOnlineMatch, mode, userId]);
 
-  const resetLocalGame = () => {
+  const startLocalSeries = () => {
     onStateChange({
       ...instance.state,
       gomokuMode: "ai",
@@ -267,46 +362,20 @@ export function GomokuWidget({
     });
   };
 
-  const playLocalMove = (row: number, col: number) => {
-    if (mode !== "ai" || localGame.status !== "playing" || localGame.currentTurn !== "black") {
-      return;
-    }
-    try {
-      const nextMatchLike = applyMoveToMatch(
-        {
-          id: "local",
-          hostUserId: "human",
-          hostUserName: "human",
-          guestUserId: "ai",
-          guestUserName: "ai",
-          status: "active",
-          boardState: localGame.boardState,
-          movesCount: localGame.movesCount,
-          currentTurn: "black",
-          winner: localGame.winner,
-          revision: 0,
-          createdAt: instance.updatedAt,
-          updatedAt: instance.updatedAt,
-          acceptedAt: instance.updatedAt,
-          finishedAt: null,
-          expiresAt: null
-        },
-        { row, col, userId: "human" }
-      );
-      onStateChange({
-        ...instance.state,
-        gomokuLocalGame: {
-          boardState: nextMatchLike.boardState,
-          status: nextMatchLike.status === "completed" ? "completed" : "playing",
-          currentTurn: nextMatchLike.currentTurn,
-          winner: nextMatchLike.winner,
-          movesCount: nextMatchLike.movesCount,
-          lastMove: { row, col, stone: "black" as const }
-        }
-      });
-    } catch (error) {
-      setOnlineError(error instanceof Error ? error.message : "落子失败");
-    }
+  const clearLocalSeries = () => {
+    onStateChange({
+      ...instance.state,
+      gomokuMode: "ai",
+      gomokuLocalGame: null
+    });
+  };
+
+  const persistMode = (nextMode: GomokuMode) => {
+    onStateChange({
+      ...instance.state,
+      gomokuMode: nextMode,
+      gomokuLocalGame: nextMode === "ai" ? (instance.state.gomokuLocalGame ?? null) : instance.state.gomokuLocalGame
+    });
   };
 
   const runOnlineAction = async (actionId: string, task: () => Promise<GomokuMatch>) => {
@@ -322,48 +391,71 @@ export function GomokuWidget({
     }
   };
 
-  const inviteUser = (targetUserId: string, targetUserName: string) => {
-    void runOnlineAction(`invite:${targetUserId}`, () =>
-      createOnlineMatch({
-        hostUserId: userId,
-        hostUserName: userName,
-        guestUserId: targetUserId,
-        guestUserName: targetUserName
-      })
+  const board: GomokuBoardState =
+    mode === "online" ? currentOnlineMatch?.boardState ?? createEmptyBoard() : localGame?.boardState ?? createEmptyBoard();
+  const displayMatch = mode === "online" ? currentOnlineMatch : localGame;
+  const statusText = getStatusText(displayMatch, mode === "online" ? userId : LOCAL_HUMAN_ID, mode === "ai");
+  const overlayTitle = getOverlayTitle(displayMatch, mode === "online" ? userId : LOCAL_HUMAN_ID, mode === "ai");
+  const scoreText = displayMatch ? getScoreText(displayMatch, mode === "online" ? userId : LOCAL_HUMAN_ID, mode === "ai") : "";
+  const scoreDisplay = displayMatch ? getScoreDisplay(displayMatch, mode === "online" ? userId : LOCAL_HUMAN_ID, mode === "ai") : null;
+  const selfStone = displayMatch ? stoneForUser(displayMatch, mode === "online" ? userId : LOCAL_HUMAN_ID) : null;
+  const selfSlot = displayMatch ? playerSlotForUser(displayMatch, mode === "online" ? userId : LOCAL_HUMAN_ID) : null;
+  const statusLineText = mode === "online" ? onlineError || statusText : statusText;
+
+  const occupiedPeers = useMemo(() => {
+    const activePeerIds = new Set(
+      matches
+        .filter((match) => match.status === "pending" || match.status === "active" || match.status === "completed")
+        .map((match) => (match.hostUserId === userId ? match.guestUserId : match.hostUserId))
     );
+    return activePeerIds;
+  }, [matches, userId]);
+
+  const playLocalMove = (row: number, col: number) => {
+    if (mode !== "ai" || !localGame) return;
+    const humanStone = stoneForUser(localGame, LOCAL_HUMAN_ID);
+    if (localGame.status !== "active" || localGame.roundState !== "playing" || localGame.currentTurn !== humanStone) {
+      return;
+    }
+    try {
+      const nextState = applyMoveToMatch(localGame, { row, col, userId: LOCAL_HUMAN_ID });
+      onStateChange({ ...instance.state, gomokuLocalGame: nextState });
+    } catch (error) {
+      setOnlineError(error instanceof Error ? error.message : "落子失败");
+    }
   };
 
   const playOnlineMove = (row: number, col: number) => {
-    if (!currentOnlineMatch || currentOnlineMatch.status !== "active") return;
+    if (!currentOnlineMatch || currentOnlineMatch.status !== "active" || currentOnlineMatch.roundState !== "playing") return;
     const playerStone = stoneForUser(currentOnlineMatch, userId);
     if (!playerStone || playerStone !== currentOnlineMatch.currentTurn) return;
     void runOnlineAction(`move:${currentOnlineMatch.id}`, () => submitOnlineMove(currentOnlineMatch, row, col, userId));
   };
 
-  const board = mode === "online" ? onlineBoard : localGame.boardState;
-  const statusText = mode === "online" ? onlineStatusText : localStatusText(localGame);
-
-  const occupiedPeers = useMemo(() => {
-    const activePeerIds = new Set(
-      matches
-        .filter((match) => match.status === "pending" || match.status === "active")
-        .map((match) => (match.hostUserId === userId ? match.guestUserId : match.hostUserId))
-    );
-    return activePeerIds;
-  }, [matches, userId]);
+  const canPlayCell =
+    displayMatch?.status === "active" &&
+    displayMatch.roundState === "playing" &&
+    displayMatch.currentTurn === selfStone;
 
   return (
     <Card
       title={definition.name}
       tone="peach"
       style={{
-        height: isMobileMode ? "auto" : "100%",
-        aspectRatio: isMobileMode ? "1 / 1" : undefined,
-        padding: 10
+        height: "auto",
+        minHeight: isMobileMode ? 560 : undefined,
+        padding: 8
       }}
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, height: "100%", minHeight: 0 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "auto 1fr auto",
+            alignItems: "center",
+            gap: 8
+          }}
+        >
           <div style={{ display: "flex", gap: 6 }}>
             <button type="button" style={modeButtonStyle(mode === "ai")} onClick={() => persistMode("ai")}>
               人机
@@ -372,29 +464,60 @@ export function GomokuWidget({
               在线
             </button>
           </div>
-          <button type="button" style={actionButtonStyle(false)} onClick={resetLocalGame}>
-            重开
-          </button>
+          <div
+            style={{
+              minHeight: 18,
+              textAlign: "center",
+              fontSize: 12,
+              color: "#334155",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis"
+            }}
+          >
+            {scoreDisplay ? `${scoreDisplay.leftName} ${scoreDisplay.leftScore} : ${scoreDisplay.rightScore} ${scoreDisplay.rightName}` : ""}
+          </div>
+          {mode === "ai" ? (
+            localGame ? (
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button type="button" style={actionButtonStyle(false)} onClick={startLocalSeries}>
+                  重新比赛
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button type="button" style={actionButtonStyle(false, true)} onClick={startLocalSeries}>
+                  开始对战
+                </button>
+              </div>
+            )
+          ) : (
+            <div />
+          )}
         </div>
 
         <div
           style={{
-            fontSize: 11,
-            color: onlineError ? "#b91c1c" : "#475569",
+            display: "grid",
+            gridTemplateColumns: "1fr auto",
+            gap: 8,
+            alignItems: "center",
             minHeight: 16,
-            display: "flex",
-            alignItems: "center"
+            fontSize: 11
           }}
         >
-          {onlineError || statusText}
+          <span style={{ color: "#475569", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {statusLineText}
+          </span>
+          <span style={{ color: "#334155" }}>
+            {selfStone ? `你执${stoneLabel(selfStone)}` : ""}
+          </span>
         </div>
 
         <div
           style={{
-            flex: 1,
-            minHeight: 0,
             display: "grid",
-            gridTemplateRows: mode === "online" ? "auto auto 1fr auto" : "1fr auto",
+            gridTemplateRows: mode === "online" ? "auto auto auto auto" : "auto auto",
             gap: 8
           }}
         >
@@ -409,7 +532,16 @@ export function GomokuWidget({
                         key={entry.userId}
                         type="button"
                         disabled={disabled}
-                        onClick={() => inviteUser(entry.userId, entry.userName)}
+                        onClick={() =>
+                          void runOnlineAction(`invite:${entry.userId}`, () =>
+                            createOnlineMatch({
+                              hostUserId: userId,
+                              hostUserName: userName,
+                              guestUserId: entry.userId,
+                              guestUserName: entry.userName
+                            })
+                          )
+                        }
                         style={actionButtonStyle(disabled)}
                       >
                         邀请 {entry.userName}
@@ -440,7 +572,7 @@ export function GomokuWidget({
                     <span>{match.hostUserName} 邀请你对战</span>
                     <button
                       type="button"
-                      style={actionButtonStyle(busyId === `accept:${match.id}`)}
+                      style={actionButtonStyle(Boolean(busyId), true)}
                       disabled={Boolean(busyId)}
                       onClick={() => void runOnlineAction(`accept:${match.id}`, () => acceptOnlineMatch(match, userId))}
                     >
@@ -448,7 +580,7 @@ export function GomokuWidget({
                     </button>
                     <button
                       type="button"
-                      style={actionButtonStyle(busyId === `decline:${match.id}`)}
+                      style={actionButtonStyle(Boolean(busyId))}
                       disabled={Boolean(busyId)}
                       onClick={() => void runOnlineAction(`decline:${match.id}`, () => declineOnlineMatch(match, userId))}
                     >
@@ -471,10 +603,10 @@ export function GomokuWidget({
                       background: "rgba(255,255,255,0.26)"
                     }}
                   >
-                    <span>等待 {match.guestUserName} 确认</span>
+                    <span>等待 {match.guestUserName} 确认，黑白已随机分配</span>
                     <button
                       type="button"
-                      style={actionButtonStyle(busyId === `cancel:${match.id}`)}
+                      style={actionButtonStyle(Boolean(busyId))}
                       disabled={Boolean(busyId)}
                       onClick={() => void runOnlineAction(`cancel:${match.id}`, () => cancelOnlineMatch(match, userId))}
                     >
@@ -492,9 +624,10 @@ export function GomokuWidget({
           <div
             style={{
               position: "relative",
-              minHeight: 0,
+              display: "grid",
+              placeItems: "center",
               borderRadius: 18,
-              padding: 10,
+              padding: 8,
               background: "linear-gradient(165deg, rgba(240, 207, 150, 0.78), rgba(214, 163, 101, 0.82))",
               boxShadow: "inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -8px 24px rgba(120,53,15,0.08)"
             }}
@@ -504,11 +637,10 @@ export function GomokuWidget({
                 display: "grid",
                 gridTemplateColumns: `repeat(${BOARD_SIZE}, 1fr)`,
                 gridTemplateRows: `repeat(${BOARD_SIZE}, 1fr)`,
-                gap: 0,
                 width: "100%",
-                height: "100%",
-                minHeight: 0,
-                aspectRatio: "1 / 1"
+                maxWidth: "100%",
+                aspectRatio: "1 / 1",
+                margin: 0
               }}
             >
               {board.map((row, rowIndex) =>
@@ -525,14 +657,7 @@ export function GomokuWidget({
                         border: "1px solid rgba(120,53,15,0.22)",
                         background: "rgba(255,255,255,0.05)",
                         padding: 0,
-                        cursor:
-                          stone ||
-                          (mode === "online" &&
-                            (!currentOnlineMatch ||
-                              currentOnlineMatch.status !== "active" ||
-                              stoneForUser(currentOnlineMatch, userId) !== currentOnlineMatch.currentTurn))
-                            ? "default"
-                            : "pointer"
+                        cursor: stone || !canPlayCell ? "default" : "pointer"
                       }}
                     >
                       {stone ? (
@@ -559,25 +684,87 @@ export function GomokuWidget({
                 })
               )}
             </div>
+
+            {displayMatch && displayMatch.roundState !== "playing" ? (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 10,
+                  display: "grid",
+                  placeItems: "center",
+                  pointerEvents: "none"
+                }}
+              >
+                <div
+                  style={{
+                    minWidth: 220,
+                    maxWidth: "80%",
+                    padding: "18px 20px",
+                    borderRadius: 18,
+                    background: "rgba(15,23,42,0.72)",
+                    color: "#f8fafc",
+                    textAlign: "center",
+                    boxShadow: "0 18px 40px rgba(15,23,42,0.24)"
+                  }}
+                >
+                  <div style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>{overlayTitle}</div>
+                  <div style={{ fontSize: 12, opacity: 0.9 }}>{`当前比分 ${scoreText}`}</div>
+                  {displayMatch.roundState === "round_complete" ? (
+                    <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>下一局即将开始，黑白将重新随机分配</div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
           </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr auto",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 11,
-              color: "#334155"
-            }}
-          >
-            <span>{mode === "online" ? `在线模式 · ${statusText}` : `人机模式 · ${statusText}`}</span>
-            {mode === "online" && currentOnlineMatch ? (
-              <span>{stoneForUser(currentOnlineMatch, userId) === "black" ? "你执黑" : "你执白"}</span>
-            ) : (
-              <span>你执黑</span>
-            )}
-          </div>
+          {displayMatch && displayMatch.roundState === "series_complete" ? (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: mode === "online" ? "space-between" : "flex-end",
+                gap: 8,
+                alignItems: "center",
+                fontSize: 11,
+                color: "#334155"
+              }}
+            >
+              {mode === "online" ? (
+                <>
+                  <span style={{ color: "#64748b" }}>
+                    {selfSlot === "host" ? (displayMatch.rematchHostConfirmed ? "已确认重赛" : "") : ""}
+                    {selfSlot === "guest" ? (displayMatch.rematchGuestConfirmed ? "已确认重赛" : "") : ""}
+                  </span>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button
+                      type="button"
+                      style={actionButtonStyle(Boolean(busyId), true)}
+                      disabled={Boolean(busyId) || (selfSlot === "host" ? displayMatch.rematchHostConfirmed : displayMatch.rematchGuestConfirmed)}
+                      onClick={() => void runOnlineAction(`rematch:${displayMatch.id}`, () => confirmOnlineRematch(displayMatch, userId))}
+                    >
+                      重新比赛
+                    </button>
+                    <button
+                      type="button"
+                      style={actionButtonStyle(Boolean(busyId))}
+                      disabled={Boolean(busyId)}
+                      onClick={() => void runOnlineAction(`exit:${displayMatch.id}`, () => exitOnlineSeries(displayMatch, userId))}
+                    >
+                      退出
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button type="button" style={actionButtonStyle(false, true)} onClick={startLocalSeries}>
+                    重新比赛
+                  </button>
+                  <button type="button" style={actionButtonStyle(false)} onClick={clearLocalSeries}>
+                    退出
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
     </Card>

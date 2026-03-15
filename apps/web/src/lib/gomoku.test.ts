@@ -5,13 +5,17 @@ import {
   BOARD_SIZE,
   checkWinnerFromMove,
   chooseAiMove,
+  confirmRematch,
   createEmptyBoard,
+  createInitialLocalGame,
   type GomokuMatch,
   createPendingMatch,
   expireMatch,
   getMoveResult,
+  getRandomStoneAssignment,
   isBoardFull,
-  placeStone
+  placeStone,
+  startNextRound
 } from "./gomoku";
 
 describe("gomoku rules", () => {
@@ -87,6 +91,14 @@ describe("gomoku ai", () => {
 });
 
 describe("gomoku online helpers", () => {
+  it("randomly assigns black and white at match creation", () => {
+    const assignment = getRandomStoneAssignment("host", "guest");
+    expect([
+      { blackUserId: "host", whiteUserId: "guest" },
+      { blackUserId: "guest", whiteUserId: "host" }
+    ]).toContainEqual(assignment);
+  });
+
   it("activates a pending match only for the guest", () => {
     const pending = createPendingMatch({
       hostUserId: "host",
@@ -99,6 +111,8 @@ describe("gomoku online helpers", () => {
 
     const active = acceptMatch(pending, "guest", "2026-03-15T00:01:00.000Z");
     expect(active.status).toBe("active");
+    expect(["host", "guest"]).toContain(active.blackUserId);
+    expect(["host", "guest"]).toContain(active.whiteUserId);
     expect(active.revision).toBe(1);
     expect(() => acceptMatch(pending, "other", "2026-03-15T00:01:00.000Z")).toThrow("只有被邀请方可以接受对局");
   });
@@ -130,6 +144,12 @@ describe("gomoku online helpers", () => {
       "guest",
       "2026-03-15T00:00:10.000Z"
     );
+    match = {
+      ...match,
+      blackUserId: "host",
+      whiteUserId: "guest",
+      currentTurn: "black"
+    };
 
     match = applyMoveToMatch(match, { row: 7, col: 7, userId: "host", movedAt: "2026-03-15T00:00:20.000Z" });
     expect(match.currentTurn).toBe("white");
@@ -144,7 +164,79 @@ describe("gomoku online helpers", () => {
     match = applyMoveToMatch(match, { row: 0, col: 3, userId: "guest" });
     match = applyMoveToMatch(match, { row: 7, col: 11, userId: "host" });
 
-    expect(match.status).toBe("completed");
+    expect(match.roundState).toBe("round_complete");
     expect(match.winner).toBe("black");
+    expect(match.hostWins).toBe(1);
+    expect(match.guestWins).toBe(0);
+  });
+
+  it("auto-prepares the next round and ends the series at two wins", () => {
+    let match: GomokuMatch = {
+      ...createInitialLocalGame(),
+      blackUserId: "human",
+      whiteUserId: "ai",
+      currentTurn: "black" as const
+    };
+
+    match = applyMoveToMatch(match, { row: 7, col: 7, userId: "human" });
+    match = applyMoveToMatch(match, { row: 0, col: 0, userId: "ai" });
+    match = applyMoveToMatch(match, { row: 7, col: 8, userId: "human" });
+    match = applyMoveToMatch(match, { row: 0, col: 1, userId: "ai" });
+    match = applyMoveToMatch(match, { row: 7, col: 9, userId: "human" });
+    match = applyMoveToMatch(match, { row: 0, col: 2, userId: "ai" });
+    match = applyMoveToMatch(match, { row: 7, col: 10, userId: "human" });
+    match = applyMoveToMatch(match, { row: 0, col: 3, userId: "ai" });
+    match = applyMoveToMatch(match, { row: 7, col: 11, userId: "human" });
+
+    expect(match.roundState).toBe("round_complete");
+
+    const nextRound = startNextRound(match, "human");
+    expect(nextRound.roundState).toBe("playing");
+    expect(nextRound.currentRound).toBe(2);
+    expect(nextRound.hostWins).toBe(1);
+    expect(nextRound.movesCount).toBe(0);
+  });
+
+  it("requires rematch confirmation from both sides after a best-of-three", () => {
+    let match: GomokuMatch = {
+      ...acceptMatch(
+        createPendingMatch({
+          hostUserId: "host",
+          hostUserName: "Host",
+          guestUserId: "guest",
+          guestUserName: "Guest"
+        }),
+        "guest"
+      ),
+      blackUserId: "host",
+      whiteUserId: "guest",
+      currentTurn: "black",
+      hostWins: 1,
+      currentRound: 2
+    };
+
+    match = applyMoveToMatch(match, { row: 7, col: 7, userId: "host" });
+    match = applyMoveToMatch(match, { row: 0, col: 0, userId: "guest" });
+    match = applyMoveToMatch(match, { row: 7, col: 8, userId: "host" });
+    match = applyMoveToMatch(match, { row: 0, col: 1, userId: "guest" });
+    match = applyMoveToMatch(match, { row: 7, col: 9, userId: "host" });
+    match = applyMoveToMatch(match, { row: 0, col: 2, userId: "guest" });
+    match = applyMoveToMatch(match, { row: 7, col: 10, userId: "host" });
+    match = applyMoveToMatch(match, { row: 0, col: 3, userId: "guest" });
+    match = applyMoveToMatch(match, { row: 7, col: 11, userId: "host" });
+
+    expect(match.status).toBe("completed");
+    expect(match.seriesWinner).toBe("host");
+
+    const waiting = confirmRematch(match, "host");
+    expect(waiting.rematchHostConfirmed).toBe(true);
+    expect(waiting.status).toBe("completed");
+
+    const restarted = confirmRematch(waiting, "guest");
+    expect(restarted.status).toBe("active");
+    expect(restarted.currentRound).toBe(1);
+    expect(restarted.hostWins).toBe(0);
+    expect(restarted.guestWins).toBe(0);
+    expect(restarted.roundState).toBe("playing");
   });
 });

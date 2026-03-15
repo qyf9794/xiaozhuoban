@@ -4,17 +4,26 @@ import {
   acceptMatch,
   applyMoveToMatch,
   cancelMatch,
+  confirmRematch,
   createPendingMatch,
   declineMatch,
+  exitFinishedMatch,
   expireMatch,
   GOMOKU_ACTIVE_STATUSES,
+  GOMOKU_VISIBLE_STATUSES,
   isPendingMatchExpired,
   normalizeBoardState,
+  startNextRound,
   type GomokuMatch,
   type GomokuMatchStatus,
+  type GomokuRoundState,
+  type GomokuSeriesWinner,
   type GomokuStone,
   type GomokuWinner
 } from "./gomoku";
+
+const visibleStatusSet = new Set<GomokuMatchStatus>([...GOMOKU_VISIBLE_STATUSES]);
+const activeStatusSet = new Set<GomokuMatchStatus>([...GOMOKU_ACTIVE_STATUSES]);
 
 interface GomokuMatchRow {
   id: string;
@@ -23,15 +32,26 @@ interface GomokuMatchRow {
   guest_user_id: string;
   guest_user_name: string;
   status: GomokuMatchStatus;
+  round_state: GomokuRoundState;
   board_state: unknown;
   moves_count: number;
   current_turn: GomokuStone;
   winner: GomokuWinner | null;
+  series_winner: GomokuSeriesWinner;
+  current_round: number;
+  host_wins: number;
+  guest_wins: number;
+  draw_count: number;
+  black_user_id: string;
+  white_user_id: string;
+  rematch_host_confirmed: boolean;
+  rematch_guest_confirmed: boolean;
   revision: number;
   created_at: string;
   updated_at: string;
   accepted_at: string | null;
   finished_at: string | null;
+  round_finished_at: string | null;
   expires_at: string | null;
 }
 
@@ -43,33 +63,58 @@ export function normalizeGomokuMatchRow(row: GomokuMatchRow): GomokuMatch {
     guestUserId: row.guest_user_id,
     guestUserName: row.guest_user_name,
     status: row.status,
+    roundState: row.round_state ?? "playing",
     boardState: normalizeBoardState(row.board_state),
     movesCount: Number(row.moves_count) || 0,
     currentTurn: row.current_turn === "white" ? "white" : "black",
     winner: row.winner ?? null,
+    seriesWinner: row.series_winner ?? null,
+    currentRound: Number(row.current_round) || 1,
+    hostWins: Number(row.host_wins) || 0,
+    guestWins: Number(row.guest_wins) || 0,
+    drawCount: Number(row.draw_count) || 0,
+    blackUserId: row.black_user_id,
+    whiteUserId: row.white_user_id,
+    rematchHostConfirmed: row.rematch_host_confirmed === true,
+    rematchGuestConfirmed: row.rematch_guest_confirmed === true,
     revision: Number(row.revision) || 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     acceptedAt: row.accepted_at,
     finishedAt: row.finished_at,
+    roundFinishedAt: row.round_finished_at,
     expiresAt: row.expires_at
   };
 }
 
-function matchToUpdatePayload(match: GomokuMatch) {
+function matchToInsertPayload(match: GomokuMatch) {
   return {
+    id: match.id,
     host_user_id: match.hostUserId,
     host_user_name: match.hostUserName,
     guest_user_id: match.guestUserId,
     guest_user_name: match.guestUserName,
     status: match.status,
+    round_state: match.roundState,
     board_state: match.boardState,
     moves_count: match.movesCount,
     current_turn: match.currentTurn,
     winner: match.winner,
+    series_winner: match.seriesWinner,
+    current_round: match.currentRound,
+    host_wins: match.hostWins,
+    guest_wins: match.guestWins,
+    draw_count: match.drawCount,
+    black_user_id: match.blackUserId,
+    white_user_id: match.whiteUserId,
+    rematch_host_confirmed: match.rematchHostConfirmed,
+    rematch_guest_confirmed: match.rematchGuestConfirmed,
     revision: match.revision,
+    created_at: match.createdAt,
+    updated_at: match.updatedAt,
     accepted_at: match.acceptedAt,
     finished_at: match.finishedAt,
+    round_finished_at: match.roundFinishedAt,
     expires_at: match.expiresAt
   };
 }
@@ -79,7 +124,8 @@ function sortMatches(items: GomokuMatch[]) {
     const priority = (status: GomokuMatchStatus) => {
       if (status === "active") return 0;
       if (status === "pending") return 1;
-      return 2;
+      if (status === "completed") return 2;
+      return 3;
     };
     const diff = priority(a.status) - priority(b.status);
     if (diff !== 0) return diff;
@@ -101,7 +147,7 @@ async function refreshExpiredMatches(matches: GomokuMatch[], currentTime = new D
       const expiredMatch = expireMatch(match, currentTime);
       const { data, error } = await supabase
         .from("gomoku_matches")
-        .update(matchToUpdatePayload(expiredMatch))
+        .update(matchToInsertPayload(expiredMatch))
         .eq("id", match.id)
         .eq("revision", match.revision)
         .select("*")
@@ -113,13 +159,13 @@ async function refreshExpiredMatches(matches: GomokuMatch[], currentTime = new D
     })
   );
 
-  return sortMatches(next.filter((match) => match.status === "pending" || match.status === "active"));
+  return sortMatches(next.filter((match) => visibleStatusSet.has(match.status)));
 }
 
 async function updateMatchWithRevision(current: GomokuMatch, next: GomokuMatch) {
   const { data, error } = await supabase
     .from("gomoku_matches")
-    .update(matchToUpdatePayload(next))
+    .update(matchToInsertPayload(next))
     .eq("id", current.id)
     .eq("revision", current.revision)
     .select("*")
@@ -139,7 +185,7 @@ export async function listRelevantMatches(userId: string) {
     .from("gomoku_matches")
     .select("*")
     .or(`host_user_id.eq.${userId},guest_user_id.eq.${userId}`)
-    .in("status", [...GOMOKU_ACTIVE_STATUSES])
+    .in("status", [...GOMOKU_VISIBLE_STATUSES])
     .order("updated_at", { ascending: false })
     .limit(20);
 
@@ -174,38 +220,15 @@ export async function createOnlineMatch(params: {
     throw existingError;
   }
   const duplicates = await refreshExpiredMatches(((existing as GomokuMatchRow[] | null) ?? []).map(normalizeGomokuMatchRow));
-  if (duplicates.some((match) => match.status === "pending" || match.status === "active")) {
+  if (duplicates.some((match) => activeStatusSet.has(match.status))) {
     throw new Error("你们之间已经有进行中的邀请或对局");
   }
 
   const match = createPendingMatch(params);
-  const { data, error } = await supabase
-    .from("gomoku_matches")
-    .insert({
-      id: match.id,
-      host_user_id: match.hostUserId,
-      host_user_name: match.hostUserName,
-      guest_user_id: match.guestUserId,
-      guest_user_name: match.guestUserName,
-      status: match.status,
-      board_state: match.boardState,
-      moves_count: match.movesCount,
-      current_turn: match.currentTurn,
-      winner: match.winner,
-      revision: match.revision,
-      created_at: match.createdAt,
-      updated_at: match.updatedAt,
-      accepted_at: match.acceptedAt,
-      finished_at: match.finishedAt,
-      expires_at: match.expiresAt
-    })
-    .select("*")
-    .single();
-
+  const { data, error } = await supabase.from("gomoku_matches").insert(matchToInsertPayload(match)).select("*").single();
   if (error) {
     throw error;
   }
-
   return normalizeGomokuMatchRow(data as GomokuMatchRow);
 }
 
@@ -223,6 +246,18 @@ export async function cancelOnlineMatch(match: GomokuMatch, hostUserId: string) 
 
 export async function submitOnlineMove(match: GomokuMatch, row: number, col: number, userId: string) {
   return updateMatchWithRevision(match, applyMoveToMatch(match, { row, col, userId }));
+}
+
+export async function advanceOnlineRound(match: GomokuMatch, userId: string) {
+  return updateMatchWithRevision(match, startNextRound(match, userId));
+}
+
+export async function confirmOnlineRematch(match: GomokuMatch, userId: string) {
+  return updateMatchWithRevision(match, confirmRematch(match, userId));
+}
+
+export async function exitOnlineSeries(match: GomokuMatch, userId: string) {
+  return updateMatchWithRevision(match, exitFinishedMatch(match, userId));
 }
 
 export function subscribeToUserMatches(userId: string, onMatchChange: (match: GomokuMatch) => void) {
