@@ -401,9 +401,10 @@ export function GomokuWidget({
   const selfStone = displayMatch ? stoneForUser(displayMatch, mode === "online" ? userId : LOCAL_HUMAN_ID) : null;
   const selfSlot = displayMatch ? playerSlotForUser(displayMatch, mode === "online" ? userId : LOCAL_HUMAN_ID) : null;
   const statusLineText = mode === "online" ? onlineError || statusText : statusText;
-  const cardPadding = isMobileMode ? 4 : 8;
+  const cardPadding = isMobileMode ? "8px 12px 6px" : 8;
   const sectionGap = isMobileMode ? 4 : 8;
   const boardPadding = isMobileMode ? 4 : 8;
+  const boardScaleInset = isMobileMode ? "18px" : "0px";
 
   const occupiedPeers = useMemo(() => {
     const activePeerIds = new Set(
@@ -629,6 +630,8 @@ export function GomokuWidget({
               position: "relative",
               display: "grid",
               placeItems: "center",
+              width: "100%",
+              aspectRatio: isMobileMode ? "1 / 1" : undefined,
               borderRadius: 18,
               padding: boardPadding,
               background: "linear-gradient(165deg, rgba(240, 207, 150, 0.78), rgba(214, 163, 101, 0.82))",
@@ -640,8 +643,8 @@ export function GomokuWidget({
                 display: "grid",
                 gridTemplateColumns: `repeat(${BOARD_SIZE}, 1fr)`,
                 gridTemplateRows: `repeat(${BOARD_SIZE}, 1fr)`,
-                width: "100%",
-                maxWidth: "100%",
+                width: isMobileMode ? `calc(100% - ${boardScaleInset})` : "100%",
+                maxWidth: isMobileMode ? `calc(100% - ${boardScaleInset})` : "100%",
                 aspectRatio: "1 / 1",
                 margin: 0
               }}
