@@ -1,4 +1,5 @@
 import path from "node:path";
+import { execSync } from "node:child_process";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -7,8 +8,36 @@ function getPackageName(id: string): string | null {
   return match?.[1] ?? null;
 }
 
+function resolveGitCommonRepoRoot() {
+  try {
+    const gitCommonDir = execSync("git rev-parse --git-common-dir", {
+      cwd: __dirname,
+      stdio: ["ignore", "pipe", "ignore"]
+    })
+      .toString()
+      .trim();
+    if (!gitCommonDir) {
+      return null;
+    }
+    return path.resolve(__dirname, gitCommonDir, "..");
+  } catch {
+    return null;
+  }
+}
+
+const gitCommonRepoRoot = resolveGitCommonRepoRoot();
+const allowedFsRoots = [path.resolve(__dirname, "../..")];
+if (gitCommonRepoRoot && !allowedFsRoots.includes(gitCommonRepoRoot)) {
+  allowedFsRoots.push(gitCommonRepoRoot);
+}
+
 export default defineConfig({
   plugins: [react()],
+  server: {
+    fs: {
+      allow: allowedFsRoots
+    }
+  },
   build: {
     rollupOptions: {
       output: {

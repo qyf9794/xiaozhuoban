@@ -3,6 +3,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { Button } from "@xiaozhuoban/ui";
 import { WidgetShell } from "./WidgetShell";
+import { GomokuWidget } from "./GomokuWidget";
 import { DEFAULT_TV_PLAYLIST_URL, parseM3UPlaylist, type TvChannel } from "./tvShared";
 import {
   CHINA_TIME_ZONE,
@@ -3605,6 +3606,17 @@ export function BuiltinWidgetView({
           </div>
         </div>
       </WidgetShell>
+    );
+  }
+
+  if (definition.type === "gomoku") {
+    return (
+      <GomokuWidget
+        definition={definition}
+        instance={instance}
+        isMobileMode={isMobileMode}
+        onStateChange={onStateChange}
+      />
     );
   }
 
