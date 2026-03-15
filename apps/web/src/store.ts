@@ -213,6 +213,18 @@ const baseWidgets: Array<Omit<WidgetDefinition, "id" | "createdAt" | "updatedAt"
     uiSchema: { layout: "single-column" },
     logicSpec: {},
     storagePolicy: { strategy: "local" }
+  },
+  {
+    kind: "system",
+    type: "gomoku",
+    name: "五子棋",
+    version: 1,
+    description: "轻量五子棋，支持人机与在线对战",
+    inputSchema: { fields: [] },
+    outputSchema: { fields: [] },
+    uiSchema: { layout: "single-column" },
+    logicSpec: {},
+    storagePolicy: { strategy: "local" }
   }
 ];
 
@@ -340,6 +352,9 @@ function getDefaultWidgetSize(type?: string): { w: number; h: number } {
   if (type === "tv") {
     return { w: 240, h: 480 };
   }
+  if (type === "gomoku") {
+    return { w: 498, h: 498 };
+  }
   if (type === "worldClock") {
     return { w: 240, h: 240 };
   }
@@ -364,6 +379,9 @@ function safeWidgetWidth(widget: WidgetInstance, definitionType?: string) {
 function safeWidgetHeight(widget: WidgetInstance, definitionType?: string) {
   if (definitionType === "tv") {
     return 480;
+  }
+  if (definitionType === "gomoku") {
+    return Math.max(320, Number(widget.size.h) || 498);
   }
   return Math.max(90, Number(widget.size.h) || 180);
 }
