@@ -74,15 +74,15 @@ function actionButtonStyle(disabled = false, emphasis = false): CSSProperties {
   };
 }
 
-function rollButtonStyle(disabled = false): CSSProperties {
+function rollButtonStyle(disabled = false, compact = false): CSSProperties {
   return {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+    width: compact ? 48 : 56,
+    height: compact ? 48 : 56,
+    borderRadius: compact ? 14 : 16,
     border: "1px solid rgba(220,38,38,0.92)",
     background: "#ff0000",
     color: "#ffffff",
-    fontSize: 14,
+    fontSize: compact ? 12 : 14,
     fontWeight: 800,
     letterSpacing: 0.6,
     cursor: disabled ? "default" : "pointer",
@@ -147,7 +147,7 @@ function getStatusText(match: MonopolyMatch | null, userId: string) {
   return match.state.lastEvent || "房间同步中";
 }
 
-function cardBackStyle(kind: "chance" | "fate"): CSSProperties {
+function cardBackStyle(kind: "chance" | "fate", compact = false): CSSProperties {
   const palette =
     kind === "chance"
       ? {
@@ -161,15 +161,15 @@ function cardBackStyle(kind: "chance" | "fate"): CSSProperties {
           background: "linear-gradient(145deg, rgba(249,115,22,0.96), rgba(234,88,12,0.92))"
         };
   return {
-    width: 78,
-    height: 100,
-    borderRadius: 18,
+    width: compact ? 64 : 78,
+    height: compact ? 82 : 100,
+    borderRadius: compact ? 15 : 18,
     border: `1px solid ${palette.edge}`,
     background: palette.background,
     boxShadow: `0 14px 26px ${palette.glow}, inset 0 1px 0 rgba(255,255,255,0.28)`,
     backdropFilter: "blur(16px) saturate(1.2)",
     color: "#ffffff",
-    fontSize: 13,
+    fontSize: compact ? 11 : 13,
     fontWeight: 700,
     display: "grid",
     placeItems: "center",
@@ -197,17 +197,18 @@ function getAssetSummary(player: MonopolyPlayerState | null) {
   return `现金 ${player.cash} · 地产 ${player.propertyIds.length}`;
 }
 
-function getStripeStyle(row: number, col: number, color: string): CSSProperties {
+function getStripeStyle(row: number, col: number, color: string, compact = false): CSSProperties {
+  const thickness = compact ? 5 : 7;
   if (row === 0) {
-    return { position: "absolute", left: 0, right: 0, bottom: 0, height: 7, background: color, zIndex: 0 };
+    return { position: "absolute", left: 0, right: 0, bottom: 0, height: thickness, background: color, zIndex: 0 };
   }
   if (row === MONOPOLY_BOARD_SIDE - 1) {
-    return { position: "absolute", left: 0, right: 0, top: 0, height: 7, background: color, zIndex: 0 };
+    return { position: "absolute", left: 0, right: 0, top: 0, height: thickness, background: color, zIndex: 0 };
   }
   if (col === 0) {
-    return { position: "absolute", top: 0, bottom: 0, right: 0, width: 7, background: color, zIndex: 0 };
+    return { position: "absolute", top: 0, bottom: 0, right: 0, width: thickness, background: color, zIndex: 0 };
   }
-  return { position: "absolute", top: 0, bottom: 0, left: 0, width: 7, background: color, zIndex: 0 };
+  return { position: "absolute", top: 0, bottom: 0, left: 0, width: thickness, background: color, zIndex: 0 };
 }
 
 function buildMovementPath(from: number, to: number, eventText: string) {
@@ -254,14 +255,14 @@ function getPipPositions(value: number) {
   }
 }
 
-function DiceFace({ value, rolling }: { value: number; rolling: boolean }) {
+function DiceFace({ value, rolling, compact = false }: { value: number; rolling: boolean; compact?: boolean }) {
   return (
     <div
       style={{
         position: "relative",
-        width: 38,
-        height: 38,
-        borderRadius: 12,
+        width: compact ? 32 : 38,
+        height: compact ? 32 : 38,
+        borderRadius: compact ? 10 : 12,
         background: "linear-gradient(160deg, rgba(255,255,255,0.98), rgba(226,232,240,0.94))",
         border: "1px solid rgba(148,163,184,0.32)",
         boxShadow: "0 8px 18px rgba(15,23,42,0.08)",
@@ -276,8 +277,8 @@ function DiceFace({ value, rolling }: { value: number; rolling: boolean }) {
             position: "absolute",
             top: pip.top,
             left: pip.left,
-            width: 5.5,
-            height: 5.5,
+            width: compact ? 4.5 : 5.5,
+            height: compact ? 4.5 : 5.5,
             borderRadius: "50%",
             background: "#0f172a",
             transform: "translate(-50%, -50%)"
@@ -513,6 +514,8 @@ export function MonopolyWidget({
 
   const cardPadding = isMobileMode ? "8px 12px 6px" : 8;
   const sectionGap = isMobileMode ? 6 : 8;
+  const boardGap = isMobileMode ? 3 : 4;
+  const boardPadding = isMobileMode ? 4 : 6;
 
   return (
     <Card
@@ -726,8 +729,8 @@ export function MonopolyWidget({
               width: "100%",
               aspectRatio: "1 / 1",
               borderRadius: 20,
-              padding: 6,
-              gap: 4,
+              padding: boardPadding,
+              gap: boardGap,
               background: "linear-gradient(150deg, rgba(219,239,236,0.56), rgba(204,228,223,0.34))",
               border: "1px solid rgba(255,255,255,0.42)",
               backdropFilter: "blur(18px) saturate(1.12)",
@@ -748,9 +751,9 @@ export function MonopolyWidget({
                         gridRow: "2 / span 5",
                         display: "grid",
                         gridTemplateRows: "auto auto 1fr",
-                        gap: isMobileMode ? 7 : 8,
+                        gap: isMobileMode ? 6 : 8,
                         alignContent: "start",
-                        padding: isMobileMode ? 10 : 12,
+                        padding: isMobileMode ? 8 : 12,
                         borderRadius: 18,
                         background:
                           "linear-gradient(160deg, rgba(255,255,255,0.42), rgba(255,255,255,0.14)), radial-gradient(circle at top, rgba(125,211,252,0.16), rgba(255,255,255,0) 72%)",
@@ -759,7 +762,7 @@ export function MonopolyWidget({
                         boxShadow: "inset 0 1px 0 rgba(255,255,255,0.34)"
                       }}
                     >
-                      <div style={{ display: "grid", gap: 5 }}>
+                        <div style={{ display: "grid", gap: isMobileMode ? 4 : 5 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
                           <div>
                             <div style={{ fontSize: isMobileMode ? 13 : 15, fontWeight: 700, color: "#0f172a" }}>
@@ -786,14 +789,14 @@ export function MonopolyWidget({
                             gap: 10,
                             alignItems: "center",
                             borderRadius: 16,
-                            padding: "8px 9px",
+                            padding: isMobileMode ? "7px 8px" : "8px 9px",
                             background: "rgba(255,255,255,0.42)",
                             backdropFilter: "blur(12px)"
                           }}
                         >
                           <div>
-                            <div style={{ fontSize: 11, color: "#64748b" }}>最近事件</div>
-                            <div style={{ fontSize: isMobileMode ? 12 : 13, lineHeight: 1.45, color: "#0f172a", marginTop: 2 }}>
+                            <div style={{ fontSize: isMobileMode ? 10 : 11, color: "#64748b" }}>最近事件</div>
+                            <div style={{ fontSize: isMobileMode ? 11 : 13, lineHeight: 1.35, color: "#0f172a", marginTop: 2 }}>
                               {latestEvent}
                             </div>
                           </div>
@@ -807,9 +810,11 @@ export function MonopolyWidget({
                             }}
                           >
                             {currentDice ? (
-                              currentDice.map((value, index) => <DiceFace key={`${value}-${index}`} value={value} rolling={rollingDice} />)
+                              currentDice.map((value, index) => (
+                                <DiceFace key={`${value}-${index}`} value={value} rolling={rollingDice} compact={isMobileMode} />
+                              ))
                             ) : (
-                              <div style={{ fontSize: 11, color: "#94a3b8" }}>骰子待掷</div>
+                              <div style={{ fontSize: isMobileMode ? 10 : 11, color: "#94a3b8" }}>骰子待掷</div>
                             )}
                           </div>
                         </div>
@@ -824,15 +829,15 @@ export function MonopolyWidget({
                           marginTop: isMobileMode ? 6 : 10
                         }}
                       >
-                        <div style={{ display: "flex", gap: isMobileMode ? 8 : 12, alignItems: "center" }}>
-                          <div style={cardBackStyle("chance")}>机会</div>
-                          <div style={cardBackStyle("fate")}>命运</div>
+                        <div style={{ display: "flex", gap: isMobileMode ? 6 : 12, alignItems: "center" }}>
+                          <div style={cardBackStyle("chance", isMobileMode)}>机会</div>
+                          <div style={cardBackStyle("fate", isMobileMode)}>命运</div>
                         </div>
                         <div style={{ display: "grid", gap: 8, justifyItems: "end", marginRight: isMobileMode ? 4 : 16 }}>
                           {canRoll ? (
                             <button
                               type="button"
-                              style={rollButtonStyle(Boolean(busyId))}
+                              style={rollButtonStyle(Boolean(busyId), isMobileMode)}
                               disabled={Boolean(busyId)}
                               onClick={() => {
                                 activeMatch && void runOnlineAction(`roll:${activeMatch.id}`, () => submitOnlineRoll(activeMatch, userId));
@@ -878,7 +883,9 @@ export function MonopolyWidget({
                           background: "transparent"
                         }}
                       >
-                        <div style={{ fontSize: 10, color: "#475569", fontWeight: 600 }}>{completedMatch ? "最终排名" : "资产榜"}</div>
+                        <div style={{ fontSize: isMobileMode ? 9 : 10, color: "#475569", fontWeight: 600 }}>
+                          {completedMatch ? "最终排名" : "资产榜"}
+                        </div>
                         {topRanking.length > 0 ? (
                           <div
                             style={{
@@ -889,7 +896,7 @@ export function MonopolyWidget({
                                   : topRanking.length === 2
                                     ? "repeat(2, minmax(0, 1fr))"
                                     : "repeat(2, minmax(0, 1fr))",
-                              gap: topRanking.length === 2 ? 10 : 4
+                              gap: topRanking.length === 2 ? (isMobileMode ? 8 : 10) : isMobileMode ? 2 : 4
                             }}
                           >
                             {topRanking.map((entry, index) => (
@@ -899,9 +906,9 @@ export function MonopolyWidget({
                                   display: "grid",
                                   gridTemplateColumns: "auto minmax(0, 1fr) auto",
                                   alignItems: "center",
-                                  gap: 5,
+                                  gap: isMobileMode ? 3 : 5,
                                   padding: "1px 0",
-                                  fontSize: completedMatch ? 10.5 : 10,
+                                  fontSize: isMobileMode ? 8 : completedMatch ? 10.5 : 10,
                                   color: "#0f172a",
                                   minWidth: 0
                                 }}
@@ -910,7 +917,16 @@ export function MonopolyWidget({
                                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                   {entry.userName}
                                 </span>
-                                <span style={{ fontWeight: 700 }}>{entry.totalAssets}</span>
+                                <span
+                                  style={{
+                                    fontWeight: 700,
+                                    minWidth: isMobileMode ? 34 : undefined,
+                                    textAlign: "right",
+                                    fontVariantNumeric: "tabular-nums"
+                                  }}
+                                >
+                                  {entry.totalAssets}
+                                </span>
                               </div>
                             ))}
                           </div>
@@ -954,7 +970,7 @@ export function MonopolyWidget({
                       position: "relative",
                       display: "grid",
                       alignContent: "space-between",
-                      padding: isMobileMode ? 6 : 7,
+                      padding: isMobileMode ? 4 : 7,
                       borderRadius: isCorner ? 16 : 12,
                       border: "1px solid rgba(15,23,42,0.08)",
                       background: tileBackground,
@@ -976,28 +992,28 @@ export function MonopolyWidget({
                         marginRight: col === 0 && tile.color ? 6 : 0
                       }}
                     >
-                      <div style={{ fontSize: isMobileMode ? 9 : 10, fontWeight: 700, color: primaryTextColor, lineHeight: 1.15 }}>
+                      <div style={{ fontSize: isMobileMode ? 8 : 10, fontWeight: 700, color: primaryTextColor, lineHeight: 1.05 }}>
                         {tile.shortName}
                       </div>
-                      <div style={{ fontSize: 9, color: secondaryTextColor, lineHeight: 1.1 }}>
+                      <div style={{ fontSize: isMobileMode ? 7.5 : 9, color: secondaryTextColor, lineHeight: 1 }}>
                         {tile.price ? `${tile.price} / 租 ${tile.rent}` : tile.badge ?? tile.name}
                       </div>
                     </div>
 
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", gap: 4, position: "relative", zIndex: 2 }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 20px)", gap: 5 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: `repeat(2, ${isMobileMode ? 14 : 16}px)`, gap: isMobileMode ? 3 : 5 }}>
                         {playersOnTile.slice(0, 4).map((player) => (
                           <span
                             key={player.userId}
                             title={player.userName}
                             style={{
-                              width: 16,
-                              height: 16,
+                              width: isMobileMode ? 14 : 16,
+                              height: isMobileMode ? 14 : 16,
                               borderRadius: "50%",
                               background: player.color,
                               boxShadow: "0 0 0 2px rgba(255,255,255,0.82)",
                               color: "#f8fafc",
-                              fontSize: 8,
+                              fontSize: isMobileMode ? 7 : 8,
                               fontWeight: 700,
                               display: "grid",
                               placeItems: "center"
