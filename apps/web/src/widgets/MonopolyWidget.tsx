@@ -20,6 +20,7 @@ import {
   listRelevantMatches,
   purchaseOnlineProperty,
   removeMatchChannel,
+  restartOnlineMatch,
   skipOnlineProperty,
   startOnlineMatch,
   submitOnlineRoll,
@@ -54,6 +55,8 @@ const TILE_POSITIONS = [
   { row: 4, col: 0 },
   { row: 5, col: 0 }
 ] as const;
+
+const DICE_ANIMATION_MS = 1640;
 
 function actionButtonStyle(disabled = false, emphasis = false): CSSProperties {
   return {
@@ -196,15 +199,15 @@ function getAssetSummary(player: MonopolyPlayerState | null) {
 
 function getStripeStyle(row: number, col: number, color: string): CSSProperties {
   if (row === 0) {
-    return { position: "absolute", left: 0, right: 0, bottom: 0, height: 7, background: color };
+    return { position: "absolute", left: 0, right: 0, bottom: 0, height: 7, background: color, zIndex: 0 };
   }
   if (row === MONOPOLY_BOARD_SIDE - 1) {
-    return { position: "absolute", left: 0, right: 0, top: 0, height: 7, background: color };
+    return { position: "absolute", left: 0, right: 0, top: 0, height: 7, background: color, zIndex: 0 };
   }
   if (col === 0) {
-    return { position: "absolute", top: 0, bottom: 0, right: 0, width: 7, background: color };
+    return { position: "absolute", top: 0, bottom: 0, right: 0, width: 7, background: color, zIndex: 0 };
   }
-  return { position: "absolute", top: 0, bottom: 0, left: 0, width: 7, background: color };
+  return { position: "absolute", top: 0, bottom: 0, left: 0, width: 7, background: color, zIndex: 0 };
 }
 
 function buildMovementPath(from: number, to: number, eventText: string) {
@@ -263,7 +266,7 @@ function DiceFace({ value, rolling }: { value: number; rolling: boolean }) {
         border: "1px solid rgba(148,163,184,0.32)",
         boxShadow: "0 8px 18px rgba(15,23,42,0.08)",
         transform: rolling ? "rotate(720deg)" : "rotate(0deg)",
-        transition: rolling ? "transform 1.64s cubic-bezier(0.2, 0.9, 0.2, 1)" : "transform 0.2s ease-out"
+        transition: rolling ? `transform ${DICE_ANIMATION_MS}ms cubic-bezier(0.2, 0.9, 0.2, 1)` : "transform 0.2s ease-out"
       }}
     >
       {getPipPositions(value).map((pip, index) => (
@@ -384,6 +387,7 @@ export function MonopolyWidget({
   const statusText = onlineError || (loadingMatches ? "正在同步房间..." : getStatusText(currentMatch, userId));
   const hostAcceptedCount = pendingMatch?.state.invites.filter((invite) => invite.status === "accepted").length ?? 0;
   const canHostStart = Boolean(pendingMatch && pendingMatch.hostUserId === userId && hostAcceptedCount >= 1);
+  const canHostRestart = Boolean(boardMatch && boardMatch.hostUserId === userId);
   const canRoll = Boolean(activeMatch && activeMatch.phase === "await_roll" && isCurrentPlayer(activeMatch, userId));
   const canBuy = Boolean(
     activeMatch &&
@@ -433,10 +437,18 @@ export function MonopolyWidget({
         return;
       }
       const path = buildMovementPath(from, player.position, boardMatch.state.lastEvent);
+      const shouldDelayMovement =
+        prevMatch.state.lastRoll?.playerId !== boardMatch.state.lastRoll?.playerId ||
+        prevMatch.state.lastRoll?.total !== boardMatch.state.lastRoll?.total;
+      const movementStartDelay = shouldDelayMovement ? DICE_ANIMATION_MS : 0;
+      if (shouldDelayMovement) {
+        setRollingDice(true);
+      }
+
       path.forEach((step, index) => {
         const timer = window.setTimeout(() => {
           setAnimatedPositions((prev) => ({ ...prev, [player.userId]: step }));
-        }, (index + 1) * 320);
+        }, movementStartDelay + (index + 1) * 320);
         animationTimersRef.current.push(timer);
       });
     });
@@ -450,7 +462,7 @@ export function MonopolyWidget({
 
   useEffect(() => {
     if (!rollingDice || !currentDice) return;
-    const timer = window.setTimeout(() => setRollingDice(false), 1640);
+    const timer = window.setTimeout(() => setRollingDice(false), DICE_ANIMATION_MS);
     return () => window.clearTimeout(timer);
   }, [currentDice, rollingDice]);
 
@@ -549,6 +561,16 @@ export function MonopolyWidget({
                   取消
                 </button>
               </>
+            ) : null}
+            {canHostRestart ? (
+              <button
+                type="button"
+                style={actionButtonStyle(Boolean(busyId))}
+                disabled={Boolean(busyId)}
+                onClick={() => boardMatch && void runOnlineAction(`restart:${boardMatch.id}`, () => restartOnlineMatch(boardMatch, userId))}
+              >
+                重新开始
+              </button>
             ) : null}
             {invitePickerOpen ? (
               <div
@@ -813,7 +835,6 @@ export function MonopolyWidget({
                               style={rollButtonStyle(Boolean(busyId))}
                               disabled={Boolean(busyId)}
                               onClick={() => {
-                                setRollingDice(true);
                                 activeMatch && void runOnlineAction(`roll:${activeMatch.id}`, () => submitOnlineRoll(activeMatch, userId));
                               }}
                             >
@@ -868,7 +889,7 @@ export function MonopolyWidget({
                                   : topRanking.length === 2
                                     ? "repeat(2, minmax(0, 1fr))"
                                     : "repeat(2, minmax(0, 1fr))",
-                              gap: 4
+                              gap: topRanking.length === 2 ? 10 : 4
                             }}
                           >
                             {topRanking.map((entry, index) => (
@@ -947,6 +968,8 @@ export function MonopolyWidget({
                       style={{
                         display: "grid",
                         gap: 3,
+                        position: "relative",
+                        zIndex: 1,
                         marginTop: row === MONOPOLY_BOARD_SIDE - 1 && tile.color ? 6 : 0,
                         marginBottom: row === 0 && tile.color ? 6 : 0,
                         marginLeft: col === MONOPOLY_BOARD_SIDE - 1 && tile.color ? 6 : 0,
@@ -961,7 +984,7 @@ export function MonopolyWidget({
                       </div>
                     </div>
 
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", gap: 4 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", gap: 4, position: "relative", zIndex: 2 }}>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 20px)", gap: 5 }}>
                         {playersOnTile.slice(0, 4).map((player) => (
                           <span

@@ -11,6 +11,7 @@ import {
   MONOPOLY_VISIBLE_STATUSES,
   normalizeMonopolyState,
   purchaseProperty,
+  restartMatch,
   skipProperty,
   sortMatches,
   startMatch,
@@ -227,6 +228,10 @@ export async function cancelOnlineMatch(match: MonopolyMatch, hostUserId: string
 
 export async function startOnlineMatch(match: MonopolyMatch, hostUserId: string) {
   return updateMatchWithRevision(match, startMatch(match, hostUserId));
+}
+
+export async function restartOnlineMatch(match: MonopolyMatch, hostUserId: string) {
+  return updateMatchWithRevision(match, restartMatch(match, hostUserId));
 }
 
 export async function submitOnlineRoll(match: MonopolyMatch, userId: string) {

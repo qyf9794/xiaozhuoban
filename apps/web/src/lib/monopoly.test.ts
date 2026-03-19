@@ -5,6 +5,7 @@ import {
   MONOPOLY_FATE_CARDS,
   MONOPOLY_STARTING_CASH,
   purchaseProperty,
+  restartMatch,
   startMatch,
   submitRoll,
   type MonopolyMatch
@@ -174,6 +175,32 @@ describe("monopoly gameplay", () => {
     expect(next.status).toBe("active");
     expect(next.phase).toBe("await_roll");
     expect(next.state.currentRound).toBe(13);
+  });
+
+  it("lets the host restart an active game with the same participants", () => {
+    const started = createStartedTwoPlayerMatch();
+    const progressed = submitRoll(
+      {
+        ...started,
+        state: {
+          ...started.state,
+          players: started.state.players.map((player, index) => (index === 0 ? { ...player, position: 23 } : player))
+        }
+      },
+      { userId: "host", dice: [1, 1], rolledAt: "2026-03-19T00:03:00.000Z" }
+    );
+
+    const restarted = restartMatch(progressed, "host", "2026-03-19T00:04:00.000Z", () => 0.5);
+
+    expect(restarted.status).toBe("active");
+    expect(restarted.phase).toBe("await_roll");
+    expect(restarted.state.currentRound).toBe(1);
+    expect(restarted.state.players.map((player) => ({ userId: player.userId, cash: player.cash, position: player.position }))).toEqual([
+      { userId: "host", cash: MONOPOLY_STARTING_CASH, position: 0 },
+      { userId: "guest", cash: MONOPOLY_STARTING_CASH, position: 0 }
+    ]);
+    expect(restarted.state.propertyOwners).toEqual({});
+    expect(restarted.state.lastEvent).toContain("重新开始");
   });
 });
 

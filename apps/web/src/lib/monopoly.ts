@@ -284,6 +284,42 @@ function createLobbyState(invites: MonopolyInvite[]): MonopolyState {
   };
 }
 
+function createActiveState(
+  hostUserId: string,
+  hostUserName: string,
+  participants: Array<{ userId: string; userName: string }>,
+  random = Math.random,
+  openingEvent?: string
+) {
+  const players: MonopolyPlayerState[] = participants.map((participant, index) => ({
+    userId: participant.userId,
+    userName: participant.userName,
+    seat: index,
+    color: colorForUser(participant.userId),
+    cash: MONOPOLY_STARTING_CASH,
+    position: 0,
+    propertyIds: [],
+    bankrupt: false
+  }));
+
+  return refreshRanking({
+    invites: participants
+      .filter((participant) => participant.userId !== hostUserId)
+      .map((participant) => ({ userId: participant.userId, userName: participant.userName, status: "accepted" as const })),
+    players,
+    currentPlayerIndex: 0,
+    currentRound: 1,
+    propertyOwners: {},
+    chanceDeck: createDeck("chance", random),
+    fateDeck: createDeck("fate", random),
+    lastRoll: null,
+    lastEvent: openingEvent ?? `房间已开始，轮到 ${hostUserName} 掷骰`,
+    pendingDecision: null,
+    ranking: [],
+    turnStep: "roll"
+  });
+}
+
 function ensurePendingMatch(match: MonopolyMatch) {
   if (match.status !== "pending" || match.phase !== "lobby") {
     throw new Error("当前房间不可执行大厅操作");
@@ -839,43 +875,11 @@ export function startMatch(match: MonopolyMatch, hostUserId: string, startedAt =
     throw new Error("至少需要 2 名玩家才能开始");
   }
 
-  const players: MonopolyPlayerState[] = [
-    {
-      userId: match.hostUserId,
-      userName: match.hostUserName,
-      seat: 0,
-      color: colorForUser(match.hostUserId),
-      cash: MONOPOLY_STARTING_CASH,
-      position: 0,
-      propertyIds: [],
-      bankrupt: false
-    },
-    ...acceptedInvites.map((invite, index) => ({
-      userId: invite.userId,
-      userName: invite.userName,
-      seat: index + 1,
-      color: colorForUser(invite.userId),
-      cash: MONOPOLY_STARTING_CASH,
-      position: 0,
-      propertyIds: [],
-      bankrupt: false
-    }))
+  const participants = [
+    { userId: match.hostUserId, userName: match.hostUserName },
+    ...acceptedInvites.map((invite) => ({ userId: invite.userId, userName: invite.userName }))
   ];
-
-  const state: MonopolyState = refreshRanking({
-    invites: cloneInvites(match.state.invites),
-    players,
-    currentPlayerIndex: 0,
-    currentRound: 1,
-    propertyOwners: {},
-    chanceDeck: createDeck("chance", random),
-    fateDeck: createDeck("fate", random),
-    lastRoll: null,
-    lastEvent: `房间已开始，轮到 ${match.hostUserName} 掷骰`,
-    pendingDecision: null,
-    ranking: [],
-    turnStep: "roll"
-  });
+  const state: MonopolyState = createActiveState(match.hostUserId, match.hostUserName, participants, random);
 
   return withUpdatedMatch(
     match,
@@ -887,6 +891,54 @@ export function startMatch(match: MonopolyMatch, hostUserId: string, startedAt =
       startedAt
     },
     startedAt
+  );
+}
+
+export function restartMatch(match: MonopolyMatch, hostUserId: string, restartedAt = nowIso(), random = Math.random) {
+  ensureHost(match, hostUserId);
+  if (match.status === "pending") {
+    throw new Error("当前房间尚未开始");
+  }
+
+  const knownPlayers = new Map(match.state.players.map((player) => [player.userId, player.userName]));
+  knownPlayers.set(match.hostUserId, match.hostUserName);
+  match.state.invites.forEach((invite) => {
+    if (invite.status === "accepted") {
+      knownPlayers.set(invite.userId, invite.userName);
+    }
+  });
+
+  const participants = match.participantIds
+    .map((userId) => ({
+      userId,
+      userName: knownPlayers.get(userId) ?? ""
+    }))
+    .filter((participant) => participant.userId && participant.userName);
+
+  if (participants.length < 2) {
+    throw new Error("当前房间人数不足，无法重新开始");
+  }
+
+  const state = createActiveState(
+    match.hostUserId,
+    match.hostUserName,
+    participants,
+    random,
+    `${match.hostUserName} 重新开始了游戏，轮到 ${match.hostUserName} 掷骰`
+  );
+
+  return withUpdatedMatch(
+    match,
+    {
+      status: "active",
+      phase: "await_roll",
+      state,
+      participantIds: participants.map((participant) => participant.userId),
+      startedAt: restartedAt,
+      finishedAt: null,
+      expiresAt: null
+    },
+    restartedAt
   );
 }
 
