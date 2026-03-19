@@ -19,7 +19,6 @@ import {
   cancelOnlineMatch,
   createOnlineMatch,
   declineOnlineMatch,
-  endOnlineTurn,
   listRelevantMatches,
   purchaseOnlineProperty,
   removeMatchChannel,
@@ -123,13 +122,9 @@ function getStatusText(match: MonopolyMatch | null, userId: string) {
     }
     return `等待 ${currentPlayer?.userName ?? "当前玩家"} 决定是否购买地产`;
   }
-  if (match.phase === "await_roll" && match.state.turnStep === "roll") {
+  if (match.phase === "await_roll") {
     const currentPlayer = getCurrentPlayer(match);
     return currentPlayer?.userId === userId ? "轮到你掷骰" : `等待 ${currentPlayer?.userName ?? "当前玩家"} 掷骰`;
-  }
-  if (match.phase === "await_roll" && match.state.turnStep === "end") {
-    const currentPlayer = getCurrentPlayer(match);
-    return currentPlayer?.userId === userId ? "本回合已结算，点击结束回合" : `等待 ${currentPlayer?.userName ?? "当前玩家"} 结束回合`;
   }
   return match.state.lastEvent || "房间同步中";
 }
@@ -171,9 +166,92 @@ function getPlayersOnTile(match: MonopolyMatch | null, tileIndex: number) {
   return match.state.players.filter((player) => player.position === tileIndex);
 }
 
+function getPlayersOnDisplayTile(match: MonopolyMatch | null, positions: Record<string, number>, tileIndex: number) {
+  if (!match) return [];
+  return match.state.players.filter((player) => (positions[player.userId] ?? player.position) === tileIndex);
+}
+
 function getAssetSummary(player: MonopolyPlayerState | null) {
   if (!player) return "尚未入局";
   return `现金 ${player.cash} · 地产 ${player.propertyIds.length}`;
+}
+
+function buildMovementPath(from: number, to: number, eventText: string) {
+  if (from === to) return [to];
+  const backward = eventText.includes("后退");
+  const path: number[] = [];
+  let cursor = from;
+  while (cursor !== to) {
+    cursor = backward ? (cursor - 1 + MONOPOLY_TILES.length) % MONOPOLY_TILES.length : (cursor + 1) % MONOPOLY_TILES.length;
+    path.push(cursor);
+    if (path.length > MONOPOLY_TILES.length + 4) {
+      break;
+    }
+  }
+  return path.length > 0 ? path : [to];
+}
+
+function getPipPositions(value: number) {
+  const center = [{ top: "50%", left: "50%" }];
+  const corners = [
+    { top: "24%", left: "24%" },
+    { top: "24%", left: "76%" },
+    { top: "76%", left: "24%" },
+    { top: "76%", left: "76%" }
+  ];
+  const mids = [
+    { top: "50%", left: "24%" },
+    { top: "50%", left: "76%" }
+  ];
+
+  switch (value) {
+    case 1:
+      return center;
+    case 2:
+      return [corners[0], corners[3]];
+    case 3:
+      return [corners[0], center[0], corners[3]];
+    case 4:
+      return corners;
+    case 5:
+      return [...corners, center[0]];
+    default:
+      return [corners[0], corners[1], mids[0], mids[1], corners[2], corners[3]];
+  }
+}
+
+function DiceFace({ value, rolling }: { value: number; rolling: boolean }) {
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: 38,
+        height: 38,
+        borderRadius: 12,
+        background: "linear-gradient(160deg, rgba(255,255,255,0.98), rgba(226,232,240,0.94))",
+        border: "1px solid rgba(148,163,184,0.32)",
+        boxShadow: "0 8px 18px rgba(15,23,42,0.08)",
+        transform: rolling ? "rotate(720deg)" : "rotate(0deg)",
+        transition: rolling ? "transform 0.82s cubic-bezier(0.2, 0.9, 0.2, 1)" : "transform 0.2s ease-out"
+      }}
+    >
+      {getPipPositions(value).map((pip, index) => (
+        <span
+          key={`${value}-${index}`}
+          style={{
+            position: "absolute",
+            top: pip.top,
+            left: pip.left,
+            width: 5.5,
+            height: 5.5,
+            borderRadius: "50%",
+            background: "#0f172a",
+            transform: "translate(-50%, -50%)"
+          }}
+        />
+      ))}
+    </div>
+  );
 }
 
 export function MonopolyWidget({
@@ -199,7 +277,11 @@ export function MonopolyWidget({
   const [busyId, setBusyId] = useState("");
   const [invitePickerOpen, setInvitePickerOpen] = useState(false);
   const [selectedInviteIds, setSelectedInviteIds] = useState<string[]>([]);
+  const [animatedPositions, setAnimatedPositions] = useState<Record<string, number>>({});
+  const [rollingDice, setRollingDice] = useState(false);
   const invitePickerRef = useRef<HTMLDivElement | null>(null);
+  const prevBoardMatchRef = useRef<MonopolyMatch | null>(null);
+  const animationTimersRef = useRef<number[]>([]);
 
   useEffect(() => {
     if (!userId) return;
@@ -233,6 +315,24 @@ export function MonopolyWidget({
   }, [userId]);
 
   useEffect(() => {
+    if (!userId) return;
+    const intervalId = window.setInterval(() => {
+      void listRelevantMatches(userId)
+        .then((nextMatches) => {
+          setMatches((prev) => {
+            const changed =
+              prev.length !== nextMatches.length || prev.some((match, index) => match.id !== nextMatches[index]?.id || match.revision !== nextMatches[index]?.revision);
+            return changed ? nextMatches : prev;
+          });
+        })
+        .catch(() => {
+          // Realtime remains the primary path; polling is only a sync fallback.
+        });
+    }, 2500);
+    return () => window.clearInterval(intervalId);
+  }, [userId]);
+
+  useEffect(() => {
     if (!invitePickerOpen) return;
     const onDocClick = (event: MouseEvent) => {
       if (!invitePickerRef.current?.contains(event.target as Node)) {
@@ -247,25 +347,81 @@ export function MonopolyWidget({
   const activeMatch = useMemo(() => matches.find((match) => match.status === "active") ?? null, [matches]);
   const completedMatch = useMemo(() => matches.find((match) => match.status === "completed") ?? null, [matches]);
   const currentMatch = activeMatch ?? pendingMatch ?? completedMatch;
+  const boardMatch = activeMatch ?? completedMatch;
   const selfPlayer = getPlayerDisplay(activeMatch ?? completedMatch, userId);
   const currentPlayer = getCurrentPlayer(activeMatch);
   const statusText = onlineError || (loadingMatches ? "正在同步房间..." : getStatusText(currentMatch, userId));
   const hostAcceptedCount = pendingMatch?.state.invites.filter((invite) => invite.status === "accepted").length ?? 0;
   const canHostStart = Boolean(pendingMatch && pendingMatch.hostUserId === userId && hostAcceptedCount >= 1);
-  const canRoll = Boolean(activeMatch && activeMatch.phase === "await_roll" && activeMatch.state.turnStep === "roll" && isCurrentPlayer(activeMatch, userId));
+  const canRoll = Boolean(activeMatch && activeMatch.phase === "await_roll" && isCurrentPlayer(activeMatch, userId));
   const canBuy = Boolean(
     activeMatch &&
       activeMatch.phase === "await_purchase_decision" &&
       activeMatch.state.pendingDecision?.playerId === userId &&
       isCurrentPlayer(activeMatch, userId)
   );
-  const canEndTurn = Boolean(
-    activeMatch && activeMatch.phase === "await_roll" && activeMatch.state.turnStep === "end" && isCurrentPlayer(activeMatch, userId)
-  );
   const inviteableUsers = useMemo(() => otherUsers.slice(0, 20), [otherUsers]);
   const latestEvent = currentMatch?.state.lastEvent || "大厅已就绪";
   const topRanking = (activeMatch ?? completedMatch)?.state.ranking.slice(0, 4) ?? [];
   const currentDice = activeMatch?.state.lastRoll?.dice ?? completedMatch?.state.lastRoll?.dice ?? null;
+
+  useEffect(() => {
+    animationTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    animationTimersRef.current = [];
+
+    if (!boardMatch) {
+      prevBoardMatchRef.current = null;
+      setAnimatedPositions({});
+      return;
+    }
+
+    const prevMatch = prevBoardMatchRef.current;
+    const directPositions = Object.fromEntries(boardMatch.state.players.map((player) => [player.userId, player.position]));
+
+    if (!prevMatch || prevMatch.id !== boardMatch.id) {
+      setAnimatedPositions(directPositions);
+      prevBoardMatchRef.current = boardMatch;
+      return;
+    }
+
+    setAnimatedPositions((prev) => {
+      const next = { ...prev };
+      boardMatch.state.players.forEach((player) => {
+        if (typeof next[player.userId] !== "number") {
+          next[player.userId] = player.position;
+        }
+      });
+      return next;
+    });
+
+    boardMatch.state.players.forEach((player) => {
+      const prevPlayer = prevMatch.state.players.find((entry) => entry.userId === player.userId);
+      const from = prevPlayer?.position;
+      if (typeof from !== "number" || from === player.position) {
+        setAnimatedPositions((prev) => ({ ...prev, [player.userId]: player.position }));
+        return;
+      }
+      const path = buildMovementPath(from, player.position, boardMatch.state.lastEvent);
+      path.forEach((step, index) => {
+        const timer = window.setTimeout(() => {
+          setAnimatedPositions((prev) => ({ ...prev, [player.userId]: step }));
+        }, (index + 1) * 180);
+        animationTimersRef.current.push(timer);
+      });
+    });
+
+    prevBoardMatchRef.current = boardMatch;
+    return () => {
+      animationTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+      animationTimersRef.current = [];
+    };
+  }, [boardMatch]);
+
+  useEffect(() => {
+    if (!rollingDice || !currentDice) return;
+    const timer = window.setTimeout(() => setRollingDice(false), 820);
+    return () => window.clearTimeout(timer);
+  }, [currentDice, rollingDice]);
 
   const runOnlineAction = async (actionId: string, task: () => Promise<MonopolyMatch>) => {
     setBusyId(actionId);
@@ -592,25 +748,7 @@ export function MonopolyWidget({
                             }}
                           >
                             {currentDice ? (
-                              currentDice.map((value, index) => (
-                                <div
-                                  key={`${value}-${index}`}
-                                  style={{
-                                    width: 38,
-                                    height: 38,
-                                    borderRadius: 12,
-                                    background: "linear-gradient(160deg, rgba(255,255,255,0.96), rgba(226,232,240,0.92))",
-                                    border: "1px solid rgba(148,163,184,0.32)",
-                                    display: "grid",
-                                    placeItems: "center",
-                                    fontSize: 16,
-                                    fontWeight: 700,
-                                    color: "#0f172a"
-                                  }}
-                                >
-                                  {value}
-                                </div>
-                              ))
+                              currentDice.map((value, index) => <DiceFace key={`${value}-${index}`} value={value} rolling={rollingDice} />)
                             ) : (
                               <div style={{ fontSize: 11, color: "#94a3b8" }}>骰子待掷</div>
                             )}
@@ -629,7 +767,10 @@ export function MonopolyWidget({
                               type="button"
                               style={actionButtonStyle(Boolean(busyId), true)}
                               disabled={Boolean(busyId)}
-                              onClick={() => activeMatch && void runOnlineAction(`roll:${activeMatch.id}`, () => submitOnlineRoll(activeMatch, userId))}
+                              onClick={() => {
+                                setRollingDice(true);
+                                activeMatch && void runOnlineAction(`roll:${activeMatch.id}`, () => submitOnlineRoll(activeMatch, userId));
+                              }}
                             >
                               掷骰
                             </button>
@@ -657,18 +798,6 @@ export function MonopolyWidget({
                                 跳过
                               </button>
                             </div>
-                          ) : null}
-                          {canEndTurn ? (
-                            <button
-                              type="button"
-                              style={actionButtonStyle(Boolean(busyId), true)}
-                              disabled={Boolean(busyId)}
-                              onClick={() =>
-                                activeMatch && void runOnlineAction(`end:${activeMatch.id}`, () => endOnlineTurn(activeMatch, userId))
-                              }
-                            >
-                              结束回合
-                            </button>
                           ) : null}
                         </div>
                       </div>
@@ -723,9 +852,9 @@ export function MonopolyWidget({
                     />
                   );
                 }
-                const playersOnTile = getPlayersOnTile(activeMatch ?? completedMatch, tile.index);
-                const ownerUserId = activeMatch?.state.propertyOwners[String(tile.index)] ?? completedMatch?.state.propertyOwners[String(tile.index)];
-                const ownerPlayer = (activeMatch ?? completedMatch)?.state.players.find((player) => player.userId === ownerUserId);
+                const playersOnTile = getPlayersOnDisplayTile(boardMatch, animatedPositions, tile.index);
+                const ownerUserId = boardMatch?.state.propertyOwners[String(tile.index)];
+                const ownerPlayer = boardMatch?.state.players.find((player) => player.userId === ownerUserId);
                 const isCorner = tile.kind === "corner";
 
                 return (

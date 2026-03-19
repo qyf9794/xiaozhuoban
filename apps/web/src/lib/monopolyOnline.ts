@@ -5,7 +5,6 @@ import {
   cancelMatch,
   createPendingMatch,
   declineMatch,
-  endTurn,
   expireMatch,
   isPendingMatchExpired,
   MONOPOLY_ACTIVE_STATUSES,
@@ -240,10 +239,6 @@ export async function purchaseOnlineProperty(match: MonopolyMatch, userId: strin
 
 export async function skipOnlineProperty(match: MonopolyMatch, userId: string) {
   return updateMatchWithRevision(match, skipProperty(match, userId));
-}
-
-export async function endOnlineTurn(match: MonopolyMatch, userId: string) {
-  return updateMatchWithRevision(match, endTurn(match, userId));
 }
 
 export function subscribeToUserMatches(userId: string, onMatchChange: (match: MonopolyMatch) => void) {

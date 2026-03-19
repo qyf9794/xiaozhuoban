@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   acceptMatch,
   createPendingMatch,
-  endTurn,
   MONOPOLY_FATE_CARDS,
   MONOPOLY_STARTING_CASH,
   purchaseProperty,
@@ -81,6 +80,7 @@ describe("monopoly gameplay", () => {
     const purchased = purchaseProperty(rolled, "host", "2026-03-19T00:03:10.000Z");
 
     expect(purchased.phase).toBe("await_roll");
+    expect(purchased.state.currentPlayerIndex).toBe(1);
     expect(purchased.state.propertyOwners["1"]).toBe("host");
     expect(purchased.state.players[0]?.propertyIds).toEqual([1]);
     expect(purchased.state.players[0]?.cash).toBe(MONOPOLY_STARTING_CASH + 100);
@@ -162,11 +162,14 @@ describe("monopoly gameplay", () => {
         ...started.state,
         currentRound: 12,
         currentPlayerIndex: 1,
-        turnStep: "end"
+        players: [
+          { ...started.state.players[0]! },
+          { ...started.state.players[1]!, position: 10 }
+        ]
       }
     };
 
-    const completed = endTurn(adjusted, "guest", "2026-03-19T00:10:00.000Z");
+    const completed = submitRoll(adjusted, { userId: "guest", dice: [1, 1], rolledAt: "2026-03-19T00:10:00.000Z" });
 
     expect(completed.status).toBe("completed");
     expect(completed.phase).toBe("completed");

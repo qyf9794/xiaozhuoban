@@ -19,7 +19,6 @@ export type MonopolyTileKind = "corner" | "property" | "chance" | "fate" | "fee"
 export type MonopolyCornerKind = "start" | "rest" | "free_parking" | "audit";
 export type MonopolyPropertyTier = "normal" | "premium";
 export type MonopolyCardKind = "chance" | "fate";
-export type MonopolyTurnStep = "roll" | "end";
 
 export interface MonopolyInvite {
   userId: string;
@@ -96,7 +95,7 @@ export interface MonopolyState {
   lastEvent: string;
   pendingDecision: MonopolyPendingDecision | null;
   ranking: MonopolyRankingEntry[];
-  turnStep: MonopolyTurnStep;
+  turnStep: "roll";
 }
 
 export interface MonopolyMatch {
@@ -190,7 +189,7 @@ function cloneState(state: MonopolyState): MonopolyState {
     lastEvent: state.lastEvent,
     pendingDecision: state.pendingDecision ? { ...state.pendingDecision } : null,
     ranking: state.ranking.map((item) => ({ ...item })),
-    turnStep: state.turnStep
+    turnStep: "roll"
   };
 }
 
@@ -330,6 +329,14 @@ function withState(match: MonopolyMatch, state: MonopolyState, updates: Partial<
   );
 }
 
+function withTransientState(match: MonopolyMatch, state: MonopolyState, updates: Partial<MonopolyMatch> = {}): MonopolyMatch {
+  return {
+    ...match,
+    ...updates,
+    state: refreshRanking(state)
+  };
+}
+
 function activePlayers(players: MonopolyPlayerState[]) {
   return players.filter((player) => !player.bankrupt);
 }
@@ -349,7 +356,7 @@ function maybeCompleteMatch(match: MonopolyMatch, finishedAt = nowIso(), explici
   const survivors = activePlayers(state.players);
   if (survivors.length <= 1 || state.currentRound > MONOPOLY_MAX_ROUNDS) {
     state.pendingDecision = null;
-    state.turnStep = "end";
+    state.turnStep = "roll";
     state.lastEvent =
       explicitEvent ??
       (survivors.length === 1 ? `${survivors[0]?.userName ?? "玩家"} 成为最后的幸存者，游戏结束` : "达到最大轮数，开始结算");
@@ -368,6 +375,54 @@ function maybeCompleteMatch(match: MonopolyMatch, finishedAt = nowIso(), explici
     state.lastEvent = explicitEvent;
   }
   return withState(match, state, {}, finishedAt);
+}
+
+function advanceToNextTurn(match: MonopolyMatch, eventText: string, actionAt = nowIso()) {
+  const state = cloneState(match.state);
+  const survivors = activePlayers(state.players);
+  if (survivors.length <= 1) {
+    state.pendingDecision = null;
+    state.turnStep = "roll";
+    state.lastEvent = eventText;
+    return withState(
+      match,
+      state,
+      {
+        status: "completed",
+        phase: "completed",
+        finishedAt: actionAt
+      },
+      actionAt
+    );
+  }
+
+  const nextIndex = getNextActivePlayerIndex(state.players, state.currentPlayerIndex);
+  const wrapped = nextIndex <= state.currentPlayerIndex;
+  if (wrapped) {
+    state.currentRound += 1;
+  }
+  if (state.currentRound > MONOPOLY_MAX_ROUNDS) {
+    state.pendingDecision = null;
+    state.turnStep = "roll";
+    state.lastEvent = joinEventText(eventText, "达到最大轮数，开始结算");
+    return withState(
+      match,
+      state,
+      {
+        status: "completed",
+        phase: "completed",
+        finishedAt: actionAt
+      },
+      actionAt
+    );
+  }
+
+  state.currentPlayerIndex = nextIndex;
+  state.pendingDecision = null;
+  state.turnStep = "roll";
+  const nextPlayer = state.players[nextIndex];
+  state.lastEvent = joinEventText(eventText, `第 ${state.currentRound} 轮，轮到 ${nextPlayer?.userName ?? "下一位玩家"} 掷骰`);
+  return withState(match, state, { phase: "await_roll" }, actionAt);
 }
 
 function releasePlayerProperties(state: MonopolyState, player: MonopolyPlayerState) {
@@ -426,28 +481,6 @@ function movePlayerToTile(current: number, tileIndex: number) {
   return { position: tileIndex, passedStart };
 }
 
-function resolveActivePlayersAfterAction(match: MonopolyMatch, eventText: string, actionAt = nowIso()) {
-  const state = cloneState(match.state);
-  const survivors = activePlayers(state.players);
-  if (survivors.length <= 1) {
-    state.lastEvent = eventText;
-    return withState(
-      match,
-      state,
-      {
-        status: "completed",
-        phase: "completed",
-        finishedAt: actionAt
-      },
-      actionAt
-    );
-  }
-  state.lastEvent = eventText;
-  state.turnStep = "end";
-  state.pendingDecision = null;
-  return withState(match, state, { phase: "await_roll" }, actionAt);
-}
-
 function drawCard(state: MonopolyState, kind: MonopolyCardKind, random = Math.random) {
   const key = kind === "chance" ? "chanceDeck" : "fateDeck";
   let deck = [...state[key]];
@@ -489,14 +522,12 @@ function resolveTile(
     if (tile.cornerKind === "audit") {
       eventText = chargePlayer(state, state.currentPlayerIndex, 180, null, " 在稽核站支付 180");
     }
-    state.lastEvent = joinEventText(eventPrefix, eventText);
-    return maybeCompleteMatch(withState(match, state, { phase: "await_roll" }, actionAt), actionAt, state.lastEvent);
+    return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), joinEventText(eventPrefix, eventText), actionAt);
   }
 
   if (tile.kind === "fee") {
     const eventText = chargePlayer(state, state.currentPlayerIndex, tile.amount ?? 0, null, ` 支付 ${tile.name} ${tile.amount ?? 0}`);
-    state.lastEvent = joinEventText(eventPrefix, eventText);
-    return maybeCompleteMatch(withState(match, state, { phase: "await_roll" }, actionAt), actionAt, state.lastEvent);
+    return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), joinEventText(eventPrefix, eventText), actionAt);
   }
 
   if (tile.kind === "property") {
@@ -509,13 +540,12 @@ function resolveTile(
         price: tile.price ?? 0
       };
       state.lastEvent = joinEventText(eventPrefix, `${currentPlayer.userName} 来到 ${tile.name}，可选择购买`);
-      state.turnStep = "end";
+      state.turnStep = "roll";
       return withState(match, state, { phase: "await_purchase_decision" }, actionAt);
     }
     if (ownerUserId === currentPlayer.userId) {
       const eventText = `${currentPlayer.userName} 来到自己的地产 ${tile.name}`;
-      state.lastEvent = joinEventText(eventPrefix, eventText);
-      return maybeCompleteMatch(withState(match, state, { phase: "await_roll" }, actionAt), actionAt, state.lastEvent);
+      return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), joinEventText(eventPrefix, eventText), actionAt);
     }
 
     const ownerIndex = getPlayerIndexByUser(state.players, ownerUserId);
@@ -527,8 +557,7 @@ function resolveTile(
       ownerUserId,
       ` 支付 ${ownerName} 过路费 ${tile.rent ?? 0}`
     );
-    state.lastEvent = joinEventText(eventPrefix, eventText);
-    return maybeCompleteMatch(withState(match, state, { phase: "await_roll" }, actionAt), actionAt, state.lastEvent);
+    return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), joinEventText(eventPrefix, eventText), actionAt);
   }
 
   const cardKind: MonopolyCardKind = tile.kind === "chance" ? "chance" : "fate";
@@ -538,11 +567,10 @@ function resolveTile(
   if (card.kind === "cash") {
     if ((card.amount ?? 0) >= 0) {
       currentPlayer.cash += card.amount ?? 0;
-      return maybeCompleteMatch(withState(match, state, { phase: "await_roll" }, actionAt), actionAt, state.lastEvent);
+      return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), state.lastEvent, actionAt);
     }
     const eventText = chargePlayer(state, state.currentPlayerIndex, Math.abs(card.amount ?? 0), null, ` 抽到${tile.name}卡：${card.text}`);
-    state.lastEvent = eventText;
-    return maybeCompleteMatch(withState(match, state, { phase: "await_roll" }, actionAt), actionAt, eventText);
+    return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), eventText, actionAt);
   }
 
   const moveResult =
@@ -554,7 +582,7 @@ function resolveTile(
     currentPlayer.cash += MONOPOLY_PASS_START_REWARD;
   }
 
-  const movedMatch = withState(match, state, { phase: "resolving_card" }, actionAt);
+  const movedMatch = withTransientState(match, state, { phase: "resolving_card" });
   return resolveTile(movedMatch, moveResult.position, actionAt, random, state.lastEvent);
 }
 
@@ -694,7 +722,6 @@ export function normalizeMonopolyState(value: unknown): MonopolyState {
   const currentPlayerIndex =
     typeof raw.currentPlayerIndex === "number" && raw.currentPlayerIndex >= 0 ? raw.currentPlayerIndex : 0;
   const currentRound = typeof raw.currentRound === "number" && raw.currentRound >= 1 ? raw.currentRound : 1;
-  const turnStep = raw.turnStep === "end" ? "end" : "roll";
   const pendingDecision =
     raw.pendingDecision &&
     typeof raw.pendingDecision === "object" &&
@@ -730,7 +757,7 @@ export function normalizeMonopolyState(value: unknown): MonopolyState {
     lastEvent: typeof raw.lastEvent === "string" ? raw.lastEvent : "",
     pendingDecision: pendingDecision?.playerId ? pendingDecision : null,
     ranking: normalizeRanking(raw.ranking, players),
-    turnStep
+    turnStep: "roll"
   };
 }
 
@@ -895,9 +922,6 @@ export function submitRoll(
   if (match.phase !== "await_roll") {
     throw new Error("当前阶段不可掷骰");
   }
-  if (match.state.turnStep !== "roll") {
-    throw new Error("当前回合已掷骰，请先结束回合");
-  }
   if (!canUserActOnTurn(match, params.userId)) {
     throw new Error("还没轮到你");
   }
@@ -922,10 +946,10 @@ export function submitRoll(
     dice,
     total
   };
-  state.turnStep = "end";
+  state.turnStep = "roll";
   state.lastEvent = `${currentPlayer.userName} 掷出 ${dice[0]} + ${dice[1]}，前进 ${total} 格`;
 
-  const movedMatch = withState(match, state, { phase: "await_roll" }, rolledAt);
+  const movedMatch = withTransientState(match, state, { phase: "await_roll" });
   return resolveTile(movedMatch, moved.position, rolledAt, params.random);
 }
 
@@ -961,10 +985,8 @@ export function purchaseProperty(match: MonopolyMatch, userId: string, purchased
   currentPlayer.propertyIds = [...currentPlayer.propertyIds, tile.index].sort((left, right) => left - right);
   state.propertyOwners[String(tile.index)] = currentPlayer.userId;
   state.pendingDecision = null;
-  state.turnStep = "end";
-  state.lastEvent = `${currentPlayer.userName} 购买了 ${tile.name}`;
-
-  return maybeCompleteMatch(withState(match, state, { phase: "await_roll" }, purchasedAt), purchasedAt, state.lastEvent);
+  state.turnStep = "roll";
+  return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), `${currentPlayer.userName} 购买了 ${tile.name}`, purchasedAt);
 }
 
 export function skipProperty(match: MonopolyMatch, userId: string, skippedAt = nowIso()) {
@@ -986,47 +1008,17 @@ export function skipProperty(match: MonopolyMatch, userId: string, skippedAt = n
 
   const tile = getTile(decision.tileIndex);
   state.pendingDecision = null;
-  state.turnStep = "end";
-  state.lastEvent = `${currentPlayer.userName} 放弃购买 ${tile.name}`;
-
-  return maybeCompleteMatch(withState(match, state, { phase: "await_roll" }, skippedAt), skippedAt, state.lastEvent);
+  state.turnStep = "roll";
+  return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), `${currentPlayer.userName} 放弃购买 ${tile.name}`, skippedAt);
 }
 
 export function endTurn(match: MonopolyMatch, userId: string, endedAt = nowIso()) {
   ensureActiveMatch(match);
   ensureParticipant(match, userId);
-  if (match.phase !== "await_roll") {
-    throw new Error("当前阶段无法结束回合");
-  }
-  if (match.state.turnStep !== "end") {
-    throw new Error("请先完成掷骰");
-  }
   if (!canUserActOnTurn(match, userId)) {
     throw new Error("还没轮到你");
   }
-
-  const state = cloneState(match.state);
-  const survivors = activePlayers(state.players);
-  if (survivors.length <= 1) {
-    return maybeCompleteMatch(withState(match, state, {}, endedAt), endedAt);
-  }
-
-  const nextIndex = getNextActivePlayerIndex(state.players, state.currentPlayerIndex);
-  const wrapped = nextIndex <= state.currentPlayerIndex;
-  if (wrapped) {
-    state.currentRound += 1;
-    if (state.currentRound > MONOPOLY_MAX_ROUNDS) {
-      state.lastEvent = "达到最大轮数，游戏结束";
-      return maybeCompleteMatch(withState(match, state, {}, endedAt), endedAt, state.lastEvent);
-    }
-  }
-
-  state.currentPlayerIndex = nextIndex;
-  state.turnStep = "roll";
-  state.pendingDecision = null;
-  const nextPlayer = state.players[nextIndex];
-  state.lastEvent = `第 ${state.currentRound} 轮，轮到 ${nextPlayer?.userName ?? "下一位玩家"} 掷骰`;
-  return withState(match, state, { phase: "await_roll" }, endedAt);
+  return advanceToNextTurn(match, match.state.lastEvent || "回合推进", endedAt);
 }
 
 export function sortMatches(items: MonopolyMatch[]) {
