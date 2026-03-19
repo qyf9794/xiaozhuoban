@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../auth/authStore";
+import { defaultAnimatedBackgroundUrl } from "../lib/defaultBackground";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -9,8 +10,13 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
 
   return (
-    <main className="loading" style={{ padding: 16 }}>
+    <main className="login-page">
+      <div className="app-background-layer" style={{ backgroundColor: "#5b6b7a" }} aria-hidden="true">
+        <img className="app-background-media" src={defaultAnimatedBackgroundUrl} alt="" />
+        <div className="login-page-scrim" />
+      </div>
       <section
+        className="login-page-card"
         style={{
           width: "min(420px, 94vw)",
           borderRadius: 18,

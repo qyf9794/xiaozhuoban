@@ -9,6 +9,7 @@ import { useAppStore } from "./store";
 import { useAuthStore } from "./auth/authStore";
 import { supabase } from "./lib/supabase";
 import { resolveUserName } from "./lib/collab";
+import { resolveBoardBackground } from "./lib/defaultBackground";
 import { SupabaseRepository } from "@xiaozhuoban/data";
 
 const MOBILE_FRAME_WIDTH = 390;
@@ -126,8 +127,9 @@ export function App() {
   const isMobileMode = isMobileUa || viewportWidth <= MOBILE_VIEWPORT_MAX;
 
   const activeBoard = useMemo(() => boards.find((item) => item.id === activeBoardId), [activeBoardId, boards]);
-  const mobileBackgroundColor = activeBoard?.background.type === "color" ? activeBoard.background.value : "#0f172a";
-  const mobileBackgroundImage = activeBoard?.background.type === "image" ? activeBoard.background.value : null;
+  const resolvedBoardBackground = useMemo(() => resolveBoardBackground(activeBoard?.background), [activeBoard?.background]);
+  const pageBackgroundColor = resolvedBoardBackground.type === "color" ? resolvedBoardBackground.value : "#5b6b7a";
+  const pageBackgroundImage = resolvedBoardBackground.type === "image" ? resolvedBoardBackground.value : null;
 
   useEffect(() => {
     if (!userId) return;
@@ -212,9 +214,9 @@ export function App() {
 
     if (isMobileMode && activeBoard) {
       document.body.style.background = "none";
-      document.body.style.backgroundColor = mobileBackgroundColor;
+      document.body.style.backgroundColor = pageBackgroundColor;
       document.body.style.backgroundAttachment = "scroll";
-      document.documentElement.style.backgroundColor = mobileBackgroundColor;
+      document.documentElement.style.backgroundColor = pageBackgroundColor;
     }
 
     return () => {
@@ -223,7 +225,7 @@ export function App() {
       document.body.style.backgroundAttachment = previousBackgroundAttachment;
       document.documentElement.style.backgroundColor = previousRootBackgroundColor;
     };
-  }, [activeBoard, isMobileMode, mobileBackgroundColor]);
+  }, [activeBoard, isMobileMode, pageBackgroundColor]);
 
   useEffect(() => {
     if (!mobileSidebarOpen) return;
@@ -280,11 +282,10 @@ export function App() {
 
   return (
     <div className={`app-shell ${isMobileMode ? "app-shell-mobile" : ""}`}>
-      {isMobileMode ? (
-        <div className="mobile-background-layer" style={{ backgroundColor: mobileBackgroundColor }}>
-          {mobileBackgroundImage ? <img className="mobile-background-image" src={mobileBackgroundImage} alt="" /> : null}
-        </div>
-      ) : null}
+      <div className="app-background-layer" style={{ backgroundColor: pageBackgroundColor }} aria-hidden="true">
+        {pageBackgroundImage ? <img className="app-background-media" src={pageBackgroundImage} alt="" /> : null}
+        <div className="app-background-scrim" />
+      </div>
       <div className={isMobileMode ? "mobile-stage" : "desktop-stage"}>
         {sidebarOpen && !fullscreen && !isMobileMode ? (
           <BoardSidebar

@@ -3,6 +3,7 @@ import { createLayoutEngine, fromWidgetInstances } from "@xiaozhuoban/layout-eng
 import type { Board, WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { AIFormWidgetView, BuiltinWidgetView } from "../widgets/BuiltinWidgets";
 import { clampTvWidgetSize } from "../widgets/tvShared";
+import { resolveBoardBackground } from "../lib/defaultBackground";
 
 interface DragState {
   id: string;
@@ -52,6 +53,7 @@ export function BoardCanvas({
   }, [board.layoutMode, widgets]);
 
   const byId = useMemo(() => new Map(definitions.map((item) => [item.id, item])), [definitions]);
+  const resolvedBackground = useMemo(() => resolveBoardBackground(board.background), [board.background]);
 
   const dragPosition = useMemo(() => {
     if (!drag) return null;
@@ -92,9 +94,9 @@ export function BoardCanvas({
         background:
           isMobileMode
             ? "transparent"
-            : board.background.type === "color"
-              ? board.background.value
-              : `center / cover no-repeat url(${board.background.value})`
+            : resolvedBackground.type === "color"
+              ? resolvedBackground.value
+              : `center / cover no-repeat url(${resolvedBackground.value})`
       }}
       onPointerMove={
         isMobileMode
