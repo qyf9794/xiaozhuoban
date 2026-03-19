@@ -4,6 +4,7 @@ import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { Button } from "@xiaozhuoban/ui";
 import { WidgetShell } from "./WidgetShell";
 import { GomokuWidget } from "./GomokuWidget";
+import { MonopolyWidget } from "./MonopolyWidget";
 import { DEFAULT_TV_PLAYLIST_URL, parseM3UPlaylist, type TvChannel } from "./tvShared";
 import {
   CHINA_TIME_ZONE,
@@ -3736,6 +3737,17 @@ export function BuiltinWidgetView({
   if (definition.type === "gomoku") {
     return (
       <GomokuWidget
+        definition={definition}
+        instance={instance}
+        isMobileMode={isMobileMode}
+        onStateChange={onStateChange}
+      />
+    );
+  }
+
+  if (definition.type === "monopoly") {
+    return (
+      <MonopolyWidget
         definition={definition}
         instance={instance}
         isMobileMode={isMobileMode}
