@@ -8,7 +8,9 @@
     "build": "turbo run build",
     "test": "turbo run test",
     "lint": "turbo run lint",
-    "typecheck": "turbo run typecheck"
+    "typecheck": "turbo run typecheck",
+    "sync:worktree-env": "bash scripts/sync-worktree-env.sh",
+    "setup:hooks": "git config core.hooksPath .githooks && chmod +x .githooks/post-checkout scripts/sync-worktree-env.sh"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
