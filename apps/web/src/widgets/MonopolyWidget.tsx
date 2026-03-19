@@ -2,12 +2,10 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { Card } from "@xiaozhuoban/ui";
 import { useAuthStore } from "../auth/authStore";
-import { resolveUserName } from "../lib/collab";
+import { colorForUser, resolveUserName } from "../lib/collab";
 import {
   MONOPOLY_BOARD_SIDE,
   MONOPOLY_MAX_INVITEES,
-  MONOPOLY_MAX_ROUNDS,
-  MONOPOLY_PASS_START_REWARD,
   MONOPOLY_TILES,
   upsertMatchList,
   type MonopolyInvite,
@@ -73,6 +71,23 @@ function actionButtonStyle(disabled = false, emphasis = false): CSSProperties {
   };
 }
 
+function rollButtonStyle(disabled = false): CSSProperties {
+  return {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    border: "1px solid rgba(220,38,38,0.92)",
+    background: "#ff0000",
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: 800,
+    letterSpacing: 0.6,
+    cursor: disabled ? "default" : "pointer",
+    opacity: disabled ? 0.56 : 1,
+    boxShadow: disabled ? "none" : "0 10px 18px rgba(220,38,38,0.18)"
+  };
+}
+
 function tileCellKey(row: number, col: number) {
   return `${row}:${col}`;
 }
@@ -133,22 +148,25 @@ function cardBackStyle(kind: "chance" | "fate"): CSSProperties {
   const palette =
     kind === "chance"
       ? {
-          background: "linear-gradient(145deg, rgba(34,197,94,0.92), rgba(22,163,74,0.82))",
-          shadow: "0 14px 26px rgba(22,163,74,0.16)"
+          edge: "rgba(34,197,94,0.32)",
+          glow: "rgba(34,197,94,0.2)",
+          background: "linear-gradient(145deg, rgba(34,197,94,0.96), rgba(22,163,74,0.92))"
         }
       : {
-          background: "linear-gradient(145deg, rgba(249,115,22,0.92), rgba(234,88,12,0.82))",
-          shadow: "0 14px 26px rgba(249,115,22,0.14)"
+          edge: "rgba(249,115,22,0.32)",
+          glow: "rgba(249,115,22,0.2)",
+          background: "linear-gradient(145deg, rgba(249,115,22,0.96), rgba(234,88,12,0.92))"
         };
   return {
     width: 78,
-    height: 104,
+    height: 100,
     borderRadius: 18,
-    border: "1px solid rgba(255,255,255,0.36)",
+    border: `1px solid ${palette.edge}`,
     background: palette.background,
-    boxShadow: palette.shadow,
-    color: "#fff7ed",
-    fontSize: 15,
+    boxShadow: `0 14px 26px ${palette.glow}, inset 0 1px 0 rgba(255,255,255,0.28)`,
+    backdropFilter: "blur(16px) saturate(1.2)",
+    color: "#ffffff",
+    fontSize: 13,
     fontWeight: 700,
     display: "grid",
     placeItems: "center",
@@ -174,6 +192,19 @@ function getPlayersOnDisplayTile(match: MonopolyMatch | null, positions: Record<
 function getAssetSummary(player: MonopolyPlayerState | null) {
   if (!player) return "尚未入局";
   return `现金 ${player.cash} · 地产 ${player.propertyIds.length}`;
+}
+
+function getStripeStyle(row: number, col: number, color: string): CSSProperties {
+  if (row === 0) {
+    return { position: "absolute", left: 0, right: 0, bottom: 0, height: 7, background: color };
+  }
+  if (row === MONOPOLY_BOARD_SIDE - 1) {
+    return { position: "absolute", left: 0, right: 0, top: 0, height: 7, background: color };
+  }
+  if (col === 0) {
+    return { position: "absolute", top: 0, bottom: 0, right: 0, width: 7, background: color };
+  }
+  return { position: "absolute", top: 0, bottom: 0, left: 0, width: 7, background: color };
 }
 
 function buildMovementPath(from: number, to: number, eventText: string) {
@@ -232,7 +263,7 @@ function DiceFace({ value, rolling }: { value: number; rolling: boolean }) {
         border: "1px solid rgba(148,163,184,0.32)",
         boxShadow: "0 8px 18px rgba(15,23,42,0.08)",
         transform: rolling ? "rotate(720deg)" : "rotate(0deg)",
-        transition: rolling ? "transform 0.82s cubic-bezier(0.2, 0.9, 0.2, 1)" : "transform 0.2s ease-out"
+        transition: rolling ? "transform 1.64s cubic-bezier(0.2, 0.9, 0.2, 1)" : "transform 0.2s ease-out"
       }}
     >
       {getPipPositions(value).map((pip, index) => (
@@ -405,7 +436,7 @@ export function MonopolyWidget({
       path.forEach((step, index) => {
         const timer = window.setTimeout(() => {
           setAnimatedPositions((prev) => ({ ...prev, [player.userId]: step }));
-        }, (index + 1) * 180);
+        }, (index + 1) * 320);
         animationTimersRef.current.push(timer);
       });
     });
@@ -419,7 +450,7 @@ export function MonopolyWidget({
 
   useEffect(() => {
     if (!rollingDice || !currentDice) return;
-    const timer = window.setTimeout(() => setRollingDice(false), 820);
+    const timer = window.setTimeout(() => setRollingDice(false), 1640);
     return () => window.clearTimeout(timer);
   }, [currentDice, rollingDice]);
 
@@ -490,12 +521,8 @@ export function MonopolyWidget({
             alignItems: "start"
           }}
         >
-          <div style={{ display: "grid", gap: 4 }}>
-            <div style={{ fontSize: isMobileMode ? 16 : 18, fontWeight: 700, color: "#0f172a" }}>在线房间</div>
-            <div style={{ fontSize: isMobileMode ? 11 : 12, color: "#475569", minHeight: 16 }}>{statusText}</div>
-            <div style={{ fontSize: 11, color: "#64748b" }}>
-              轮数上限 {MONOPOLY_MAX_ROUNDS} · 过起点奖励 {MONOPOLY_PASS_START_REWARD}
-            </div>
+          <div style={{ fontSize: isMobileMode ? 12 : 13, color: "#475569", minHeight: 18, display: "flex", alignItems: "center" }}>
+            {statusText}
           </div>
           <div ref={invitePickerRef} style={{ position: "relative", display: "flex", gap: 6, alignItems: "center" }}>
             {!activeMatch && !pendingMatch ? (
@@ -679,8 +706,10 @@ export function MonopolyWidget({
               borderRadius: 20,
               padding: 6,
               gap: 4,
-              background: "linear-gradient(150deg, rgba(219,239,236,0.96), rgba(204,228,223,0.94))",
-              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -10px 24px rgba(15,23,42,0.06)"
+              background: "linear-gradient(150deg, rgba(219,239,236,0.56), rgba(204,228,223,0.34))",
+              border: "1px solid rgba(255,255,255,0.42)",
+              backdropFilter: "blur(18px) saturate(1.12)",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.48), inset 0 -10px 24px rgba(15,23,42,0.05), 0 18px 36px rgba(15,23,42,0.08)"
             }}
           >
             {Array.from({ length: MONOPOLY_BOARD_SIDE }, (_, row) =>
@@ -696,29 +725,36 @@ export function MonopolyWidget({
                         gridColumn: "2 / span 5",
                         gridRow: "2 / span 5",
                         display: "grid",
-                        gap: isMobileMode ? 8 : 12,
-                        alignContent: "space-between",
-                        padding: isMobileMode ? 10 : 14,
+                        gridTemplateRows: "auto auto 1fr",
+                        gap: isMobileMode ? 7 : 8,
+                        alignContent: "start",
+                        padding: isMobileMode ? 10 : 12,
                         borderRadius: 18,
                         background:
-                          "linear-gradient(160deg, rgba(255,255,255,0.54), rgba(255,255,255,0.18)), radial-gradient(circle at top, rgba(125,211,252,0.25), rgba(255,255,255,0))",
-                        border: "1px solid rgba(255,255,255,0.42)"
+                          "linear-gradient(160deg, rgba(255,255,255,0.42), rgba(255,255,255,0.14)), radial-gradient(circle at top, rgba(125,211,252,0.16), rgba(255,255,255,0) 72%)",
+                        border: "1px solid rgba(255,255,255,0.34)",
+                        backdropFilter: "blur(18px) saturate(1.08)",
+                        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.34)"
                       }}
                     >
-                      <div style={{ display: "grid", gap: 6 }}>
+                      <div style={{ display: "grid", gap: 5 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
                           <div>
                             <div style={{ fontSize: isMobileMode ? 13 : 15, fontWeight: 700, color: "#0f172a" }}>
-                              {activeMatch ? `第 ${activeMatch.state.currentRound} / ${MONOPOLY_MAX_ROUNDS} 轮` : "等待开局"}
+                              {completedMatch ? "最终名次" : currentPlayer ? `当前玩家：${currentPlayer.userName}` : "等待开局"}
                             </div>
                             <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-                              {currentPlayer ? `当前玩家：${currentPlayer.userName}` : "房主邀请后开始"}
+                              {completedMatch ? "按总资产排序" : selfPlayer ? `我的资产：${getAssetSummary(selfPlayer)}` : "房主邀请后开始"}
                             </div>
                           </div>
-                          <div style={{ textAlign: "right" }}>
-                            <div style={{ fontSize: 10, color: "#64748b" }}>我的资产</div>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>{getAssetSummary(selfPlayer)}</div>
-                          </div>
+                          {selfPlayer && !completedMatch ? (
+                            <div style={{ textAlign: "right" }}>
+                              <div style={{ fontSize: 10, color: "#64748b" }}>我的位次</div>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>
+                                #{(boardMatch?.state.ranking.findIndex((entry) => entry.userId === selfPlayer.userId) ?? 0) + 1}
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
 
                         <div
@@ -728,8 +764,9 @@ export function MonopolyWidget({
                             gap: 10,
                             alignItems: "center",
                             borderRadius: 16,
-                            padding: "10px 12px",
-                            background: "rgba(255,255,255,0.58)"
+                            padding: "8px 9px",
+                            background: "rgba(255,255,255,0.42)",
+                            backdropFilter: "blur(12px)"
                           }}
                         >
                           <div>
@@ -756,16 +793,24 @@ export function MonopolyWidget({
                         </div>
                       </div>
 
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                        <div style={{ display: "flex", gap: isMobileMode ? 8 : 14, alignItems: "center" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: 10,
+                          marginTop: isMobileMode ? 6 : 10
+                        }}
+                      >
+                        <div style={{ display: "flex", gap: isMobileMode ? 8 : 12, alignItems: "center" }}>
                           <div style={cardBackStyle("chance")}>机会</div>
                           <div style={cardBackStyle("fate")}>命运</div>
                         </div>
-                        <div style={{ display: "grid", gap: 6, justifyItems: "end" }}>
+                        <div style={{ display: "grid", gap: 8, justifyItems: "end", marginRight: isMobileMode ? 4 : 16 }}>
                           {canRoll ? (
                             <button
                               type="button"
-                              style={actionButtonStyle(Boolean(busyId), true)}
+                              style={rollButtonStyle(Boolean(busyId))}
                               disabled={Boolean(busyId)}
                               onClick={() => {
                                 setRollingDice(true);
@@ -805,33 +850,49 @@ export function MonopolyWidget({
                       <div
                         style={{
                           display: "grid",
-                          gap: 6,
-                          padding: "9px 10px",
-                          borderRadius: 16,
-                          background: "rgba(15,23,42,0.06)"
+                          gap: 4,
+                          padding: 0,
+                          alignSelf: "end",
+                          marginTop: "auto",
+                          background: "transparent"
                         }}
                       >
-                        <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>资产榜</div>
+                        <div style={{ fontSize: 10, color: "#475569", fontWeight: 600 }}>{completedMatch ? "最终排名" : "资产榜"}</div>
                         {topRanking.length > 0 ? (
-                          topRanking.map((entry, index) => (
-                            <div
-                              key={entry.userId}
-                              style={{
-                                display: "grid",
-                                gridTemplateColumns: "auto 1fr auto",
-                                gap: 8,
-                                alignItems: "center",
-                                fontSize: 11,
-                                color: "#0f172a"
-                              }}
-                            >
-                              <span style={{ color: "#64748b" }}>#{index + 1}</span>
-                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {entry.userName}
-                              </span>
-                              <span>{entry.totalAssets}</span>
-                            </div>
-                          ))
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns:
+                                topRanking.length <= 1
+                                  ? "minmax(0, 1fr)"
+                                  : topRanking.length === 2
+                                    ? "repeat(2, minmax(0, 1fr))"
+                                    : "repeat(2, minmax(0, 1fr))",
+                              gap: 4
+                            }}
+                          >
+                            {topRanking.map((entry, index) => (
+                              <div
+                                key={entry.userId}
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "auto minmax(0, 1fr) auto",
+                                  alignItems: "center",
+                                  gap: 5,
+                                  padding: "1px 0",
+                                  fontSize: completedMatch ? 10.5 : 10,
+                                  color: "#0f172a",
+                                  minWidth: 0
+                                }}
+                              >
+                                <span style={{ color: completedMatch && index === 0 ? "#b91c1c" : "#64748b", fontWeight: 700 }}>#{index + 1}</span>
+                                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {entry.userName}
+                                </span>
+                                <span style={{ fontWeight: 700 }}>{entry.totalAssets}</span>
+                              </div>
+                            ))}
+                          </div>
                         ) : (
                           <div style={{ fontSize: 11, color: "#94a3b8" }}>开局后显示资产榜</div>
                         )}
@@ -856,6 +917,14 @@ export function MonopolyWidget({
                 const ownerUserId = boardMatch?.state.propertyOwners[String(tile.index)];
                 const ownerPlayer = boardMatch?.state.players.find((player) => player.userId === ownerUserId);
                 const isCorner = tile.kind === "corner";
+                const tileBackground =
+                  ownerPlayer && tile.kind === "property"
+                    ? ownerPlayer.color
+                    : isCorner
+                      ? "linear-gradient(150deg, rgba(255,250,240,0.96), rgba(255,237,213,0.9))"
+                      : "linear-gradient(160deg, rgba(255,255,255,0.92), rgba(248,250,252,0.86))";
+                const primaryTextColor = ownerPlayer && tile.kind === "property" ? "#f8fafc" : "#0f172a";
+                const secondaryTextColor = ownerPlayer && tile.kind === "property" ? "rgba(248,250,252,0.88)" : "#64748b";
 
                 return (
                   <div
@@ -867,65 +936,54 @@ export function MonopolyWidget({
                       padding: isMobileMode ? 6 : 7,
                       borderRadius: isCorner ? 16 : 12,
                       border: "1px solid rgba(15,23,42,0.08)",
-                      background: isCorner
-                        ? "linear-gradient(150deg, rgba(255,250,240,0.96), rgba(255,237,213,0.9))"
-                        : "linear-gradient(160deg, rgba(255,255,255,0.92), rgba(248,250,252,0.86))",
+                      background: tileBackground,
                       overflow: "hidden"
                     }}
                   >
                     {tile.color ? (
-                      <div
-                        style={{
-                          position: "absolute",
-                          inset: 0,
-                          height: 7,
-                          background: tile.color
-                        }}
-                      />
+                      <div style={getStripeStyle(row, col, tile.color)} />
                     ) : null}
-                    <div style={{ display: "grid", gap: 3, marginTop: tile.color ? 6 : 0 }}>
-                      <div style={{ fontSize: isMobileMode ? 9 : 10, fontWeight: 700, color: "#0f172a", lineHeight: 1.15 }}>
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 3,
+                        marginTop: row === MONOPOLY_BOARD_SIDE - 1 && tile.color ? 6 : 0,
+                        marginBottom: row === 0 && tile.color ? 6 : 0,
+                        marginLeft: col === MONOPOLY_BOARD_SIDE - 1 && tile.color ? 6 : 0,
+                        marginRight: col === 0 && tile.color ? 6 : 0
+                      }}
+                    >
+                      <div style={{ fontSize: isMobileMode ? 9 : 10, fontWeight: 700, color: primaryTextColor, lineHeight: 1.15 }}>
                         {tile.shortName}
                       </div>
-                      <div style={{ fontSize: 9, color: "#64748b", lineHeight: 1.1 }}>
+                      <div style={{ fontSize: 9, color: secondaryTextColor, lineHeight: 1.1 }}>
                         {tile.price ? `${tile.price} / 租 ${tile.rent}` : tile.badge ?? tile.name}
                       </div>
                     </div>
 
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", gap: 4 }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 10px)", gap: 3 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 20px)", gap: 5 }}>
                         {playersOnTile.slice(0, 4).map((player) => (
                           <span
                             key={player.userId}
                             title={player.userName}
                             style={{
-                              width: 10,
-                              height: 10,
+                              width: 16,
+                              height: 16,
                               borderRadius: "50%",
                               background: player.color,
-                              boxShadow: "0 0 0 2px rgba(255,255,255,0.82)"
+                              boxShadow: "0 0 0 2px rgba(255,255,255,0.82)",
+                              color: "#f8fafc",
+                              fontSize: 8,
+                              fontWeight: 700,
+                              display: "grid",
+                              placeItems: "center"
                             }}
-                          />
+                          >
+                            {player.seat + 1}
+                          </span>
                         ))}
                       </div>
-                      {ownerPlayer ? (
-                        <span
-                          style={{
-                            minWidth: 16,
-                            height: 16,
-                            borderRadius: 999,
-                            background: ownerPlayer.color,
-                            color: "#fff",
-                            fontSize: 9,
-                            display: "grid",
-                            placeItems: "center",
-                            fontWeight: 700
-                          }}
-                          title={ownerPlayer.userName}
-                        >
-                          {ownerPlayer.seat + 1}
-                        </span>
-                      ) : null}
                     </div>
                   </div>
                 );

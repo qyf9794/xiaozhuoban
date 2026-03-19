@@ -154,7 +154,7 @@ describe("monopoly gameplay", () => {
     expect(rolled.state.lastEvent).toContain("抽到命运卡");
   });
 
-  it("completes the game after the final round wraps", () => {
+  it("continues after round wrap and only ends when one player remains", () => {
     const started = createStartedTwoPlayerMatch();
     const adjusted: MonopolyMatch = {
       ...started,
@@ -169,11 +169,11 @@ describe("monopoly gameplay", () => {
       }
     };
 
-    const completed = submitRoll(adjusted, { userId: "guest", dice: [1, 1], rolledAt: "2026-03-19T00:10:00.000Z" });
+    const next = submitRoll(adjusted, { userId: "guest", dice: [1, 1], rolledAt: "2026-03-19T00:10:00.000Z" });
 
-    expect(completed.status).toBe("completed");
-    expect(completed.phase).toBe("completed");
-    expect(completed.state.ranking[0]?.userId).toBe("host");
+    expect(next.status).toBe("active");
+    expect(next.phase).toBe("await_roll");
+    expect(next.state.currentRound).toBe(13);
   });
 });
 

@@ -1,16 +1,15 @@
 import { createId, nowIso } from "@xiaozhuoban/domain";
+import { colorForUser } from "./collab";
 
 export const MONOPOLY_BOARD_SIDE = 7;
 export const MONOPOLY_TILE_COUNT = 24;
 export const MONOPOLY_INVITE_TTL_MS = 5 * 60 * 1000;
 export const MONOPOLY_STARTING_CASH = 1500;
 export const MONOPOLY_PASS_START_REWARD = 200;
-export const MONOPOLY_MAX_ROUNDS = 12;
 export const MONOPOLY_MAX_INVITEES = 3;
 export const MONOPOLY_MAX_PLAYERS = 4;
 export const MONOPOLY_ACTIVE_STATUSES = ["pending", "active"] as const;
 export const MONOPOLY_VISIBLE_STATUSES = ["pending", "active", "completed"] as const;
-export const MONOPOLY_PLAYER_COLORS = ["#f97316", "#2563eb", "#16a34a", "#db2777"] as const;
 
 export type MonopolyMatchStatus = "pending" | "active" | "declined" | "cancelled" | "completed" | "expired";
 export type MonopolyPhase = "lobby" | "await_roll" | "await_purchase_decision" | "resolving_card" | "completed";
@@ -132,7 +131,7 @@ export const MONOPOLY_TILES: MonopolyTile[] = [
   { index: 14, name: "命运", shortName: "命运", kind: "fate", badge: "F" },
   { index: 15, name: "灵感大道", shortName: "灵感道", kind: "property", propertyTier: "normal", price: 200, rent: 54, color: "#fde047" },
   { index: 16, name: "机会", shortName: "机会", kind: "chance", badge: "C" },
-  { index: 17, name: "口碑长廊", shortName: "口碑廊", kind: "property", propertyTier: "normal", price: 220, rent: 60, color: "#fca5a5" },
+  { index: 17, name: "口碑长廊", shortName: "口碑廊", kind: "property", propertyTier: "normal", price: 220, rent: 60, color: "#fde047" },
   { index: 18, name: "稽核站", shortName: "稽核", kind: "corner", cornerKind: "audit", badge: "-180" },
   { index: 19, name: "风尚大道", shortName: "风尚道", kind: "property", propertyTier: "normal", price: 220, rent: 60, color: "#fca5a5" },
   { index: 20, name: "云端工坊", shortName: "云工坊", kind: "property", propertyTier: "normal", price: 240, rent: 68, color: "#f9a8d4" },
@@ -354,12 +353,12 @@ function getNextActivePlayerIndex(players: MonopolyPlayerState[], currentIndex: 
 function maybeCompleteMatch(match: MonopolyMatch, finishedAt = nowIso(), explicitEvent?: string) {
   const state = cloneState(match.state);
   const survivors = activePlayers(state.players);
-  if (survivors.length <= 1 || state.currentRound > MONOPOLY_MAX_ROUNDS) {
+  if (survivors.length <= 1) {
     state.pendingDecision = null;
     state.turnStep = "roll";
     state.lastEvent =
       explicitEvent ??
-      (survivors.length === 1 ? `${survivors[0]?.userName ?? "玩家"} 成为最后的幸存者，游戏结束` : "达到最大轮数，开始结算");
+      (survivors.length === 1 ? `${survivors[0]?.userName ?? "玩家"} 成为最后的幸存者，游戏结束` : "游戏结束");
     return withState(
       match,
       state,
@@ -401,27 +400,12 @@ function advanceToNextTurn(match: MonopolyMatch, eventText: string, actionAt = n
   if (wrapped) {
     state.currentRound += 1;
   }
-  if (state.currentRound > MONOPOLY_MAX_ROUNDS) {
-    state.pendingDecision = null;
-    state.turnStep = "roll";
-    state.lastEvent = joinEventText(eventText, "达到最大轮数，开始结算");
-    return withState(
-      match,
-      state,
-      {
-        status: "completed",
-        phase: "completed",
-        finishedAt: actionAt
-      },
-      actionAt
-    );
-  }
 
   state.currentPlayerIndex = nextIndex;
   state.pendingDecision = null;
   state.turnStep = "roll";
   const nextPlayer = state.players[nextIndex];
-  state.lastEvent = joinEventText(eventText, `第 ${state.currentRound} 轮，轮到 ${nextPlayer?.userName ?? "下一位玩家"} 掷骰`);
+  state.lastEvent = joinEventText(eventText, `轮到 ${nextPlayer?.userName ?? "下一位玩家"} 掷骰`);
   return withState(match, state, { phase: "await_roll" }, actionAt);
 }
 
@@ -615,10 +599,7 @@ function normalizePlayers(value: unknown): MonopolyPlayerState[] {
         userId,
         userName,
         seat: typeof raw.seat === "number" ? raw.seat : index,
-        color:
-          typeof raw.color === "string" && raw.color
-            ? raw.color
-            : MONOPOLY_PLAYER_COLORS[index % MONOPOLY_PLAYER_COLORS.length] ?? "#64748b",
+        color: typeof raw.color === "string" && raw.color ? raw.color : colorForUser(userId),
         cash: typeof raw.cash === "number" ? raw.cash : MONOPOLY_STARTING_CASH,
         position: typeof raw.position === "number" ? raw.position : 0,
         propertyIds: Array.isArray(raw.propertyIds)
@@ -863,7 +844,7 @@ export function startMatch(match: MonopolyMatch, hostUserId: string, startedAt =
       userId: match.hostUserId,
       userName: match.hostUserName,
       seat: 0,
-      color: MONOPOLY_PLAYER_COLORS[0],
+      color: colorForUser(match.hostUserId),
       cash: MONOPOLY_STARTING_CASH,
       position: 0,
       propertyIds: [],
@@ -873,7 +854,7 @@ export function startMatch(match: MonopolyMatch, hostUserId: string, startedAt =
       userId: invite.userId,
       userName: invite.userName,
       seat: index + 1,
-      color: MONOPOLY_PLAYER_COLORS[(index + 1) % MONOPOLY_PLAYER_COLORS.length] ?? "#64748b",
+      color: colorForUser(invite.userId),
       cash: MONOPOLY_STARTING_CASH,
       position: 0,
       propertyIds: [],
