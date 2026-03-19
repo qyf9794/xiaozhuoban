@@ -75,6 +75,7 @@ export function BoardCanvas({
       className={isMobileMode ? "board-canvas board-canvas-mobile" : "board-canvas"}
       style={{
         position: "relative",
+        flex: isMobileMode ? undefined : 1,
         overflow: isMobileMode ? "visible" : "auto",
         overflowX: isMobileMode ? "visible" : "auto",
         display: isMobileMode ? "flex" : "block",
@@ -84,17 +85,12 @@ export function BoardCanvas({
           ? "calc(env(safe-area-inset-top) + 74px) 14px calc(env(safe-area-inset-bottom) + 84px)"
           : 0,
         minHeight: 0,
-        height: isMobileMode ? "auto" : fullscreen ? "100dvh" : "calc(100vh - 120px)",
+        height: isMobileMode ? "auto" : fullscreen ? "100dvh" : "auto",
         borderRadius: fullscreen ? 0 : 16,
         userSelect: drag || resize ? "none" : "auto",
         WebkitUserSelect: drag || resize ? "none" : "auto",
         touchAction: isMobileMode ? "pan-y" : "none",
-        background:
-          isMobileMode
-            ? "transparent"
-            : board.background.type === "color"
-              ? board.background.value
-              : `center / cover no-repeat url(${board.background.value})`
+        background: "transparent"
       }}
       onPointerMove={
         isMobileMode

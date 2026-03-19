@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { Button } from "@xiaozhuoban/ui";
 import type { Board } from "@xiaozhuoban/domain";
 
 function BoardRow({
@@ -33,13 +32,8 @@ function BoardRow({
 
   return (
     <div
+      className={`sidebar-board-row ${active ? "is-active" : ""}`}
       style={{
-        border: "1px solid rgba(255,255,255,0.58)",
-        borderRadius: 12,
-        padding: "8px 10px",
-        background: active
-          ? "linear-gradient(160deg, rgba(45, 212, 191, 0.42), rgba(125, 211, 252, 0.52))"
-          : "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.36))",
         display: "grid",
         gridTemplateColumns: "1fr auto",
         alignItems: "center",
@@ -49,6 +43,7 @@ function BoardRow({
     >
       {editing ? (
         <input
+          className="sidebar-board-input"
           autoFocus
           value={draftName}
           onChange={(event) => setDraftName(event.target.value)}
@@ -68,30 +63,14 @@ function BoardRow({
               setEditing(false);
             }
           }}
-          style={{
-            width: "100%",
-            borderRadius: 8,
-            border: "1px solid rgba(255,255,255,0.62)",
-            padding: "4px 6px",
-            background: "rgba(255,255,255,0.78)"
-          }}
         />
       ) : (
         <button
+          className="sidebar-board-button"
           onClick={onSelect}
           onDoubleClick={() => {
             setDraftName(board.name);
             setEditing(true);
-          }}
-          style={{
-            border: "none",
-            background: "transparent",
-            textAlign: "left",
-            fontWeight: 600,
-            fontSize: 14,
-            width: "100%",
-            padding: 0,
-            cursor: "pointer"
           }}
           title="双击重命名"
         >
@@ -101,23 +80,14 @@ function BoardRow({
 
       <div ref={menuRef} style={{ position: "relative" }}>
         <button
+          className="sidebar-more-button"
           aria-label="更多操作"
           onClick={() => setMenuOpen((prev) => !prev)}
-          style={{
-            border: "none",
-            background: "transparent",
-            width: 24,
-            height: 24,
-            cursor: "pointer",
-            display: "grid",
-            placeItems: "center",
-            padding: 0
-          }}
         >
           <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <i style={{ width: 4, height: 4, borderRadius: "50%", background: "#334155", display: "block" }} />
-            <i style={{ width: 4, height: 4, borderRadius: "50%", background: "#334155", display: "block" }} />
-            <i style={{ width: 4, height: 4, borderRadius: "50%", background: "#334155", display: "block" }} />
+            <i className="sidebar-more-dot" />
+            <i className="sidebar-more-dot" />
+            <i className="sidebar-more-dot" />
           </span>
         </button>
         {menuOpen ? (
@@ -169,24 +139,21 @@ export function BoardSidebar({
 }) {
   return (
     <aside
+      className="sidebar-panel liquid-glass"
       style={{
         width: 280,
-        background: "linear-gradient(170deg, rgba(255,255,255,0.48), rgba(255,255,255,0.22))",
-        backdropFilter: "blur(22px) saturate(130%)",
-        borderRight: "1px solid rgba(255,255,255,0.58)",
         display: "flex",
         flexDirection: "column",
         gap: 16,
-        padding: 14,
         position: "relative"
       }}
     >
       <section>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-          <strong>桌板</strong>
-          <Button variant="ghost" onClick={onAddBoard}>
+          <strong className="sidebar-title">桌板</strong>
+          <button type="button" className="sidebar-new-button" onClick={onAddBoard}>
             <span style={{ fontSize: 14, lineHeight: 1.1 }}>+ 新建</span>
-          </Button>
+          </button>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

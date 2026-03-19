@@ -156,6 +156,25 @@ body {
 .app-shell {
   min-height: 100vh;
   display: flex;
+  position: relative;
+}
+
+.app-background-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.app-background-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  transform: translateZ(0);
 }
 
 .desktop-stage {
@@ -163,6 +182,7 @@ body {
   width: 100%;
   display: flex;
   position: relative;
+  z-index: 1;
 }
 
 .app-shell-mobile {
@@ -183,24 +203,7 @@ body {
   overflow: visible;
   background: transparent;
   box-shadow: none;
-}
-
-.mobile-background-layer {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.mobile-background-image {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
-  transform: translateZ(0);
+  z-index: 1;
 }
 
 .app-shell-mobile .mobile-stage,
@@ -231,7 +234,85 @@ body {
 .mobile-sidebar-drawer > aside {
   width: 100% !important;
   height: 100%;
-  border-right: 1px solid rgba(255, 255, 255, 0.62);
+}
+
+.sidebar-panel {
+  padding: 14px;
+  color: rgba(255, 255, 255, 0.94);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.1),
+    18px 0 44px rgba(2, 6, 23, 0.24);
+}
+
+.sidebar-title {
+  color: #fff;
+}
+
+.sidebar-new-button {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 14px;
+  padding: 7px 12px;
+  cursor: pointer;
+  color: #fff;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.12);
+}
+
+.sidebar-board-row {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 8px 10px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.03));
+}
+
+.sidebar-board-row.is-active {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05));
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.14);
+}
+
+.sidebar-board-button {
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-weight: 600;
+  font-size: 14px;
+  width: 100%;
+  padding: 0;
+  cursor: pointer;
+  color: #fff;
+}
+
+.sidebar-board-input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  outline: none;
+}
+
+.sidebar-board-input::placeholder {
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.sidebar-more-button {
+  border: none;
+  background: transparent;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.sidebar-more-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.82);
+  display: block;
 }
 
 .widget-box {
@@ -484,9 +565,9 @@ button {
   position: sticky;
   top: 0;
   margin: 0 8px;
-  border-radius: 0 0 18px 18px;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
-  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  border-radius: 0;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
 }
 
 .mobile-floating-action {

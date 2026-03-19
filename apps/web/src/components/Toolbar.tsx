@@ -101,9 +101,9 @@ export function Toolbar({
         justifyContent: "space-between",
         gap: 12,
         padding: "10px 14px",
-        background: "linear-gradient(170deg, rgba(255,255,255,0.5), rgba(255,255,255,0.28))",
-        borderBottom: "1px solid rgba(255,255,255,0.6)",
-        backdropFilter: "blur(18px) saturate(130%)",
+        background: "transparent",
+        borderBottom: "none",
+        backdropFilter: "none",
         paddingTop: isMobileMode ? "calc(env(safe-area-inset-top) + 8px)" : "10px"
       }}
     >

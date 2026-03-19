@@ -126,8 +126,8 @@ export function App() {
   const isMobileMode = isMobileUa || viewportWidth <= MOBILE_VIEWPORT_MAX;
 
   const activeBoard = useMemo(() => boards.find((item) => item.id === activeBoardId), [activeBoardId, boards]);
-  const mobileBackgroundColor = activeBoard?.background.type === "color" ? activeBoard.background.value : "#0f172a";
-  const mobileBackgroundImage = activeBoard?.background.type === "image" ? activeBoard.background.value : null;
+  const appBackgroundColor = activeBoard?.background.type === "color" ? activeBoard.background.value : "#0f172a";
+  const appBackgroundImage = activeBoard?.background.type === "image" ? activeBoard.background.value : null;
 
   useEffect(() => {
     if (!userId) return;
@@ -210,11 +210,11 @@ export function App() {
     const previousBackgroundAttachment = document.body.style.backgroundAttachment;
     const previousRootBackgroundColor = document.documentElement.style.backgroundColor;
 
-    if (isMobileMode && activeBoard) {
+    if (activeBoard) {
       document.body.style.background = "none";
-      document.body.style.backgroundColor = mobileBackgroundColor;
+      document.body.style.backgroundColor = appBackgroundColor;
       document.body.style.backgroundAttachment = "scroll";
-      document.documentElement.style.backgroundColor = mobileBackgroundColor;
+      document.documentElement.style.backgroundColor = appBackgroundColor;
     }
 
     return () => {
@@ -223,7 +223,7 @@ export function App() {
       document.body.style.backgroundAttachment = previousBackgroundAttachment;
       document.documentElement.style.backgroundColor = previousRootBackgroundColor;
     };
-  }, [activeBoard, isMobileMode, mobileBackgroundColor]);
+  }, [activeBoard, appBackgroundColor]);
 
   useEffect(() => {
     if (!mobileSidebarOpen) return;
@@ -280,11 +280,9 @@ export function App() {
 
   return (
     <div className={`app-shell ${isMobileMode ? "app-shell-mobile" : ""}`}>
-      {isMobileMode ? (
-        <div className="mobile-background-layer" style={{ backgroundColor: mobileBackgroundColor }}>
-          {mobileBackgroundImage ? <img className="mobile-background-image" src={mobileBackgroundImage} alt="" /> : null}
-        </div>
-      ) : null}
+      <div className="app-background-layer" style={{ backgroundColor: appBackgroundColor }}>
+        {appBackgroundImage ? <img className="app-background-image" src={appBackgroundImage} alt="" /> : null}
+      </div>
       <div className={isMobileMode ? "mobile-stage" : "desktop-stage"}>
         {sidebarOpen && !fullscreen && !isMobileMode ? (
           <BoardSidebar
@@ -302,7 +300,8 @@ export function App() {
             display: "flex",
             flexDirection: "column",
             minWidth: 0,
-            minHeight: isMobileMode ? "100dvh" : 0,
+            minHeight: isMobileMode ? "100dvh" : "100vh",
+            height: isMobileMode ? "100dvh" : "100vh",
             position: "relative"
           }}
         >
