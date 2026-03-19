@@ -14,6 +14,16 @@ cp apps/web/.env.example apps/web/.env.local
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 
+如果你使用 `git worktree`，忽略文件不会自动带过去。仓库提供了自动同步脚本：
+```bash
+pnpm run setup:hooks
+```
+配置完成后，新建 worktree 首次 checkout 时会自动从 `main` worktree 复制 `apps/web/.env.local`。
+也可以手动执行：
+```bash
+pnpm run sync:worktree-env
+```
+
 3. 启动
 ```bash
 pnpm --filter @xiaozhuoban/web dev
@@ -37,4 +47,3 @@ pnpm --filter @xiaozhuoban/web dev
 ```bash
 pnpm install --frozen-lockfile
 ```
-
