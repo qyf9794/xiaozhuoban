@@ -112,6 +112,29 @@ create table if not exists public.gomoku_matches (
   constraint gomoku_matches_host_guest_check check (host_user_id <> guest_user_id)
 );
 
+create table if not exists public.monopoly_matches (
+  id text primary key,
+  host_user_id uuid not null references auth.users(id) on delete cascade,
+  host_user_name text not null,
+  participant_ids text[] not null default '{}',
+  status text not null default 'pending',
+  phase text not null default 'lobby',
+  state jsonb not null default '{}'::jsonb,
+  revision integer not null default 0,
+  started_at timestamptz null,
+  finished_at timestamptz null,
+  expires_at timestamptz null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint monopoly_matches_status_check check (status in ('pending', 'active', 'declined', 'cancelled', 'completed', 'expired')),
+  constraint monopoly_matches_phase_check check (phase in ('lobby', 'await_roll', 'await_purchase_decision', 'resolving_card', 'completed')),
+  constraint monopoly_matches_participants_check check (
+    coalesce(array_length(participant_ids, 1), 0) >= 2
+    and coalesce(array_length(participant_ids, 1), 0) <= 4
+    and host_user_id::text = any(participant_ids)
+  )
+);
+
 alter table public.gomoku_matches add column if not exists round_state text not null default 'playing';
 alter table public.gomoku_matches add column if not exists series_winner text null;
 alter table public.gomoku_matches add column if not exists current_round integer not null default 1;
@@ -123,6 +146,27 @@ alter table public.gomoku_matches add column if not exists white_user_id uuid nu
 alter table public.gomoku_matches add column if not exists rematch_host_confirmed boolean not null default false;
 alter table public.gomoku_matches add column if not exists rematch_guest_confirmed boolean not null default false;
 alter table public.gomoku_matches add column if not exists round_finished_at timestamptz null;
+
+alter table public.monopoly_matches add column if not exists participant_ids text[] not null default '{}';
+alter table public.monopoly_matches add column if not exists phase text not null default 'lobby';
+alter table public.monopoly_matches add column if not exists state jsonb not null default '{}'::jsonb;
+alter table public.monopoly_matches add column if not exists revision integer not null default 0;
+alter table public.monopoly_matches add column if not exists started_at timestamptz null;
+alter table public.monopoly_matches add column if not exists finished_at timestamptz null;
+alter table public.monopoly_matches add column if not exists expires_at timestamptz null;
+alter table public.monopoly_matches drop constraint if exists monopoly_matches_status_check;
+alter table public.monopoly_matches add constraint monopoly_matches_status_check
+check (status in ('pending', 'active', 'declined', 'cancelled', 'completed', 'expired'));
+alter table public.monopoly_matches drop constraint if exists monopoly_matches_phase_check;
+alter table public.monopoly_matches add constraint monopoly_matches_phase_check
+check (phase in ('lobby', 'await_roll', 'await_purchase_decision', 'resolving_card', 'completed'));
+alter table public.monopoly_matches drop constraint if exists monopoly_matches_participants_check;
+alter table public.monopoly_matches add constraint monopoly_matches_participants_check
+check (
+  coalesce(array_length(participant_ids, 1), 0) >= 2
+  and coalesce(array_length(participant_ids, 1), 0) <= 4
+  and host_user_id::text = any(participant_ids)
+);
 
 drop trigger if exists trg_workspaces_updated_at on public.workspaces;
 create trigger trg_workspaces_updated_at
@@ -149,6 +193,11 @@ create trigger trg_gomoku_matches_updated_at
 before update on public.gomoku_matches
 for each row execute function public.set_updated_at();
 
+drop trigger if exists trg_monopoly_matches_updated_at on public.monopoly_matches;
+create trigger trg_monopoly_matches_updated_at
+before update on public.monopoly_matches
+for each row execute function public.set_updated_at();
+
 create index if not exists idx_workspaces_user_updated on public.workspaces(user_id, updated_at desc);
 create index if not exists idx_workspaces_user_deleted on public.workspaces(user_id, deleted_at);
 
@@ -167,6 +216,9 @@ create index if not exists idx_message_board_messages_created_at on public.messa
 create index if not exists idx_gomoku_matches_host_status on public.gomoku_matches(host_user_id, status, updated_at desc);
 create index if not exists idx_gomoku_matches_guest_status on public.gomoku_matches(guest_user_id, status, updated_at desc);
 create index if not exists idx_gomoku_matches_expires on public.gomoku_matches(expires_at);
+create index if not exists idx_monopoly_matches_host_status on public.monopoly_matches(host_user_id, status, updated_at desc);
+create index if not exists idx_monopoly_matches_expires on public.monopoly_matches(expires_at);
+create index if not exists idx_monopoly_matches_participants on public.monopoly_matches using gin(participant_ids);
 
 alter table public.workspaces enable row level security;
 alter table public.boards enable row level security;
@@ -174,6 +226,7 @@ alter table public.widget_definitions enable row level security;
 alter table public.widget_instances enable row level security;
 alter table public.message_board_messages enable row level security;
 alter table public.gomoku_matches enable row level security;
+alter table public.monopoly_matches enable row level security;
 
 drop policy if exists workspaces_owner_all on public.workspaces;
 create policy workspaces_owner_all on public.workspaces
@@ -229,3 +282,22 @@ for update
 to authenticated
 using (auth.uid() = host_user_id or auth.uid() = guest_user_id)
 with check (auth.uid() = host_user_id or auth.uid() = guest_user_id);
+
+drop policy if exists monopoly_matches_players_select on public.monopoly_matches;
+create policy monopoly_matches_players_select on public.monopoly_matches
+for select
+to authenticated
+using (auth.uid()::text = any(participant_ids));
+
+drop policy if exists monopoly_matches_host_insert on public.monopoly_matches;
+create policy monopoly_matches_host_insert on public.monopoly_matches
+for insert
+to authenticated
+with check (auth.uid() = host_user_id and auth.uid()::text = any(participant_ids));
+
+drop policy if exists monopoly_matches_players_update on public.monopoly_matches;
+create policy monopoly_matches_players_update on public.monopoly_matches
+for update
+to authenticated
+using (auth.uid()::text = any(participant_ids))
+with check (auth.uid()::text = any(participant_ids));

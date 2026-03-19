@@ -225,6 +225,18 @@ const baseWidgets: Array<Omit<WidgetDefinition, "id" | "createdAt" | "updatedAt"
     uiSchema: { layout: "single-column" },
     logicSpec: {},
     storagePolicy: { strategy: "local" }
+  },
+  {
+    kind: "system",
+    type: "monopoly",
+    name: "大富翁",
+    version: 1,
+    description: "轻量在线大富翁，支持 2-4 人邀请开局",
+    inputSchema: { fields: [] },
+    outputSchema: { fields: [] },
+    uiSchema: { layout: "single-column" },
+    logicSpec: {},
+    storagePolicy: { strategy: "local" }
   }
 ];
 
@@ -355,6 +367,9 @@ function getDefaultWidgetSize(type?: string): { w: number; h: number } {
   if (type === "gomoku") {
     return { w: 498, h: 640 };
   }
+  if (type === "monopoly") {
+    return { w: 498, h: 640 };
+  }
   if (type === "worldClock") {
     return { w: 240, h: 240 };
   }
@@ -384,6 +399,9 @@ function safeWidgetHeight(widget: WidgetInstance, definitionType?: string) {
     return 500;
   }
   if (definitionType === "gomoku") {
+    return Math.max(560, Number(widget.size.h) || 640);
+  }
+  if (definitionType === "monopoly") {
     return Math.max(560, Number(widget.size.h) || 640);
   }
   return Math.max(90, Number(widget.size.h) || 180);
