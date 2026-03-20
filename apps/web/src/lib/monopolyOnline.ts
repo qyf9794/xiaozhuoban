@@ -2,6 +2,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import {
   acceptMatch,
+  abandonMatch,
   cancelMatch,
   createPendingMatch,
   declineMatch,
@@ -232,6 +233,27 @@ export async function startOnlineMatch(match: MonopolyMatch, hostUserId: string)
 
 export async function restartOnlineMatch(match: MonopolyMatch, hostUserId: string) {
   return updateMatchWithRevision(match, restartMatch(match, hostUserId));
+}
+
+export async function abandonOnlineMatch(match: MonopolyMatch, userId: string) {
+  return updateMatchWithRevision(match, abandonMatch(match, userId));
+}
+
+export async function abandonUserMonopolyMatches(userId: string) {
+  const matches = await listRelevantMatches(userId);
+  const currentMatches = matches.filter((match) => visibleStatusSet.has(match.status));
+  if (currentMatches.length === 0) {
+    return [];
+  }
+  return Promise.all(
+    currentMatches.map(async (match) => {
+      try {
+        return await abandonOnlineMatch(match, userId);
+      } catch {
+        return match;
+      }
+    })
+  );
 }
 
 export async function submitOnlineRoll(match: MonopolyMatch, userId: string) {
