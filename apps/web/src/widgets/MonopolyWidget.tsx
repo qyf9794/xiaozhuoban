@@ -623,6 +623,8 @@ export function MonopolyWidget({
                   right: 0,
                   zIndex: 6,
                   width: scaledValue(260, 236),
+                  maxWidth: isMobileMode ? "min(236px, calc(100vw - 32px))" : undefined,
+                  boxSizing: "border-box",
                   display: "grid",
                   gap: 8,
                   padding: 10,
@@ -646,6 +648,7 @@ export function MonopolyWidget({
                           gridTemplateColumns: "auto 1fr auto",
                           gap: 8,
                           alignItems: "center",
+                          minWidth: 0,
                           padding: "7px 8px",
                           borderRadius: 12,
                           background: checked ? "rgba(59,130,246,0.08)" : "rgba(248,250,252,0.9)",
@@ -661,8 +664,18 @@ export function MonopolyWidget({
                           onChange={() => toggleInvite(entry.userId)}
                           data-no-drag="true"
                         />
-                        <span style={{ fontSize: 12 }}>{entry.userName}</span>
-                        <span style={{ fontSize: 10, color: "#64748b" }}>在线</span>
+                        <span
+                          style={{
+                            fontSize: 12,
+                            minWidth: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap"
+                          }}
+                        >
+                          {entry.userName}
+                        </span>
+                        <span style={{ fontSize: 10, color: "#64748b", flexShrink: 0 }}>在线</span>
                       </label>
                     );
                   })
