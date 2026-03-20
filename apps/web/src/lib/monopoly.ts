@@ -864,6 +864,31 @@ export function cancelMatch(match: MonopolyMatch, hostUserId: string, cancelledA
   );
 }
 
+export function abandonMatch(match: MonopolyMatch, userId: string, abandonedAt = nowIso()) {
+  ensureParticipant(match, userId);
+  if (!MONOPOLY_VISIBLE_STATUSES.includes(match.status as (typeof MONOPOLY_VISIBLE_STATUSES)[number])) {
+    throw new Error("当前房间无需重置");
+  }
+
+  const state = cloneState(match.state);
+  const playerName =
+    state.players.find((player) => player.userId === userId)?.userName ||
+    state.invites.find((invite) => invite.userId === userId)?.userName ||
+    (match.hostUserId === userId ? match.hostUserName : "有玩家");
+  state.lastEvent = `${playerName} 关闭了大富翁，房间已重置`;
+
+  return withState(
+    match,
+    state,
+    {
+      status: "cancelled",
+      phase: "completed",
+      finishedAt: abandonedAt
+    },
+    abandonedAt
+  );
+}
+
 export function startMatch(match: MonopolyMatch, hostUserId: string, startedAt = nowIso(), random = Math.random) {
   ensurePendingMatch(match);
   ensureHost(match, hostUserId);

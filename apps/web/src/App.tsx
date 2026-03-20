@@ -9,6 +9,7 @@ import { useAppStore } from "./store";
 import { useAuthStore } from "./auth/authStore";
 import { supabase } from "./lib/supabase";
 import { resolveUserName } from "./lib/collab";
+import { abandonUserMonopolyMatches } from "./lib/monopolyOnline";
 import { SupabaseRepository } from "@xiaozhuoban/data";
 
 const MOBILE_FRAME_WIDTH = 390;
@@ -120,6 +121,18 @@ export function App() {
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window === "undefined" ? MOBILE_FRAME_WIDTH : window.innerWidth
   );
+  const handleRemoveWidget = async (widgetId: string) => {
+    const targetWidget = widgetInstances.find((item) => item.id === widgetId);
+    const targetDefinition = widgetDefinitions.find((item) => item.id === targetWidget?.definitionId);
+    if (targetDefinition?.type === "monopoly" && userId) {
+      try {
+        await abandonUserMonopolyMatches(userId);
+      } catch {
+        // Always allow the local widget to close; online cleanup is best-effort.
+      }
+    }
+    await removeWidgetInstance(widgetId);
+  };
   const wallpaperInputRef = useRef<HTMLInputElement | null>(null);
   const backupInputRef = useRef<HTMLInputElement | null>(null);
   const isMobileUa = useMemo(() => isLikelyMobileUA(), []);
@@ -370,7 +383,7 @@ export function App() {
             onMove={(widgetId, x, y) => void updateWidgetPosition(widgetId, x, y)}
             onResize={(widgetId, w, h) => void updateWidgetSize(widgetId, w, h)}
             onStateChange={(widgetId, state) => void updateWidgetState(widgetId, state)}
-            onRemoveWidget={(widgetId) => void removeWidgetInstance(widgetId)}
+            onRemoveWidget={(widgetId) => void handleRemoveWidget(widgetId)}
           />
 
           {!isMobileMode ? (

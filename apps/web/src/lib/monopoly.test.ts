@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   acceptMatch,
+  abandonMatch,
   createPendingMatch,
   MONOPOLY_FATE_CARDS,
   MONOPOLY_STARTING_CASH,
@@ -201,6 +202,17 @@ describe("monopoly gameplay", () => {
     ]);
     expect(restarted.state.propertyOwners).toEqual({});
     expect(restarted.state.lastEvent).toContain("重新开始");
+  });
+
+  it("cancels the room when any participant closes the widget", () => {
+    const started = createStartedTwoPlayerMatch();
+
+    const abandoned = abandonMatch(started, "guest", "2026-03-19T00:05:00.000Z");
+
+    expect(abandoned.status).toBe("cancelled");
+    expect(abandoned.phase).toBe("completed");
+    expect(abandoned.finishedAt).toBe("2026-03-19T00:05:00.000Z");
+    expect(abandoned.state.lastEvent).toContain("关闭了大富翁");
   });
 });
 
