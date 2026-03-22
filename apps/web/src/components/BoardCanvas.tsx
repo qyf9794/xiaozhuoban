@@ -54,6 +54,11 @@ export function BoardCanvas({
 
   const byId = useMemo(() => new Map(definitions.map((item) => [item.id, item])), [definitions]);
   const resolvedBackground = useMemo(() => resolveBoardBackground(board.background), [board.background]);
+  const supportsTouchScroll = useMemo(
+    () => typeof navigator !== "undefined" && navigator.maxTouchPoints > 0,
+    []
+  );
+  const useFixedViewportBackground = supportsTouchScroll && !isMobileMode;
 
   const dragPosition = useMemo(() => {
     if (!drag) return null;
@@ -90,9 +95,9 @@ export function BoardCanvas({
         borderRadius: fullscreen ? 0 : 16,
         userSelect: drag || resize ? "none" : "auto",
         WebkitUserSelect: drag || resize ? "none" : "auto",
-        touchAction: isMobileMode ? "pan-y" : "none",
+        touchAction: isMobileMode || supportsTouchScroll ? "pan-y" : "none",
         background:
-          isMobileMode
+          isMobileMode || useFixedViewportBackground
             ? "transparent"
             : resolvedBackground.type === "color"
               ? resolvedBackground.value
@@ -208,6 +213,9 @@ export function BoardCanvas({
               if (isMobileMode || resize || board.locked || widget.locked) {
                 return;
               }
+              if (event.pointerType === "touch") {
+                return;
+              }
               const target = event.target as HTMLElement;
               if (
                 target.closest(
@@ -248,6 +256,7 @@ export function BoardCanvas({
                 title="拖拽调整大小"
                 onPointerDown={(event) => {
                   if (board.locked || widget.locked) return;
+                  if (event.pointerType === "touch") return;
                   event.preventDefault();
                   event.stopPropagation();
                   event.currentTarget.setPointerCapture(event.pointerId);
