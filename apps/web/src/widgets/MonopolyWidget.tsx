@@ -12,6 +12,7 @@ import {
   upsertMatchList,
   type MonopolyInvite,
   type MonopolyMatch,
+  type MonopolyMovementSegment,
   type MonopolyPlayerState
 } from "../lib/monopoly";
 import {
@@ -61,6 +62,7 @@ const TILE_POSITIONS = [
 const DICE_ANIMATION_MS = 1640;
 const EVENT_REVEAL_DELAY_MS = 360;
 const MOBILE_VISUAL_SCALE = 0.84;
+const DICE_SPIN_ANIMATION_NAME = "monopoly-dice-spin";
 
 function scaledCompact(desktopValue: number, minValue = 0) {
   return Math.max(minValue, Math.round(desktopValue * MOBILE_VISUAL_SCALE * 10) / 10);
@@ -138,7 +140,12 @@ function getStatusText(match: MonopolyMatch | null, userId: string) {
   }
   if (match.status === "completed") {
     const winner = match.state.ranking[0];
-    return winner ? `${winner.userName} 以 ${winner.totalAssets} 资产领先结束对局` : "对局已结束";
+    if (!winner) {
+      return "对局已结束";
+    }
+    return match.hostUserId === userId
+      ? `${winner.userName} 成为最后的胜利者，可点击右上角重新开始`
+      : `${winner.userName} 成为最后的胜利者，等待房主决定是否重新开始`;
   }
   if (match.phase === "await_purchase_decision") {
     const decision = match.state.pendingDecision;
@@ -224,9 +231,8 @@ function getStripeStyle(row: number, col: number, color: string, compact = false
   return { position: "absolute", top: 0, bottom: 0, left: 0, width: thickness, background: color, zIndex: 0 };
 }
 
-function buildMovementPath(from: number, to: number, eventText: string) {
+function buildMovementPath(from: number, to: number, backward: boolean) {
   if (from === to) return [to];
-  const backward = eventText.includes("后退");
   const path: number[] = [];
   let cursor = from;
   while (cursor !== to) {
@@ -237,6 +243,11 @@ function buildMovementPath(from: number, to: number, eventText: string) {
     }
   }
   return path.length > 0 ? path : [to];
+}
+
+function flattenMovementSegments(segments: MonopolyMovementSegment[] | undefined) {
+  if (!segments || segments.length === 0) return [];
+  return segments.flatMap((segment) => buildMovementPath(segment.from, segment.to, segment.backward));
 }
 
 function getPipPositions(value: number) {
@@ -279,8 +290,9 @@ function DiceFace({ value, rolling, compact = false }: { value: number | null; r
         background: "linear-gradient(160deg, rgba(255,255,255,0.98), rgba(226,232,240,0.94))",
         border: "1px solid rgba(148,163,184,0.32)",
         boxShadow: "0 8px 18px rgba(15,23,42,0.08)",
-        transform: rolling ? "rotate(720deg)" : "rotate(0deg)",
-        transition: rolling ? `transform ${DICE_ANIMATION_MS}ms cubic-bezier(0.2, 0.9, 0.2, 1)` : "transform 0.2s ease-out"
+        transform: "translateZ(0)",
+        animation: rolling ? `${DICE_SPIN_ANIMATION_NAME} ${DICE_ANIMATION_MS}ms cubic-bezier(0.2, 0.9, 0.2, 1) 1 both` : undefined,
+        transition: rolling ? undefined : "transform 0.2s ease-out"
       }}
     >
       {typeof value === "number"
@@ -329,12 +341,29 @@ export function MonopolyWidget({
   const [selectedInviteIds, setSelectedInviteIds] = useState<string[]>([]);
   const [animatedPositions, setAnimatedPositions] = useState<Record<string, number>>({});
   const [rollingDice, setRollingDice] = useState(false);
+  const [rollingDiceValues, setRollingDiceValues] = useState<[number, number]>([2, 5]);
   const [animationLocked, setAnimationLocked] = useState(false);
   const [displayedDice, setDisplayedDice] = useState<[number, number] | null>(null);
   const [displayedEvent, setDisplayedEvent] = useState("大厅已就绪");
+  const [displayedStatusText, setDisplayedStatusText] = useState("选择 1 到 3 名在线用户发起房间邀请");
+  const [displayedTurnPlayerId, setDisplayedTurnPlayerId] = useState("");
   const invitePickerRef = useRef<HTMLDivElement | null>(null);
   const prevBoardMatchRef = useRef<MonopolyMatch | null>(null);
   const animationTimersRef = useRef<number[]>([]);
+  const rollStartedAtRef = useRef<number | null>(null);
+  const rollingDiceIntervalRef = useRef<number | null>(null);
+
+  const clearAnimationTimers = () => {
+    animationTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    animationTimersRef.current = [];
+  };
+
+  const clearRollingDiceInterval = () => {
+    if (rollingDiceIntervalRef.current !== null) {
+      window.clearInterval(rollingDiceIntervalRef.current);
+      rollingDiceIntervalRef.current = null;
+    }
+  };
 
   useEffect(() => {
     if (!userId) return;
@@ -420,18 +449,49 @@ export function MonopolyWidget({
   const latestEvent = currentMatch?.state.lastEvent || "大厅已就绪";
   const topRanking = (activeMatch ?? completedMatch)?.state.ranking.slice(0, 4) ?? [];
   const currentDice = activeMatch?.state.lastRoll?.dice ?? completedMatch?.state.lastRoll?.dice ?? null;
+  const winnerEntry = completedMatch?.state.ranking[0] ?? null;
+  const displayedTurnPlayer =
+    activeMatch?.state.players.find((player) => player.userId === displayedTurnPlayerId) ??
+    boardMatch?.state.players.find((player) => player.userId === displayedTurnPlayerId) ??
+    currentPlayer ??
+    null;
   const mobileScale = isMobileMode ? MOBILE_VISUAL_SCALE : 1;
   const scaledValue = (desktopValue: number, minValue = 0) => (isMobileMode ? Math.max(minValue, Math.round(desktopValue * mobileScale * 10) / 10) : desktopValue);
 
   useEffect(() => {
-    animationTimersRef.current.forEach((timer) => window.clearTimeout(timer));
-    animationTimersRef.current = [];
+    if (!rollingDice) {
+      clearRollingDiceInterval();
+      return;
+    }
+    setRollingDiceValues([Math.floor(Math.random() * 6) + 1, Math.floor(Math.random() * 6) + 1]);
+    clearRollingDiceInterval();
+    rollingDiceIntervalRef.current = window.setInterval(() => {
+      setRollingDiceValues([Math.floor(Math.random() * 6) + 1, Math.floor(Math.random() * 6) + 1]);
+    }, 120);
+    return () => {
+      clearRollingDiceInterval();
+    };
+  }, [rollingDice]);
+
+  useEffect(() => {
+    if (!animationLocked) {
+      setDisplayedStatusText(statusText);
+      setDisplayedTurnPlayerId(currentPlayer?.userId ?? "");
+    }
+  }, [animationLocked, currentPlayer?.userId, statusText]);
+
+  useEffect(() => {
+    clearAnimationTimers();
 
     if (!boardMatch) {
       prevBoardMatchRef.current = null;
+      rollStartedAtRef.current = null;
+      clearRollingDiceInterval();
       setAnimatedPositions({});
       setDisplayedDice(null);
       setDisplayedEvent(latestEvent);
+      setDisplayedStatusText(statusText);
+      setDisplayedTurnPlayerId("");
       setRollingDice(false);
       setAnimationLocked(false);
       return;
@@ -441,9 +501,12 @@ export function MonopolyWidget({
     const directPositions = Object.fromEntries(boardMatch.state.players.map((player) => [player.userId, player.position]));
 
     if (!prevMatch || prevMatch.id !== boardMatch.id) {
+      rollStartedAtRef.current = null;
       setAnimatedPositions(directPositions);
       setDisplayedDice(currentDice);
       setDisplayedEvent(latestEvent);
+      setDisplayedStatusText(statusText);
+      setDisplayedTurnPlayerId(currentPlayer?.userId ?? "");
       setRollingDice(false);
       setAnimationLocked(false);
       prevBoardMatchRef.current = boardMatch;
@@ -453,11 +516,14 @@ export function MonopolyWidget({
     const resetToStart =
       prevMatch.startedAt !== boardMatch.startedAt && !boardMatch.state.lastRoll && boardMatch.state.players.every((player) => player.position === 0);
     if (resetToStart) {
+      rollStartedAtRef.current = null;
       setRollingDice(false);
       setAnimationLocked(false);
       setAnimatedPositions(directPositions);
       setDisplayedDice(currentDice);
       setDisplayedEvent(latestEvent);
+      setDisplayedStatusText(statusText);
+      setDisplayedTurnPlayerId(currentPlayer?.userId ?? "");
       prevBoardMatchRef.current = boardMatch;
       return;
     }
@@ -472,75 +538,76 @@ export function MonopolyWidget({
       return next;
     });
 
+    const previousRoll = prevMatch.state.lastRoll;
+    const nextRoll = boardMatch.state.lastRoll;
     const rollChanged =
-      prevMatch.state.lastRoll?.playerId !== boardMatch.state.lastRoll?.playerId ||
-      prevMatch.state.lastRoll?.total !== boardMatch.state.lastRoll?.total ||
-      prevMatch.state.lastRoll?.dice[0] !== boardMatch.state.lastRoll?.dice[0] ||
-      prevMatch.state.lastRoll?.dice[1] !== boardMatch.state.lastRoll?.dice[1];
+      previousRoll?.playerId !== nextRoll?.playerId ||
+      previousRoll?.total !== nextRoll?.total ||
+      previousRoll?.dice[0] !== nextRoll?.dice[0] ||
+      previousRoll?.dice[1] !== nextRoll?.dice[1];
 
-    let delayedMovementScheduled = false;
-    let anyPlayerMoved = false;
-    boardMatch.state.players.forEach((player) => {
-      const prevPlayer = prevMatch.state.players.find((entry) => entry.userId === player.userId);
-      const from = prevPlayer?.position;
-      if (typeof from !== "number" || from === player.position) {
-        setAnimatedPositions((prev) => ({ ...prev, [player.userId]: player.position }));
-        return;
-      }
-      anyPlayerMoved = true;
-      const path = buildMovementPath(from, player.position, boardMatch.state.lastEvent);
-      const shouldDelayMovement = rollChanged;
-      const movementStartDelay = shouldDelayMovement ? DICE_ANIMATION_MS + EVENT_REVEAL_DELAY_MS : 0;
-      if (shouldDelayMovement) {
-        delayedMovementScheduled = true;
-        setAnimationLocked(true);
-        setRollingDice(true);
-        setDisplayedDice(null);
-        const revealTimer = window.setTimeout(() => {
-          setDisplayedEvent(boardMatch.state.lastEvent);
-          setDisplayedDice(currentDice);
-          setRollingDice(false);
-        }, DICE_ANIMATION_MS);
-        animationTimersRef.current.push(revealTimer);
-      } else {
-        setDisplayedEvent(boardMatch.state.lastEvent);
-        setDisplayedDice(currentDice);
-      }
-
-      path.forEach((step, index) => {
-        const timer = window.setTimeout(() => {
-          setAnimatedPositions((prev) => ({ ...prev, [player.userId]: step }));
-        }, movementStartDelay + (index + 1) * 320);
-        animationTimersRef.current.push(timer);
-      });
-
-      if (shouldDelayMovement) {
-        const unlockTimer = window.setTimeout(() => {
-          setAnimationLocked(false);
-        }, movementStartDelay + path.length * 320);
-        animationTimersRef.current.push(unlockTimer);
-      }
-    });
-
-    if (!anyPlayerMoved || !delayedMovementScheduled) {
-      setDisplayedEvent(boardMatch.state.lastEvent);
+    if (!rollChanged || !nextRoll) {
+      rollStartedAtRef.current = null;
+      setAnimatedPositions(directPositions);
       setDisplayedDice(currentDice);
+      setDisplayedEvent(boardMatch.state.lastEvent);
+      setDisplayedStatusText(statusText);
+      setDisplayedTurnPlayerId(currentPlayer?.userId ?? "");
       setRollingDice(false);
       setAnimationLocked(false);
+      prevBoardMatchRef.current = boardMatch;
+      return;
     }
+
+    const movementSegments =
+      boardMatch.state.lastMovement?.playerId === nextRoll.playerId ? boardMatch.state.lastMovement.segments : [];
+    const movementPath = flattenMovementSegments(movementSegments);
+    const startedAt = rollStartedAtRef.current;
+    const hasLocalRollStart = typeof startedAt === "number";
+    const elapsed = hasLocalRollStart ? performance.now() - startedAt : 0;
+    const revealDelay = hasLocalRollStart ? Math.max(120, DICE_ANIMATION_MS - elapsed) : DICE_ANIMATION_MS;
+    const movementStepMs = isMobileMode ? 260 : 320;
+    const movementDuration = movementPath.length * movementStepMs;
+
+    setAnimationLocked(true);
+    setRollingDice(true);
+    setDisplayedDice(null);
+
+    const revealTimer = window.setTimeout(() => {
+      setDisplayedDice(nextRoll.dice);
+      setRollingDice(false);
+    }, revealDelay);
+    animationTimersRef.current.push(revealTimer);
+
+    if (movementPath.length > 0) {
+      movementPath.forEach((step, index) => {
+        const timer = window.setTimeout(() => {
+          setAnimatedPositions((prev) => ({ ...prev, [nextRoll.playerId]: step }));
+        }, revealDelay + EVENT_REVEAL_DELAY_MS + (index + 1) * movementStepMs);
+        animationTimersRef.current.push(timer);
+      });
+    } else {
+      const syncTimer = window.setTimeout(() => {
+        setAnimatedPositions(directPositions);
+      }, revealDelay + EVENT_REVEAL_DELAY_MS);
+      animationTimersRef.current.push(syncTimer);
+    }
+
+    const finishTimer = window.setTimeout(() => {
+      setAnimatedPositions(directPositions);
+      setDisplayedEvent(boardMatch.state.lastEvent);
+      setDisplayedStatusText(statusText);
+      setDisplayedTurnPlayerId(boardMatch.status === "active" ? (boardMatch.state.players[boardMatch.state.currentPlayerIndex]?.userId ?? "") : "");
+      setAnimationLocked(false);
+      rollStartedAtRef.current = null;
+    }, revealDelay + EVENT_REVEAL_DELAY_MS + movementDuration);
+    animationTimersRef.current.push(finishTimer);
 
     prevBoardMatchRef.current = boardMatch;
     return () => {
-      animationTimersRef.current.forEach((timer) => window.clearTimeout(timer));
-      animationTimersRef.current = [];
+      clearAnimationTimers();
     };
-  }, [boardMatch, latestEvent]);
-
-  useEffect(() => {
-    if (!rollingDice) return;
-    const timer = window.setTimeout(() => setRollingDice(false), DICE_ANIMATION_MS);
-    return () => window.clearTimeout(timer);
-  }, [rollingDice]);
+  }, [boardMatch, currentDice, currentPlayer?.userId, isMobileMode, latestEvent, statusText]);
 
   const runOnlineAction = async (actionId: string, task: () => Promise<MonopolyMatch>) => {
     setBusyId(actionId);
@@ -549,6 +616,30 @@ export function MonopolyWidget({
       const next = await task();
       setMatches((prev) => upsertMatchList(prev, next));
     } catch (error) {
+      setOnlineError(toMonopolyOnlineError(error, "在线操作失败").message);
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const handleRoll = async () => {
+    if (!activeMatch || busyId) return;
+    clearAnimationTimers();
+    rollStartedAtRef.current = performance.now();
+    setAnimationLocked(true);
+    setRollingDice(true);
+    setDisplayedDice(null);
+    setOnlineError("");
+    setBusyId(`roll:${activeMatch.id}`);
+    try {
+      const next = await submitOnlineRoll(activeMatch, userId);
+      setMatches((prev) => upsertMatchList(prev, next));
+    } catch (error) {
+      rollStartedAtRef.current = null;
+      setRollingDice(false);
+      setAnimationLocked(false);
+      setDisplayedDice(currentDice);
+      setDisplayedEvent(latestEvent);
       setOnlineError(toMonopolyOnlineError(error, "在线操作失败").message);
     } finally {
       setBusyId("");
@@ -603,6 +694,27 @@ export function MonopolyWidget({
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: sectionGap, minHeight: 0 }}>
+        <style>
+          {`
+            @keyframes ${DICE_SPIN_ANIMATION_NAME} {
+              0% {
+                transform: rotate(0deg) scale(0.96);
+              }
+              24% {
+                transform: rotate(210deg) scale(1.04);
+              }
+              52% {
+                transform: rotate(455deg) scale(0.98);
+              }
+              78% {
+                transform: rotate(645deg) scale(1.02);
+              }
+              100% {
+                transform: rotate(720deg) scale(1);
+              }
+            }
+          `}
+        </style>
         <div
           style={{
             display: "grid",
@@ -612,7 +724,7 @@ export function MonopolyWidget({
           }}
         >
           <div style={{ fontSize: scaledValue(13, 11), color: "#475569", minHeight: scaledValue(18, 16), display: "flex", alignItems: "center" }}>
-            {statusText}
+            {displayedStatusText}
           </div>
           <div ref={invitePickerRef} style={{ position: "relative", display: "flex", gap: 6, alignItems: "center" }}>
             {!activeMatch && !pendingMatch ? (
@@ -882,18 +994,24 @@ export function MonopolyWidget({
                               }}
                             >
                               <span style={{ fontSize: isMobileMode ? 6.5 : scaledValue(10, 9), fontWeight: 700, color: "#64748b", flexShrink: 0 }}>
-                                {completedMatch ? "名次" : "当前玩家"}
+                                {completedMatch ? "胜者" : "当前玩家"}
                               </span>
                               <span
                                 style={{
                                   fontSize: isMobileMode ? 10 : scaledValue(15, 13),
                                   fontWeight: 700,
-                                  color: "#0f172a",
+                                  color: completedMatch ? (winnerEntry ? colorForUser(winnerEntry.userId) : "#0f172a") : displayedTurnPlayer?.color ?? "#0f172a",
                                   overflow: "hidden",
                                   textOverflow: "ellipsis"
                                 }}
                               >
-                                {completedMatch ? "最终排名" : currentPlayer ? truncatePlayerName(currentPlayer.userName) : "等待开局"}
+                                {completedMatch
+                                  ? winnerEntry
+                                    ? `#${winnerEntry.seat + 1} ${truncatePlayerName(winnerEntry.userName)}`
+                                    : "等待结果"
+                                  : displayedTurnPlayer
+                                    ? `#${displayedTurnPlayer.seat + 1} ${truncatePlayerName(displayedTurnPlayer.userName)}`
+                                    : "等待开局"}
                               </span>
                             </div>
                             <div
@@ -906,7 +1024,15 @@ export function MonopolyWidget({
                                 textOverflow: "ellipsis"
                               }}
                             >
-                              {completedMatch ? "按总资产排序" : selfPlayer ? `我的资产：${getAssetSummary(selfPlayer)}` : "房主邀请后开始"}
+                              {completedMatch
+                                ? winnerEntry
+                                  ? canHostRestart
+                                    ? `${winnerEntry.userName} 成为最后的胜利者，可点击右上角重新开始`
+                                    : `${winnerEntry.userName} 成为最后的胜利者，等待房主决定是否重新开始`
+                                  : "对局已结束"
+                                : selfPlayer
+                                  ? `我的资产：${getAssetSummary(selfPlayer)}`
+                                  : "房主邀请后开始"}
                             </div>
                           </div>
                           {selfPlayer && !completedMatch ? (
@@ -966,8 +1092,8 @@ export function MonopolyWidget({
                             }}
                           >
                             {rollingDice ? (
-                              [0, 1].map((index) => (
-                                <DiceFace key={`rolling-${index}`} value={null} rolling compact={isMobileMode} />
+                              rollingDiceValues.map((value, index) => (
+                                <DiceFace key={`rolling-${index}-${value}`} value={value} rolling compact={isMobileMode} />
                               ))
                             ) : displayedDice ? (
                               displayedDice.map((value, index) => (
@@ -999,9 +1125,7 @@ export function MonopolyWidget({
                               type="button"
                               style={rollButtonStyle(Boolean(busyId), isMobileMode)}
                               disabled={Boolean(busyId)}
-                              onClick={() => {
-                                activeMatch && void runOnlineAction(`roll:${activeMatch.id}`, () => submitOnlineRoll(activeMatch, userId));
-                              }}
+                              onClick={() => void handleRoll()}
                             >
                               掷骰
                             </button>
@@ -1083,7 +1207,7 @@ export function MonopolyWidget({
                                   lineHeight: 1
                                 }}
                               >
-                                <span style={{ color: completedMatch && index === 0 ? "#b91c1c" : "#64748b", fontWeight: 700 }}>#{index + 1}</span>
+                                <span style={{ color: completedMatch && index === 0 ? "#b91c1c" : "#64748b", fontWeight: 700 }}>{`No.${index + 1}`}</span>
                                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                   {truncatePlayerName(entry.userName)}
                                 </span>

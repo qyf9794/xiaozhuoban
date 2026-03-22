@@ -212,6 +212,30 @@ describe("monopoly gameplay", () => {
     expect(rolled.state.lastEvent).toContain("回到起点");
   });
 
+  it("records forward roll then backward card movement as separate segments", () => {
+    const started = createStartedTwoPlayerMatch();
+    const adjusted: MonopolyMatch = {
+      ...started,
+      state: {
+        ...started.state,
+        chanceDeck: ["chance_back_two"],
+        players: started.state.players.map((player, index) => (index === 0 ? { ...player, position: 6 } : { ...player }))
+      }
+    };
+
+    const rolled = submitRoll(adjusted, { userId: "host", dice: [1, 1], rolledAt: "2026-03-19T00:03:00.000Z" });
+
+    expect(rolled.state.players[0]?.position).toBe(6);
+    expect(rolled.state.lastMovement).toEqual({
+      playerId: "host",
+      segments: [
+        { from: 6, to: 8, backward: false },
+        { from: 8, to: 6, backward: true }
+      ]
+    });
+    expect(rolled.state.lastEvent).toContain("后退 2 格");
+  });
+
   it("applies fate cash card effects", () => {
     const started = createStartedTwoPlayerMatch();
     const cashCardId = MONOPOLY_FATE_CARDS.find((card) => (card.amount ?? 0) > 0)?.id ?? "fate_cash_bonus";
@@ -292,12 +316,24 @@ describe("monopoly gameplay", () => {
 
 describe("monopoly online helpers", () => {
   it("serializes and normalizes match rows", () => {
-    const match = createStartedTwoPlayerMatch();
+    const started = createStartedTwoPlayerMatch();
+    const match = submitRoll(
+      {
+        ...started,
+        state: {
+          ...started.state,
+          chanceDeck: ["chance_back_two"],
+          players: started.state.players.map((player, index) => (index === 0 ? { ...player, position: 6 } : { ...player }))
+        }
+      },
+      { userId: "host", dice: [1, 1], rolledAt: "2026-03-19T00:03:00.000Z" }
+    );
     const row = matchToInsertPayload(match) as MonopolyMatchRow;
     const normalized = normalizeMonopolyMatchRow(row);
 
     expect(normalized.participantIds).toEqual(["host", "guest"]);
     expect(normalized.state.players).toHaveLength(2);
+    expect(normalized.state.lastMovement?.segments).toHaveLength(2);
     expect(rowMatchesUser(row, "guest")).toBe(true);
   });
 
