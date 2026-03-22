@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createLayoutEngine, fromWidgetInstances } from "@xiaozhuoban/layout-engine";
 import type { Board, WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { AIFormWidgetView, BuiltinWidgetView } from "../widgets/BuiltinWidgets";
@@ -19,6 +19,16 @@ interface ResizeState {
   startClientX: number;
   startW: number;
   currentW: number;
+}
+
+interface PendingTouchDragState {
+  widget: WidgetInstance;
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  lastClientX: number;
+  lastClientY: number;
+  captureTarget: Element | null;
 }
 
 export function BoardCanvas({
@@ -44,6 +54,8 @@ export function BoardCanvas({
 }) {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [resize, setResize] = useState<ResizeState | null>(null);
+  const pendingTouchDragRef = useRef<PendingTouchDragState | null>(null);
+  const pendingTouchDragTimerRef = useRef<number | null>(null);
 
   const engine = useMemo(() => {
     const e = createLayoutEngine(board.layoutMode);
@@ -58,11 +70,43 @@ export function BoardCanvas({
   );
   const useTouchScrollableDesktopCanvas = supportsTouchScroll && !isMobileMode;
   const useFixedViewportBackground = supportsTouchScroll && !isMobileMode;
+  const noDragSelector =
+    "input, textarea, select, button, video, audio, iframe, [contenteditable='true'], [data-no-drag='true']";
 
   const dragPosition = useMemo(() => {
     if (!drag) return null;
     return { x: drag.currentX, y: drag.currentY };
   }, [drag]);
+
+  const desktopCanvasBounds = useMemo(() => {
+    if (isMobileMode || widgets.length === 0) {
+      return null;
+    }
+
+    const bounds = widgets.reduce(
+      (acc, widget) => {
+        const position =
+          drag?.id === widget.id && dragPosition
+            ? dragPosition
+            : {
+                x: widget.position.x,
+                y: widget.position.y
+              };
+        const width = resize?.id === widget.id ? resize.currentW : widget.size.w;
+        const height = resize?.id === widget.id ? 480 : widget.size.h;
+        return {
+          maxX: Math.max(acc.maxX, position.x + width),
+          maxY: Math.max(acc.maxY, position.y + height)
+        };
+      },
+      { maxX: 0, maxY: 0 }
+    );
+
+    return {
+      minWidth: Math.max(bounds.maxX + 96, 0),
+      minHeight: Math.max(bounds.maxY + 96, 0)
+    };
+  }, [drag?.id, dragPosition, isMobileMode, resize?.currentW, resize?.id, widgets]);
 
   const mobileWidgets = useMemo(
     () =>
@@ -93,6 +137,60 @@ export function BoardCanvas({
     });
   };
 
+  const clearPendingTouchDrag = (pointerId?: number) => {
+    const pending = pendingTouchDragRef.current;
+    if (!pending || (pointerId !== undefined && pending.pointerId !== pointerId)) {
+      return false;
+    }
+    if (pendingTouchDragTimerRef.current !== null) {
+      window.clearTimeout(pendingTouchDragTimerRef.current);
+      pendingTouchDragTimerRef.current = null;
+    }
+    pendingTouchDragRef.current = null;
+    return true;
+  };
+
+  const scheduleTouchDrag = (
+    widget: WidgetInstance,
+    pointerId: number,
+    clientX: number,
+    clientY: number,
+    captureTarget: Element | null
+  ) => {
+    clearPendingTouchDrag();
+    pendingTouchDragRef.current = {
+      widget,
+      pointerId,
+      startClientX: clientX,
+      startClientY: clientY,
+      lastClientX: clientX,
+      lastClientY: clientY,
+      captureTarget
+    };
+    pendingTouchDragTimerRef.current = window.setTimeout(() => {
+      const pending = pendingTouchDragRef.current;
+      if (!pending || pending.pointerId !== pointerId || pending.widget.id !== widget.id) {
+        return;
+      }
+      pendingTouchDragTimerRef.current = null;
+      pendingTouchDragRef.current = null;
+      startDrag(
+        pending.widget,
+        pending.pointerId,
+        pending.lastClientX,
+        pending.lastClientY,
+        pending.captureTarget
+      );
+    }, 220);
+  };
+
+  useEffect(
+    () => () => {
+      clearPendingTouchDrag();
+    },
+    []
+  );
+
   return (
     <div
       className={isMobileMode ? "board-canvas board-canvas-mobile" : "board-canvas"}
@@ -100,28 +198,43 @@ export function BoardCanvas({
         position: "relative",
         overflow: isMobileMode ? "visible" : "auto",
         overflowY: isMobileMode ? "visible" : "auto",
-        overflowX: isMobileMode ? "visible" : useTouchScrollableDesktopCanvas ? "hidden" : "auto",
+        overflowX: isMobileMode ? "visible" : "auto",
         display: isMobileMode ? "flex" : "block",
         flexDirection: isMobileMode ? "column" : "row",
         gap: isMobileMode ? 16 : 0,
         padding: isMobileMode
           ? "calc(env(safe-area-inset-top) + 74px) 14px calc(env(safe-area-inset-bottom) + 84px)"
           : 0,
-        minHeight: 0,
+        minWidth: desktopCanvasBounds?.minWidth,
+        minHeight: desktopCanvasBounds?.minHeight ?? 0,
         flex: isMobileMode ? undefined : 1,
         height: isMobileMode ? "auto" : fullscreen ? "100dvh" : "calc(100dvh - 120px)",
         borderRadius: fullscreen ? 0 : 16,
         userSelect: drag || resize ? "none" : "auto",
         WebkitUserSelect: drag || resize ? "none" : "auto",
         WebkitOverflowScrolling: useTouchScrollableDesktopCanvas ? "touch" : undefined,
+        overscrollBehaviorX: useTouchScrollableDesktopCanvas ? "contain" : undefined,
         overscrollBehaviorY: useTouchScrollableDesktopCanvas ? "contain" : undefined,
-        touchAction: isMobileMode || supportsTouchScroll ? "pan-y" : "none",
+        touchAction: isMobileMode ? "pan-y" : supportsTouchScroll ? "pan-x pan-y" : "none",
         background: "transparent"
       }}
       onPointerMove={
         isMobileMode
           ? undefined
           : (event) => {
+              const pendingTouchDrag = pendingTouchDragRef.current;
+              if (pendingTouchDrag && event.pointerId === pendingTouchDrag.pointerId) {
+                pendingTouchDrag.lastClientX = event.clientX;
+                pendingTouchDrag.lastClientY = event.clientY;
+                if (
+                  Math.hypot(
+                    event.clientX - pendingTouchDrag.startClientX,
+                    event.clientY - pendingTouchDrag.startClientY
+                  ) > 8
+                ) {
+                  clearPendingTouchDrag(event.pointerId);
+                }
+              }
               if (resize && event.pointerId === resize.pointerId) {
                 const deltaX = event.clientX - resize.startClientX;
                 const next = clampTvWidgetSize(resize.startW + deltaX, 480);
@@ -162,6 +275,9 @@ export function BoardCanvas({
         isMobileMode
           ? undefined
           : (event) => {
+              if (clearPendingTouchDrag(event.pointerId)) {
+                return;
+              }
               if (resize && event.pointerId === resize.pointerId) {
                 onResize(resize.id, resize.currentW, 480);
                 setResize(null);
@@ -178,6 +294,9 @@ export function BoardCanvas({
         isMobileMode
           ? undefined
           : (event) => {
+              if (clearPendingTouchDrag(event.pointerId)) {
+                return;
+              }
               if (resize && event.pointerId === resize.pointerId) {
                 setResize(null);
                 return;
@@ -228,15 +347,18 @@ export function BoardCanvas({
               if (isMobileMode || resize || board.locked || widget.locked) {
                 return;
               }
-              if (event.pointerType === "touch") {
+              const target = event.target as HTMLElement;
+              if (target.closest(noDragSelector)) {
                 return;
               }
-              const target = event.target as HTMLElement;
-              if (
-                target.closest(
-                  "input, textarea, select, button, video, audio, iframe, [contenteditable='true'], [data-no-drag='true']"
-                )
-              ) {
+              if (event.pointerType === "touch") {
+                scheduleTouchDrag(
+                  widget,
+                  event.pointerId,
+                  event.clientX,
+                  event.clientY,
+                  event.currentTarget
+                );
                 return;
               }
 
@@ -244,47 +366,6 @@ export function BoardCanvas({
               startDrag(widget, event.pointerId, event.clientX, event.clientY, event.currentTarget);
             }}
           >
-            {useTouchScrollableDesktopCanvas ? (
-              <button
-                type="button"
-                data-no-drag="true"
-                aria-label="拖动小工具"
-                title="拖动小工具"
-                onPointerDown={(event) => {
-                  if (board.locked || widget.locked || event.pointerType !== "touch") return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                  startDrag(
-                    widget,
-                    event.pointerId,
-                    event.clientX,
-                    event.clientY,
-                    event.currentTarget
-                  );
-                }}
-                style={{
-                  position: "absolute",
-                  top: 8,
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  zIndex: 8,
-                  width: 18,
-                  height: 18,
-                  padding: 0,
-                  border: "none",
-                  background: "transparent",
-                  color: "rgba(255,255,255,0.92)",
-                  fontSize: 14,
-                  lineHeight: 1,
-                  display: "grid",
-                  placeItems: "center",
-                  touchAction: "none",
-                  cursor: "grab"
-                }}
-              >
-                ≡
-              </button>
-            ) : null}
             <button
               className="widget-delete-dot"
               data-no-drag="true"
