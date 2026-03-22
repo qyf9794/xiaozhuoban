@@ -3,8 +3,10 @@ import {
   acceptMatch,
   abandonMatch,
   createPendingMatch,
+  getRentForLevel,
   MONOPOLY_FATE_CARDS,
   MONOPOLY_STARTING_CASH,
+  MONOPOLY_TILES,
   purchaseProperty,
   restartMatch,
   startMatch,
@@ -85,7 +87,79 @@ describe("monopoly gameplay", () => {
     expect(purchased.state.currentPlayerIndex).toBe(1);
     expect(purchased.state.propertyOwners["1"]).toBe("host");
     expect(purchased.state.players[0]?.propertyIds).toEqual([1]);
-    expect(purchased.state.players[0]?.cash).toBe(MONOPOLY_STARTING_CASH + 100);
+    expect(purchased.state.players[0]?.cash).toBe(MONOPOLY_STARTING_CASH + 200 - 100);
+  });
+
+  it("offers upgrading when landing on owned property and increases rent", () => {
+    const started = createStartedTwoPlayerMatch();
+    const purchased = purchaseProperty(
+      submitRoll(
+        {
+          ...started,
+          state: {
+            ...started.state,
+            players: started.state.players.map((player, index) => (index === 0 ? { ...player, position: 23 } : { ...player }))
+          }
+        },
+        { userId: "host", dice: [1, 1], rolledAt: "2026-03-19T00:03:00.000Z" }
+      ),
+      "host",
+      "2026-03-19T00:03:10.000Z"
+    );
+
+    const revisit: MonopolyMatch = {
+      ...purchased,
+      state: {
+        ...purchased.state,
+        currentPlayerIndex: 0,
+        players: [
+          { ...purchased.state.players[0]!, position: 23 },
+          { ...purchased.state.players[1]! }
+        ]
+      }
+    };
+
+    const upgradeDecision = submitRoll(revisit, { userId: "host", dice: [1, 1], rolledAt: "2026-03-19T00:04:00.000Z" });
+    expect(upgradeDecision.phase).toBe("await_purchase_decision");
+    expect(upgradeDecision.state.pendingDecision?.type).toBe("upgrade");
+    expect(upgradeDecision.state.pendingDecision?.nextLevel).toBe(1);
+
+    const upgraded = purchaseProperty(upgradeDecision, "host", "2026-03-19T00:04:10.000Z");
+    expect(upgraded.state.propertyLevels["1"]).toBe(1);
+    expect(getRentForLevel(MONOPOLY_TILES[1]!, 1)).toBeGreaterThan(MONOPOLY_TILES[1]!.rent ?? 0);
+
+    const secondRevisit: MonopolyMatch = {
+      ...upgraded,
+      state: {
+        ...upgraded.state,
+        currentPlayerIndex: 0,
+        players: [
+          { ...upgraded.state.players[0]!, position: 23 },
+          { ...upgraded.state.players[1]! }
+        ]
+      }
+    };
+    const secondUpgradeDecision = submitRoll(secondRevisit, { userId: "host", dice: [1, 1], rolledAt: "2026-03-19T00:05:00.000Z" });
+    expect(secondUpgradeDecision.state.pendingDecision?.type).toBe("upgrade");
+    expect(secondUpgradeDecision.state.pendingDecision?.nextLevel).toBe(2);
+
+    const maxed = purchaseProperty(secondUpgradeDecision, "host", "2026-03-19T00:05:10.000Z");
+    expect(maxed.state.propertyLevels["1"]).toBe(2);
+
+    const thirdRevisit: MonopolyMatch = {
+      ...maxed,
+      state: {
+        ...maxed.state,
+        currentPlayerIndex: 0,
+        players: [
+          { ...maxed.state.players[0]!, position: 23 },
+          { ...maxed.state.players[1]! }
+        ]
+      }
+    };
+    const noUpgrade = submitRoll(thirdRevisit, { userId: "host", dice: [1, 1], rolledAt: "2026-03-19T00:06:00.000Z" });
+    expect(noUpgrade.phase).toBe("await_roll");
+    expect(noUpgrade.state.pendingDecision).toBeNull();
   });
 
   it("applies rent and bankrupts a player when cash is insufficient", () => {

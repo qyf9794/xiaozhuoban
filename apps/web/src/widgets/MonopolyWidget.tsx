@@ -7,6 +7,8 @@ import {
   MONOPOLY_BOARD_SIDE,
   MONOPOLY_MAX_INVITEES,
   MONOPOLY_TILES,
+  getPropertyLevel,
+  getRentForLevel,
   upsertMatchList,
   type MonopolyInvite,
   type MonopolyMatch,
@@ -142,9 +144,9 @@ function getStatusText(match: MonopolyMatch | null, userId: string) {
     const decision = match.state.pendingDecision;
     const currentPlayer = getCurrentPlayer(match);
     if (decision?.playerId === userId) {
-      return "你停在空地产，可选择购买或跳过";
+      return decision.type === "upgrade" ? "你回到自己的地产，可选择升级或跳过" : "你停在空地产，可选择购买或跳过";
     }
-    return `等待 ${currentPlayer?.userName ?? "当前玩家"} 决定是否购买地产`;
+    return `等待 ${currentPlayer?.userName ?? "当前玩家"} 决定是否${decision?.type === "upgrade" ? "升级地产" : "购买地产"}`;
   }
   if (match.phase === "await_roll") {
     const currentPlayer = getCurrentPlayer(match);
@@ -266,7 +268,7 @@ function getPipPositions(value: number) {
   }
 }
 
-function DiceFace({ value, rolling, compact = false }: { value: number; rolling: boolean; compact?: boolean }) {
+function DiceFace({ value, rolling, compact = false }: { value: number | null; rolling: boolean; compact?: boolean }) {
   return (
     <div
       style={{
@@ -281,21 +283,23 @@ function DiceFace({ value, rolling, compact = false }: { value: number; rolling:
         transition: rolling ? `transform ${DICE_ANIMATION_MS}ms cubic-bezier(0.2, 0.9, 0.2, 1)` : "transform 0.2s ease-out"
       }}
     >
-      {getPipPositions(value).map((pip, index) => (
-        <span
-          key={`${value}-${index}`}
-          style={{
-            position: "absolute",
-            top: pip.top,
-            left: pip.left,
-            width: compact ? scaledCompact(5.5, 4.5) : 5.5,
-            height: compact ? scaledCompact(5.5, 4.5) : 5.5,
-            borderRadius: "50%",
-            background: "#0f172a",
-            transform: "translate(-50%, -50%)"
-          }}
-        />
-      ))}
+      {typeof value === "number"
+        ? getPipPositions(value).map((pip, index) => (
+            <span
+              key={`${value}-${index}`}
+              style={{
+                position: "absolute",
+                top: pip.top,
+                left: pip.left,
+                width: compact ? scaledCompact(5.5, 4.5) : 5.5,
+                height: compact ? scaledCompact(5.5, 4.5) : 5.5,
+                borderRadius: "50%",
+                background: "#0f172a",
+                transform: "translate(-50%, -50%)"
+              }}
+            />
+          ))
+        : null}
     </div>
   );
 }
@@ -325,6 +329,8 @@ export function MonopolyWidget({
   const [selectedInviteIds, setSelectedInviteIds] = useState<string[]>([]);
   const [animatedPositions, setAnimatedPositions] = useState<Record<string, number>>({});
   const [rollingDice, setRollingDice] = useState(false);
+  const [animationLocked, setAnimationLocked] = useState(false);
+  const [displayedDice, setDisplayedDice] = useState<[number, number] | null>(null);
   const [displayedEvent, setDisplayedEvent] = useState("大厅已就绪");
   const invitePickerRef = useRef<HTMLDivElement | null>(null);
   const prevBoardMatchRef = useRef<MonopolyMatch | null>(null);
@@ -399,15 +405,17 @@ export function MonopolyWidget({
   const currentPlayer = getCurrentPlayer(activeMatch);
   const statusText = onlineError || (loadingMatches ? "正在同步房间..." : getStatusText(currentMatch, userId));
   const hostAcceptedCount = pendingMatch?.state.invites.filter((invite) => invite.status === "accepted").length ?? 0;
-  const canHostStart = Boolean(pendingMatch && pendingMatch.hostUserId === userId && hostAcceptedCount >= 1);
+  const canHostStart = Boolean(pendingMatch && pendingMatch.hostUserId === userId && hostAcceptedCount >= 1 && !animationLocked);
   const canHostRestart = Boolean(boardMatch && boardMatch.hostUserId === userId);
-  const canRoll = Boolean(activeMatch && activeMatch.phase === "await_roll" && isCurrentPlayer(activeMatch, userId));
+  const canRoll = Boolean(activeMatch && activeMatch.phase === "await_roll" && isCurrentPlayer(activeMatch, userId) && !animationLocked);
   const canBuy = Boolean(
     activeMatch &&
       activeMatch.phase === "await_purchase_decision" &&
       activeMatch.state.pendingDecision?.playerId === userId &&
-      isCurrentPlayer(activeMatch, userId)
+      isCurrentPlayer(activeMatch, userId) &&
+      !animationLocked
   );
+  const pendingDecision = activeMatch?.state.pendingDecision ?? null;
   const inviteableUsers = useMemo(() => otherUsers.slice(0, 20), [otherUsers]);
   const latestEvent = currentMatch?.state.lastEvent || "大厅已就绪";
   const topRanking = (activeMatch ?? completedMatch)?.state.ranking.slice(0, 4) ?? [];
@@ -422,7 +430,10 @@ export function MonopolyWidget({
     if (!boardMatch) {
       prevBoardMatchRef.current = null;
       setAnimatedPositions({});
+      setDisplayedDice(null);
       setDisplayedEvent(latestEvent);
+      setRollingDice(false);
+      setAnimationLocked(false);
       return;
     }
 
@@ -431,7 +442,10 @@ export function MonopolyWidget({
 
     if (!prevMatch || prevMatch.id !== boardMatch.id) {
       setAnimatedPositions(directPositions);
+      setDisplayedDice(currentDice);
       setDisplayedEvent(latestEvent);
+      setRollingDice(false);
+      setAnimationLocked(false);
       prevBoardMatchRef.current = boardMatch;
       return;
     }
@@ -440,7 +454,9 @@ export function MonopolyWidget({
       prevMatch.startedAt !== boardMatch.startedAt && !boardMatch.state.lastRoll && boardMatch.state.players.every((player) => player.position === 0);
     if (resetToStart) {
       setRollingDice(false);
+      setAnimationLocked(false);
       setAnimatedPositions(directPositions);
+      setDisplayedDice(currentDice);
       setDisplayedEvent(latestEvent);
       prevBoardMatchRef.current = boardMatch;
       return;
@@ -456,6 +472,12 @@ export function MonopolyWidget({
       return next;
     });
 
+    const rollChanged =
+      prevMatch.state.lastRoll?.playerId !== boardMatch.state.lastRoll?.playerId ||
+      prevMatch.state.lastRoll?.total !== boardMatch.state.lastRoll?.total ||
+      prevMatch.state.lastRoll?.dice[0] !== boardMatch.state.lastRoll?.dice[0] ||
+      prevMatch.state.lastRoll?.dice[1] !== boardMatch.state.lastRoll?.dice[1];
+
     let delayedMovementScheduled = false;
     let anyPlayerMoved = false;
     boardMatch.state.players.forEach((player) => {
@@ -467,19 +489,22 @@ export function MonopolyWidget({
       }
       anyPlayerMoved = true;
       const path = buildMovementPath(from, player.position, boardMatch.state.lastEvent);
-      const shouldDelayMovement =
-        prevMatch.state.lastRoll?.playerId !== boardMatch.state.lastRoll?.playerId ||
-        prevMatch.state.lastRoll?.total !== boardMatch.state.lastRoll?.total;
+      const shouldDelayMovement = rollChanged;
       const movementStartDelay = shouldDelayMovement ? DICE_ANIMATION_MS + EVENT_REVEAL_DELAY_MS : 0;
       if (shouldDelayMovement) {
         delayedMovementScheduled = true;
+        setAnimationLocked(true);
         setRollingDice(true);
+        setDisplayedDice(null);
         const revealTimer = window.setTimeout(() => {
           setDisplayedEvent(boardMatch.state.lastEvent);
+          setDisplayedDice(currentDice);
+          setRollingDice(false);
         }, DICE_ANIMATION_MS);
         animationTimersRef.current.push(revealTimer);
       } else {
         setDisplayedEvent(boardMatch.state.lastEvent);
+        setDisplayedDice(currentDice);
       }
 
       path.forEach((step, index) => {
@@ -488,10 +513,20 @@ export function MonopolyWidget({
         }, movementStartDelay + (index + 1) * 320);
         animationTimersRef.current.push(timer);
       });
+
+      if (shouldDelayMovement) {
+        const unlockTimer = window.setTimeout(() => {
+          setAnimationLocked(false);
+        }, movementStartDelay + path.length * 320);
+        animationTimersRef.current.push(unlockTimer);
+      }
     });
 
     if (!anyPlayerMoved || !delayedMovementScheduled) {
       setDisplayedEvent(boardMatch.state.lastEvent);
+      setDisplayedDice(currentDice);
+      setRollingDice(false);
+      setAnimationLocked(false);
     }
 
     prevBoardMatchRef.current = boardMatch;
@@ -502,10 +537,10 @@ export function MonopolyWidget({
   }, [boardMatch, latestEvent]);
 
   useEffect(() => {
-    if (!rollingDice || !currentDice) return;
+    if (!rollingDice) return;
     const timer = window.setTimeout(() => setRollingDice(false), DICE_ANIMATION_MS);
     return () => window.clearTimeout(timer);
-  }, [currentDice, rollingDice]);
+  }, [rollingDice]);
 
   const runOnlineAction = async (actionId: string, task: () => Promise<MonopolyMatch>) => {
     setBusyId(actionId);
@@ -930,8 +965,12 @@ export function MonopolyWidget({
                               justifyContent: "flex-end"
                             }}
                           >
-                            {currentDice ? (
-                              currentDice.map((value, index) => (
+                            {rollingDice ? (
+                              [0, 1].map((index) => (
+                                <DiceFace key={`rolling-${index}`} value={null} rolling compact={isMobileMode} />
+                              ))
+                            ) : displayedDice ? (
+                              displayedDice.map((value, index) => (
                                 <DiceFace key={`${value}-${index}`} value={value} rolling={rollingDice} compact={isMobileMode} />
                               ))
                             ) : (
@@ -977,7 +1016,7 @@ export function MonopolyWidget({
                                   activeMatch && void runOnlineAction(`buy:${activeMatch.id}`, () => purchaseOnlineProperty(activeMatch, userId))
                                 }
                               >
-                                购买
+                                {pendingDecision?.type === "upgrade" ? "升级" : "购买"}
                               </button>
                               <button
                                 type="button"
@@ -1084,6 +1123,7 @@ export function MonopolyWidget({
                 const playersOnTile = getPlayersOnDisplayTile(boardMatch, animatedPositions, tile.index);
                 const ownerUserId = boardMatch?.state.propertyOwners[String(tile.index)];
                 const ownerPlayer = boardMatch?.state.players.find((player) => player.userId === ownerUserId);
+                const propertyLevel = boardMatch ? getPropertyLevel(boardMatch.state, tile.index) : 0;
                 const isCorner = tile.kind === "corner";
                 const tokenInset = scaledValue(4, 3);
                 const stripeThickness = isMobileMode ? scaledCompact(7, 5) : 7;
@@ -1126,10 +1166,14 @@ export function MonopolyWidget({
                       }}
                     >
                       <div style={{ fontSize: isMobileMode ? 7.5 : scaledValue(10, 8), fontWeight: 700, color: primaryTextColor, lineHeight: 1.05 }}>
-                        {tile.shortName}
+                        {tile.shortName}{tile.kind === "property" && propertyLevel > 0 ? `+${propertyLevel}` : ""}
                       </div>
                       <div style={{ fontSize: isMobileMode ? 7 : scaledValue(9, 7.5), color: secondaryTextColor, lineHeight: 1 }}>
-                        {tile.price ? `${tile.price} / 租 ${tile.rent}` : tile.badge ?? tile.name}
+                        {tile.kind === "property"
+                          ? `${tile.price} / 租 ${getRentForLevel(tile, propertyLevel)}`
+                          : tile.price
+                            ? `${tile.price} / 租 ${tile.rent}`
+                            : tile.badge ?? tile.name}
                       </div>
                     </div>
 

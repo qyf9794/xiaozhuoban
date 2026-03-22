@@ -4,8 +4,9 @@ import { colorForUser } from "./collab";
 export const MONOPOLY_BOARD_SIDE = 7;
 export const MONOPOLY_TILE_COUNT = 24;
 export const MONOPOLY_INVITE_TTL_MS = 5 * 60 * 1000;
-export const MONOPOLY_STARTING_CASH = 1500;
+export const MONOPOLY_STARTING_CASH = 1000;
 export const MONOPOLY_PASS_START_REWARD = 200;
+export const MONOPOLY_MAX_UPGRADE_LEVEL = 2;
 export const MONOPOLY_MAX_INVITEES = 3;
 export const MONOPOLY_MAX_PLAYERS = 4;
 export const MONOPOLY_ACTIVE_STATUSES = ["pending", "active"] as const;
@@ -53,10 +54,11 @@ export interface MonopolyLastRoll {
 }
 
 export interface MonopolyPendingDecision {
-  type: "purchase";
+  type: "purchase" | "upgrade";
   playerId: string;
   tileIndex: number;
   price: number;
+  nextLevel?: number;
 }
 
 export interface MonopolyTile {
@@ -88,6 +90,7 @@ export interface MonopolyState {
   currentPlayerIndex: number;
   currentRound: number;
   propertyOwners: Record<string, string>;
+  propertyLevels: Record<string, number>;
   chanceDeck: string[];
   fateDeck: string[];
   lastRoll: MonopolyLastRoll | null;
@@ -182,6 +185,7 @@ function cloneState(state: MonopolyState): MonopolyState {
     currentPlayerIndex: state.currentPlayerIndex,
     currentRound: state.currentRound,
     propertyOwners: { ...state.propertyOwners },
+    propertyLevels: { ...state.propertyLevels },
     chanceDeck: [...state.chanceDeck],
     fateDeck: [...state.fateDeck],
     lastRoll: state.lastRoll ? { ...state.lastRoll, dice: [...state.lastRoll.dice] as [number, number] } : null,
@@ -235,20 +239,44 @@ function sanitizeParticipants(userIds: string[]) {
   return [...new Set(userIds.filter(Boolean))];
 }
 
-function calculatePlayerTotalAssets(player: MonopolyPlayerState) {
+function calculatePlayerTotalAssets(player: MonopolyPlayerState, propertyLevels: Record<string, number>) {
   const propertyValue = player.propertyIds.reduce((sum, tileIndex) => {
     const tile = getTile(tileIndex);
-    return sum + (tile.price ?? 0);
+    return sum + getPropertyTotalInvestedValue(tile, Number(propertyLevels[String(tileIndex)] ?? 0) || 0);
   }, 0);
   return player.cash + propertyValue;
 }
 
-function buildRanking(players: MonopolyPlayerState[]): MonopolyRankingEntry[] {
+export function getPropertyLevel(state: Pick<MonopolyState, "propertyLevels"> | null | undefined, tileIndex: number) {
+  return Math.max(0, Number(state?.propertyLevels[String(tileIndex)] ?? 0) || 0);
+}
+
+export function getUpgradeCost(tile: MonopolyTile, nextLevel: number) {
+  if (tile.kind !== "property" || !tile.price || nextLevel < 1) return 0;
+  const multiplier = 0.45 + nextLevel * 0.2;
+  return Math.round(tile.price * multiplier);
+}
+
+export function getRentForLevel(tile: MonopolyTile, level: number) {
+  if (tile.kind !== "property" || !tile.rent) return 0;
+  return Math.round(tile.rent * (1 + level * 0.8));
+}
+
+export function getPropertyTotalInvestedValue(tile: MonopolyTile, level: number) {
+  if (tile.kind !== "property" || !tile.price) return 0;
+  let total = tile.price;
+  for (let nextLevel = 1; nextLevel <= level; nextLevel += 1) {
+    total += getUpgradeCost(tile, nextLevel);
+  }
+  return total;
+}
+
+function buildRanking(players: MonopolyPlayerState[], propertyLevels: Record<string, number>): MonopolyRankingEntry[] {
   return [...players]
     .map((player) => ({
       userId: player.userId,
       userName: player.userName,
-      totalAssets: calculatePlayerTotalAssets(player),
+      totalAssets: calculatePlayerTotalAssets(player, propertyLevels),
       cash: player.cash,
       propertyCount: player.propertyIds.length,
       bankrupt: player.bankrupt,
@@ -263,7 +291,7 @@ function buildRanking(players: MonopolyPlayerState[]): MonopolyRankingEntry[] {
 }
 
 function refreshRanking(state: MonopolyState) {
-  state.ranking = buildRanking(state.players);
+  state.ranking = buildRanking(state.players, state.propertyLevels);
   return state;
 }
 
@@ -274,6 +302,7 @@ function createLobbyState(invites: MonopolyInvite[]): MonopolyState {
     currentPlayerIndex: 0,
     currentRound: 1,
     propertyOwners: {},
+    propertyLevels: {},
     chanceDeck: [],
     fateDeck: [],
     lastRoll: null,
@@ -310,6 +339,7 @@ function createActiveState(
     currentPlayerIndex: 0,
     currentRound: 1,
     propertyOwners: {},
+    propertyLevels: {},
     chanceDeck: createDeck("chance", random),
     fateDeck: createDeck("fate", random),
     lastRoll: null,
@@ -448,6 +478,7 @@ function advanceToNextTurn(match: MonopolyMatch, eventText: string, actionAt = n
 function releasePlayerProperties(state: MonopolyState, player: MonopolyPlayerState) {
   player.propertyIds.forEach((tileIndex) => {
     delete state.propertyOwners[String(tileIndex)];
+    delete state.propertyLevels[String(tileIndex)];
   });
   player.propertyIds = [];
 }
@@ -564,18 +595,37 @@ function resolveTile(
       return withState(match, state, { phase: "await_purchase_decision" }, actionAt);
     }
     if (ownerUserId === currentPlayer.userId) {
-      const eventText = `${currentPlayer.userName} 来到自己的地产 ${tile.name}`;
+      const currentLevel = getPropertyLevel(state, tile.index);
+      if (currentLevel < MONOPOLY_MAX_UPGRADE_LEVEL) {
+        const nextLevel = currentLevel + 1;
+        const upgradeCost = getUpgradeCost(tile, nextLevel);
+        state.pendingDecision = {
+          type: "upgrade",
+          playerId: currentPlayer.userId,
+          tileIndex: tile.index,
+          price: upgradeCost,
+          nextLevel
+        };
+        state.lastEvent = joinEventText(
+          eventPrefix,
+          `${currentPlayer.userName} 回到 ${tile.name}，可升级到 ${nextLevel} 级（花费 ${upgradeCost}）`
+        );
+        state.turnStep = "roll";
+        return withState(match, state, { phase: "await_purchase_decision" }, actionAt);
+      }
+      const eventText = `${currentPlayer.userName} 来到满级地产 ${tile.name}`;
       return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), joinEventText(eventPrefix, eventText), actionAt);
     }
 
     const ownerIndex = getPlayerIndexByUser(state.players, ownerUserId);
     const ownerName = ownerIndex >= 0 ? state.players[ownerIndex]?.userName ?? "其他玩家" : "其他玩家";
+    const rent = getRentForLevel(tile, getPropertyLevel(state, tile.index));
     const eventText = chargePlayer(
       state,
       state.currentPlayerIndex,
-      tile.rent ?? 0,
+      rent,
       ownerUserId,
-      ` 支付 ${ownerName} 过路费 ${tile.rent ?? 0}`
+      ` 支付 ${ownerName} 过路费 ${rent}`
     );
     return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), joinEventText(eventPrefix, eventText), actionAt);
   }
@@ -657,9 +707,19 @@ function normalizePropertyOwners(value: unknown) {
   return Object.fromEntries(entries) as Record<string, string>;
 }
 
-function normalizeRanking(value: unknown, players: MonopolyPlayerState[]) {
+function normalizePropertyLevels(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return {} as Record<string, number>;
+  }
+  const entries = Object.entries(value as Record<string, unknown>)
+    .map(([key, level]) => [key, Number(level) || 0] as const)
+    .filter(([key, level]) => key.trim() && level > 0);
+  return Object.fromEntries(entries) as Record<string, number>;
+}
+
+function normalizeRanking(value: unknown, players: MonopolyPlayerState[], propertyLevels: Record<string, number>) {
   if (!Array.isArray(value)) {
-    return buildRanking(players);
+    return buildRanking(players, propertyLevels);
   }
   const normalized = value
     .map((item) => {
@@ -679,7 +739,7 @@ function normalizeRanking(value: unknown, players: MonopolyPlayerState[]) {
       };
     })
     .filter(Boolean) as MonopolyRankingEntry[];
-  return normalized.length > 0 ? normalized : buildRanking(players);
+  return normalized.length > 0 ? normalized : buildRanking(players, propertyLevels);
 }
 
 export function createPendingMatch(params: {
@@ -736,20 +796,26 @@ export function normalizeMonopolyState(value: unknown): MonopolyState {
   const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
   const invites = normalizeInvites(raw.invites);
   const players = normalizePlayers(raw.players);
+  const propertyLevels = normalizePropertyLevels(raw.propertyLevels);
   const currentPlayerIndex =
     typeof raw.currentPlayerIndex === "number" && raw.currentPlayerIndex >= 0 ? raw.currentPlayerIndex : 0;
   const currentRound = typeof raw.currentRound === "number" && raw.currentRound >= 1 ? raw.currentRound : 1;
   const pendingDecision =
     raw.pendingDecision &&
     typeof raw.pendingDecision === "object" &&
-    (raw.pendingDecision as Record<string, unknown>).type === "purchase"
+    ((raw.pendingDecision as Record<string, unknown>).type === "purchase" ||
+      (raw.pendingDecision as Record<string, unknown>).type === "upgrade")
       ? {
-          type: "purchase" as const,
+          type:
+            (raw.pendingDecision as Record<string, unknown>).type === "upgrade"
+              ? ("upgrade" as const)
+              : ("purchase" as const),
           playerId: typeof (raw.pendingDecision as Record<string, unknown>).playerId === "string"
             ? ((raw.pendingDecision as Record<string, unknown>).playerId as string)
             : "",
           tileIndex: Number((raw.pendingDecision as Record<string, unknown>).tileIndex) || 0,
-          price: Number((raw.pendingDecision as Record<string, unknown>).price) || 0
+          price: Number((raw.pendingDecision as Record<string, unknown>).price) || 0,
+          nextLevel: Number((raw.pendingDecision as Record<string, unknown>).nextLevel) || undefined
         }
       : null;
   const lastRollRaw = raw.lastRoll && typeof raw.lastRoll === "object" ? (raw.lastRoll as Record<string, unknown>) : null;
@@ -768,12 +834,13 @@ export function normalizeMonopolyState(value: unknown): MonopolyState {
     currentPlayerIndex: Math.min(currentPlayerIndex, Math.max(players.length - 1, 0)),
     currentRound,
     propertyOwners: normalizePropertyOwners(raw.propertyOwners),
+    propertyLevels,
     chanceDeck: Array.isArray(raw.chanceDeck) ? raw.chanceDeck.filter((item) => typeof item === "string") : [],
     fateDeck: Array.isArray(raw.fateDeck) ? raw.fateDeck.filter((item) => typeof item === "string") : [],
     lastRoll,
     lastEvent: typeof raw.lastEvent === "string" ? raw.lastEvent : "",
     pendingDecision: pendingDecision?.playerId ? pendingDecision : null,
-    ranking: normalizeRanking(raw.ranking, players),
+    ranking: normalizeRanking(raw.ranking, players, propertyLevels),
     turnStep: "roll"
   };
 }
@@ -1024,7 +1091,7 @@ export function purchaseProperty(match: MonopolyMatch, userId: string, purchased
   const state = cloneState(match.state);
   const currentPlayer = getCurrentPlayer(state);
   const decision = state.pendingDecision;
-  if (!currentPlayer || !decision || decision.type !== "purchase" || decision.playerId !== userId) {
+  if (!currentPlayer || !decision || decision.playerId !== userId) {
     throw new Error("当前无需购买地产");
   }
 
@@ -1032,19 +1099,44 @@ export function purchaseProperty(match: MonopolyMatch, userId: string, purchased
   if (tile.kind !== "property" || !tile.price) {
     throw new Error("地产信息无效");
   }
-  if (state.propertyOwners[String(tile.index)]) {
-    throw new Error("该地产已被购买");
-  }
-  if (currentPlayer.cash < tile.price) {
-    throw new Error("当前资金不足，无法购买");
+  if (decision.type === "purchase") {
+    if (state.propertyOwners[String(tile.index)]) {
+      throw new Error("该地产已被购买");
+    }
+    if (currentPlayer.cash < tile.price) {
+      throw new Error("当前资金不足，无法购买");
+    }
+
+    currentPlayer.cash -= tile.price;
+    currentPlayer.propertyIds = [...currentPlayer.propertyIds, tile.index].sort((left, right) => left - right);
+    state.propertyOwners[String(tile.index)] = currentPlayer.userId;
+    state.propertyLevels[String(tile.index)] = 0;
+    state.pendingDecision = null;
+    state.turnStep = "roll";
+    return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), `${currentPlayer.userName} 购买了 ${tile.name}`, purchasedAt);
   }
 
-  currentPlayer.cash -= tile.price;
-  currentPlayer.propertyIds = [...currentPlayer.propertyIds, tile.index].sort((left, right) => left - right);
-  state.propertyOwners[String(tile.index)] = currentPlayer.userId;
+  const currentLevel = getPropertyLevel(state, tile.index);
+  const nextLevel = decision.nextLevel ?? currentLevel + 1;
+  if (state.propertyOwners[String(tile.index)] !== currentPlayer.userId) {
+    throw new Error("只有地产所有者可以升级");
+  }
+  if (currentLevel >= MONOPOLY_MAX_UPGRADE_LEVEL || nextLevel > MONOPOLY_MAX_UPGRADE_LEVEL) {
+    throw new Error("地产已满级");
+  }
+  if (currentPlayer.cash < decision.price) {
+    throw new Error("当前资金不足，无法升级");
+  }
+
+  currentPlayer.cash -= decision.price;
+  state.propertyLevels[String(tile.index)] = nextLevel;
   state.pendingDecision = null;
   state.turnStep = "roll";
-  return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), `${currentPlayer.userName} 购买了 ${tile.name}`, purchasedAt);
+  return advanceToNextTurn(
+    withTransientState(match, state, { phase: "await_roll" }),
+    `${currentPlayer.userName} 将 ${tile.name} 升级到 ${nextLevel} 级`,
+    purchasedAt
+  );
 }
 
 export function skipProperty(match: MonopolyMatch, userId: string, skippedAt = nowIso()) {
@@ -1067,7 +1159,11 @@ export function skipProperty(match: MonopolyMatch, userId: string, skippedAt = n
   const tile = getTile(decision.tileIndex);
   state.pendingDecision = null;
   state.turnStep = "roll";
-  return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), `${currentPlayer.userName} 放弃购买 ${tile.name}`, skippedAt);
+  return advanceToNextTurn(
+    withTransientState(match, state, { phase: "await_roll" }),
+    `${currentPlayer.userName} 放弃${decision.type === "upgrade" ? "升级" : "购买"} ${tile.name}`,
+    skippedAt
+  );
 }
 
 export function endTurn(match: MonopolyMatch, userId: string, endedAt = nowIso()) {
