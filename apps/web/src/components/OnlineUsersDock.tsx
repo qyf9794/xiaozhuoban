@@ -1,9 +1,15 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuthStore } from "../auth/authStore";
 import { resolveUserName } from "../lib/collab";
 import { useOnlineUsers } from "../lib/useOnlineUsers";
 
-export function OnlineUsersDock({ isMobileMode = false }: { isMobileMode?: boolean }) {
+export function OnlineUsersDock({
+  isMobileMode = false,
+  desktopBottomInset = 12
+}: {
+  isMobileMode?: boolean;
+  desktopBottomInset?: number;
+}) {
   const { user } = useAuthStore();
   const currentUserId = user?.id ?? "";
   const currentUserName = useMemo(
@@ -47,7 +53,7 @@ export function OnlineUsersDock({ isMobileMode = false }: { isMobileMode?: boole
       style={{
         position: "fixed",
         left: 12,
-        bottom: 12,
+        bottom: desktopBottomInset,
         zIndex: 1500,
         minWidth: 180,
         maxWidth: 280,

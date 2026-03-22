@@ -75,6 +75,23 @@ export function BoardCanvas({
   );
 
   const renderedWidgets = isMobileMode ? mobileWidgets : widgets;
+  const startDrag = (
+    widget: WidgetInstance,
+    pointerId: number,
+    clientX: number,
+    clientY: number,
+    captureTarget: Element | null
+  ) => {
+    captureTarget?.setPointerCapture?.(pointerId);
+    setDrag({
+      id: widget.id,
+      pointerId,
+      lastClientX: clientX,
+      lastClientY: clientY,
+      currentX: widget.position.x,
+      currentY: widget.position.y
+    });
+  };
 
   return (
     <div
@@ -224,18 +241,49 @@ export function BoardCanvas({
               }
 
               event.preventDefault();
-              const container = event.currentTarget;
-              container.setPointerCapture(event.pointerId);
-              setDrag({
-                id: widget.id,
-                pointerId: event.pointerId,
-                lastClientX: event.clientX,
-                lastClientY: event.clientY,
-                currentX: widget.position.x,
-                currentY: widget.position.y
-              });
+              startDrag(widget, event.pointerId, event.clientX, event.clientY, event.currentTarget);
             }}
           >
+            {useTouchScrollableDesktopCanvas ? (
+              <button
+                type="button"
+                data-no-drag="true"
+                aria-label="拖动小工具"
+                title="拖动小工具"
+                onPointerDown={(event) => {
+                  if (board.locked || widget.locked || event.pointerType !== "touch") return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  startDrag(
+                    widget,
+                    event.pointerId,
+                    event.clientX,
+                    event.clientY,
+                    event.currentTarget
+                  );
+                }}
+                style={{
+                  position: "absolute",
+                  top: 8,
+                  right: 24,
+                  zIndex: 8,
+                  width: 18,
+                  height: 18,
+                  padding: 0,
+                  border: "none",
+                  background: "transparent",
+                  color: "rgba(255,255,255,0.92)",
+                  fontSize: 14,
+                  lineHeight: 1,
+                  display: "grid",
+                  placeItems: "center",
+                  touchAction: "none",
+                  cursor: "grab"
+                }}
+              >
+                ≡
+              </button>
+            ) : null}
             <button
               className="widget-delete-dot"
               data-no-drag="true"
