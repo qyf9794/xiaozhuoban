@@ -17,6 +17,7 @@ const MOBILE_FRAME_WIDTH = 390;
 const MOBILE_VIEWPORT_MAX = 900;
 const WALLPAPER_MIN_LONG_EDGE = 1600;
 const WALLPAPER_MAX_LONG_EDGE = 2560;
+const repositoryByUserId = new Map<string, SupabaseRepository>();
 
 function isLikelyMobileUA() {
   if (typeof navigator === "undefined") return false;
@@ -82,6 +83,16 @@ async function normalizeWallpaperFile(file: File): Promise<string> {
   }
 }
 
+function getRepositoryForUser(userId: string): SupabaseRepository {
+  const cached = repositoryByUserId.get(userId);
+  if (cached) {
+    return cached;
+  }
+  const repository = new SupabaseRepository(supabase, userId);
+  repositoryByUserId.set(userId, repository);
+  return repository;
+}
+
 export function App() {
   const {
     ready,
@@ -134,7 +145,7 @@ export function App() {
 
   useEffect(() => {
     if (!userId) return;
-    const repository = new SupabaseRepository(supabase, userId);
+    const repository = getRepositoryForUser(userId);
     setRepository(repository);
     void initialize();
   }, [initialize, setRepository, userId]);

@@ -791,6 +791,9 @@ interface MessageBoardRow {
 }
 
 let messageBoardAudioContext: AudioContext | null = null;
+let messageBoardHistoryPromise: Promise<MessageBoardItem[]> | null = null;
+let messageBoardHistoryCache: MessageBoardItem[] | null = null;
+let messageBoardHistoryCacheExpiresAt = 0;
 
 async function getMessageBoardAudioContext() {
   if (typeof window === "undefined") return null;
@@ -818,17 +821,36 @@ function messageFromRow(row: MessageBoardRow): MessageBoardItem {
 }
 
 async function fetchMessageBoardHistory(): Promise<MessageBoardItem[]> {
-  const { data, error } = await supabase
-    .from("message_board_messages")
-    .select("id,sender_id,sender_name,message,created_at")
-    .order("created_at", { ascending: false })
-    .limit(50);
-
-  if (error) {
-    throw error;
+  if (messageBoardHistoryCache && Date.now() < messageBoardHistoryCacheExpiresAt) {
+    return messageBoardHistoryCache;
   }
 
-  return ((data as MessageBoardRow[] | null) ?? []).map(messageFromRow);
+  if (messageBoardHistoryPromise) {
+    return messageBoardHistoryPromise;
+  }
+
+  messageBoardHistoryPromise = (async () => {
+    const { data, error } = await supabase
+      .from("message_board_messages")
+      .select("id,sender_id,sender_name,message,created_at")
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error) {
+      throw error;
+    }
+
+    const nextHistory = ((data as MessageBoardRow[] | null) ?? []).map(messageFromRow);
+    messageBoardHistoryCache = nextHistory;
+    messageBoardHistoryCacheExpiresAt = Date.now() + 1000;
+    return nextHistory;
+  })();
+
+  try {
+    return await messageBoardHistoryPromise;
+  } finally {
+    messageBoardHistoryPromise = null;
+  }
 }
 
 async function playMessageBoardChime() {
@@ -3302,6 +3324,7 @@ export function BuiltinWidgetView({
     const channelRef = useRef<RealtimeChannel | null>(null);
     const latestMessageIdRef = useRef("");
     const initializedMessageRef = useRef(false);
+    const historyLoadedRef = useRef(false);
     const userId = user?.id ?? "";
     const userName = resolveUserName({
       email: user?.email ?? null,
@@ -3347,11 +3370,13 @@ export function BuiltinWidgetView({
     useEffect(() => {
       if (!userId) return;
       let cancelled = false;
+      historyLoadedRef.current = false;
       setHistoryLoading(true);
       void (async () => {
         try {
           const history = await fetchMessageBoardHistory();
           if (cancelled) return;
+          historyLoadedRef.current = true;
           setMessageError("");
           setMessages((prev) => normalizeMessageList([...history, ...prev]));
         } catch (error) {
@@ -3387,7 +3412,6 @@ export function BuiltinWidgetView({
           });
       };
       const timer = window.setInterval(syncHistory, 2500);
-      syncHistory();
       return () => {
         disposed = true;
         window.clearInterval(timer);
@@ -3428,10 +3452,14 @@ export function BuiltinWidgetView({
             setChannelReady(true);
             setChannelStatusText("已连接");
             setMessageError("");
+            if (historyLoadedRef.current) {
+              return;
+            }
             void (async () => {
               try {
                 const history = await fetchMessageBoardHistory();
                 if (disposed) return;
+                historyLoadedRef.current = true;
                 setMessages((prev) => normalizeMessageList([...history, ...prev]));
               } catch (error) {
                 if (disposed) return;

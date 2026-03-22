@@ -309,6 +309,15 @@ export class SupabaseRepository {
     return ((data as WidgetDefinitionRow[] | null) ?? []).map(widgetDefinitionFromRow);
   }
 
+  async upsertDefinitions(definitions: WidgetDefinition[]): Promise<void> {
+    if (definitions.length === 0) return;
+    const rows = definitions.map((definition) => widgetDefinitionToRow(definition, this.userId));
+    const { error } = await this.client.from("widget_definitions").upsert(rows, {
+      onConflict: "id"
+    });
+    throwIfError(error);
+  }
+
   async upsertDefinition(definition: WidgetDefinition): Promise<void> {
     const { error } = await this.client
       .from("widget_definitions")
