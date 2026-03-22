@@ -130,6 +130,7 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [desktopViewportBottomInset, setDesktopViewportBottomInset] = useState(14);
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window === "undefined" ? MOBILE_FRAME_WIDTH : window.innerWidth
   );
@@ -227,6 +228,32 @@ export function App() {
       window.removeEventListener("orientationchange", onResize);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || isMobileMode) {
+      setDesktopViewportBottomInset(14);
+      return;
+    }
+
+    const viewport = window.visualViewport;
+    if (!viewport) {
+      setDesktopViewportBottomInset(14);
+      return;
+    }
+
+    const syncViewportInset = () => {
+      const bottomInset = Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
+      setDesktopViewportBottomInset(bottomInset + 14);
+    };
+
+    syncViewportInset();
+    viewport.addEventListener("resize", syncViewportInset);
+    viewport.addEventListener("scroll", syncViewportInset);
+    return () => {
+      viewport.removeEventListener("resize", syncViewportInset);
+      viewport.removeEventListener("scroll", syncViewportInset);
+    };
+  }, [isMobileMode]);
 
   useEffect(() => {
     if (!isMobileMode) {
@@ -414,7 +441,7 @@ export function App() {
               style={{
                 position: "fixed",
                 right: 14,
-                bottom: 14,
+                bottom: desktopViewportBottomInset,
                 width: 26,
                 height: 26,
                 borderRadius: "50%",
@@ -476,7 +503,7 @@ export function App() {
         onGenerate={(prompt) => generateAiWidget(prompt, { mobileMode: isMobileMode })}
       />
 
-      <OnlineUsersDock isMobileMode={isMobileMode} />
+      <OnlineUsersDock isMobileMode={isMobileMode} desktopBottomInset={desktopViewportBottomInset} />
 
       <input
         ref={wallpaperInputRef}
