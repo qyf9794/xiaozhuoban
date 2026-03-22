@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../auth/authStore";
+import { defaultAnimatedBackgroundUrl } from "../lib/defaultBackground";
 
 export function RegisterPage() {
   const navigate = useNavigate();
@@ -12,22 +13,15 @@ export function RegisterPage() {
   const mismatch = confirmPassword.length > 0 && password !== confirmPassword;
 
   return (
-    <main className="loading" style={{ padding: 16 }}>
-      <section
-        style={{
-          width: "min(420px, 94vw)",
-          borderRadius: 18,
-          border: "1px solid rgba(255,255,255,0.62)",
-          background: "linear-gradient(170deg, rgba(255,255,255,0.9), rgba(255,255,255,0.72))",
-          boxShadow: "0 18px 34px rgba(15,23,42,0.14)",
-          backdropFilter: "blur(20px)",
-          padding: 18,
-          display: "grid",
-          gap: 12
-        }}
-      >
-        <h1 style={{ margin: 0, fontSize: 20, color: "#0f172a" }}>注册账号</h1>
+    <main className="login-page">
+      <div className="app-background-layer" style={{ backgroundColor: "#5b6b7a" }} aria-hidden="true">
+        <img className="app-background-media" src={defaultAnimatedBackgroundUrl} alt="" />
+        <div className="login-page-scrim" />
+      </div>
+      <section className="login-page-card liquid-glass" style={registerCardStyle}>
+        <h1 style={{ margin: 0, fontSize: 19, color: "rgba(255,255,255,0.96)" }}>注册账号</h1>
         <input
+          className="login-input"
           type="email"
           placeholder="邮箱"
           autoComplete="email"
@@ -39,6 +33,7 @@ export function RegisterPage() {
           style={inputStyle}
         />
         <input
+          className="login-input"
           type="password"
           placeholder="密码（至少6位）"
           autoComplete="new-password"
@@ -50,6 +45,7 @@ export function RegisterPage() {
           style={inputStyle}
         />
         <input
+          className="login-input"
           type="password"
           placeholder="确认密码"
           autoComplete="new-password"
@@ -57,9 +53,10 @@ export function RegisterPage() {
           onChange={(event) => setConfirmPassword(event.target.value)}
           style={inputStyle}
         />
-        {mismatch ? <div style={{ fontSize: 12, color: "#b91c1c" }}>两次输入的密码不一致</div> : null}
-        {error ? <div style={{ fontSize: 12, color: "#b91c1c" }}>{error}</div> : null}
+        {mismatch ? <div className="login-error">两次输入的密码不一致</div> : null}
+        {error ? <div className="login-error">{error}</div> : null}
         <button
+          className="login-button"
           type="button"
           onClick={() => {
             void (async () => {
@@ -77,7 +74,7 @@ export function RegisterPage() {
         >
           {loading ? "注册中..." : "注册并进入"}
         </button>
-        <Link to="/login" style={{ fontSize: 12, color: "#2563eb", textDecoration: "none" }}>
+        <Link to="/login" className="login-link" style={{ fontSize: 12, textDecoration: "none" }}>
           已有账号？去登录
         </Link>
       </section>
@@ -85,23 +82,31 @@ export function RegisterPage() {
   );
 }
 
+const registerCardStyle: CSSProperties = {
+  width: "min(340px, 88vw)",
+  borderRadius: 22,
+  padding: 16,
+  display: "grid",
+  gap: 12
+};
+
 const inputStyle: CSSProperties = {
   width: "100%",
   borderRadius: 12,
-  border: "1px solid rgba(203,213,225,0.72)",
-  background: "linear-gradient(160deg, rgba(255,255,255,0.78), rgba(255,255,255,0.46))",
-  padding: "9px 10px",
-  color: "#0f172a",
+  border: "1px solid rgba(255,255,255,0.22)",
+  background: "rgba(255,255,255,0.04)",
+  padding: "10px 12px",
+  color: "rgba(255,255,255,0.96)",
   fontSize: 13
 };
 
 const primaryButtonStyle: CSSProperties = {
   width: "100%",
   borderRadius: 12,
-  border: "1px solid rgba(96,165,250,0.62)",
-  background: "linear-gradient(155deg, rgba(37,99,235,0.8), rgba(56,189,248,0.7))",
-  color: "#eff6ff",
-  padding: "9px 10px",
+  border: "1px solid rgba(255,255,255,0.22)",
+  background: "rgba(255,255,255,0.08)",
+  color: "rgba(255,255,255,0.98)",
+  padding: "10px 12px",
   fontSize: 13,
   cursor: "pointer"
 };

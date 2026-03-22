@@ -383,6 +383,7 @@ export function App() {
 
           {!isMobileMode ? (
             <button
+              className="auto-align-button liquid-glass-preserve"
               onClick={() => {
                 const sidebarWidth = sidebarOpen && !fullscreen ? 280 : 0;
                 const canvasWidth = Math.max(320, window.innerWidth - sidebarWidth - 24);

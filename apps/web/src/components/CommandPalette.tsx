@@ -104,11 +104,11 @@ export function CommandPalette({
       <div className="modal" onClick={(event) => event.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>全局搜索</h2>
         <input
+          className="glass-field"
           autoFocus
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="搜索桌板、Widget 内容"
-          style={{ width: "100%", borderRadius: 10, border: "1px solid #cbd5e1", padding: "8px 10px" }}
         />
         <div style={{ marginTop: 12, maxHeight: 260, overflow: "auto" }}>
           {results.map((item, index) => (

@@ -3525,9 +3525,9 @@ export function BuiltinWidgetView({
         definition={definition}
         instance={instance}
         cardStyle={{
-          height: "auto",
+          height: isMobileMode ? "auto" : "100%",
           minHeight: 260,
-          maxHeight: 480,
+          maxHeight: isMobileMode ? 480 : undefined,
           overflow: "hidden"
         }}
       >

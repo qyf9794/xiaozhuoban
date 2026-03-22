@@ -33,6 +33,7 @@ function BoardRow({
 
   return (
     <div
+      className="board-row liquid-glass-preserve"
       style={{
         border: "1px solid rgba(255,255,255,0.58)",
         borderRadius: 12,
@@ -49,6 +50,7 @@ function BoardRow({
     >
       {editing ? (
         <input
+          className="glass-field"
           autoFocus
           value={draftName}
           onChange={(event) => setDraftName(event.target.value)}
@@ -169,6 +171,7 @@ export function BoardSidebar({
 }) {
   return (
     <aside
+      className="board-sidebar liquid-glass-preserve"
       style={{
         width: 280,
         background: "linear-gradient(170deg, rgba(255,255,255,0.48), rgba(255,255,255,0.22))",

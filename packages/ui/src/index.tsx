@@ -55,6 +55,7 @@ export function Card({
   const theme = palette[tone] ?? palette.default;
   return (
     <section
+      className={`ui-card liquid-glass-preserve ui-card-tone-${tone}`}
       style={{
         position: "relative",
         isolation: "isolate",
@@ -95,6 +96,7 @@ export function Button({
 }>) {
   return (
     <button
+      className={`ui-button liquid-glass-preserve ui-button-${variant}`}
       onClick={onClick}
       type={type}
       style={{

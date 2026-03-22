@@ -91,7 +91,7 @@ export function Toolbar({
 
   return (
     <header
-      className={isMobileMode ? "toolbar-mobile" : undefined}
+      className={isMobileMode ? "toolbar-mobile toolbar-shell liquid-glass-preserve" : "toolbar-shell liquid-glass-preserve"}
       style={{
         position: isMobileMode ? "sticky" : "relative",
         top: isMobileMode ? 0 : undefined,
@@ -164,6 +164,7 @@ export function Toolbar({
           <button
             aria-label="添加 Widget"
             onClick={() => setAddMenuOpen((prev) => !prev)}
+            className="toolbar-primary-action liquid-glass-preserve"
             style={{
               border: "1px solid rgba(255,255,255,0.62)",
               borderRadius: 14,
