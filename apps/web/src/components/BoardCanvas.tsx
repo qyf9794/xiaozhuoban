@@ -3,7 +3,6 @@ import { createLayoutEngine, fromWidgetInstances } from "@xiaozhuoban/layout-eng
 import type { Board, WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { AIFormWidgetView, BuiltinWidgetView } from "../widgets/BuiltinWidgets";
 import { clampTvWidgetSize } from "../widgets/tvShared";
-import { resolveBoardBackground } from "../lib/defaultBackground";
 
 interface DragState {
   id: string;
@@ -53,7 +52,6 @@ export function BoardCanvas({
   }, [board.layoutMode, widgets]);
 
   const byId = useMemo(() => new Map(definitions.map((item) => [item.id, item])), [definitions]);
-  const resolvedBackground = useMemo(() => resolveBoardBackground(board.background), [board.background]);
 
   const dragPosition = useMemo(() => {
     if (!drag) return null;
@@ -77,6 +75,7 @@ export function BoardCanvas({
       className={isMobileMode ? "board-canvas board-canvas-mobile" : "board-canvas"}
       style={{
         position: "relative",
+        flex: isMobileMode ? undefined : 1,
         overflow: isMobileMode ? "visible" : "auto",
         overflowX: isMobileMode ? "visible" : "auto",
         display: isMobileMode ? "flex" : "block",
@@ -86,17 +85,12 @@ export function BoardCanvas({
           ? "calc(env(safe-area-inset-top) + 74px) 14px calc(env(safe-area-inset-bottom) + 84px)"
           : 0,
         minHeight: 0,
-        height: isMobileMode ? "auto" : fullscreen ? "100dvh" : "calc(100vh - 120px)",
+        height: isMobileMode ? "auto" : fullscreen ? "100dvh" : "auto",
         borderRadius: fullscreen ? 0 : 16,
         userSelect: drag || resize ? "none" : "auto",
         WebkitUserSelect: drag || resize ? "none" : "auto",
         touchAction: isMobileMode ? "pan-y" : "none",
-        background:
-          isMobileMode
-            ? "transparent"
-            : resolvedBackground.type === "color"
-              ? resolvedBackground.value
-              : `center / cover no-repeat url(${resolvedBackground.value})`
+        background: "transparent"
       }}
       onPointerMove={
         isMobileMode

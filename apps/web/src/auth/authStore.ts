@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { Session, User } from "@supabase/supabase-js";
-import { supabase } from "../lib/supabase";
+import { supabase, supabaseConfigError } from "../lib/supabase";
 
 interface AuthState {
   ready: boolean;
@@ -31,6 +31,11 @@ export const useAuthStore = create<AuthState>((set) => ({
       return;
     }
 
+    if (supabaseConfigError) {
+      set({ ready: true, error: supabaseConfigError, session: null, user: null });
+      return;
+    }
+
     const {
       data: { session },
       error
@@ -50,6 +55,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     initialized = true;
   },
   async signIn(email, password) {
+    if (supabaseConfigError) {
+      const error = new Error(supabaseConfigError || "Supabase 未初始化");
+      set({ loading: false, error: error.message });
+      throw error;
+    }
     set({ loading: true, error: "" });
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
@@ -59,6 +69,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ loading: false, error: "" });
   },
   async signUp(email, password) {
+    if (supabaseConfigError) {
+      const error = new Error(supabaseConfigError || "Supabase 未初始化");
+      set({ loading: false, error: error.message });
+      throw error;
+    }
     set({ loading: true, error: "" });
     const { error } = await supabase.auth.signUp({ email, password });
     if (error) {
@@ -71,6 +86,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     const nextName = displayName.trim();
     if (!nextName) {
       throw new Error("用户名不能为空");
+    }
+    if (supabaseConfigError) {
+      const error = new Error(supabaseConfigError || "Supabase 未初始化");
+      set({ loading: false, error: error.message });
+      throw error;
     }
     set({ loading: true, error: "" });
     const { data, error } = await supabase.auth.updateUser({
@@ -87,6 +107,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     });
   },
   async signOut() {
+    if (supabaseConfigError) {
+      const error = new Error(supabaseConfigError || "Supabase 未初始化");
+      set({ loading: false, error: error.message, session: null, user: null });
+      throw error;
+    }
     set({ loading: true, error: "" });
     const { error } = await supabase.auth.signOut();
     if (error) {

@@ -9,8 +9,8 @@ import { useAppStore } from "./store";
 import { useAuthStore } from "./auth/authStore";
 import { supabase } from "./lib/supabase";
 import { resolveUserName } from "./lib/collab";
-import { resolveBoardBackground } from "./lib/defaultBackground";
 import { showDesktopWindowWhenReady } from "./lib/desktopWindow";
+import { abandonUserMonopolyMatches } from "./lib/monopolyOnline";
 import { SupabaseRepository } from "@xiaozhuoban/data";
 
 const MOBILE_FRAME_WIDTH = 390;
@@ -133,15 +133,26 @@ export function App() {
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window === "undefined" ? MOBILE_FRAME_WIDTH : window.innerWidth
   );
+  const handleRemoveWidget = async (widgetId: string) => {
+    const targetWidget = widgetInstances.find((item) => item.id === widgetId);
+    const targetDefinition = widgetDefinitions.find((item) => item.id === targetWidget?.definitionId);
+    if (targetDefinition?.type === "monopoly" && userId) {
+      try {
+        await abandonUserMonopolyMatches(userId);
+      } catch {
+        // Always allow the local widget to close; online cleanup is best-effort.
+      }
+    }
+    await removeWidgetInstance(widgetId);
+  };
   const wallpaperInputRef = useRef<HTMLInputElement | null>(null);
   const backupInputRef = useRef<HTMLInputElement | null>(null);
   const isMobileUa = useMemo(() => isLikelyMobileUA(), []);
   const isMobileMode = isMobileUa || viewportWidth <= MOBILE_VIEWPORT_MAX;
 
   const activeBoard = useMemo(() => boards.find((item) => item.id === activeBoardId), [activeBoardId, boards]);
-  const resolvedBoardBackground = useMemo(() => resolveBoardBackground(activeBoard?.background), [activeBoard?.background]);
-  const pageBackgroundColor = resolvedBoardBackground.type === "color" ? resolvedBoardBackground.value : "#5b6b7a";
-  const pageBackgroundImage = resolvedBoardBackground.type === "image" ? resolvedBoardBackground.value : null;
+  const appBackgroundColor = activeBoard?.background.type === "color" ? activeBoard.background.value : "#0f172a";
+  const appBackgroundImage = activeBoard?.background.type === "image" ? activeBoard.background.value : null;
 
   useEffect(() => {
     if (!userId) return;
@@ -229,11 +240,11 @@ export function App() {
     const previousBackgroundAttachment = document.body.style.backgroundAttachment;
     const previousRootBackgroundColor = document.documentElement.style.backgroundColor;
 
-    if (isMobileMode && activeBoard) {
+    if (activeBoard) {
       document.body.style.background = "none";
-      document.body.style.backgroundColor = pageBackgroundColor;
+      document.body.style.backgroundColor = appBackgroundColor;
       document.body.style.backgroundAttachment = "scroll";
-      document.documentElement.style.backgroundColor = pageBackgroundColor;
+      document.documentElement.style.backgroundColor = appBackgroundColor;
     }
 
     return () => {
@@ -242,7 +253,7 @@ export function App() {
       document.body.style.backgroundAttachment = previousBackgroundAttachment;
       document.documentElement.style.backgroundColor = previousRootBackgroundColor;
     };
-  }, [activeBoard, isMobileMode, pageBackgroundColor]);
+  }, [activeBoard, appBackgroundColor]);
 
   useEffect(() => {
     if (!mobileSidebarOpen) return;
@@ -299,9 +310,8 @@ export function App() {
 
   return (
     <div className={`app-shell ${isMobileMode ? "app-shell-mobile" : ""}`}>
-      <div className="app-background-layer" style={{ backgroundColor: pageBackgroundColor }} aria-hidden="true">
-        {pageBackgroundImage ? <img className="app-background-media" src={pageBackgroundImage} alt="" /> : null}
-        <div className="app-background-scrim" />
+      <div className="app-background-layer" style={{ backgroundColor: appBackgroundColor }}>
+        {appBackgroundImage ? <img className="app-background-image" src={appBackgroundImage} alt="" /> : null}
       </div>
       <div className={isMobileMode ? "mobile-stage" : "desktop-stage"}>
         {sidebarOpen && !fullscreen && !isMobileMode ? (
@@ -320,7 +330,8 @@ export function App() {
             display: "flex",
             flexDirection: "column",
             minWidth: 0,
-            minHeight: isMobileMode ? "100dvh" : 0,
+            minHeight: isMobileMode ? "100dvh" : "100vh",
+            height: isMobileMode ? "100dvh" : "100vh",
             position: "relative"
           }}
         >
@@ -389,12 +400,11 @@ export function App() {
             onMove={(widgetId, x, y) => void updateWidgetPosition(widgetId, x, y)}
             onResize={(widgetId, w, h) => void updateWidgetSize(widgetId, w, h)}
             onStateChange={(widgetId, state) => void updateWidgetState(widgetId, state)}
-            onRemoveWidget={(widgetId) => void removeWidgetInstance(widgetId)}
+            onRemoveWidget={(widgetId) => void handleRemoveWidget(widgetId)}
           />
 
           {!isMobileMode ? (
             <button
-              className="auto-align-button liquid-glass-preserve"
               onClick={() => {
                 const sidebarWidth = sidebarOpen && !fullscreen ? 280 : 0;
                 const canvasWidth = Math.max(320, window.innerWidth - sidebarWidth - 24);

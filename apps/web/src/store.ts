@@ -213,6 +213,30 @@ const baseWidgets: Array<Omit<WidgetDefinition, "id" | "createdAt" | "updatedAt"
     uiSchema: { layout: "single-column" },
     logicSpec: {},
     storagePolicy: { strategy: "local" }
+  },
+  {
+    kind: "system",
+    type: "gomoku",
+    name: "五子棋",
+    version: 1,
+    description: "轻量五子棋，支持人机与在线对战",
+    inputSchema: { fields: [] },
+    outputSchema: { fields: [] },
+    uiSchema: { layout: "single-column" },
+    logicSpec: {},
+    storagePolicy: { strategy: "local" }
+  },
+  {
+    kind: "system",
+    type: "monopoly",
+    name: "大富翁",
+    version: 1,
+    description: "轻量在线大富翁，支持 2-4 人邀请开局",
+    inputSchema: { fields: [] },
+    outputSchema: { fields: [] },
+    uiSchema: { layout: "single-column" },
+    logicSpec: {},
+    storagePolicy: { strategy: "local" }
   }
 ];
 
@@ -355,6 +379,12 @@ function getDefaultWidgetSize(type?: string): { w: number; h: number } {
   if (type === "tv") {
     return { w: 240, h: 480 };
   }
+  if (type === "gomoku") {
+    return { w: 498, h: 640 };
+  }
+  if (type === "monopoly") {
+    return { w: 498, h: 640 };
+  }
   if (type === "worldClock") {
     return { w: 240, h: 240 };
   }
@@ -362,7 +392,7 @@ function getDefaultWidgetSize(type?: string): { w: number; h: number } {
     return { w: 240, h: 320 };
   }
   if (type === "messageBoard") {
-    return { w: 240, h: 260 };
+    return { w: 240, h: 500 };
   }
   return { w: 240, h: 180 };
 }
@@ -380,7 +410,44 @@ function safeWidgetHeight(widget: WidgetInstance, definitionType?: string) {
   if (definitionType === "tv") {
     return 480;
   }
+  if (definitionType === "messageBoard") {
+    return 500;
+  }
+  if (definitionType === "gomoku") {
+    return Math.max(560, Number(widget.size.h) || 640);
+  }
+  if (definitionType === "monopoly") {
+    return Math.max(560, Number(widget.size.h) || 640);
+  }
   return Math.max(90, Number(widget.size.h) || 180);
+}
+
+function normalizeWidgetInstanceSize(widget: WidgetInstance, definitionType?: string): WidgetInstance {
+  if (definitionType !== "messageBoard") {
+    return widget;
+  }
+  const nextWidth = safeWidgetWidth(widget, definitionType);
+  const nextHeight = safeWidgetHeight(widget, definitionType);
+  if (widget.size.w === nextWidth && widget.size.h === nextHeight) {
+    return widget;
+  }
+  return {
+    ...widget,
+    size: {
+      w: nextWidth,
+      h: nextHeight
+    },
+    updatedAt: nowIso()
+  };
+}
+
+function normalizeWidgetInstances(
+  widgets: WidgetInstance[],
+  definitionTypeById: Map<string, string>
+): { items: WidgetInstance[]; changed: WidgetInstance[] } {
+  const items = widgets.map((widget) => normalizeWidgetInstanceSize(widget, definitionTypeById.get(widget.definitionId)));
+  const changed = items.filter((item, index) => item !== widgets[index]);
+  return { items, changed };
 }
 
 export function toCanvasContentPosition(
@@ -430,20 +497,7 @@ function measureWidgetLayout(
         canvasPosition?.top ?? item.position.y;
       const left =
         canvasPosition?.left ?? item.position.x;
-      const visibleContentBottom = card
-        ? Array.from(card.querySelectorAll<HTMLElement>("*")).reduce((currentMax, node) => {
-            const nodeRect = node.getBoundingClientRect();
-            if (nodeRect.height <= 0 || nodeRect.width <= 0) {
-              return currentMax;
-            }
-            return Math.max(currentMax, nodeRect.bottom);
-          }, cardRect?.bottom ?? 0)
-        : 0;
-      const renderedHeight = Math.max(
-        rect && cardRect ? cardRect.bottom - rect.top : 0,
-        rect && visibleContentBottom ? visibleContentBottom - rect.top : 0,
-        cardRect?.height ?? 0
-      );
+      const renderedHeight = Math.max(rect?.height ?? 0, cardRect?.height ?? 0);
       const height = renderedHeight > 0 ? renderedHeight : safeWidgetHeight(item, definitionTypeById.get(item.definitionId));
       return [item.id, { top, left, height }];
     })
@@ -485,7 +539,7 @@ function createDefaultMessageBoardInstance(
     state: {},
     bindings: [],
     position: { x: DEFAULT_BOARD_WIDGET_OFFSET, y: DEFAULT_BOARD_WIDGET_OFFSET },
-    size: { w: 240, h: 260 },
+    size: { w: 240, h: 500 },
     zIndex,
     locked: false,
     createdAt: now,
@@ -618,6 +672,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           });
         }
       }
+      const definitionTypeById = buildDefinitionTypeMap(definitions);
+      const normalizedWidgets = normalizeWidgetInstances(widgetInstances, definitionTypeById);
+      widgetInstances = normalizedWidgets.items;
+      if (normalizedWidgets.changed.length > 0) {
+        await repository.upsertInstances(normalizedWidgets.changed);
+      }
 
       set({
         ready: true,
@@ -747,7 +807,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { repository, widgetDefinitions } = get();
     const existingInstances = await repository.listByBoard(boardId);
     const widgetInstances = await ensureBoardDefaultWidgets(repository, boardId, widgetDefinitions, existingInstances);
-    set({ activeBoardId: boardId, widgetInstances });
+    const definitionTypeById = buildDefinitionTypeMap(widgetDefinitions);
+    const normalizedWidgets = normalizeWidgetInstances(widgetInstances, definitionTypeById);
+    if (normalizedWidgets.changed.length > 0) {
+      await repository.upsertInstances(normalizedWidgets.changed);
+    }
+    set({ activeBoardId: boardId, widgetInstances: normalizedWidgets.items });
   },
   async addWidgetInstance(definitionId, options) {
     const { repository, activeBoardId, widgetInstances, widgetDefinitions } = get();
@@ -865,11 +930,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return normalized;
     };
     const safeH = (widget: WidgetInstance) => {
-      if (typeOf(widget) === "tv") {
-        return 480;
-      }
-      const n = toNumber(widget.size.h);
-      return Number.isFinite(n) ? Math.max(90, n) : 180;
+      return safeWidgetHeight(widget, typeOf(widget));
     };
 
     const measuredLayout = measureWidgetLayout(widgetInstances, definitionTypeById);

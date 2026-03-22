@@ -3,6 +3,8 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { Button } from "@xiaozhuoban/ui";
 import { WidgetShell } from "./WidgetShell";
+import { GomokuWidget } from "./GomokuWidget";
+import { MonopolyWidget } from "./MonopolyWidget";
 import { DEFAULT_TV_PLAYLIST_URL, parseM3UPlaylist, type TvChannel } from "./tvShared";
 import {
   CHINA_TIME_ZONE,
@@ -90,6 +92,8 @@ function GlassSelect({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const prevWidgetZRef = useRef<string>("");
   const selected = options.find((item) => item.value === value) ?? options[0];
 
@@ -124,9 +128,61 @@ function GlassSelect({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const updateMenuPosition = () => {
+      const root = rootRef.current;
+      const button = buttonRef.current;
+      const panel = panelRef.current;
+      if (!root || !button || !panel) return;
+      const rootRect = root.getBoundingClientRect();
+      const buttonRect = button.getBoundingClientRect();
+      const viewportPadding = 8;
+      const preferredWidth =
+        typeof menuWidth === "number"
+          ? menuWidth
+          : typeof menuWidth === "string" && menuWidth.trim() && menuWidth !== "100%"
+            ? Number.parseFloat(menuWidth)
+            : buttonRect.width;
+      const nextWidth = Math.min(
+        Math.max(Number.isFinite(preferredWidth) ? preferredWidth : buttonRect.width, buttonRect.width),
+        window.innerWidth - viewportPadding * 2
+      );
+      panel.style.width = `${nextWidth}px`;
+      panel.style.minWidth = `${Math.min(buttonRect.width, nextWidth)}px`;
+
+      const panelHeight = panel.offsetHeight;
+      const canOpenBelow = buttonRect.bottom + 6 + panelHeight <= window.innerHeight - viewportPadding;
+      const canOpenAbove = buttonRect.top - 6 - panelHeight >= viewportPadding;
+      const top = canOpenBelow || !canOpenAbove ? rootRect.height + 6 : -panelHeight - 6;
+
+      let left = 0;
+      if (rootRect.left + nextWidth > window.innerWidth - viewportPadding) {
+        left = window.innerWidth - viewportPadding - rootRect.left - nextWidth;
+      }
+      if (rootRect.left + left < viewportPadding) {
+        left = viewportPadding - rootRect.left;
+      }
+
+      panel.style.top = `${top}px`;
+      panel.style.left = `${left}px`;
+      panel.style.right = "auto";
+    };
+
+    const rafId = window.requestAnimationFrame(updateMenuPosition);
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [menuWidth, open, options.length]);
+
   return (
     <div ref={rootRef} style={{ position: "relative", ...style }}>
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         style={{
@@ -162,12 +218,13 @@ function GlassSelect({
       </button>
       {open ? (
         <div
+          ref={panelRef}
           className="glass-dropdown-panel"
           style={{
             position: "absolute",
-            right: 0,
             top: 36,
-            width: menuWidth ?? "100%",
+            left: 0,
+            width: typeof menuWidth === "number" ? menuWidth : "100%",
             minWidth: "100%",
             padding: 4,
             zIndex: 99991,
@@ -1593,17 +1650,17 @@ export function BuiltinWidgetView({
                   running: total > 0
                 });
               }}
-              style={timerIconBtnStyle}
+              style={mediaIconBtnStyle({ size: 20, fontSize: 18 })}
             >
-              ▶
+              {renderMediaControlIcon("play")}
             </button>
             <button
               onClick={() => {
                 onStateChange({ ...instance.state, running: false });
               }}
-              style={timerIconBtnStyle}
+              style={mediaIconBtnStyle({ size: 20, fontSize: 18 })}
             >
-              ⏸
+              {renderMediaControlIcon("pause")}
             </button>
             <button
               onClick={() => {
@@ -1615,9 +1672,9 @@ export function BuiltinWidgetView({
                   running: false
                 });
               }}
-              style={timerIconBtnStyle}
+              style={mediaIconBtnStyle({ size: 20, fontSize: 18 })}
             >
-              ↺
+              {renderMediaControlIcon("reset")}
             </button>
           </div>
         </div>
@@ -2352,18 +2409,10 @@ export function BuiltinWidgetView({
                       setError("播放失败，请重试");
                     });
                   }}
-                  style={{
-                    border: "none",
-                    background: "transparent",
-                    color: "#111827",
-                    fontSize: 14,
-                    cursor: "pointer",
-                    padding: 0,
-                    width: 16
-                  }}
+                  style={mediaIconBtnStyle({ size: 16, fontSize: 14 })}
                   title={active && isPlaying ? "暂停" : "播放"}
                 >
-                  {active && isPlaying ? "⏸" : "▶"}
+                  {renderMediaControlIcon(active && isPlaying ? "pause" : "play")}
                 </button>
                 <div style={{ minWidth: 0 }}>
                   <div
@@ -2725,7 +2774,7 @@ export function BuiltinWidgetView({
                           minHeight: 18,
                           lineHeight: 1.1,
                           paddingTop: 8,
-                          paddingRight: isMobileMode ? 16 : 20
+                          paddingRight: isMobileMode ? 20 : 20
                         }}
                       >
                         {getWorldClockOptionLabel(timeZone)}
@@ -2745,7 +2794,7 @@ export function BuiltinWidgetView({
                         buttonStyle={{
                           width: "auto",
                           minHeight: 18,
-                          padding: isMobileMode ? "0 16px 0 0" : "0 20px 0 0",
+                          padding: isMobileMode ? "0 20px 0 0" : "0 20px 0 0",
                           border: "none",
                           borderRadius: 0,
                           background: "transparent",
@@ -3124,6 +3173,28 @@ export function BuiltinWidgetView({
     const canNext = historyIndex >= 0 && historyIndex < history.length - 1;
     const sourceHeight = Number(instance.state.sourceHeight ?? 108);
     const resultHeight = Number(instance.state.resultHeight ?? 96);
+    const pasteSourceText = async () => {
+      if (!navigator.clipboard?.readText) {
+        onStateChange({
+          ...instance.state,
+          translateError: "当前浏览器不支持读取剪贴板"
+        });
+        return;
+      }
+      try {
+        const text = await navigator.clipboard.readText();
+        onStateChange({
+          ...instance.state,
+          sourceText: text,
+          translateError: ""
+        });
+      } catch (error) {
+        onStateChange({
+          ...instance.state,
+          translateError: error instanceof Error ? error.message : "读取剪贴板失败"
+        });
+      }
+    };
 
     return (
       <WidgetShell definition={definition} instance={instance}>
@@ -3183,53 +3254,100 @@ export function BuiltinWidgetView({
             background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
           }}
         />
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, marginBottom: 8 }}>
-          <Button
-            onClick={() => {
-              if (!sourceText.trim()) return;
-              onStateChange({ ...instance.state, translating: true, translateError: "" });
-              void quickTranslate(sourceText, sourceLang, targetLang)
-                .then((text) => {
-                  const currentHistory = (Array.isArray(instance.state.translateHistory)
-                    ? instance.state.translateHistory
-                    : []) as TranslateHistoryItem[];
-                  const currentIndex = Number(instance.state.translateHistoryIndex ?? (currentHistory.length ? currentHistory.length - 1 : -1));
-                  const normalizedIndex = Number.isFinite(currentIndex) ? currentIndex : currentHistory.length - 1;
-                  const baseHistory =
-                    normalizedIndex >= 0 && normalizedIndex < currentHistory.length - 1
-                      ? currentHistory.slice(0, normalizedIndex + 1)
-                      : currentHistory;
-                  const nextHistory = [
-                    ...baseHistory,
-                    {
-                      sourceText,
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr auto 1fr",
+            alignItems: "center",
+            gap: 8,
+            marginTop: 8,
+            marginBottom: 8
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "flex-start" }}>
+            <button
+              type="button"
+              onClick={() => void pasteSourceText()}
+              style={{
+                border: "none",
+                background: "transparent",
+                padding: 0,
+                width: 18,
+                height: 18,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#475569",
+                cursor: "pointer"
+              }}
+              title="粘贴剪贴板内容"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path
+                  d="M5.5 2.5H4.75A1.75 1.75 0 0 0 3 4.25v7A1.75 1.75 0 0 0 4.75 13h6.5A1.75 1.75 0 0 0 13 11.25v-7A1.75 1.75 0 0 0 11.25 2.5H10.5"
+                  stroke="currentColor"
+                  strokeWidth="1.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M6 2.75C6 2.06 6.56 1.5 7.25 1.5h1.5C9.44 1.5 10 2.06 10 2.75v.5H6v-.5Z"
+                  stroke="currentColor"
+                  strokeWidth="1.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <Button
+              onClick={() => {
+                if (!sourceText.trim()) return;
+                onStateChange({ ...instance.state, translating: true, translateError: "" });
+                void quickTranslate(sourceText, sourceLang, targetLang)
+                  .then((text) => {
+                    const currentHistory = (Array.isArray(instance.state.translateHistory)
+                      ? instance.state.translateHistory
+                      : []) as TranslateHistoryItem[];
+                    const currentIndex = Number(instance.state.translateHistoryIndex ?? (currentHistory.length ? currentHistory.length - 1 : -1));
+                    const normalizedIndex = Number.isFinite(currentIndex) ? currentIndex : currentHistory.length - 1;
+                    const baseHistory =
+                      normalizedIndex >= 0 && normalizedIndex < currentHistory.length - 1
+                        ? currentHistory.slice(0, normalizedIndex + 1)
+                        : currentHistory;
+                    const nextHistory = [
+                      ...baseHistory,
+                      {
+                        sourceText,
+                        translatedText: text,
+                        sourceLang,
+                        targetLang,
+                        translatedAt: new Date().toISOString()
+                      }
+                    ];
+                    onStateChange({
+                      ...instance.state,
+                      translating: false,
+                      translateError: "",
                       translatedText: text,
-                      sourceLang,
-                      targetLang,
-                      translatedAt: new Date().toISOString()
-                    }
-                  ];
-                  onStateChange({
-                    ...instance.state,
-                    translating: false,
-                    translateError: "",
-                    translatedText: text,
-                    translateHistory: nextHistory,
-                    translateHistoryIndex: nextHistory.length - 1
+                      translateHistory: nextHistory,
+                      translateHistoryIndex: nextHistory.length - 1
+                    });
+                  })
+                  .catch((error) => {
+                    onStateChange({
+                      ...instance.state,
+                      translating: false,
+                      translateError: error instanceof Error ? error.message : "翻译失败"
+                    });
                   });
-                })
-                .catch((error) => {
-                  onStateChange({
-                    ...instance.state,
-                    translating: false,
-                    translateError: error instanceof Error ? error.message : "翻译失败"
-                  });
-                });
-            }}
-          >
-            {translating ? "…" : "⇢"}
-          </Button>
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+              }}
+            >
+              {translating ? "…" : "⇢"}
+            </Button>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10 }}>
             <button
               onClick={() => {
                 if (!canPrev) return;
@@ -3552,12 +3670,20 @@ export function BuiltinWidgetView({
       <WidgetShell
         definition={definition}
         instance={instance}
-        cardStyle={{
-          height: isMobileMode ? "auto" : "100%",
-          minHeight: 260,
-          maxHeight: isMobileMode ? 480 : undefined,
-          overflow: "hidden"
-        }}
+        cardStyle={
+          isMobileMode
+            ? {
+                height: "auto",
+                minHeight: 260,
+                maxHeight: 480,
+                overflow: "hidden"
+              }
+            : {
+                height: "100%",
+                minHeight: 0,
+                overflow: "hidden"
+              }
+        }
       >
         <div
           style={{
@@ -3633,6 +3759,28 @@ export function BuiltinWidgetView({
           </div>
         </div>
       </WidgetShell>
+    );
+  }
+
+  if (definition.type === "gomoku") {
+    return (
+      <GomokuWidget
+        definition={definition}
+        instance={instance}
+        isMobileMode={isMobileMode}
+        onStateChange={onStateChange}
+      />
+    );
+  }
+
+  if (definition.type === "monopoly") {
+    return (
+      <MonopolyWidget
+        definition={definition}
+        instance={instance}
+        isMobileMode={isMobileMode}
+        onStateChange={onStateChange}
+      />
     );
   }
 
@@ -3827,7 +3975,7 @@ export function BuiltinWidgetView({
                       className="recorder-play-btn"
                       title={playingId === item.id ? "暂停" : "播放"}
                     >
-                      {playingId === item.id ? "⏸" : "▶"}
+                      {renderMediaControlIcon(playingId === item.id ? "pause" : "play")}
                     </button>
                     <input
                       type="range"
@@ -4004,17 +4152,64 @@ export function AIFormWidgetView({
   );
 }
 
-const timerIconBtnStyle: CSSProperties = {
-  border: "none",
-  background: "transparent",
-  color: "#334155",
-  fontSize: 18,
-  lineHeight: 1,
-  width: 20,
-  height: 20,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: 0,
-  cursor: "pointer"
-};
+function mediaIconBtnStyle({
+  size,
+  fontSize
+}: {
+  size: number;
+  fontSize: number;
+}): CSSProperties {
+  return {
+    border: "none",
+    background: "transparent",
+    color: "#0f172a",
+    fontSize,
+    lineHeight: 1,
+    width: size,
+    height: size,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    cursor: "pointer",
+    boxShadow: "none"
+  };
+}
+
+function renderMediaControlIcon(kind: "play" | "pause" | "reset") {
+  if (kind === "play") {
+    return (
+      <svg width="11" height="12" viewBox="0 0 11 12" fill="none" aria-hidden="true">
+        <path d="M2 1.6L9 6L2 10.4V1.6Z" fill="#0f172a" />
+      </svg>
+    );
+  }
+  if (kind === "pause") {
+    return (
+      <span
+        aria-hidden="true"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 2
+        }}
+      >
+        <span style={{ width: 3, height: 12, borderRadius: 999, background: "#0f172a", display: "block" }} />
+        <span style={{ width: 3, height: 12, borderRadius: 999, background: "#0f172a", display: "block" }} />
+      </span>
+    );
+  }
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path
+        d="M11.5 7A4.5 4.5 0 1 1 7 2.5c1.2 0 2.28.47 3.08 1.24"
+        stroke="#0f172a"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M11.5 2.75v2.5H9" stroke="#0f172a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}

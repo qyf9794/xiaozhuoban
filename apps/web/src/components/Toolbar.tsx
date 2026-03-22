@@ -89,11 +89,14 @@ export function Toolbar({
     });
   }, [definitions]);
 
+  const chromeColor = isMobileMode ? "#ffffff" : "#94a3b8";
+  const titleColor = isMobileMode ? "#ffffff" : "#0f172a";
+
   return (
     <header
       className={isMobileMode ? "toolbar-mobile toolbar-shell liquid-glass-preserve" : "toolbar-shell liquid-glass-preserve"}
       style={{
-        position: isMobileMode ? "sticky" : "relative",
+        position: isMobileMode ? "fixed" : "relative",
         top: isMobileMode ? 0 : undefined,
         zIndex: 1200,
         display: "flex",
@@ -101,9 +104,9 @@ export function Toolbar({
         justifyContent: "space-between",
         gap: 12,
         padding: "10px 14px",
-        background: "linear-gradient(170deg, rgba(255,255,255,0.5), rgba(255,255,255,0.28))",
-        borderBottom: "1px solid rgba(255,255,255,0.6)",
-        backdropFilter: "blur(18px) saturate(130%)",
+        background: "transparent",
+        borderBottom: "none",
+        backdropFilter: "none",
         paddingTop: isMobileMode ? "calc(env(safe-area-inset-top) + 8px)" : "10px"
       }}
     >
@@ -114,8 +117,8 @@ export function Toolbar({
           style={{
             border: "none",
             background: "transparent",
-            color: "#94a3b8",
-            fontSize: isMobileMode ? 20 : 18,
+            color: chromeColor,
+            fontSize: 18,
             lineHeight: 1,
             cursor: "pointer",
             padding: 0,
@@ -125,7 +128,7 @@ export function Toolbar({
             placeItems: "center"
           }}
         >
-          {isMobileMode ? "☰" : <SidebarToggleIcon open={sidebarOpen} />}
+          <SidebarToggleIcon open={!isMobileMode && sidebarOpen} />
         </button>
         {!isMobileMode ? (
           <button
@@ -134,7 +137,7 @@ export function Toolbar({
             style={{
               border: "none",
               background: "transparent",
-              color: "#94a3b8",
+              color: chromeColor,
               cursor: "pointer",
               padding: 0,
               width: 28,
@@ -153,7 +156,8 @@ export function Toolbar({
             maxWidth: isMobileMode ? 150 : "none",
             overflow: "hidden",
             textOverflow: "ellipsis",
-            whiteSpace: "nowrap"
+            whiteSpace: "nowrap",
+            color: titleColor
           }}
         >
           {board.name}
@@ -241,7 +245,7 @@ export function Toolbar({
             style={{
               border: "none",
               background: "transparent",
-              color: "#94a3b8",
+              color: chromeColor,
               fontSize: 26,
               lineHeight: 1,
               cursor: "pointer",
