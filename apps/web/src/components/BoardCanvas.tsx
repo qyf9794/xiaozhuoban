@@ -52,6 +52,12 @@ export function BoardCanvas({
   }, [board.layoutMode, widgets]);
 
   const byId = useMemo(() => new Map(definitions.map((item) => [item.id, item])), [definitions]);
+  const supportsTouchScroll = useMemo(
+    () => typeof navigator !== "undefined" && navigator.maxTouchPoints > 0,
+    []
+  );
+  const useTouchScrollableDesktopCanvas = supportsTouchScroll && !isMobileMode;
+  const useFixedViewportBackground = supportsTouchScroll && !isMobileMode;
 
   const dragPosition = useMemo(() => {
     if (!drag) return null;
@@ -75,9 +81,9 @@ export function BoardCanvas({
       className={isMobileMode ? "board-canvas board-canvas-mobile" : "board-canvas"}
       style={{
         position: "relative",
-        flex: isMobileMode ? undefined : 1,
         overflow: isMobileMode ? "visible" : "auto",
-        overflowX: isMobileMode ? "visible" : "auto",
+        overflowY: isMobileMode ? "visible" : "auto",
+        overflowX: isMobileMode ? "visible" : useTouchScrollableDesktopCanvas ? "hidden" : "auto",
         display: isMobileMode ? "flex" : "block",
         flexDirection: isMobileMode ? "column" : "row",
         gap: isMobileMode ? 16 : 0,
@@ -85,12 +91,20 @@ export function BoardCanvas({
           ? "calc(env(safe-area-inset-top) + 74px) 14px calc(env(safe-area-inset-bottom) + 84px)"
           : 0,
         minHeight: 0,
-        height: isMobileMode ? "auto" : fullscreen ? "100dvh" : "auto",
+        flex: isMobileMode ? undefined : 1,
+        height: isMobileMode ? "auto" : fullscreen ? "100dvh" : "calc(100dvh - 120px)",
         borderRadius: fullscreen ? 0 : 16,
         userSelect: drag || resize ? "none" : "auto",
         WebkitUserSelect: drag || resize ? "none" : "auto",
-        touchAction: isMobileMode ? "pan-y" : "none",
-        background: "transparent"
+        WebkitOverflowScrolling: useTouchScrollableDesktopCanvas ? "touch" : undefined,
+        overscrollBehaviorY: useTouchScrollableDesktopCanvas ? "contain" : undefined,
+        touchAction: isMobileMode || supportsTouchScroll ? "pan-y" : "none",
+        background:
+          isMobileMode || useFixedViewportBackground
+            ? "transparent"
+            : board.background.type === "color"
+              ? board.background.value
+              : `center / cover no-repeat url(${board.background.value})`
       }}
       onPointerMove={
         isMobileMode
@@ -202,6 +216,9 @@ export function BoardCanvas({
               if (isMobileMode || resize || board.locked || widget.locked) {
                 return;
               }
+              if (event.pointerType === "touch") {
+                return;
+              }
               const target = event.target as HTMLElement;
               if (
                 target.closest(
@@ -242,6 +259,7 @@ export function BoardCanvas({
                 title="拖拽调整大小"
                 onPointerDown={(event) => {
                   if (board.locked || widget.locked) return;
+                  if (event.pointerType === "touch") return;
                   event.preventDefault();
                   event.stopPropagation();
                   event.currentTarget.setPointerCapture(event.pointerId);
