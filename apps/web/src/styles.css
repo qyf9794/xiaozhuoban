@@ -659,14 +659,91 @@ button {
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.24);
 }
 
+.weather-widget {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.weather-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+}
+
 .weather-anim {
-  position: absolute;
-  right: 2px;
-  top: -54px;
-  font-size: 22px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  font-size: 34px;
+  line-height: 1;
   animation: weather-float 2.2s ease-in-out infinite;
   pointer-events: none;
-  z-index: 2;
+}
+
+.weather-current {
+  color: #0f172a;
+}
+
+.weather-current-city {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.weather-current-temp {
+  font-size: 24px;
+  line-height: 1.1;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.weather-current-summary {
+  font-size: 12px;
+  color: #475569;
+  margin-top: 2px;
+}
+
+.weather-forecast-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.weather-forecast-card {
+  border-radius: 12px;
+  padding: 8px 6px;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.24));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.weather-forecast-day {
+  font-size: 11px;
+  color: #475569;
+}
+
+.weather-forecast-icon {
+  font-size: 18px;
+  line-height: 1;
+  margin-top: 4px;
+}
+
+.weather-forecast-text {
+  font-size: 11px;
+  color: #0f172a;
+  margin-top: 2px;
+}
+
+.weather-forecast-temp {
+  font-size: 11px;
+  color: #334155;
+  margin-top: 2px;
 }
 
 .headline-marquee {

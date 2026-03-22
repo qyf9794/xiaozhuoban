@@ -42,14 +42,18 @@ function stringArraysEqual(a: readonly string[], b: readonly string[]): boolean 
 const MAJOR_CITIES = [
   { value: "beijing", label: "北京", latitude: 39.9042, longitude: 116.4074 },
   { value: "shanghai", label: "上海", latitude: 31.2304, longitude: 121.4737 },
+  { value: "dalian", label: "大连", latitude: 38.914, longitude: 121.6147 },
   { value: "guangzhou", label: "广州", latitude: 23.1291, longitude: 113.2644 },
   { value: "shenzhen", label: "深圳", latitude: 22.5431, longitude: 114.0579 },
   { value: "hangzhou", label: "杭州", latitude: 30.2741, longitude: 120.1551 },
   { value: "chengdu", label: "成都", latitude: 30.5728, longitude: 104.0668 },
   { value: "wuhan", label: "武汉", latitude: 30.5928, longitude: 114.3055 },
+  { value: "jingzhou", label: "荆州", latitude: 30.3348, longitude: 112.2407 },
   { value: "chongqing", label: "重庆", latitude: 29.4316, longitude: 106.9123 },
   { value: "nanjing", label: "南京", latitude: 32.0603, longitude: 118.7969 },
-  { value: "xian", label: "西安", latitude: 34.3416, longitude: 108.9398 }
+  { value: "xian", label: "西安", latitude: 34.3416, longitude: 108.9398 },
+  { value: "los-angeles", label: "洛杉矶", latitude: 34.0522, longitude: -118.2437 },
+  { value: "boston", label: "波士顿", latitude: 42.3601, longitude: -71.0589 }
 ] as const;
 
 const GLOBAL_INDICES = [
@@ -372,6 +376,22 @@ function weatherCodeToIcon(code: number, isDay: boolean): string {
   if (code === 0) return isDay ? "☀️" : "🌙";
   if ([1, 2, 3].includes(code)) return "⛅";
   return "🌤️";
+}
+
+type WeatherForecastDay = {
+  date: string;
+  weatherCode: number;
+  tempMax: number;
+  tempMin: number;
+};
+
+function formatForecastDayLabel(date: string, index: number): string {
+  if (index === 0) return "明天";
+  const [year, month, day] = date.split("-").map(Number);
+  if (!year || !month || !day) return "--";
+  return new Intl.DateTimeFormat("zh-CN", { weekday: "short", timeZone: "UTC" }).format(
+    new Date(Date.UTC(year, month - 1, day))
+  );
 }
 
 interface ITunesTrack {
@@ -1760,7 +1780,14 @@ export function BuiltinWidgetView({
   if (definition.type === "weather") {
     const selectedCityCode = asString(instance.state.cityCode) || "shanghai";
     const weather = instance.state.weather as
-      | { temperature: number; windSpeed: number; weatherCode: number; isDay: boolean; fetchedAt: string }
+      | {
+          temperature: number;
+          windSpeed: number;
+          weatherCode: number;
+          isDay: boolean;
+          fetchedAt: string;
+          forecast: WeatherForecastDay[];
+        }
       | undefined;
     const loading = instance.state.weatherLoading === true;
     const error = asString(instance.state.weatherError);
@@ -1772,7 +1799,7 @@ export function BuiltinWidgetView({
       onStateChange({ ...instance.state, weatherLoading: true, weatherError: "" });
 
       void fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${city.latitude}&longitude=${city.longitude}&current=temperature_2m,weather_code,is_day,wind_speed_10m&timezone=auto`
+        `https://api.open-meteo.com/v1/forecast?latitude=${city.latitude}&longitude=${city.longitude}&current=temperature_2m,weather_code,is_day,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=4&timezone=auto`
       )
         .then(async (response) => {
           if (!response.ok) {
@@ -1780,10 +1807,26 @@ export function BuiltinWidgetView({
           }
           const payload = (await response.json()) as {
             current?: { temperature_2m: number; weather_code: number; is_day: number; wind_speed_10m: number };
+            daily?: {
+              time?: string[];
+              weather_code?: number[];
+              temperature_2m_max?: number[];
+              temperature_2m_min?: number[];
+            };
           };
           if (!payload.current) {
             throw new Error("天气数据为空");
           }
+          const forecast =
+            payload.daily?.time
+              ?.slice(1, 4)
+              .map((date, index) => ({
+                date,
+                weatherCode: payload.daily?.weather_code?.[index + 1] ?? 0,
+                tempMax: payload.daily?.temperature_2m_max?.[index + 1] ?? 0,
+                tempMin: payload.daily?.temperature_2m_min?.[index + 1] ?? 0
+              }))
+              .filter((item) => item.date) ?? [];
           if (cancelled) return;
           onStateChange({
             ...instance.state,
@@ -1795,7 +1838,8 @@ export function BuiltinWidgetView({
               windSpeed: payload.current.wind_speed_10m,
               weatherCode: payload.current.weather_code,
               isDay: payload.current.is_day === 1,
-              fetchedAt: new Date().toISOString()
+              fetchedAt: new Date().toISOString(),
+              forecast
             }
           });
         })
@@ -1819,31 +1863,52 @@ export function BuiltinWidgetView({
     const currentCity = MAJOR_CITIES.find((item) => item.value === selectedCityCode) ?? MAJOR_CITIES[1];
     const weatherText = weather ? weatherCodeToText(weather.weatherCode) : "--";
     const weatherIcon = weather ? weatherCodeToIcon(weather.weatherCode, weather.isDay) : "⛅";
+    const forecast = weather?.forecast ?? [];
 
     return (
       <WidgetShell definition={definition} instance={instance}>
-        <div style={{ position: "relative", paddingTop: 4 }}>
-          <div className="weather-anim" title={weatherText}>
-            {weatherIcon}
-          </div>
+        <div className="weather-widget">
           <GlassSelect
             value={selectedCityCode}
             onChange={(next) => onStateChange({ ...instance.state, cityCode: next })}
             options={MAJOR_CITIES.map((city) => ({ value: city.value, label: city.label }))}
           />
 
-          <div style={{ marginTop: 10, fontSize: 13, color: "#1f2937" }}>
+          <div className="weather-hero">
+            <div className="weather-anim" title={weatherText}>
+              {weatherIcon}
+            </div>
+            <div className="weather-current">
+              <div className="weather-current-city">{currentCity.label}</div>
+              {!loading && !error ? (
+                <>
+                  <div className="weather-current-temp">{weather?.temperature ?? "--"}°C</div>
+                  <div className="weather-current-summary">
+                    {weatherText} · 风速 {weather?.windSpeed ?? "--"} km/h
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+
+          <div style={{ fontSize: 13, color: "#1f2937" }}>
             {loading ? (
               "正在获取实时天气..."
             ) : error ? (
               <span style={{ color: "#b91c1c" }}>{error}</span>
             ) : (
-              <>
-                <div>
-                  {currentCity.label}：{weatherText}，{weather?.temperature ?? "--"}°C
-                </div>
-                <div style={{ color: "#64748b", marginTop: 4 }}>风速：{weather?.windSpeed ?? "--"} km/h</div>
-              </>
+              <div className="weather-forecast-row">
+                {forecast.map((item, index) => (
+                  <div key={item.date} className="weather-forecast-card">
+                    <div className="weather-forecast-day">{formatForecastDayLabel(item.date, index)}</div>
+                    <div className="weather-forecast-icon">{weatherCodeToIcon(item.weatherCode, true)}</div>
+                    <div className="weather-forecast-text">{weatherCodeToText(item.weatherCode)}</div>
+                    <div className="weather-forecast-temp">
+                      {Math.round(item.tempMax)}° / {Math.round(item.tempMin)}°
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
