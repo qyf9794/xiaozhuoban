@@ -1868,18 +1868,31 @@ export function BuiltinWidgetView({
     return (
       <WidgetShell definition={definition} instance={instance}>
         <div className="weather-widget">
-          <GlassSelect
-            value={selectedCityCode}
-            onChange={(next) => onStateChange({ ...instance.state, cityCode: next })}
-            options={MAJOR_CITIES.map((city) => ({ value: city.value, label: city.label }))}
-          />
-
           <div className="weather-hero">
             <div className="weather-anim" title={weatherText}>
               {weatherIcon}
             </div>
             <div className="weather-current">
-              <div className="weather-current-city">{currentCity.label}</div>
+              <GlassSelect
+                value={selectedCityCode}
+                onChange={(next) => onStateChange({ ...instance.state, cityCode: next })}
+                options={MAJOR_CITIES.map((city) => ({ value: city.value, label: city.label }))}
+                style={{ width: "fit-content", maxWidth: "100%", margin: "0 auto" }}
+                menuWidth={132}
+                buttonStyle={{
+                  width: "auto",
+                  minHeight: 18,
+                  padding: "0 20px 0 0",
+                  border: "none",
+                  borderRadius: 0,
+                  background: "transparent",
+                  boxShadow: "none",
+                  fontSize: 13,
+                  lineHeight: 1.1,
+                  color: "#0f172a",
+                  textAlign: "center"
+                }}
+              />
               {!loading && !error ? (
                 <>
                   <div className="weather-current-temp">{weather?.temperature ?? "--"}°C</div>

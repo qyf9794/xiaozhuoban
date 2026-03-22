@@ -265,7 +265,8 @@ export function BoardCanvas({
                 style={{
                   position: "absolute",
                   top: 8,
-                  right: 24,
+                  left: "50%",
+                  transform: "translateX(-50%)",
                   zIndex: 8,
                   width: 18,
                   height: 18,
