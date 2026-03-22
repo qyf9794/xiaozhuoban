@@ -391,6 +391,9 @@ function getDefaultWidgetSize(type?: string): { w: number; h: number } {
   if (type === "headline") {
     return { w: 240, h: 320 };
   }
+  if (type === "weather") {
+    return { w: 240, h: 260 };
+  }
   if (type === "messageBoard") {
     return { w: 240, h: 500 };
   }
@@ -413,6 +416,9 @@ function safeWidgetHeight(widget: WidgetInstance, definitionType?: string) {
   if (definitionType === "messageBoard") {
     return 500;
   }
+  if (definitionType === "weather") {
+    return Math.max(260, Number(widget.size.h) || 260);
+  }
   if (definitionType === "gomoku") {
     return Math.max(560, Number(widget.size.h) || 640);
   }
@@ -423,7 +429,7 @@ function safeWidgetHeight(widget: WidgetInstance, definitionType?: string) {
 }
 
 function normalizeWidgetInstanceSize(widget: WidgetInstance, definitionType?: string): WidgetInstance {
-  if (definitionType !== "messageBoard") {
+  if (definitionType !== "messageBoard" && definitionType !== "weather") {
     return widget;
   }
   const nextWidth = safeWidgetWidth(widget, definitionType);
