@@ -49,46 +49,43 @@ export function OnlineUsersDock({
 
   return (
     <div
-      className="online-users-dock liquid-glass-preserve"
+      className="online-users-dock"
       style={{
         position: "fixed",
         left: 12,
         bottom: desktopBottomInset,
         zIndex: 1500,
-        minWidth: 180,
-        maxWidth: 280,
-        borderRadius: 12,
-        border: "1px solid rgba(255,255,255,0.58)",
-        background: "linear-gradient(170deg, rgba(255,255,255,0.58), rgba(255,255,255,0.34))",
-        backdropFilter: "blur(12px)",
-        boxShadow: "0 8px 18px rgba(15,23,42,0.14)",
-        padding: "8px 10px"
+        maxWidth: 360,
+        padding: 0,
+        background: "transparent"
       }}
     >
-      <div style={{ fontSize: 12, color: "#334155", marginBottom: 4 }}>在线用户</div>
       {onlineNames.length > 0 ? (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 10,
+            fontSize: 14,
+            fontWeight: 500,
+            color: "#ffffff",
+            textShadow: "0 1px 8px rgba(15,23,42,0.35)"
+          }}
+        >
           {onlineNames.map((name) => (
-            <span
-              key={name}
-              className="online-users-chip liquid-glass-preserve"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                borderRadius: 999,
-                padding: "2px 8px",
-                fontSize: 12,
-                color: "#0f172a",
-                border: "1px solid rgba(148,163,184,0.38)",
-                background: "rgba(255,255,255,0.5)"
-              }}
-            >
-              {name}
-            </span>
+            <span key={name}>{name}</span>
           ))}
         </div>
       ) : (
-        <div style={{ fontSize: 12, color: "#64748b" }}>暂无其他在线用户</div>
+        <div
+          style={{
+            fontSize: 13,
+            color: "rgba(255,255,255,0.82)",
+            textShadow: "0 1px 8px rgba(15,23,42,0.35)"
+          }}
+        >
+          暂无其他在线用户
+        </div>
       )}
     </div>
   );
