@@ -53,6 +53,17 @@ export interface MonopolyLastRoll {
   total: number;
 }
 
+export interface MonopolyMovementSegment {
+  from: number;
+  to: number;
+  backward: boolean;
+}
+
+export interface MonopolyLastMovement {
+  playerId: string;
+  segments: MonopolyMovementSegment[];
+}
+
 export interface MonopolyPendingDecision {
   type: "purchase" | "upgrade";
   playerId: string;
@@ -94,6 +105,7 @@ export interface MonopolyState {
   chanceDeck: string[];
   fateDeck: string[];
   lastRoll: MonopolyLastRoll | null;
+  lastMovement: MonopolyLastMovement | null;
   lastEvent: string;
   pendingDecision: MonopolyPendingDecision | null;
   ranking: MonopolyRankingEntry[];
@@ -189,6 +201,12 @@ function cloneState(state: MonopolyState): MonopolyState {
     chanceDeck: [...state.chanceDeck],
     fateDeck: [...state.fateDeck],
     lastRoll: state.lastRoll ? { ...state.lastRoll, dice: [...state.lastRoll.dice] as [number, number] } : null,
+    lastMovement: state.lastMovement
+      ? {
+          playerId: state.lastMovement.playerId,
+          segments: state.lastMovement.segments.map((segment) => ({ ...segment }))
+        }
+      : null,
     lastEvent: state.lastEvent,
     pendingDecision: state.pendingDecision ? { ...state.pendingDecision } : null,
     ranking: state.ranking.map((item) => ({ ...item })),
@@ -306,6 +324,7 @@ function createLobbyState(invites: MonopolyInvite[]): MonopolyState {
     chanceDeck: [],
     fateDeck: [],
     lastRoll: null,
+    lastMovement: null,
     lastEvent: "等待受邀玩家回应",
     pendingDecision: null,
     ranking: [],
@@ -343,6 +362,7 @@ function createActiveState(
     chanceDeck: createDeck("chance", random),
     fateDeck: createDeck("fate", random),
     lastRoll: null,
+    lastMovement: null,
     lastEvent: openingEvent ?? `房间已开始，轮到 ${hostUserName} 掷骰`,
     pendingDecision: null,
     ranking: [],
@@ -643,11 +663,26 @@ function resolveTile(
     return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), eventText, actionAt);
   }
 
+  const movementFrom = currentPlayer.position;
   const moveResult =
     card.kind === "move_relative"
       ? movePlayerPosition(currentPlayer.position, card.amount ?? 0)
       : movePlayerToTile(currentPlayer.position, card.tileIndex ?? 0);
   currentPlayer.position = moveResult.position;
+  if (movementFrom !== moveResult.position) {
+    const existingSegments = state.lastMovement?.playerId === currentPlayer.userId ? state.lastMovement.segments : [];
+    state.lastMovement = {
+      playerId: currentPlayer.userId,
+      segments: [
+        ...existingSegments,
+        {
+          from: movementFrom,
+          to: moveResult.position,
+          backward: card.kind === "move_relative" && (card.amount ?? 0) < 0
+        }
+      ]
+    };
+  }
   if (moveResult.passedStart || (card.collectStartReward && moveResult.position === 0)) {
     currentPlayer.cash += MONOPOLY_PASS_START_REWARD;
   }
@@ -715,6 +750,36 @@ function normalizePropertyLevels(value: unknown) {
     .map(([key, level]) => [key, Number(level) || 0] as const)
     .filter(([key, level]) => key.trim() && level > 0);
   return Object.fromEntries(entries) as Record<string, number>;
+}
+
+function normalizeLastMovement(value: unknown): MonopolyLastMovement | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const raw = value as Record<string, unknown>;
+  const playerId = typeof raw.playerId === "string" ? raw.playerId : "";
+  if (!playerId || !Array.isArray(raw.segments)) {
+    return null;
+  }
+
+  const segments = raw.segments
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const rawSegment = entry as Record<string, unknown>;
+      const from = Number(rawSegment.from);
+      const to = Number(rawSegment.to);
+      if (!Number.isInteger(from) || !Number.isInteger(to)) {
+        return null;
+      }
+      return {
+        from,
+        to,
+        backward: rawSegment.backward === true
+      };
+    })
+    .filter(Boolean) as MonopolyMovementSegment[];
+
+  return segments.length > 0 ? { playerId, segments } : null;
 }
 
 function normalizeRanking(value: unknown, players: MonopolyPlayerState[], propertyLevels: Record<string, number>) {
@@ -827,6 +892,7 @@ export function normalizeMonopolyState(value: unknown): MonopolyState {
           total: Number(lastRollRaw.total) || (Number(lastRollRaw.dice[0]) || 1) + (Number(lastRollRaw.dice[1]) || 1)
         }
       : null;
+  const lastMovement = normalizeLastMovement(raw.lastMovement);
 
   return {
     invites,
@@ -838,6 +904,7 @@ export function normalizeMonopolyState(value: unknown): MonopolyState {
     chanceDeck: Array.isArray(raw.chanceDeck) ? raw.chanceDeck.filter((item) => typeof item === "string") : [],
     fateDeck: Array.isArray(raw.fateDeck) ? raw.fateDeck.filter((item) => typeof item === "string") : [],
     lastRoll,
+    lastMovement,
     lastEvent: typeof raw.lastEvent === "string" ? raw.lastEvent : "",
     pendingDecision: pendingDecision?.playerId ? pendingDecision : null,
     ranking: normalizeRanking(raw.ranking, players, propertyLevels),
@@ -1060,6 +1127,7 @@ export function submitRoll(
 
   const dice = params.dice ?? rollDice(params.random);
   const total = dice[0] + dice[1];
+  const startPosition = currentPlayer.position;
   const moved = movePlayerPosition(currentPlayer.position, total);
   currentPlayer.position = moved.position;
   if (moved.passedStart) {
@@ -1070,6 +1138,16 @@ export function submitRoll(
     playerId: currentPlayer.userId,
     dice,
     total
+  };
+  state.lastMovement = {
+    playerId: currentPlayer.userId,
+    segments: [
+      {
+        from: startPosition,
+        to: moved.position,
+        backward: false
+      }
+    ]
   };
   state.turnStep = "roll";
   state.lastEvent = `${currentPlayer.userName} 掷出 ${dice[0]} + ${dice[1]}，前进 ${total} 格`;
