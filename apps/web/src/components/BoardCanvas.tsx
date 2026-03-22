@@ -99,12 +99,7 @@ export function BoardCanvas({
         WebkitOverflowScrolling: useTouchScrollableDesktopCanvas ? "touch" : undefined,
         overscrollBehaviorY: useTouchScrollableDesktopCanvas ? "contain" : undefined,
         touchAction: isMobileMode || supportsTouchScroll ? "pan-y" : "none",
-        background:
-          isMobileMode || useFixedViewportBackground
-            ? "transparent"
-            : board.background.type === "color"
-              ? board.background.value
-              : `center / cover no-repeat url(${board.background.value})`
+        background: "transparent"
       }}
       onPointerMove={
         isMobileMode
