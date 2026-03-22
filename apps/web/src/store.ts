@@ -593,6 +593,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   commandPaletteOpen: false,
   aiDialogOpen: false,
   setRepository(repository) {
+    if (get().repository === repository) {
+      return;
+    }
     initializingPromise = null;
     set({
       repository,
@@ -606,6 +609,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
   async initialize() {
+    const currentState = get();
+    if (currentState.ready && currentState.activeBoardId) {
+      return;
+    }
+
     if (initializingPromise) {
       await initializingPromise;
       return;
@@ -617,7 +625,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       let workspacePersistTask: Promise<void> | null = null;
       let boardPersistTask: Promise<void> | null = null;
       let definitionsPersistTask: Promise<void> | null = null;
-      let workspaces = await repository.list();
+      let [workspaces, definitions] = await Promise.all([repository.list(), repository.listDefinitions()]);
 
       if (workspaces.length === 0) {
         const workspace = makeWorkspace();
@@ -627,10 +635,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       const workspaceId = workspaces[0].id;
-      let [boards, definitions] = await Promise.all([
-        repository.listByWorkspace(workspaceId),
-        repository.listDefinitions()
-      ]);
+      let boards = await repository.listByWorkspace(workspaceId);
 
       if (boards.length === 0) {
         const board = makeBoard(workspaceId);
@@ -647,9 +652,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const missingDefinitions = createMissingSystemDefinitions(definitions, now);
       if (missingDefinitions.length > 0) {
         definitions = [...definitions, ...missingDefinitions];
-        definitionsPersistTask = Promise.all(
-          missingDefinitions.map((definition) => repository.upsertDefinition(definition))
-        ).then(() => undefined);
+        definitionsPersistTask = repository.upsertDefinitions(missingDefinitions);
         backgroundTasks.push({ task: definitionsPersistTask, label: "persist widget definitions" });
       }
 

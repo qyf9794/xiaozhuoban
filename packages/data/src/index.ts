@@ -18,6 +18,7 @@ export interface WidgetRepository {
   upsertInstances(instances: WidgetInstance[]): Promise<void>;
   deleteInstance(instanceId: string): Promise<void>;
   listDefinitions(): Promise<WidgetDefinition[]>;
+  upsertDefinitions(definitions: WidgetDefinition[]): Promise<void>;
   upsertDefinition(definition: WidgetDefinition): Promise<void>;
 }
 
@@ -76,6 +77,12 @@ export class InMemoryRepository implements AppRepository {
 
   async listDefinitions(): Promise<WidgetDefinition[]> {
     return [...this.widgetDefs.values()];
+  }
+
+  async upsertDefinitions(definitions: WidgetDefinition[]): Promise<void> {
+    definitions.forEach((definition) => {
+      this.widgetDefs.set(definition.id, definition);
+    });
   }
 
   async upsertDefinition(definition: WidgetDefinition): Promise<void> {
@@ -157,6 +164,11 @@ export class DexieRepository implements AppRepository {
 
   async listDefinitions(): Promise<WidgetDefinition[]> {
     return this.db.widgetDefs.toArray();
+  }
+
+  async upsertDefinitions(definitions: WidgetDefinition[]): Promise<void> {
+    if (definitions.length === 0) return;
+    await this.db.widgetDefs.bulkPut(definitions);
   }
 
   async upsertDefinition(definition: WidgetDefinition): Promise<void> {
