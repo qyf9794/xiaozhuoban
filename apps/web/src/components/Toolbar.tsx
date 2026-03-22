@@ -89,8 +89,8 @@ export function Toolbar({
     });
   }, [definitions]);
 
-  const chromeColor = isMobileMode ? "#ffffff" : "#94a3b8";
-  const titleColor = isMobileMode ? "#ffffff" : "#0f172a";
+  const chromeColor = "#ffffff";
+  const titleColor = "#ffffff";
 
   return (
     <header
