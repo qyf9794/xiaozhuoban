@@ -9,6 +9,7 @@ import { useAppStore } from "./store";
 import { useAuthStore } from "./auth/authStore";
 import { supabase } from "./lib/supabase";
 import { resolveUserName } from "./lib/collab";
+import { showDesktopWindowWhenReady } from "./lib/desktopWindow";
 import { abandonUserMonopolyMatches } from "./lib/monopolyOnline";
 import { SupabaseRepository } from "@xiaozhuoban/data";
 
@@ -148,6 +149,11 @@ export function App() {
     setRepository(repository);
     void initialize();
   }, [initialize, setRepository, userId]);
+
+  useEffect(() => {
+    if (!ready || !activeBoard) return;
+    void showDesktopWindowWhenReady();
+  }, [activeBoard, ready]);
 
 
   useEffect(() => {

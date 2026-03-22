@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../auth/authStore";
 import { AuthPageShell } from "../components/AuthPageShell";
@@ -11,6 +11,10 @@ export function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const mismatch = confirmPassword.length > 0 && password !== confirmPassword;
+
+  useEffect(() => {
+    void import("../App");
+  }, []);
 
   return (
     <AuthPageShell

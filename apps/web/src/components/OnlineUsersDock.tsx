@@ -20,6 +20,7 @@ export function OnlineUsersDock({ isMobileMode = false }: { isMobileMode?: boole
   if (isMobileMode) {
     return (
       <div
+        className="online-users-dock liquid-glass-preserve"
         style={{
           position: "fixed",
           left: 10,
@@ -42,6 +43,7 @@ export function OnlineUsersDock({ isMobileMode = false }: { isMobileMode?: boole
 
   return (
     <div
+      className="online-users-dock liquid-glass-preserve"
       style={{
         position: "fixed",
         left: 12,
@@ -63,6 +65,7 @@ export function OnlineUsersDock({ isMobileMode = false }: { isMobileMode?: boole
           {onlineNames.map((name) => (
             <span
               key={name}
+              className="online-users-chip liquid-glass-preserve"
               style={{
                 display: "inline-flex",
                 alignItems: "center",

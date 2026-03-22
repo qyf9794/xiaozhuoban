@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../auth/authStore";
 import { AuthPageShell } from "../components/AuthPageShell";
@@ -8,6 +8,10 @@ export function LoginPage() {
   const { signIn, loading, error, clearError } = useAuthStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
+  useEffect(() => {
+    void import("../App");
+  }, []);
 
   return (
     <AuthPageShell
