@@ -10,6 +10,7 @@ import { useAuthStore } from "./auth/authStore";
 import { supabase } from "./lib/supabase";
 import { resolveUserName } from "./lib/collab";
 import { resolveBoardBackground } from "./lib/defaultBackground";
+import { showDesktopWindowWhenReady } from "./lib/desktopWindow";
 import { SupabaseRepository } from "@xiaozhuoban/data";
 
 const MOBILE_FRAME_WIDTH = 390;
@@ -137,6 +138,11 @@ export function App() {
     setRepository(repository);
     void initialize();
   }, [initialize, setRepository, userId]);
+
+  useEffect(() => {
+    if (!ready || !activeBoard) return;
+    void showDesktopWindowWhenReady();
+  }, [activeBoard, ready]);
 
 
   useEffect(() => {

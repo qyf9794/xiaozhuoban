@@ -268,6 +268,21 @@ function persistInBackground(task: Promise<void>, label: string) {
   });
 }
 
+function createMissingSystemDefinitions(
+  definitions: WidgetDefinition[],
+  createdAt: string
+): WidgetDefinition[] {
+  const systemTypes = new Set(definitions.filter((item) => item.kind === "system").map((item) => item.type));
+  return baseWidgets
+    .filter((widget) => !systemTypes.has(widget.type))
+    .map((item) => ({
+      ...item,
+      id: createId(`wd_${item.type}`),
+      createdAt,
+      updatedAt: createdAt
+    }));
+}
+
 function parseBackupSnapshot(value: unknown): BackupSnapshotPayload | null {
   if (!isRecord(value)) return null;
   const workspaces = Array.isArray(value.workspaces) ? (value.workspaces as Workspace[]) : null;
@@ -544,43 +559,61 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     initializingPromise = (async () => {
       const { repository } = get();
+      const backgroundTasks: Array<{ task: Promise<void>; label: string }> = [];
+      let workspacePersistTask: Promise<void> | null = null;
+      let boardPersistTask: Promise<void> | null = null;
+      let definitionsPersistTask: Promise<void> | null = null;
       let workspaces = await repository.list();
 
       if (workspaces.length === 0) {
         const workspace = makeWorkspace();
-        await repository.upsertWorkspace(workspace);
         workspaces = [workspace];
+        workspacePersistTask = repository.upsertWorkspace(workspace);
+        backgroundTasks.push({ task: workspacePersistTask, label: "persist default workspace" });
       }
 
       const workspaceId = workspaces[0].id;
-      let boards = await repository.listByWorkspace(workspaceId);
+      let [boards, definitions] = await Promise.all([
+        repository.listByWorkspace(workspaceId),
+        repository.listDefinitions()
+      ]);
 
       if (boards.length === 0) {
         const board = makeBoard(workspaceId);
-        await repository.upsertBoard(board);
         boards = [board];
+        boardPersistTask = workspacePersistTask
+          ? workspacePersistTask.then(() => repository.upsertBoard(board))
+          : repository.upsertBoard(board);
+        backgroundTasks.push({ task: boardPersistTask, label: "persist default board" });
       }
 
       const boardId = boards[0].id;
-      let [definitions, widgetInstances] = await Promise.all([
-        repository.listDefinitions(),
-        repository.listByBoard(boardId)
-      ]);
+      let widgetInstances = await repository.listByBoard(boardId);
       const now = nowIso();
-      const systemTypes = new Set(definitions.filter((d) => d.kind === "system").map((d) => d.type));
-      const missingBase = baseWidgets.filter((widget) => !systemTypes.has(widget.type));
-      if (definitions.length === 0 || missingBase.length > 0) {
-        const toInsert = (definitions.length === 0 ? baseWidgets : missingBase).map((item) => ({
-          ...item,
-          id: createId(`wd_${item.type}`),
-          createdAt: now,
-          updatedAt: now
-        }));
-        await Promise.all(toInsert.map((definition) => repository.upsertDefinition(definition)));
-        definitions = await repository.listDefinitions();
+      const missingDefinitions = createMissingSystemDefinitions(definitions, now);
+      if (missingDefinitions.length > 0) {
+        definitions = [...definitions, ...missingDefinitions];
+        definitionsPersistTask = Promise.all(
+          missingDefinitions.map((definition) => repository.upsertDefinition(definition))
+        ).then(() => undefined);
+        backgroundTasks.push({ task: definitionsPersistTask, label: "persist widget definitions" });
       }
+
       if (widgetInstances.length === 0) {
-        widgetInstances = await ensureBoardDefaultWidgets(repository, boardId, definitions, widgetInstances);
+        const defaultWidgets = createDefaultBoardWidgets(boardId, definitions);
+        if (defaultWidgets.length > 0) {
+          widgetInstances = defaultWidgets;
+          const widgetPrerequisites = [boardPersistTask, definitionsPersistTask].filter(
+            (task): task is Promise<void> => Boolean(task)
+          );
+          backgroundTasks.push({
+            task:
+              widgetPrerequisites.length > 0
+                ? Promise.all(widgetPrerequisites).then(() => repository.upsertInstances(defaultWidgets))
+                : repository.upsertInstances(defaultWidgets),
+            label: "persist default widgets"
+          });
+        }
       }
 
       set({
@@ -589,6 +622,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         widgetDefinitions: definitions,
         widgetInstances,
         activeBoardId: boardId
+      });
+
+      backgroundTasks.forEach(({ task, label }) => {
+        persistInBackground(task, label);
       });
     })();
 

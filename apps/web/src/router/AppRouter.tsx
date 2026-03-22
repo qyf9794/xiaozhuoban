@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuthStore } from "../auth/authStore";
+import { showDesktopWindowWhenReady } from "../lib/desktopWindow";
 
 const App = lazy(async () => {
   const module = await import("../App");
@@ -23,6 +24,14 @@ export function AppRouter() {
   useEffect(() => {
     void initialize();
   }, [initialize]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void showDesktopWindowWhenReady();
+    }, 4000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, []);
 
   if (!ready) {
     return <div className="loading">正在加载登录态...</div>;
