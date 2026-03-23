@@ -46,6 +46,7 @@ export interface GuandanPlayRecord {
   playerId: string;
   userName: string;
   cardIds: string[];
+  cardLabels: string[];
   combo: GuandanCombo | null;
   passed: boolean;
   remainingCards: number;
@@ -240,7 +241,12 @@ function cloneTrick(trick: GuandanTrick): GuandanTrick {
   return {
     ...trick,
     currentCombo: trick.currentCombo ? { ...trick.currentCombo } : null,
-    plays: trick.plays.map((play) => ({ ...play, cardIds: [...play.cardIds], combo: play.combo ? { ...play.combo } : null }))
+    plays: trick.plays.map((play) => ({
+      ...play,
+      cardIds: [...play.cardIds],
+      cardLabels: [...play.cardLabels],
+      combo: play.combo ? { ...play.combo } : null
+    }))
   };
 }
 
@@ -408,6 +414,9 @@ function normalizeTrick(value: unknown): GuandanTrick {
             playerId: typeof play.playerId === "string" ? play.playerId : "",
             userName: typeof play.userName === "string" ? play.userName : "",
             cardIds: Array.isArray(play.cardIds) ? play.cardIds.filter((entry) => typeof entry === "string") as string[] : [],
+            cardLabels: Array.isArray(play.cardLabels)
+              ? (play.cardLabels.filter((entry) => typeof entry === "string") as string[])
+              : [],
             combo: play.combo && typeof play.combo === "object"
               ? {
                   type: (play.combo as Record<string, unknown>).type as GuandanComboType,
@@ -1358,6 +1367,7 @@ export function submitPlay(
     playerId: player.userId,
     userName: player.userName,
     cardIds: [...params.cardIds],
+    cardLabels: selectedCards.map((card) => card.label),
     combo,
     passed: false,
     remainingCards: player.handCount,
@@ -1414,6 +1424,7 @@ export function passTurn(match: GuandanMatch, userId: string, passedAt = nowIso(
     playerId: player.userId,
     userName: player.userName,
     cardIds: [],
+    cardLabels: [],
     combo: null,
     passed: true,
     remainingCards: player.handCount,

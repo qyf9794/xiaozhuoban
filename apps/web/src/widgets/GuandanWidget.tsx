@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
-import { Button, Card } from "@xiaozhuoban/ui";
+import { Card } from "@xiaozhuoban/ui";
 import { useAuthStore } from "../auth/authStore";
-import { resolveUserName } from "../lib/collab";
+import { colorForUser, resolveUserName } from "../lib/collab";
 import {
   detectCombo,
   eligibleReturnCards,
@@ -32,18 +32,29 @@ import {
 } from "../lib/guandanOnline";
 import { useOnlineUsers } from "../lib/useOnlineUsers";
 
+interface SeatDisplay {
+  userId: string;
+  userName: string;
+  seat: number;
+  team: 0 | 1;
+  handCount: number | null;
+  reportedCount: number | null;
+  finishOrder: number | null;
+  waitingText: string;
+}
+
 function actionButton(disabled = false, emphasis = false) {
   return {
-    border: emphasis ? "1px solid rgba(14,165,233,0.48)" : "1px solid rgba(148,163,184,0.34)",
+    border: emphasis ? "1px solid rgba(220,38,38,0.46)" : "1px solid rgba(148,163,184,0.34)",
     borderRadius: 10,
     padding: "6px 10px",
     fontSize: 11,
     cursor: disabled ? "default" : "pointer",
     opacity: disabled ? 0.56 : 1,
     background: emphasis
-      ? "linear-gradient(155deg, rgba(14,165,233,0.88), rgba(59,130,246,0.74))"
+      ? "linear-gradient(155deg, rgba(239,68,68,0.86), rgba(220,38,38,0.74))"
       : "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.34))",
-    color: emphasis ? "#eff6ff" : "#0f172a"
+    color: emphasis ? "#fff7ed" : "#0f172a"
   } as const;
 }
 
@@ -54,34 +65,22 @@ function playerSlotStyle(slot: 0 | 1 | 2 | 3) {
   return { gridColumn: 1, gridRow: 2 };
 }
 
-function cardLabel(card: GuandanCard) {
-  return card.label || `${card.suit}-${card.rank}`;
-}
-
-function getSeatPlayer(players: GuandanPlayerState[], currentUserId: string, targetSlot: 0 | 1 | 2 | 3) {
-  const self = players.find((player) => player.userId === currentUserId);
-  if (!self) return null;
-  const targetSeat = (self.seat + targetSlot) % 4;
-  return players.find((player) => player.seat === targetSeat) ?? null;
-}
-
 function getStatusText(match: GuandanMatch | null, userId: string) {
   if (!match) return "邀请 3 名在线用户创建 4 人房间";
   if (match.status === "pending") {
     if (match.hostUserId === userId) {
       const accepted = match.state.invites.filter((invite) => invite.status === "accepted").length;
-      return accepted === 3 ? "4 人已到齐，可开始发牌" : `已确认 ${accepted}/3，等待其余玩家接受`;
+      return accepted === 3 ? "4 人已到齐，可开始发牌" : `房间已创建，等待其余玩家到齐 ${accepted + 1}/4`;
     }
     const invite = match.state.invites.find((item) => item.userId === userId);
     return invite?.status === "accepted" ? "你已接受邀请，等待房主开始" : "收到掼蛋邀请，确认后加入房间";
   }
-  if (match.status === "completed") {
-    return match.state.lastEvent || "整场已结束，可由房主重新开局";
-  }
-  if (match.status === "cancelled") {
-    return "房间已取消，可由房主重新开始";
-  }
+  if (match.status === "completed") return match.state.lastEvent || "整场已结束，可由房主重新开局";
+  if (match.status === "cancelled") return "房间已取消，可由房主重新开始";
   if (match.phase === "tribute") {
+    const current = pendingRequirementForUser(match, userId);
+    if (current?.status === "pending_tribute") return "轮到你进贡";
+    if (current?.status === "pending_return") return "轮到你还贡";
     return match.state.lastEvent || "正在贡还牌";
   }
   if (match.phase === "playing") {
@@ -89,6 +88,142 @@ function getStatusText(match: GuandanMatch | null, userId: string) {
     return current?.userId === userId ? "轮到你操作" : `等待 ${current?.userName ?? "其他玩家"} 出牌`;
   }
   return match.state.lastEvent || "房间同步中";
+}
+
+function buildSeatDisplays(match: GuandanMatch | null, currentUserId: string): SeatDisplay[] {
+  if (!match) return [];
+  if (match.state.players.length > 0) {
+    return match.state.players.map((player) => ({
+      userId: player.userId,
+      userName: player.userName,
+      seat: player.seat,
+      team: player.team,
+      handCount: player.handCount,
+      reportedCount: player.reportedCount,
+      finishOrder: player.finishOrder,
+      waitingText: player.finished ? "已出完" : "已就位"
+    }));
+  }
+
+  const inviteMap = new Map(match.state.invites.map((invite, index) => [invite.userId, { invite, seat: index + 1 }]));
+  const entries: SeatDisplay[] = [
+    {
+      userId: match.hostUserId,
+      userName: match.hostUserName,
+      seat: 0,
+      team: 0,
+      handCount: null,
+      reportedCount: null,
+      finishOrder: null,
+      waitingText: "房主"
+    }
+  ];
+
+  match.state.invites.forEach((invite, index) => {
+    entries.push({
+      userId: invite.userId,
+      userName: invite.userName,
+      seat: index + 1,
+      team: ((index + 1) % 2 === 0 ? 0 : 1),
+      handCount: null,
+      reportedCount: null,
+      finishOrder: null,
+      waitingText: invite.status === "accepted" ? "已就位" : invite.status === "declined" ? "已拒绝" : "等待中"
+    });
+  });
+
+  if (!entries.some((item) => item.userId === currentUserId)) {
+    const invite = inviteMap.get(currentUserId);
+    if (invite) {
+      entries.push({
+        userId: currentUserId,
+        userName: invite.invite.userName,
+        seat: invite.seat,
+        team: (invite.seat % 2 === 0 ? 0 : 1),
+        handCount: null,
+        reportedCount: null,
+        finishOrder: null,
+        waitingText: invite.invite.status === "accepted" ? "已就位" : "等待中"
+      });
+    }
+  }
+
+  return entries.sort((left, right) => left.seat - right.seat).slice(0, 4);
+}
+
+function getSeatPlayer(players: SeatDisplay[], currentUserId: string, targetSlot: 0 | 1 | 2 | 3) {
+  const anchor = players.find((player) => player.userId === currentUserId) ?? players[0] ?? null;
+  if (!anchor) return null;
+  const targetSeat = (anchor.seat + targetSlot) % 4;
+  return players.find((player) => player.seat === targetSeat) ?? null;
+}
+
+function userDisplayColor(userId: string | null | undefined, userName: string | null | undefined) {
+  return colorForUser(userId || userName || "guest");
+}
+
+function isRedSuit(card: GuandanCard) {
+  return card.suit === "hearts" || card.suit === "diamonds";
+}
+
+function splitCardDisplay(card: GuandanCard) {
+  if (card.suit === "joker") {
+    return card.rank === 16 ? ["大", "王"] : ["小", "王"];
+  }
+  const suitMap: Record<GuandanCard["suit"], string> = {
+    spades: "♠",
+    hearts: "♥",
+    clubs: "♣",
+    diamonds: "♦",
+    joker: ""
+  };
+  const rankMap: Record<number, string> = {
+    11: "J",
+    12: "Q",
+    13: "K",
+    14: "A",
+    15: "小",
+    16: "大"
+  };
+  return [suitMap[card.suit], rankMap[card.rank] ?? String(card.rank)];
+}
+
+function splitPlayedLabel(label: string) {
+  if (label === "大王") return ["大", "王"];
+  if (label === "小王") return ["小", "王"];
+  if (label.startsWith("♠") || label.startsWith("♥") || label.startsWith("♣") || label.startsWith("♦")) {
+    return [label.slice(0, 1), label.slice(1)];
+  }
+  return [label.slice(0, 1), label.slice(1)];
+}
+
+function bottomSort(cards: GuandanCard[], level: number) {
+  return sortHand(cards, level);
+}
+
+function cardFaceStyle(params: {
+  selected: boolean;
+  enabled: boolean;
+  width: number;
+  height: number;
+  color: string;
+  radius: number;
+  padding: string;
+}) {
+  return {
+    width: params.width,
+    minWidth: params.width,
+    height: params.height,
+    borderRadius: params.radius,
+    border: params.selected ? "1px solid rgba(220,38,38,0.62)" : "1px solid rgba(203,213,225,0.7)",
+    background: params.selected
+      ? "linear-gradient(160deg, rgba(239,68,68,0.22), rgba(220,38,38,0.12))"
+      : "linear-gradient(180deg, rgba(255,255,255,0.86), rgba(255,255,255,0.64))",
+    color: params.color,
+    padding: params.padding,
+    cursor: params.enabled ? "pointer" : "default",
+    opacity: params.enabled ? 1 : 0.38
+  } as const;
 }
 
 export function GuandanWidget({
@@ -115,7 +250,7 @@ export function GuandanWidget({
   const [busyId, setBusyId] = useState("");
   const [selectedInviteIds, setSelectedInviteIds] = useState<string[]>([]);
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
-  const invitePickerRef = useRef<HTMLDivElement | null>(null);
+  const [arrangedCardIds, setArrangedCardIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!userId) return;
@@ -165,23 +300,27 @@ export function GuandanWidget({
     return () => window.clearInterval(intervalId);
   }, [userId]);
 
-  useEffect(() => {
-    const onDocClick = (event: MouseEvent) => {
-      if (!invitePickerRef.current?.contains(event.target as Node)) {
-        setSelectedInviteIds((prev) => (prev.length > 0 ? prev : prev));
-      }
-    };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, []);
-
   const pendingMatch = useMemo(() => matches.find((match) => match.status === "pending") ?? null, [matches]);
   const activeMatch = useMemo(() => matches.find((match) => match.status === "active") ?? null, [matches]);
-  const completedMatch = useMemo(() => matches.find((match) => match.status === "completed" || match.status === "cancelled") ?? null, [matches]);
+  const completedMatch = useMemo(
+    () => matches.find((match) => match.status === "completed" || match.status === "cancelled") ?? null,
+    [matches]
+  );
   const currentMatch = activeMatch ?? pendingMatch ?? completedMatch;
-  const selfPlayer = activeMatch ? activeMatch.state.players.find((player) => player.userId === userId) ?? null : null;
+  const seatDisplays = useMemo(() => buildSeatDisplays(currentMatch, userId), [currentMatch, userId]);
+  const selfPlayer = activeMatch?.state.players.find((player) => player.userId === userId) ?? null;
   const currentRequirement = pendingRequirementForUser(activeMatch, userId);
-  const ownHand = useMemo(() => sortHand(selfPlayer?.hand ?? [], activeMatch?.state.currentLevel ?? 2), [selfPlayer?.hand, activeMatch?.state.currentLevel]);
+  const ownHand = useMemo(
+    () => sortHand(selfPlayer?.hand ?? [], activeMatch?.state.currentLevel ?? 2),
+    [selfPlayer?.hand, activeMatch?.state.currentLevel]
+  );
+  const arrangedCards = arrangedCardIds
+    .map((cardId) => ownHand.find((card) => card.id === cardId))
+    .filter(Boolean) as GuandanCard[];
+  const bottomCards = bottomSort(
+    ownHand.filter((card) => !arrangedCardIds.includes(card.id)),
+    activeMatch?.state.currentLevel ?? 2
+  );
   const tributeCandidates = useMemo(
     () => eligibleTributeCards(selfPlayer, activeMatch?.state.currentLevel ?? 2).map((card) => card.id),
     [selfPlayer, activeMatch?.state.currentLevel]
@@ -192,23 +331,35 @@ export function GuandanWidget({
   );
   const selectedCards = ownHand.filter((card) => selectedCardIds.includes(card.id));
   const selectedCombo = activeMatch ? detectCombo(selectedCards, activeMatch.state.currentLevel) : null;
+  const selectedInTop = selectedCardIds.filter((cardId) => arrangedCardIds.includes(cardId));
+  const selectedInBottom = selectedCardIds.filter((cardId) => !arrangedCardIds.includes(cardId));
+  const currentTurnPlayerId = activeMatch?.state.currentTurnPlayerId ?? "";
+  const currentTrickCombo = activeMatch?.state.currentTrick.currentCombo ?? null;
   const canPlay =
-    Boolean(activeMatch) &&
     activeMatch?.phase === "playing" &&
-    activeMatch.state.currentTurnPlayerId === userId &&
+    currentTurnPlayerId === userId &&
     selectedCardIds.length > 0 &&
     Boolean(selectedCombo) &&
     !busyId;
   const canPass =
-    Boolean(activeMatch) &&
     activeMatch?.phase === "playing" &&
-    activeMatch.state.currentTurnPlayerId === userId &&
-    Boolean(activeMatch.state.currentTrick.currentCombo) &&
+    currentTurnPlayerId === userId &&
+    Boolean(currentTrickCombo) &&
     !busyId;
+  const canSubmitTribute = Boolean(currentRequirement && selectedCardIds.length === 1 && !busyId);
+  const canArrange = selectedCardIds.length > 0 && !busyId;
+  const lastNonPass = activeMatch?.state.currentTrick.plays.slice().reverse().find((play) => !play.passed && play.combo) ?? null;
+  const trickEvents = activeMatch?.state.currentTrick.plays.slice(-6).reverse() ?? [];
+  const currentStatusText = onlineError || (loadingMatches ? "正在同步房间..." : getStatusText(currentMatch, userId));
+  const isMyTurn = currentTurnPlayerId === userId;
+  const inviteableUsers = otherUsers.slice(0, 20);
+  const boardPanelHeight = isMobileMode ? 150 : 188;
+  const teammatePanelHeight = isMobileMode ? 74 : 88;
 
   useEffect(() => {
-    setSelectedCardIds([]);
-  }, [currentMatch?.id, currentMatch?.revision]);
+    setSelectedCardIds((prev) => prev.filter((cardId) => ownHand.some((card) => card.id === cardId)));
+    setArrangedCardIds((prev) => prev.filter((cardId) => ownHand.some((card) => card.id === cardId)));
+  }, [ownHand]);
 
   const runOnlineAction = async (actionId: string, task: () => Promise<GuandanMatch>) => {
     setBusyId(actionId);
@@ -243,22 +394,35 @@ export function GuandanWidget({
   };
 
   const toggleCard = (cardId: string) => {
+    const selectable =
+      currentRequirement?.status === "pending_tribute"
+        ? tributeCandidates.includes(cardId)
+        : currentRequirement?.status === "pending_return"
+          ? returnCandidates.includes(cardId)
+          : true;
+    if (!selectable) return;
     setSelectedCardIds((prev) => (prev.includes(cardId) ? prev.filter((item) => item !== cardId) : [...prev, cardId]));
+  };
+
+  const handleArrange = () => {
+    setArrangedCardIds((prev) => {
+      const remainingTop = prev.filter((cardId) => !selectedInTop.includes(cardId));
+      const movingUp = selectedInBottom.filter((cardId) => !prev.includes(cardId));
+      return [...remainingTop, ...movingUp];
+    });
+    setSelectedCardIds([]);
   };
 
   const handlePrimaryAction = () => {
     if (!activeMatch || !currentRequirement || selectedCardIds.length !== 1) return;
     const cardId = selectedCardIds[0]!;
-    void runOnlineAction(
-      `${currentRequirement.status}:${cardId}`,
-      () => submitOnlineTribute(activeMatch, { userId, cardId })
-    );
+    void runOnlineAction(`${currentRequirement.status}:${cardId}`, () => submitOnlineTribute(activeMatch, { userId, cardId }));
   };
 
-  const lastNonPass = activeMatch?.state.currentTrick.plays.find((play) => !play.passed && play.combo) ?? null;
-  const inviteableUsers = otherUsers.slice(0, 20);
-  const currentStatusText = onlineError || (loadingMatches ? "正在同步房间..." : getStatusText(currentMatch, userId));
-  const desktopFont = isMobileMode ? 11 : 12;
+  const handCardWidth = isMobileMode ? 22 : 24;
+  const handCardHeight = isMobileMode ? 47 : 47;
+  const cardRadius = isMobileMode ? 5 : 6;
+  const handCardPadding = "10px 4px";
 
   return (
     <Card
@@ -271,8 +435,17 @@ export function GuandanWidget({
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 8, minHeight: 0, height: "100%" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "start" }}>
-          <div style={{ fontSize: desktopFont, color: "#475569", minHeight: 18 }}>{currentStatusText}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center" }}>
+          <div
+            style={{
+              fontSize: isMobileMode ? 11 : 12,
+              color: isMyTurn ? "#dc2626" : "#475569",
+              minHeight: 18,
+              fontWeight: isMyTurn ? 700 : 500
+            }}
+          >
+            {currentStatusText}
+          </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
             {!currentMatch ? (
               <button type="button" style={actionButton(false, true)} onClick={createLobby}>
@@ -319,6 +492,19 @@ export function GuandanWidget({
                 </button>
               </>
             ) : null}
+            {currentMatch ? (
+              <button
+                type="button"
+                style={actionButton(Boolean(busyId))}
+                disabled={Boolean(busyId)}
+                onClick={() =>
+                  currentMatch &&
+                  void runOnlineAction(`exit:${currentMatch.id}`, () => abandonOnlineMatch(currentMatch, userId))
+                }
+              >
+                退出房间
+              </button>
+            ) : null}
             {completedMatch?.hostUserId === userId ? (
               <button
                 type="button"
@@ -334,7 +520,6 @@ export function GuandanWidget({
 
         {!currentMatch ? (
           <div
-            ref={invitePickerRef}
             style={{
               display: "grid",
               gridTemplateColumns: isMobileMode ? "1fr" : "1fr 1fr",
@@ -353,18 +538,16 @@ export function GuandanWidget({
                     type="button"
                     onClick={() =>
                       setSelectedInviteIds((prev) => {
-                        if (prev.includes(entry.userId)) {
-                          return prev.filter((item) => item !== entry.userId);
-                        }
+                        if (prev.includes(entry.userId)) return prev.filter((item) => item !== entry.userId);
                         if (prev.length >= 3) return prev;
                         return [...prev, entry.userId];
                       })
                     }
                     style={{
                       borderRadius: 12,
-                      border: selected ? "1px solid rgba(14,165,233,0.55)" : "1px solid rgba(148,163,184,0.34)",
+                      border: selected ? "1px solid rgba(220,38,38,0.45)" : "1px solid rgba(148,163,184,0.34)",
                       background: selected
-                        ? "linear-gradient(160deg, rgba(14,165,233,0.2), rgba(59,130,246,0.18))"
+                        ? "linear-gradient(160deg, rgba(239,68,68,0.16), rgba(220,38,38,0.12))"
                         : "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.3))",
                       padding: "10px 12px",
                       textAlign: "left",
@@ -382,47 +565,13 @@ export function GuandanWidget({
           </div>
         ) : null}
 
-        {pendingMatch ? (
-          <div style={{ display: "grid", gap: 6, padding: 8, borderRadius: 14, background: "rgba(255,255,255,0.26)" }}>
-            {pendingMatch.state.invites.map((invite) => (
-              <div
-                key={invite.userId}
-                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: "#0f172a" }}
-              >
-                <span>{invite.userName}</span>
-                <span style={{ color: "#64748b" }}>
-                  {invite.status === "accepted" ? "已接受" : invite.status === "declined" ? "已拒绝" : "待确认"}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        {activeMatch ? (
+        {currentMatch ? (
           <>
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr auto",
                 gap: 8,
-                alignItems: "center",
-                padding: 8,
-                borderRadius: 14,
-                background: "linear-gradient(145deg, rgba(255,255,255,0.44), rgba(255,255,255,0.16))"
-              }}
-            >
-              <div style={{ fontSize: 12, color: "#0f172a", fontWeight: 700 }}>
-                第 {activeMatch.state.currentRound} 局 · 当前打 {activeMatch.state.currentLevel === 14 ? "A" : activeMatch.state.currentLevel}
-              </div>
-              <div style={{ fontSize: 11, color: "#475569" }}>{activeMatch.phase === "tribute" ? "贡还牌" : "出牌中"}</div>
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1.5fr 1fr 1.25fr",
-                gap: 8,
-                minHeight: isMobileMode ? 250 : 290,
+                minHeight: teammatePanelHeight + boardPanelHeight + 18,
                 flex: 1
               }}
             >
@@ -430,42 +579,72 @@ export function GuandanWidget({
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr",
-                  gridTemplateRows: "auto 1fr auto",
+                  gridTemplateRows: `${teammatePanelHeight}px ${boardPanelHeight}px`,
                   gap: 8,
-                  gridColumn: "1 / span 3",
                   borderRadius: 16,
                   padding: 10,
                   background: "linear-gradient(160deg, rgba(15,23,42,0.08), rgba(15,23,42,0.02))"
                 }}
               >
-                {[0, 1, 2, 3].map((slot) => {
-                  const player = getSeatPlayer(activeMatch.state.players, userId, slot as 0 | 1 | 2 | 3);
-                  const current = activeMatch.state.currentTurnPlayerId === player?.userId;
-                  const teammate = player?.team === selfPlayer?.team;
+                {[1, 2, 3].map((slot) => {
+                  const player = getSeatPlayer(seatDisplays, userId, slot as 0 | 1 | 2 | 3);
+                  const current = activeMatch?.state.currentTurnPlayerId === player?.userId;
+                  const teammate = player && seatDisplays.find((item) => item.userId === userId)?.team === player.team;
                   return (
                     <div
                       key={slot}
                       style={{
                         ...playerSlotStyle(slot as 0 | 1 | 2 | 3),
                         borderRadius: 14,
-                        padding: 8,
+                        padding: "4px 6px",
                         minWidth: 0,
+                        height: teammate ? teammatePanelHeight : boardPanelHeight,
+                        boxSizing: "border-box",
+                        display: "grid",
+                        justifyItems: "center",
+                        alignContent: "center",
+                        textAlign: "center",
+                        overflow: "hidden",
+                        alignSelf: "start",
                         background: current
-                          ? "linear-gradient(160deg, rgba(14,165,233,0.22), rgba(59,130,246,0.12))"
+                          ? "linear-gradient(160deg, rgba(239,68,68,0.2), rgba(220,38,38,0.1))"
                           : "linear-gradient(160deg, rgba(255,255,255,0.52), rgba(255,255,255,0.24))",
                         border: teammate ? "1px solid rgba(16,185,129,0.35)" : "1px solid rgba(148,163,184,0.26)"
                       }}
                     >
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>{player?.userName ?? "空位"}</div>
-                      <div style={{ fontSize: 10, color: "#64748b" }}>
-                        {player?.userId === userId ? "你" : teammate ? "对家" : "对手"} · {player?.handCount ?? 0} 张
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: "100%",
+                          minWidth: 0
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: userDisplayColor(player?.userId, player?.userName),
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            maxWidth: teammate ? "calc(100% - 34px)" : "100%"
+                          }}
+                        >
+                          {player?.userName ?? "等待中"}
+                        </div>
+                        <div style={{ fontSize: 10, color: "#64748b", whiteSpace: "nowrap" }}>{teammate ? "对家" : "对手"}</div>
                       </div>
-                      {player?.reportedCount ? (
-                        <div style={{ marginTop: 4, fontSize: 10, color: "#b45309" }}>报 {player.reportedCount}</div>
-                      ) : null}
-                      {player?.finishOrder ? (
-                        <div style={{ marginTop: 4, fontSize: 10, color: "#0f766e" }}>第 {player.finishOrder} 名</div>
-                      ) : null}
+                      <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", lineHeight: 1.1 }}>
+                        {player?.handCount !== null && player?.handCount !== undefined ? `${player.handCount} 张` : "等待中"}
+                      </div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
+                        <div style={{ fontSize: 10, color: "#64748b" }}>{player?.waitingText ?? "等待中"}</div>
+                        {player?.reportedCount ? <div style={{ fontSize: 10, color: "#b45309" }}>报 {player.reportedCount}</div> : null}
+                        {player?.finishOrder ? <div style={{ fontSize: 10, color: "#0f766e" }}>第 {player.finishOrder} 名</div> : null}
+                      </div>
                     </div>
                   );
                 })}
@@ -476,96 +655,90 @@ export function GuandanWidget({
                     gridRow: 2,
                     borderRadius: 16,
                     padding: 12,
-                    minHeight: 118,
+                    height: boardPanelHeight,
+                    boxSizing: "border-box",
                     display: "grid",
-                    gap: 8,
-                    alignContent: "start",
+                    gap: 6,
+                    gridTemplateRows: "auto auto auto 1fr auto",
+                    overflowY: "auto",
                     background: "linear-gradient(165deg, rgba(255,255,255,0.55), rgba(255,255,255,0.22))"
                   }}
                 >
-                  <div style={{ fontSize: 11, color: "#64748b" }}>牌桌</div>
-                  <div style={{ fontSize: 13, color: "#0f172a", fontWeight: 700 }}>
-                    {lastNonPass?.text ?? "等待首家出牌"}
-                  </div>
-                  {activeMatch.state.currentTrick.currentCombo ? (
-                    <div style={{ fontSize: 11, color: "#475569" }}>当前牌型：{activeMatch.state.currentTrick.currentCombo.display}</div>
+                  {activeMatch ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 6,
+                        alignItems: "center",
+                        alignSelf: "start"
+                      }}
+                    >
+                      <div style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.2 }}>第 {activeMatch.state.currentRound} 局</div>
+                      <div style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.2 }}>
+                        当前打 {activeMatch.state.currentLevel === 14 ? "A" : activeMatch.state.currentLevel}
+                      </div>
+                    </div>
                   ) : null}
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {(lastNonPass?.cardIds ?? []).map((cardId) => {
-                      const card = activeMatch.state.players.flatMap((player) => player.hand).find((item) => item.id === cardId);
+                  <div style={{ fontSize: 13, color: "#0f172a", fontWeight: 700 }}>
+                    {lastNonPass?.text ?? (currentMatch.status === "pending" ? "房间已创建，等待所有玩家进入" : "等待首家出牌")}
+                  </div>
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", minHeight: 42 }}>
+                    {(lastNonPass?.cardLabels ?? []).map((label, index) => {
+                      const parts = splitPlayedLabel(label);
+                      const isRed = parts[0] === "♥" || parts[0] === "♦";
                       return (
                         <span
-                          key={cardId}
+                          key={`${label}-${index}`}
                           style={{
-                            borderRadius: 10,
-                            padding: "4px 8px",
-                            fontSize: 11,
-                            color: "#0f172a",
-                            background: "rgba(255,255,255,0.7)"
+                            ...cardFaceStyle({
+                              selected: false,
+                              enabled: true,
+                              width: handCardWidth,
+                              height: handCardHeight,
+                              color: isRed ? "#b91c1c" : "#0f172a",
+                              radius: cardRadius,
+                              padding: handCardPadding
+                            }),
+                            display: "grid",
+                            justifyItems: "center",
+                            alignContent: "center",
+                            gap: 3
                           }}
                         >
-                          {card ? cardLabel(card) : "已出牌"}
+                          <span style={{ lineHeight: 1, fontWeight: 700, fontSize: 12 }}>{parts[0]}</span>
+                          <span style={{ lineHeight: 1, fontWeight: 700, fontSize: 12 }}>{parts[1]}</span>
                         </span>
                       );
                     })}
                   </div>
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateRows: "auto auto 1fr auto",
-                  gap: 8,
-                  borderRadius: 16,
-                  padding: 10,
-                  background: "linear-gradient(160deg, rgba(255,255,255,0.44), rgba(255,255,255,0.18))"
-                }}
-              >
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>操作区</div>
-                <div style={{ fontSize: 11, color: "#64748b" }}>
-                  {selectedCombo ? `已选 ${selectedCombo.display}` : currentRequirement ? "请选择一张贡/还牌" : "请选择要出的牌"}
-                </div>
-                <div style={{ display: "grid", gap: 6, alignContent: "start" }}>
-                  {currentRequirement ? (
-                    <Button onClick={handlePrimaryAction}>
-                      {currentRequirement.status === "pending_tribute" ? "提交贡牌" : "提交还贡"}
-                    </Button>
-                  ) : (
-                    <>
-                      <Button
-                        onClick={() => activeMatch && void runOnlineAction(`play:${activeMatch.id}`, () => submitOnlinePlay(activeMatch, { userId, cardIds: selectedCardIds }))}
-                      >
-                        出牌
-                      </Button>
-                      <button
-                        type="button"
-                        style={actionButton(!canPass)}
-                        disabled={!canPass}
-                        onClick={() => activeMatch && void runOnlineAction(`pass:${activeMatch.id}`, () => passOnlineTurn(activeMatch, userId))}
-                      >
-                        不出
-                      </button>
-                    </>
-                  )}
-                  <button type="button" style={actionButton(false)} onClick={() => setSelectedCardIds([])}>
-                    清空选择
-                  </button>
-                  <button
-                    type="button"
-                    style={actionButton(Boolean(busyId))}
-                    disabled={Boolean(busyId)}
-                    onClick={() => activeMatch && void runOnlineAction(`exit:${activeMatch.id}`, () => abandonOnlineMatch(activeMatch, userId))}
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      flexWrap: "wrap",
+                      alignItems: "flex-start",
+                      alignSelf: "end"
+                    }}
                   >
-                    退出房间
-                  </button>
-                </div>
-                <div style={{ display: "grid", gap: 4, alignContent: "start", maxHeight: 210, overflow: "auto" }}>
-                  {activeMatch.state.eventLog.slice(0, 8).map((item, index) => (
-                    <div key={`${item}-${index}`} style={{ fontSize: 11, color: "#475569", lineHeight: 1.45 }}>
-                      {item}
-                    </div>
-                  ))}
+                    {(activeMatch ? trickEvents : []).length > 0 ? (
+                      trickEvents.map((item, index) => (
+                        <span
+                          key={`${item.createdAt}-${index}`}
+                          style={{
+                            fontSize: 11,
+                            color: "#475569",
+                            lineHeight: 1.45
+                          }}
+                        >
+                          {item.text}
+                        </span>
+                      ))
+                    ) : (
+                      <span style={{ fontSize: 11, color: "#64748b" }}>
+                        {currentMatch.status === "pending" ? "牌桌已打开，未到玩家会显示等待中。" : "本轮还没有新的出牌记录。"}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -574,54 +747,167 @@ export function GuandanWidget({
               style={{
                 display: "grid",
                 gap: 8,
-                padding: 10,
+                padding: "10px 10px 6px",
                 borderRadius: 16,
-                background: "linear-gradient(160deg, rgba(255,255,255,0.42), rgba(255,255,255,0.18))"
+                background: isMyTurn
+                  ? "linear-gradient(160deg, rgba(254,226,226,0.92), rgba(248,113,113,0.34))"
+                  : "linear-gradient(160deg, rgba(255,255,255,0.42), rgba(255,255,255,0.18))"
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>你的手牌</div>
-                <div style={{ fontSize: 11, color: "#64748b" }}>
-                  {currentRequirement?.status === "pending_tribute"
-                    ? "需选择最大可进贡单牌"
-                    : currentRequirement?.status === "pending_return"
-                      ? "需选择 10 及以下且非级牌"
-                      : `共 ${ownHand.length} 张`}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: userDisplayColor(userId, userName),
+                    lineHeight: 1.2,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    maxWidth: isMobileMode ? "100%" : 120,
+                    marginRight: 2
+                  }}
+                  title={userName}
+                >
+                  {userName}
                 </div>
-              </div>
-              <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
-                {ownHand.map((card) => {
-                  const selected = selectedCardIds.includes(card.id);
-                  const enabled =
-                    currentRequirement?.status === "pending_tribute"
-                      ? tributeCandidates.includes(card.id)
-                      : currentRequirement?.status === "pending_return"
-                        ? returnCandidates.includes(card.id)
-                        : true;
-                  return (
+                {currentRequirement ? (
+                  <button
+                    type="button"
+                    style={actionButton(!canSubmitTribute, isMyTurn)}
+                    disabled={!canSubmitTribute}
+                    onClick={handlePrimaryAction}
+                  >
+                    {currentRequirement.status === "pending_tribute" ? "提交贡牌" : "提交还贡"}
+                  </button>
+                ) : (
+                  <>
                     <button
-                      key={card.id}
                       type="button"
-                      disabled={!enabled}
-                      onClick={() => toggleCard(card.id)}
-                      style={{
-                        minWidth: isMobileMode ? 42 : 48,
-                        borderRadius: 12,
-                        border: selected ? "1px solid rgba(14,165,233,0.6)" : "1px solid rgba(203,213,225,0.7)",
-                        background: selected
-                          ? "linear-gradient(160deg, rgba(14,165,233,0.22), rgba(59,130,246,0.14))"
-                          : "linear-gradient(180deg, rgba(255,255,255,0.86), rgba(255,255,255,0.64))",
-                        color: card.suit === "hearts" || card.label.startsWith("♦") ? "#b91c1c" : "#0f172a",
-                        padding: "12px 6px",
-                        cursor: enabled ? "pointer" : "default",
-                        opacity: enabled ? 1 : 0.38,
-                        transform: selected ? "translateY(-4px)" : "translateY(0)"
-                      }}
+                      style={actionButton(!canPlay, isMyTurn)}
+                      disabled={!canPlay}
+                      onClick={() =>
+                        activeMatch &&
+                        void runOnlineAction(`play:${activeMatch.id}`, () => submitOnlinePlay(activeMatch, { userId, cardIds: selectedCardIds }))
+                      }
                     >
-                      <div style={{ fontSize: 12, fontWeight: 700 }}>{cardLabel(card)}</div>
+                      出牌
                     </button>
-                  );
-                })}
+                    <button
+                      type="button"
+                      style={actionButton(!canPass)}
+                      disabled={!canPass}
+                      onClick={() => activeMatch && void runOnlineAction(`pass:${activeMatch.id}`, () => passOnlineTurn(activeMatch, userId))}
+                    >
+                      过牌
+                    </button>
+                  </>
+                )}
+                <button type="button" style={actionButton(!canArrange)} disabled={!canArrange} onClick={handleArrange}>
+                  理牌
+                </button>
+                <button type="button" style={actionButton(selectedCardIds.length === 0)} disabled={selectedCardIds.length === 0} onClick={() => setSelectedCardIds([])}>
+                  重选
+                </button>
+              </div>
+
+              <div style={{ display: "grid", gap: 6 }}>
+                <div style={{ display: "flex", gap: 2, minHeight: 54, overflowX: "auto" }}>
+                  {arrangedCards.length === 0 ? <div style={{ minHeight: 1 }} /> : null}
+                  {arrangedCards.map((card) => {
+                    const selected = selectedCardIds.includes(card.id);
+                    const enabled =
+                      currentRequirement?.status === "pending_tribute"
+                        ? tributeCandidates.includes(card.id)
+                        : currentRequirement?.status === "pending_return"
+                          ? returnCandidates.includes(card.id)
+                          : true;
+                    return (
+                      <button
+                        key={card.id}
+                        type="button"
+                        disabled={!enabled}
+                        onClick={() => toggleCard(card.id)}
+                        style={{
+                          ...cardFaceStyle({
+                            selected,
+                            enabled,
+                            width: handCardWidth,
+                            height: handCardHeight,
+                            color: isRedSuit(card) ? "#b91c1c" : "#0f172a",
+                            radius: cardRadius,
+                            padding: handCardPadding
+                          }),
+                          transform: selected ? "translateY(-4px)" : "translateY(0)"
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 3,
+                            justifyItems: "center",
+                            alignContent: "center",
+                            minHeight: 28
+                          }}
+                        >
+                          {splitCardDisplay(card).map((part, index) => (
+                            <div key={`${card.id}-${index}`} style={{ fontSize: 12, fontWeight: 700, lineHeight: 1 }}>
+                              {part}
+                            </div>
+                          ))}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={{ display: "flex", gap: 2, minHeight: 54, overflowX: "auto" }}>
+                  {bottomCards.map((card) => {
+                    const selected = selectedCardIds.includes(card.id);
+                    const enabled =
+                      currentRequirement?.status === "pending_tribute"
+                        ? tributeCandidates.includes(card.id)
+                        : currentRequirement?.status === "pending_return"
+                          ? returnCandidates.includes(card.id)
+                          : true;
+                    return (
+                      <button
+                        key={card.id}
+                        type="button"
+                        disabled={!enabled}
+                        onClick={() => toggleCard(card.id)}
+                        style={{
+                          ...cardFaceStyle({
+                            selected,
+                            enabled,
+                            width: handCardWidth,
+                            height: handCardHeight,
+                            color: isRedSuit(card) ? "#b91c1c" : "#0f172a",
+                            radius: cardRadius,
+                            padding: handCardPadding
+                          }),
+                          transform: selected ? "translateY(-4px)" : "translateY(0)"
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 3,
+                            justifyItems: "center",
+                            alignContent: "center",
+                            minHeight: 28
+                          }}
+                        >
+                          {splitCardDisplay(card).map((part, index) => (
+                            <div key={`${card.id}-${index}`} style={{ fontSize: 12, fontWeight: 700, lineHeight: 1 }}>
+                              {part}
+                            </div>
+                          ))}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </>
