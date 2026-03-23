@@ -237,6 +237,18 @@ const baseWidgets: Array<Omit<WidgetDefinition, "id" | "createdAt" | "updatedAt"
     uiSchema: { layout: "single-column" },
     logicSpec: {},
     storagePolicy: { strategy: "local" }
+  },
+  {
+    kind: "system",
+    type: "guandan",
+    name: "掼蛋",
+    version: 1,
+    description: "四人在线掼蛋，支持邀请开局、贡还牌与升级",
+    inputSchema: { fields: [] },
+    outputSchema: { fields: [] },
+    uiSchema: { layout: "single-column" },
+    logicSpec: {},
+    storagePolicy: { strategy: "local" }
   }
 ];
 
@@ -385,6 +397,9 @@ function getDefaultWidgetSize(type?: string): { w: number; h: number } {
   if (type === "monopoly") {
     return { w: 498, h: 640 };
   }
+  if (type === "guandan") {
+    return { w: 498, h: 640 };
+  }
   if (type === "worldClock") {
     return { w: 240, h: 240 };
   }
@@ -423,6 +438,9 @@ function safeWidgetHeight(widget: WidgetInstance, definitionType?: string) {
     return Math.max(560, Number(widget.size.h) || 640);
   }
   if (definitionType === "monopoly") {
+    return Math.max(560, Number(widget.size.h) || 640);
+  }
+  if (definitionType === "guandan") {
     return Math.max(560, Number(widget.size.h) || 640);
   }
   return Math.max(90, Number(widget.size.h) || 180);
