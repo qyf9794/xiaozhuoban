@@ -162,6 +162,14 @@ function userDisplayColor(userId: string | null | undefined, userName: string | 
   return colorForUser(userId || userName || "guest");
 }
 
+function relationLabelForUser(players: SeatDisplay[], currentUserId: string, targetUserId: string | null | undefined) {
+  if (!targetUserId || targetUserId === currentUserId) return "";
+  const self = players.find((player) => player.userId === currentUserId);
+  const target = players.find((player) => player.userId === targetUserId);
+  if (!self || !target) return "";
+  return self.team === target.team ? "对家" : "对手";
+}
+
 function isRedSuit(card: GuandanCard) {
   return card.suit === "hearts" || card.suit === "diamonds";
 }
@@ -355,6 +363,7 @@ export function GuandanWidget({
   const inviteableUsers = otherUsers.slice(0, 20);
   const boardPanelHeight = isMobileMode ? 150 : 188;
   const teammatePanelHeight = isMobileMode ? 74 : 88;
+  const lastPlayRelationLabel = relationLabelForUser(seatDisplays, userId, lastNonPass?.playerId);
 
   useEffect(() => {
     setSelectedCardIds((prev) => prev.filter((cardId) => ownHand.some((card) => card.id === cardId)));
@@ -423,6 +432,9 @@ export function GuandanWidget({
   const handCardHeight = isMobileMode ? 47 : 47;
   const cardRadius = isMobileMode ? 5 : 6;
   const handCardPadding = "10px 4px";
+  const cardLabelFontSize = isMobileMode ? 11 : 12;
+  const handRowMinHeight = handCardHeight + 10;
+  const handPanelMinHeight = handCardHeight * 2 + 86;
 
   return (
     <Card
@@ -583,9 +595,28 @@ export function GuandanWidget({
                   gap: 8,
                   borderRadius: 16,
                   padding: 10,
-                  background: "linear-gradient(160deg, rgba(15,23,42,0.08), rgba(15,23,42,0.02))"
+                  background: "linear-gradient(160deg, rgba(15,23,42,0.08), rgba(15,23,42,0.02))",
+                  position: "relative"
                 }}
               >
+                {activeMatch ? (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 10,
+                      left: 10,
+                      display: "grid",
+                      gap: 2,
+                      justifyItems: "start",
+                      pointerEvents: "none"
+                    }}
+                  >
+                    <div style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.15 }}>第 {activeMatch.state.currentRound} 局</div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.15 }}>
+                      当前打 {activeMatch.state.currentLevel === 14 ? "A" : activeMatch.state.currentLevel}
+                    </div>
+                  </div>
+                ) : null}
                 {[1, 2, 3].map((slot) => {
                   const player = getSeatPlayer(seatDisplays, userId, slot as 0 | 1 | 2 | 3);
                   const current = activeMatch?.state.currentTurnPlayerId === player?.userId;
@@ -614,8 +645,8 @@ export function GuandanWidget({
                     >
                       <div
                         style={{
-                          display: "flex",
-                          gap: 6,
+                          display: teammate ? "flex" : "grid",
+                          gap: teammate ? 6 : 2,
                           alignItems: "center",
                           justifyContent: "center",
                           width: "100%",
@@ -630,12 +661,12 @@ export function GuandanWidget({
                             whiteSpace: "nowrap",
                             overflow: "hidden",
                             textOverflow: "ellipsis",
-                            maxWidth: teammate ? "calc(100% - 34px)" : "100%"
+                            maxWidth: teammate ? "calc(100% - 34px)" : "100%",
+                            width: "100%"
                           }}
                         >
                           {player?.userName ?? "等待中"}
                         </div>
-                        <div style={{ fontSize: 10, color: "#64748b", whiteSpace: "nowrap" }}>{teammate ? "对家" : "对手"}</div>
                       </div>
                       <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", lineHeight: 1.1 }}>
                         {player?.handCount !== null && player?.handCount !== undefined ? `${player.handCount} 张` : "等待中"}
@@ -664,23 +695,12 @@ export function GuandanWidget({
                     background: "linear-gradient(165deg, rgba(255,255,255,0.55), rgba(255,255,255,0.22))"
                   }}
                 >
-                  {activeMatch ? (
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 6,
-                        alignItems: "center",
-                        alignSelf: "start"
-                      }}
-                    >
-                      <div style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.2 }}>第 {activeMatch.state.currentRound} 局</div>
-                      <div style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.2 }}>
-                        当前打 {activeMatch.state.currentLevel === 14 ? "A" : activeMatch.state.currentLevel}
-                      </div>
-                    </div>
-                  ) : null}
                   <div style={{ fontSize: 13, color: "#0f172a", fontWeight: 700 }}>
-                    {lastNonPass?.text ?? (currentMatch.status === "pending" ? "房间已创建，等待所有玩家进入" : "等待首家出牌")}
+                    {lastNonPass
+                      ? `${lastPlayRelationLabel ? `${lastPlayRelationLabel} ` : ""}${lastNonPass.text}`
+                      : currentMatch.status === "pending"
+                        ? "房间已创建，等待所有玩家进入"
+                        : "等待首家出牌"}
                   </div>
                   <div style={{ display: "flex", gap: 4, flexWrap: "wrap", minHeight: 42 }}>
                     {(lastNonPass?.cardLabels ?? []).map((label, index) => {
@@ -705,8 +725,8 @@ export function GuandanWidget({
                             gap: 3
                           }}
                         >
-                          <span style={{ lineHeight: 1, fontWeight: 700, fontSize: 12 }}>{parts[0]}</span>
-                          <span style={{ lineHeight: 1, fontWeight: 700, fontSize: 12 }}>{parts[1]}</span>
+                          <span style={{ lineHeight: 1, fontWeight: 700, fontSize: cardLabelFontSize }}>{parts[0]}</span>
+                          <span style={{ lineHeight: 1, fontWeight: 700, fontSize: cardLabelFontSize }}>{parts[1]}</span>
                         </span>
                       );
                     })}
@@ -740,6 +760,7 @@ export function GuandanWidget({
                     )}
                   </div>
                 </div>
+
               </div>
             </div>
 
@@ -747,8 +768,9 @@ export function GuandanWidget({
               style={{
                 display: "grid",
                 gap: 8,
-                padding: "10px 10px 6px",
+                padding: 10,
                 borderRadius: 16,
+                minHeight: handPanelMinHeight,
                 background: isMyTurn
                   ? "linear-gradient(160deg, rgba(254,226,226,0.92), rgba(248,113,113,0.34))"
                   : "linear-gradient(160deg, rgba(255,255,255,0.42), rgba(255,255,255,0.18))"
@@ -812,7 +834,7 @@ export function GuandanWidget({
               </div>
 
               <div style={{ display: "grid", gap: 6 }}>
-                <div style={{ display: "flex", gap: 2, minHeight: 54, overflowX: "auto" }}>
+                <div style={{ display: "flex", gap: 2, minHeight: handRowMinHeight, overflowX: "auto", alignItems: "flex-end" }}>
                   {arrangedCards.length === 0 ? <div style={{ minHeight: 1 }} /> : null}
                   {arrangedCards.map((card) => {
                     const selected = selectedCardIds.includes(card.id);
@@ -851,7 +873,7 @@ export function GuandanWidget({
                           }}
                         >
                           {splitCardDisplay(card).map((part, index) => (
-                            <div key={`${card.id}-${index}`} style={{ fontSize: 12, fontWeight: 700, lineHeight: 1 }}>
+                            <div key={`${card.id}-${index}`} style={{ fontSize: cardLabelFontSize, fontWeight: 700, lineHeight: 1 }}>
                               {part}
                             </div>
                           ))}
@@ -861,7 +883,7 @@ export function GuandanWidget({
                   })}
                 </div>
 
-                <div style={{ display: "flex", gap: 2, minHeight: 54, overflowX: "auto" }}>
+                <div style={{ display: "flex", gap: 2, minHeight: handRowMinHeight, overflowX: "auto", alignItems: "flex-end" }}>
                   {bottomCards.map((card) => {
                     const selected = selectedCardIds.includes(card.id);
                     const enabled =
@@ -899,7 +921,7 @@ export function GuandanWidget({
                           }}
                         >
                           {splitCardDisplay(card).map((part, index) => (
-                            <div key={`${card.id}-${index}`} style={{ fontSize: 12, fontWeight: 700, lineHeight: 1 }}>
+                            <div key={`${card.id}-${index}`} style={{ fontSize: cardLabelFontSize, fontWeight: 700, lineHeight: 1 }}>
                               {part}
                             </div>
                           ))}
