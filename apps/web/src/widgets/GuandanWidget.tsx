@@ -209,11 +209,7 @@ function bottomSort(cards: GuandanCard[], level: number) {
   return sortHand(cards, level);
 }
 
-function isSuitGlyph(part: string) {
-  return part === "♠" || part === "♥" || part === "♣" || part === "♦";
-}
-
-function renderCardFaceContent(parts: string[], rankFontSize: number) {
+function renderPlayedCardFace(parts: string[], fontSize: number) {
   return (
     <div
       style={{
@@ -221,19 +217,11 @@ function renderCardFaceContent(parts: string[], rankFontSize: number) {
         gap: 3,
         justifyItems: "center",
         alignContent: "center",
-        minHeight: 28,
-        width: "100%"
+        minHeight: 28
       }}
     >
       {parts.map((part, index) => (
-        <div
-          key={`${part}-${index}`}
-          style={{
-            fontSize: isSuitGlyph(part) ? rankFontSize + 1 : rankFontSize,
-            fontWeight: 700,
-            lineHeight: 1
-          }}
-        >
+        <div key={`${part}-${index}`} style={{ fontSize, fontWeight: 700, lineHeight: 1 }}>
           {part}
         </div>
       ))}
@@ -254,7 +242,6 @@ function cardFaceStyle(params: {
     width: params.width,
     minWidth: params.width,
     height: params.height,
-    boxSizing: "border-box",
     borderRadius: params.radius,
     border: params.selected ? "1px solid rgba(220,38,38,0.62)" : "1px solid rgba(203,213,225,0.7)",
     background: params.selected
@@ -262,8 +249,6 @@ function cardFaceStyle(params: {
       : "linear-gradient(180deg, rgba(255,255,255,0.86), rgba(255,255,255,0.64))",
     color: params.color,
     padding: params.padding,
-    appearance: "none",
-    WebkitAppearance: "none",
     cursor: params.enabled ? "pointer" : "default",
     opacity: params.enabled ? 1 : 0.38
   } as const;
@@ -757,11 +742,10 @@ export function GuandanWidget({
                             display: "grid",
                             justifyItems: "center",
                             alignContent: "center",
-                            gap: 3,
-                            flex: `0 0 ${handCardWidth}px`
+                            gap: 3
                           }}
                         >
-                          {renderCardFaceContent(parts, cardLabelFontSize)}
+                          {renderPlayedCardFace(parts, cardLabelFontSize)}
                         </span>
                       );
                     })}
@@ -898,7 +882,7 @@ export function GuandanWidget({
                           transform: selected ? "translateY(-4px)" : "translateY(0)"
                         }}
                       >
-                        {renderCardFaceContent(splitCardDisplay(card), cardLabelFontSize)}
+                        {renderPlayedCardFace(splitCardDisplay(card), cardLabelFontSize)}
                       </button>
                     );
                   })}
@@ -932,7 +916,7 @@ export function GuandanWidget({
                           transform: selected ? "translateY(-4px)" : "translateY(0)"
                         }}
                       >
-                        {renderCardFaceContent(splitCardDisplay(card), cardLabelFontSize)}
+                        {renderPlayedCardFace(splitCardDisplay(card), cardLabelFontSize)}
                       </button>
                     );
                   })}
