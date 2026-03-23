@@ -79,12 +79,42 @@ describe("guandan combos", () => {
     expect(combo?.primaryRank).toBe(14);
   });
 
+  it("treats A as the high end of a straight", () => {
+    const combo = detectCombo(
+      [card("a10", "spades", 10), card("a11", "hearts", 11), card("a12", "clubs", 12), card("a13", "diamonds", 13), card("a14", "spades", 14)],
+      7
+    );
+    expect(combo?.type).toBe("straight");
+    expect(combo?.primaryRank).toBe(14);
+  });
+
+  it("treats A as 1 in low straights and straight flushes", () => {
+    const straight = detectCombo(
+      [card("l14", "spades", 14), card("l2", "hearts", 2), card("l3", "clubs", 3), card("l4", "diamonds", 4), card("l5", "spades", 5)],
+      7
+    );
+    const straightFlush = detectCombo(
+      [card("f14", "spades", 14), card("f2", "spades", 2), card("f3", "spades", 3), card("f4", "spades", 4), card("f5", "spades", 5)],
+      7
+    );
+    expect(straight?.type).toBe("straight");
+    expect(straight?.primaryRank).toBe(5);
+    expect(straightFlush?.type).toBe("straight_flush");
+    expect(straightFlush?.primaryRank).toBe(5);
+  });
+
   it("applies bomb ladder ordering", () => {
     const bomb6 = detectCombo([card("a", "spades", 9), card("b", "clubs", 9), card("c", "diamonds", 9), card("d", "hearts", 9), card("e", "spades", 9), card("f", "clubs", 9)], 7)!;
     const flush = detectCombo([card("g", "spades", 8), card("h", "spades", 9), card("i", "spades", 10), card("j", "spades", 11), card("k", "spades", 12)], 7)!;
     const kings = detectCombo([card("l", "joker", 15), card("m", "joker", 15), card("n", "joker", 16), card("o", "joker", 16)], 7)!;
-    expect(canBeatCombo(bomb6, flush)).toBe(true);
-    expect(canBeatCombo(kings, bomb6)).toBe(true);
+    expect(canBeatCombo(bomb6, flush, 7)).toBe(true);
+    expect(canBeatCombo(kings, bomb6, 7)).toBe(true);
+  });
+
+  it("treats the current level as higher than A in ordinary comparisons", () => {
+    const levelPair = detectCombo([card("l1", "spades", 2), card("l2", "clubs", 2)], 2)!;
+    const acePair = detectCombo([card("a1", "spades", 14), card("a2", "clubs", 14)], 2)!;
+    expect(canBeatCombo(levelPair, acePair, 2)).toBe(true);
   });
 });
 
