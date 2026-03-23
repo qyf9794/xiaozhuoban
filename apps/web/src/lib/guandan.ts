@@ -818,8 +818,31 @@ function canMakeCount(cards: GuandanCard[], currentLevel: number, rank: number, 
   return fixed + wild >= count;
 }
 
-function straightRanks(currentLevel: number) {
-  return Array.from({ length: 13 }, (_, index) => index + 2).filter((rank) => rank !== currentLevel);
+function comboRankWeight(rank: number, currentLevel: number) {
+  if (rank === 16) return 400;
+  if (rank === 15) return 390;
+  if (rank === currentLevel) return 300;
+  return 100 + rank;
+}
+
+function straightSequences(currentLevel: number) {
+  const sequences = [
+    [14, 2, 3, 4, 5],
+    [2, 3, 4, 5, 6],
+    [3, 4, 5, 6, 7],
+    [4, 5, 6, 7, 8],
+    [5, 6, 7, 8, 9],
+    [6, 7, 8, 9, 10],
+    [7, 8, 9, 10, 11],
+    [8, 9, 10, 11, 12],
+    [9, 10, 11, 12, 13],
+    [10, 11, 12, 13, 14]
+  ] as number[][];
+  return sequences.filter((sequence) => !sequence.includes(currentLevel));
+}
+
+function straightPrimaryRank(targetRanks: number[]) {
+  return targetRanks[0] === 14 && targetRanks[1] === 2 ? 5 : targetRanks[targetRanks.length - 1]!;
 }
 
 function canMakeStraight(cards: GuandanCard[], currentLevel: number, targetRanks: number[]) {
@@ -918,17 +941,16 @@ export function detectCombo(cards: GuandanCard[], currentLevel: number): Guandan
   }
 
   if (length === 5) {
-    const straightOptions = straightRanks(currentLevel);
-    for (let start = straightOptions.length - 5; start >= 0; start -= 1) {
-      const target = straightOptions.slice(start, start + 5);
+    for (const target of [...straightSequences(currentLevel)].reverse()) {
       if (canMakeStraightFlush(cards, currentLevel, target)) {
+        const primaryRank = straightPrimaryRank(target);
         return {
           type: "straight_flush",
           family: "straight_flush",
           length,
-          primaryRank: target[target.length - 1]!,
+          primaryRank,
           bombSize: 5,
-          display: comboDisplay("straight_flush", target[target.length - 1]!)
+          display: comboDisplay("straight_flush", primaryRank)
         };
       }
     }
@@ -995,24 +1017,23 @@ export function detectCombo(cards: GuandanCard[], currentLevel: number): Guandan
       }
     }
 
-    const straightOptions = straightRanks(currentLevel);
-    for (let start = straightOptions.length - 5; start >= 0; start -= 1) {
-      const target = straightOptions.slice(start, start + 5);
+    for (const target of [...straightSequences(currentLevel)].reverse()) {
       if (canMakeStraight(cards, currentLevel, target)) {
+        const primaryRank = straightPrimaryRank(target);
         return {
           type: "straight",
           family: "ordinary",
           length,
-          primaryRank: target[target.length - 1]!,
+          primaryRank,
           bombSize: 0,
-          display: comboDisplay("straight", target[target.length - 1]!)
+          display: comboDisplay("straight", primaryRank)
         };
       }
     }
   }
 
   if (length === 6) {
-    const allowed = straightRanks(currentLevel);
+    const allowed = Array.from({ length: 13 }, (_, index) => index + 2).filter((rank) => rank !== currentLevel);
     for (let start = allowed.length - 3; start >= 0; start -= 1) {
       const target = allowed.slice(start, start + 3);
       let missing = 0;
@@ -1068,7 +1089,7 @@ function familyWeight(combo: GuandanCombo) {
   return 7;
 }
 
-export function canBeatCombo(challenger: GuandanCombo, defender: GuandanCombo | null) {
+export function canBeatCombo(challenger: GuandanCombo, defender: GuandanCombo | null, currentLevel: number) {
   if (!defender) return true;
   const challengerWeight = familyWeight(challenger);
   const defenderWeight = familyWeight(defender);
@@ -1080,9 +1101,13 @@ export function canBeatCombo(challenger: GuandanCombo, defender: GuandanCombo | 
     if (challenger.bombSize !== defender.bombSize) {
       return challenger.bombSize > defender.bombSize;
     }
-    return challenger.primaryRank > defender.primaryRank;
+    return comboRankWeight(challenger.primaryRank, currentLevel) > comboRankWeight(defender.primaryRank, currentLevel);
   }
-  return challenger.type === defender.type && challenger.length === defender.length && challenger.primaryRank > defender.primaryRank;
+  return (
+    challenger.type === defender.type &&
+    challenger.length === defender.length &&
+    comboRankWeight(challenger.primaryRank, currentLevel) > comboRankWeight(defender.primaryRank, currentLevel)
+  );
 }
 
 function removeCardsFromHand(hand: GuandanCard[], cardIds: string[], currentLevel: number) {
@@ -1351,7 +1376,7 @@ export function submitPlay(
   if (!combo) {
     throw new Error("当前选牌不构成合法牌型");
   }
-  if (!canBeatCombo(combo, state.currentTrick.currentCombo)) {
+  if (!canBeatCombo(combo, state.currentTrick.currentCombo, state.currentLevel)) {
     throw new Error("当前出牌无法压过牌桌");
   }
 

@@ -453,8 +453,8 @@ export function GuandanWidget({
   const cardRadius = isMobileMode ? 5 : 6;
   const handCardPadding = "10px 4px";
   const cardLabelFontSize = isMobileMode ? 11 : 12;
-  const handRowMinHeight = handCardHeight + 10;
-  const handPanelMinHeight = handCardHeight * 2 + 86;
+  const handRowMinHeight = handCardHeight + (isMobileMode ? 10 : 12);
+  const handPanelMinHeight = handCardHeight * 2 + (isMobileMode ? 86 : 92);
 
   return (
     <Card
