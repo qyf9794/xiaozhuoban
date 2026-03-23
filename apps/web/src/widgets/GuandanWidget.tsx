@@ -217,11 +217,25 @@ function renderPlayedCardFace(parts: string[], fontSize: number) {
         gap: 3,
         justifyItems: "center",
         alignContent: "center",
-        minHeight: 28
+        minHeight: 28,
+        width: "100%",
+        justifyContent: "center",
+        textAlign: "center"
       }}
     >
       {parts.map((part, index) => (
-        <div key={`${part}-${index}`} style={{ fontSize, fontWeight: 700, lineHeight: 1 }}>
+        <div
+          key={`${part}-${index}`}
+          style={{
+            fontSize,
+            fontWeight: 700,
+            lineHeight: 1,
+            width: "100%",
+            textAlign: "center",
+            display: "flex",
+            justifyContent: "center"
+          }}
+        >
           {part}
         </div>
       ))}
