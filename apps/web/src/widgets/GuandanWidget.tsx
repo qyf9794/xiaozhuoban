@@ -725,8 +725,18 @@ export function GuandanWidget({
                             gap: 3
                           }}
                         >
-                          <span style={{ lineHeight: 1, fontWeight: 700, fontSize: cardLabelFontSize }}>{parts[0]}</span>
-                          <span style={{ lineHeight: 1, fontWeight: 700, fontSize: cardLabelFontSize }}>{parts[1]}</span>
+                          <div
+                            style={{
+                              display: "grid",
+                              gap: 3,
+                              justifyItems: "center",
+                              alignContent: "center",
+                              minHeight: 28
+                            }}
+                          >
+                            <div style={{ fontSize: cardLabelFontSize, fontWeight: 700, lineHeight: 1 }}>{parts[0]}</div>
+                            <div style={{ fontSize: cardLabelFontSize, fontWeight: 700, lineHeight: 1 }}>{parts[1]}</div>
+                          </div>
                         </span>
                       );
                     })}
