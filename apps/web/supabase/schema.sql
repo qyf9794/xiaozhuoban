@@ -135,6 +135,28 @@ create table if not exists public.monopoly_matches (
   )
 );
 
+create table if not exists public.guandan_matches (
+  id text primary key,
+  host_user_id uuid not null references auth.users(id) on delete cascade,
+  host_user_name text not null,
+  participant_ids text[] not null default '{}',
+  status text not null default 'pending',
+  phase text not null default 'lobby',
+  state jsonb not null default '{}'::jsonb,
+  revision integer not null default 0,
+  started_at timestamptz null,
+  finished_at timestamptz null,
+  expires_at timestamptz null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint guandan_matches_status_check check (status in ('pending', 'active', 'declined', 'cancelled', 'completed', 'expired')),
+  constraint guandan_matches_phase_check check (phase in ('lobby', 'tribute', 'playing', 'round_complete', 'match_complete')),
+  constraint guandan_matches_participants_check check (
+    coalesce(array_length(participant_ids, 1), 0) = 4
+    and host_user_id::text = any(participant_ids)
+  )
+);
+
 alter table public.gomoku_matches add column if not exists round_state text not null default 'playing';
 alter table public.gomoku_matches add column if not exists series_winner text null;
 alter table public.gomoku_matches add column if not exists current_round integer not null default 1;
@@ -168,6 +190,26 @@ check (
   and host_user_id::text = any(participant_ids)
 );
 
+alter table public.guandan_matches add column if not exists participant_ids text[] not null default '{}';
+alter table public.guandan_matches add column if not exists phase text not null default 'lobby';
+alter table public.guandan_matches add column if not exists state jsonb not null default '{}'::jsonb;
+alter table public.guandan_matches add column if not exists revision integer not null default 0;
+alter table public.guandan_matches add column if not exists started_at timestamptz null;
+alter table public.guandan_matches add column if not exists finished_at timestamptz null;
+alter table public.guandan_matches add column if not exists expires_at timestamptz null;
+alter table public.guandan_matches drop constraint if exists guandan_matches_status_check;
+alter table public.guandan_matches add constraint guandan_matches_status_check
+check (status in ('pending', 'active', 'declined', 'cancelled', 'completed', 'expired'));
+alter table public.guandan_matches drop constraint if exists guandan_matches_phase_check;
+alter table public.guandan_matches add constraint guandan_matches_phase_check
+check (phase in ('lobby', 'tribute', 'playing', 'round_complete', 'match_complete'));
+alter table public.guandan_matches drop constraint if exists guandan_matches_participants_check;
+alter table public.guandan_matches add constraint guandan_matches_participants_check
+check (
+  coalesce(array_length(participant_ids, 1), 0) = 4
+  and host_user_id::text = any(participant_ids)
+);
+
 drop trigger if exists trg_workspaces_updated_at on public.workspaces;
 create trigger trg_workspaces_updated_at
 before update on public.workspaces
@@ -198,6 +240,11 @@ create trigger trg_monopoly_matches_updated_at
 before update on public.monopoly_matches
 for each row execute function public.set_updated_at();
 
+drop trigger if exists trg_guandan_matches_updated_at on public.guandan_matches;
+create trigger trg_guandan_matches_updated_at
+before update on public.guandan_matches
+for each row execute function public.set_updated_at();
+
 create index if not exists idx_workspaces_user_updated on public.workspaces(user_id, updated_at desc);
 create index if not exists idx_workspaces_user_deleted on public.workspaces(user_id, deleted_at);
 
@@ -219,6 +266,9 @@ create index if not exists idx_gomoku_matches_expires on public.gomoku_matches(e
 create index if not exists idx_monopoly_matches_host_status on public.monopoly_matches(host_user_id, status, updated_at desc);
 create index if not exists idx_monopoly_matches_expires on public.monopoly_matches(expires_at);
 create index if not exists idx_monopoly_matches_participants on public.monopoly_matches using gin(participant_ids);
+create index if not exists idx_guandan_matches_host_status on public.guandan_matches(host_user_id, status, updated_at desc);
+create index if not exists idx_guandan_matches_expires on public.guandan_matches(expires_at);
+create index if not exists idx_guandan_matches_participants on public.guandan_matches using gin(participant_ids);
 
 alter table public.workspaces enable row level security;
 alter table public.boards enable row level security;
@@ -227,6 +277,7 @@ alter table public.widget_instances enable row level security;
 alter table public.message_board_messages enable row level security;
 alter table public.gomoku_matches enable row level security;
 alter table public.monopoly_matches enable row level security;
+alter table public.guandan_matches enable row level security;
 
 drop policy if exists workspaces_owner_all on public.workspaces;
 create policy workspaces_owner_all on public.workspaces
@@ -297,6 +348,25 @@ with check (auth.uid() = host_user_id and auth.uid()::text = any(participant_ids
 
 drop policy if exists monopoly_matches_players_update on public.monopoly_matches;
 create policy monopoly_matches_players_update on public.monopoly_matches
+for update
+to authenticated
+using (auth.uid()::text = any(participant_ids))
+with check (auth.uid()::text = any(participant_ids));
+
+drop policy if exists guandan_matches_players_select on public.guandan_matches;
+create policy guandan_matches_players_select on public.guandan_matches
+for select
+to authenticated
+using (auth.uid()::text = any(participant_ids));
+
+drop policy if exists guandan_matches_host_insert on public.guandan_matches;
+create policy guandan_matches_host_insert on public.guandan_matches
+for insert
+to authenticated
+with check (auth.uid() = host_user_id and auth.uid()::text = any(participant_ids));
+
+drop policy if exists guandan_matches_players_update on public.guandan_matches;
+create policy guandan_matches_players_update on public.guandan_matches
 for update
 to authenticated
 using (auth.uid()::text = any(participant_ids))
