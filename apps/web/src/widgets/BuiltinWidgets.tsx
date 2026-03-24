@@ -1699,8 +1699,8 @@ export function BuiltinWidgetView({
 
     return (
       <WidgetShell definition={definition} instance={instance}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", minWidth: 0 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6, width: "100%", minWidth: 0 }}>
             <input
               type="text"
               inputMode="numeric"
@@ -1712,10 +1712,14 @@ export function BuiltinWidgetView({
               }}
               placeholder="时"
               style={{
+                width: "100%",
+                minWidth: 0,
+                boxSizing: "border-box",
                 borderRadius: 10,
                 border: "1px solid rgba(203, 213, 225, 0.65)",
                 padding: "6px 8px",
-                background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
+                background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))",
+                textAlign: "center"
               }}
             />
             <input
@@ -1729,10 +1733,14 @@ export function BuiltinWidgetView({
               }}
               placeholder="分"
               style={{
+                width: "100%",
+                minWidth: 0,
+                boxSizing: "border-box",
                 borderRadius: 10,
                 border: "1px solid rgba(203, 213, 225, 0.65)",
                 padding: "6px 8px",
-                background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
+                background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))",
+                textAlign: "center"
               }}
             />
             <input
@@ -1746,10 +1754,14 @@ export function BuiltinWidgetView({
               }}
               placeholder="秒"
               style={{
+                width: "100%",
+                minWidth: 0,
+                boxSizing: "border-box",
                 borderRadius: 10,
                 border: "1px solid rgba(203, 213, 225, 0.65)",
                 padding: "6px 8px",
-                background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))"
+                background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))",
+                textAlign: "center"
               }}
             />
           </div>
