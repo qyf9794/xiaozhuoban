@@ -845,6 +845,30 @@ function fmtRemaining(ms: number): string {
   return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
+function clampCountdownSegment(value: number, max: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(max, Math.max(0, Math.floor(value)));
+}
+
+function getCountdownInputValue(raw: unknown, fallback: number): string {
+  if (typeof raw === "string") return raw;
+  if (typeof raw === "number" && Number.isFinite(raw)) return String(Math.max(0, Math.floor(raw)));
+  return String(fallback);
+}
+
+function parseCountdownInputValue(raw: unknown, max: number, fallback = 0): number {
+  if (typeof raw === "number") {
+    return clampCountdownSegment(raw, max);
+  }
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return fallback;
+    const normalized = Number.parseInt(trimmed, 10);
+    return clampCountdownSegment(normalized, max);
+  }
+  return fallback;
+}
+
 interface RecordingItem {
   id: string;
   createdAt: string;
@@ -852,6 +876,16 @@ interface RecordingItem {
   dataUrl: string;
   mimeType: string;
 }
+
+type RecorderWakeLockSentinel = {
+  released?: boolean;
+  release: () => Promise<void>;
+  addEventListener?: (type: "release", listener: () => void) => void;
+};
+
+type RecorderWakeLockApi = {
+  request: (type: "screen") => Promise<RecorderWakeLockSentinel>;
+};
 
 interface ClipboardRecord {
   id: string;
@@ -872,6 +906,12 @@ let messageBoardAudioContext: AudioContext | null = null;
 let messageBoardHistoryPromise: Promise<MessageBoardItem[]> | null = null;
 let messageBoardHistoryCache: MessageBoardItem[] | null = null;
 let messageBoardHistoryCacheExpiresAt = 0;
+
+function getScreenWakeLockApi(): RecorderWakeLockApi | null {
+  if (typeof navigator === "undefined") return null;
+  const candidate = (navigator as Navigator & { wakeLock?: RecorderWakeLockApi }).wakeLock;
+  return candidate ?? null;
+}
 
 async function getMessageBoardAudioContext() {
   if (typeof window === "undefined") return null;
@@ -971,6 +1011,37 @@ async function primeMessageBoardAudio() {
   oscillator.connect(gainNode);
   oscillator.start(startAt);
   oscillator.stop(startAt + 0.01);
+}
+
+async function playCountdownAlarm() {
+  const ctx = await getMessageBoardAudioContext();
+  if (!ctx) return;
+
+  const gainNode = ctx.createGain();
+  gainNode.connect(ctx.destination);
+
+  const notes = [
+    { at: 0.0, duration: 0.24, frequency: 880 },
+    { at: 0.28, duration: 0.24, frequency: 1046.5 },
+    { at: 0.56, duration: 0.3, frequency: 1318.5 },
+    { at: 0.9, duration: 0.42, frequency: 1046.5 }
+  ] as const;
+
+  for (let round = 0; round < 2; round += 1) {
+    for (const note of notes) {
+      const startAt = ctx.currentTime + 0.01 + round * 1.45 + note.at;
+      const endAt = startAt + note.duration;
+      const oscillator = ctx.createOscillator();
+      oscillator.type = "triangle";
+      oscillator.frequency.setValueAtTime(note.frequency, startAt);
+      oscillator.connect(gainNode);
+      gainNode.gain.setValueAtTime(0.0001, startAt);
+      gainNode.gain.exponentialRampToValueAtTime(0.16, startAt + 0.03);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, endAt);
+      oscillator.start(startAt);
+      oscillator.stop(endAt);
+    }
+  }
 }
 
 function normalizeClipboardRecords(raw: unknown): ClipboardRecord[] {
@@ -1578,12 +1649,16 @@ export function BuiltinWidgetView({
   }
 
   if (definition.type === "countdown") {
-    const inputHours = Number(instance.state.inputHours ?? 0);
-    const inputMinutes = Number(instance.state.inputMinutes ?? 5);
-    const inputSeconds = Number(instance.state.inputSeconds ?? 0);
+    const inputHoursValue = getCountdownInputValue(instance.state.inputHours, 0);
+    const inputMinutesValue = getCountdownInputValue(instance.state.inputMinutes, 5);
+    const inputSecondsValue = getCountdownInputValue(instance.state.inputSeconds, 0);
+    const inputHours = parseCountdownInputValue(instance.state.inputHours, 99);
+    const inputMinutes = parseCountdownInputValue(instance.state.inputMinutes, 59, 5);
+    const inputSeconds = parseCountdownInputValue(instance.state.inputSeconds, 59);
     const running = instance.state.running === true;
     const totalSeconds = Number(instance.state.totalSeconds ?? inputHours * 3600 + inputMinutes * 60 + inputSeconds);
     const remainingSeconds = Number(instance.state.remainingSeconds ?? totalSeconds);
+    const prevRemainingSecondsRef = useRef(remainingSeconds);
 
     useEffect(() => {
       if (!running) return;
@@ -1599,6 +1674,15 @@ export function BuiltinWidgetView({
       // controlled by latest remaining/running
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [running, remainingSeconds]);
+
+    useEffect(() => {
+      if (totalSeconds > 0 && prevRemainingSecondsRef.current > 0 && remainingSeconds === 0) {
+        void playCountdownAlarm().catch((error) => {
+          console.warn("[countdown] play alarm failed", error);
+        });
+      }
+      prevRemainingSecondsRef.current = remainingSeconds;
+    }, [remainingSeconds, totalSeconds]);
 
     const progressRatio = totalSeconds > 0 ? (totalSeconds - remainingSeconds) / totalSeconds : 0;
     const progress = Math.min(100, Math.max(0, progressRatio * 100));
@@ -1618,11 +1702,14 @@ export function BuiltinWidgetView({
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
             <input
-              type="number"
-              min={0}
-              max={99}
-              value={inputHours}
-              onChange={(event) => onStateChange({ ...instance.state, inputHours: Number(event.target.value || 0) })}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={inputHoursValue}
+              onChange={(event) => {
+                const next = event.target.value.replace(/\D+/g, "");
+                onStateChange({ ...instance.state, inputHours: next });
+              }}
               placeholder="时"
               style={{
                 borderRadius: 10,
@@ -1632,11 +1719,14 @@ export function BuiltinWidgetView({
               }}
             />
             <input
-              type="number"
-              min={0}
-              max={59}
-              value={inputMinutes}
-              onChange={(event) => onStateChange({ ...instance.state, inputMinutes: Number(event.target.value || 0) })}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={inputMinutesValue}
+              onChange={(event) => {
+                const next = event.target.value.replace(/\D+/g, "");
+                onStateChange({ ...instance.state, inputMinutes: next });
+              }}
               placeholder="分"
               style={{
                 borderRadius: 10,
@@ -1646,11 +1736,14 @@ export function BuiltinWidgetView({
               }}
             />
             <input
-              type="number"
-              min={0}
-              max={59}
-              value={inputSeconds}
-              onChange={(event) => onStateChange({ ...instance.state, inputSeconds: Number(event.target.value || 0) })}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={inputSecondsValue}
+              onChange={(event) => {
+                const next = event.target.value.replace(/\D+/g, "");
+                onStateChange({ ...instance.state, inputSeconds: next });
+              }}
               placeholder="秒"
               style={{
                 borderRadius: 10,
@@ -1664,6 +1757,9 @@ export function BuiltinWidgetView({
             <button
               onClick={() => {
                 const total = inputHours * 3600 + inputMinutes * 60 + inputSeconds;
+                void primeMessageBoardAudio().catch((error) => {
+                  console.warn("[countdown] prime audio failed", error);
+                });
                 onStateChange({
                   ...instance.state,
                   totalSeconds: total,
@@ -3879,10 +3975,79 @@ export function BuiltinWidgetView({
     const streamRef = useRef<MediaStream | null>(null);
     const chunksRef = useRef<BlobPart[]>([]);
     const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
+    const wakeLockRef = useRef<RecorderWakeLockSentinel | null>(null);
     const recordings = (Array.isArray(instance.state.recordings) ? instance.state.recordings : []) as RecordingItem[];
     const recording = instance.state.recording === true;
     const [playingId, setPlayingId] = useState("");
     const [progressMap, setProgressMap] = useState<Record<string, number>>({});
+    const [wakeLockStatus, setWakeLockStatus] = useState<"idle" | "active" | "unsupported" | "failed">("idle");
+
+    useEffect(() => {
+      const releaseWakeLock = async () => {
+        const sentinel = wakeLockRef.current;
+        wakeLockRef.current = null;
+        if (!sentinel) return;
+        try {
+          await sentinel.release();
+        } catch {
+          // Ignore release failures because the browser may have already released it.
+        }
+      };
+
+      if (!recording) {
+        setWakeLockStatus("idle");
+        void releaseWakeLock();
+        return;
+      }
+
+      let disposed = false;
+
+      const requestWakeLock = async () => {
+        const wakeLockApi = getScreenWakeLockApi();
+        if (!wakeLockApi) {
+          if (!disposed) {
+            setWakeLockStatus("unsupported");
+          }
+          return;
+        }
+        try {
+          const sentinel = await wakeLockApi.request("screen");
+          if (disposed) {
+            await sentinel.release().catch(() => undefined);
+            return;
+          }
+          wakeLockRef.current = sentinel;
+          setWakeLockStatus("active");
+          sentinel.addEventListener?.("release", () => {
+            if (wakeLockRef.current === sentinel) {
+              wakeLockRef.current = null;
+            }
+            if (!disposed && document.visibilityState === "visible") {
+              setWakeLockStatus("failed");
+            }
+          });
+        } catch {
+          if (!disposed) {
+            setWakeLockStatus("failed");
+          }
+        }
+      };
+
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === "visible" && !wakeLockRef.current) {
+          void requestWakeLock();
+        }
+      };
+
+      void requestWakeLock();
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+
+      return () => {
+        disposed = true;
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+        void releaseWakeLock();
+      };
+    }, [recording]);
 
     return (
       <WidgetShell definition={definition} instance={instance}>
@@ -3964,6 +4129,16 @@ export function BuiltinWidgetView({
         </div>
 
         {recording ? <div style={{ color: "#fda4af", marginBottom: 8, textAlign: "center" }}>录音中...</div> : null}
+        {recording && wakeLockStatus === "active" ? (
+          <div style={{ color: "#64748b", marginBottom: 8, textAlign: "center", fontSize: 11 }}>
+            已尝试保持屏幕常亮；锁屏或切后台后，浏览器仍可能中断录音。
+          </div>
+        ) : null}
+        {recording && wakeLockStatus !== "idle" && wakeLockStatus !== "active" ? (
+          <div style={{ color: "#b45309", marginBottom: 8, textAlign: "center", fontSize: 11 }}>
+            当前浏览器无法稳定保持常亮，请保持页面前台并关闭自动锁屏。
+          </div>
+        ) : null}
         {asString(instance.state.recordError) ? (
           <div style={{ color: "#b91c1c", marginBottom: 8 }}>{asString(instance.state.recordError)}</div>
         ) : null}
