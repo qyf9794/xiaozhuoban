@@ -1650,10 +1650,10 @@ export function BuiltinWidgetView({
 
   if (definition.type === "countdown") {
     const inputHoursValue = getCountdownInputValue(instance.state.inputHours, 0);
-    const inputMinutesValue = getCountdownInputValue(instance.state.inputMinutes, 5);
+    const inputMinutesValue = getCountdownInputValue(instance.state.inputMinutes, 0);
     const inputSecondsValue = getCountdownInputValue(instance.state.inputSeconds, 0);
     const inputHours = parseCountdownInputValue(instance.state.inputHours, 99);
-    const inputMinutes = parseCountdownInputValue(instance.state.inputMinutes, 59, 5);
+    const inputMinutes = parseCountdownInputValue(instance.state.inputMinutes, 59, 0);
     const inputSeconds = parseCountdownInputValue(instance.state.inputSeconds, 59);
     const running = instance.state.running === true;
     const totalSeconds = Number(instance.state.totalSeconds ?? inputHours * 3600 + inputMinutes * 60 + inputSeconds);
