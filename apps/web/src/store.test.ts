@@ -40,6 +40,23 @@ describe("createDefaultBoardWidgets", () => {
   });
 });
 
+describe("dial clock definition", () => {
+  it("uses a square default size", async () => {
+    const store = await import("./store");
+    const useAppStore = store.useAppStore;
+    useAppStore.setState({
+      ...useAppStore.getState(),
+      activeBoardId: "board_1",
+      widgetDefinitions: [makeDefinition("dialClock")],
+      widgetInstances: []
+    });
+
+    await useAppStore.getState().addWidgetInstance("wd_dialClock");
+
+    expect(useAppStore.getState().widgetInstances[0]?.size).toEqual({ w: 240, h: 240 });
+  });
+});
+
 describe("toCanvasContentPosition", () => {
   it("converts viewport coordinates into canvas content coordinates", () => {
     expect(

@@ -444,6 +444,184 @@ body {
   font-size: 11px;
 }
 
+.dial-clock-widget {
+  width: 100%;
+}
+
+.dial-clock-square {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: grid;
+  place-items: center;
+}
+
+.dial-clock-face {
+  position: relative;
+  width: 99%;
+  height: 99%;
+  border-radius: 50%;
+  overflow: hidden;
+  -webkit-backdrop-filter: blur(18px) saturate(124%);
+  backdrop-filter: blur(18px) saturate(124%);
+  background:
+    radial-gradient(circle at 30% 28%, rgba(240, 244, 247, 0.56), rgba(216, 223, 230, 0.5) 40%, rgba(172, 181, 191, 0.62) 100%),
+    linear-gradient(180deg, rgba(227, 232, 238, 0.42), rgba(180, 189, 198, 0.58));
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.92),
+    inset 0 24px 32px rgba(255, 255, 255, 0.22),
+    inset 0 -18px 30px rgba(71, 85, 105, 0.26),
+    inset 0 0 0 1px rgba(148, 163, 184, 0.62),
+    0 12px 22px rgba(15, 23, 42, 0.08);
+}
+
+.dial-clock-face::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(
+      circle at center,
+      rgba(255, 255, 255, 0) 49%,
+      rgba(148, 163, 184, 0.05) 58%,
+      rgba(107, 114, 128, 0.28) 66%,
+      rgba(120, 127, 141, 0.21) 73%,
+      rgba(173, 181, 191, 0.17) 81%,
+      rgba(107, 114, 128, 0.22) 100%
+    );
+  pointer-events: none;
+}
+
+.dial-clock-face::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.12) 24%, rgba(255, 255, 255, 0) 42%);
+  pointer-events: none;
+}
+
+.dial-clock-mark {
+  position: absolute;
+  width: 2.6px;
+  height: 2.88%;
+  border-radius: 1px;
+  transform-origin: center center;
+  background: rgba(31, 41, 55, 0.6);
+  box-shadow: none;
+}
+
+.dial-clock-mark.is-major {
+  width: 3.3px;
+  height: 4.32%;
+  background: rgba(31, 41, 55, 0.6);
+}
+
+.dial-clock-mark.is-minute-active {
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow:
+    0 0 10px rgba(255, 255, 255, 0.96),
+    0 0 20px rgba(241, 245, 249, 0.7);
+}
+
+.dial-clock-mark.is-second-tail-0 {
+  background: #ffffff;
+  box-shadow:
+    0 0 12px rgba(255, 255, 255, 1),
+    0 0 24px rgba(248, 250, 252, 0.92);
+  animation: dial-clock-second-pulse 900ms ease-in-out infinite;
+}
+
+.dial-clock-mark.is-second-tail-1 {
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow:
+    0 0 8px rgba(255, 255, 255, 0.68),
+    0 0 16px rgba(226, 232, 240, 0.52);
+}
+
+.dial-clock-mark.is-second-tail-2 {
+  background: rgba(255, 255, 255, 0.56);
+  box-shadow:
+    0 0 5px rgba(255, 255, 255, 0.42),
+    0 0 10px rgba(226, 232, 240, 0.3);
+}
+
+.dial-clock-mark.is-sweep-active {
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow:
+    0 0 12px rgba(255, 255, 255, 1),
+    0 0 24px rgba(226, 232, 240, 0.92);
+  animation: dial-clock-sweep-ignite 120ms ease-out both;
+}
+
+.dial-clock-number {
+  position: absolute;
+  transform: translate(-50%, -50%) scaleY(0.9);
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: rgba(31, 41, 55, 0.6);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.42);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+}
+
+.dial-clock-number.is-active {
+  color: rgba(255, 255, 255, 0.98);
+  text-shadow:
+    0 0 10px rgba(255, 255, 255, 0.98),
+    0 0 20px rgba(226, 232, 240, 0.82);
+  font-weight: 600;
+}
+
+.dial-clock-brand {
+  position: absolute;
+  left: 50%;
+  top: 49.4%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: rgba(31, 41, 55, 0.6);
+  font-weight: 960;
+}
+
+.dial-clock-icon {
+  position: absolute;
+  left: 50%;
+  width: 8.2%;
+  aspect-ratio: 1 / 1;
+  transform: translateX(-50%);
+  color: rgba(31, 41, 55, 0.6);
+}
+
+.dial-clock-icon.is-active {
+  color: rgba(255, 255, 255, 0.98);
+  filter:
+    drop-shadow(0 0 6px rgba(255, 255, 255, 0.82))
+    drop-shadow(0 0 12px rgba(241, 245, 249, 0.54));
+}
+
+.dial-clock-icon-moon {
+  top: 31.8%;
+}
+
+.dial-clock-icon-moon .dial-clock-icon-svg {
+  transform: scaleX(-1);
+}
+
+.dial-clock-icon-sun {
+  top: 60.8%;
+}
+
+.dial-clock-icon-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 .world-clock-widget {
   display: flex;
   flex-direction: column;
@@ -851,6 +1029,29 @@ select:focus-visible {
   50% {
     transform: translateY(-3px) scale(1.08);
     opacity: 1;
+  }
+}
+
+@keyframes dial-clock-second-pulse {
+  0%,
+  100% {
+    opacity: 0.9;
+    filter: brightness(1);
+  }
+  50% {
+    opacity: 1;
+    filter: brightness(1.2);
+  }
+}
+
+@keyframes dial-clock-sweep-ignite {
+  0% {
+    opacity: 0.42;
+    filter: brightness(0.78);
+  }
+  100% {
+    opacity: 1;
+    filter: brightness(1);
   }
 }
 

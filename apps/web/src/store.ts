@@ -10,6 +10,7 @@ import {
 import { DexieRepository, InMemoryRepository, type AppRepository } from "@xiaozhuoban/data";
 import { LocalTemplateAIBuilder } from "@xiaozhuoban/ai-builder";
 import { DEFAULT_TV_PLAYLIST_URL, clampTvWidgetSize } from "./widgets/tvShared";
+import { DIAL_CLOCK_MARK_COUNT } from "./widgets/dialClockShared";
 import { DEFAULT_WORLD_CLOCK_ZONES } from "./widgets/worldClockShared";
 
 const defaultWorkspaceName = "默认工作空间";
@@ -126,6 +127,25 @@ const baseWidgets: Array<Omit<WidgetDefinition, "id" | "createdAt" | "updatedAt"
       fields: [{ key: "playlistUrl", label: "直播订阅链接", type: "text", defaultValue: DEFAULT_TV_PLAYLIST_URL }]
     },
     outputSchema: { fields: [] },
+    uiSchema: { layout: "single-column" },
+    logicSpec: {},
+    storagePolicy: { strategy: "local" }
+  },
+  {
+    kind: "system",
+    type: "dialClock",
+    name: "时钟",
+    version: 1,
+    description: "玻璃背板的 BALMUDA 风格圆盘时钟",
+    inputSchema: { fields: [] },
+    outputSchema: {
+      fields: [
+        { key: "hour", label: "小时", type: "number" },
+        { key: "minute", label: "分钟", type: "number" },
+        { key: "second", label: "秒", type: "number" },
+        { key: "markers", label: "刻度", type: "text", defaultValue: String(DIAL_CLOCK_MARK_COUNT) }
+      ]
+    },
     uiSchema: { layout: "single-column" },
     logicSpec: {},
     storagePolicy: { strategy: "local" }
@@ -403,6 +423,9 @@ function getDefaultWidgetSize(type?: string): { w: number; h: number } {
   if (type === "worldClock") {
     return { w: 240, h: 240 };
   }
+  if (type === "dialClock") {
+    return { w: 240, h: 240 };
+  }
   if (type === "headline") {
     return { w: 240, h: 320 };
   }
@@ -421,6 +444,9 @@ function buildDefinitionTypeMap(definitions: WidgetDefinition[]) {
 
 function safeWidgetWidth(widget: WidgetInstance, definitionType?: string) {
   const normalized = Math.max(120, Number(widget.size.w) || 240);
+  if (definitionType === "dialClock") {
+    return 240;
+  }
   return definitionType === "tv" ? clampTvWidgetSize(normalized, 480).w : normalized;
 }
 
@@ -430,6 +456,9 @@ function safeWidgetHeight(widget: WidgetInstance, definitionType?: string) {
   }
   if (definitionType === "messageBoard") {
     return 500;
+  }
+  if (definitionType === "dialClock") {
+    return 240;
   }
   if (definitionType === "weather") {
     return Math.max(260, Number(widget.size.h) || 260);
@@ -447,7 +476,7 @@ function safeWidgetHeight(widget: WidgetInstance, definitionType?: string) {
 }
 
 function normalizeWidgetInstanceSize(widget: WidgetInstance, definitionType?: string): WidgetInstance {
-  if (definitionType !== "messageBoard" && definitionType !== "weather") {
+  if (definitionType !== "messageBoard" && definitionType !== "weather" && definitionType !== "dialClock") {
     return widget;
   }
   const nextWidth = safeWidgetWidth(widget, definitionType);

@@ -1,8 +1,15 @@
-import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
-import { Button } from "@xiaozhuoban/ui";
+import { Button, Card } from "@xiaozhuoban/ui";
 import { WidgetShell } from "./WidgetShell";
+import {
+  buildDialClockMarkStates,
+  DIAL_CLOCK_SWEEP_PHRASE_PAUSE_MS,
+  getDialClockSweepFrames,
+  shouldTriggerDialClockSweep,
+  toDialClockTimeState
+} from "./dialClockShared";
 import { GomokuWidget } from "./GomokuWidget";
 import { GuandanWidget } from "./GuandanWidget";
 import { MonopolyWidget } from "./MonopolyWidget";
@@ -77,6 +84,40 @@ const CONVERTER_CATEGORY_OPTIONS = [
   { value: "weight", label: "重量" },
   { value: "temperature", label: "温度" }
 ] as const;
+
+const DIAL_CLOCK_NUMBERS = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
+const DIAL_CLOCK_HOURLY_AUDIO_SRC = "/media/dial-clock-hourly.wav";
+const DIAL_CLOCK_HOURLY_AUDIO_FALLBACK_DURATION_MS = 12_341;
+const DIAL_CLOCK_HOURLY_AUDIO_DELAY_MS = 1000;
+
+function DialClockMoonIcon({ active }: { active: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="dial-clock-icon-svg">
+      <path
+        d="M14.9 4.8a7.2 7.2 0 1 0 4.3 12.9 6.6 6.6 0 0 1-2.4.4c-3.9 0-7.1-3.1-7.1-7 0-2.4 1.2-4.6 3.2-5.9 0 0 1.2-.8 2-.4Z"
+        fill="currentColor"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function DialClockSunIcon({ active }: { active: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="dial-clock-icon-svg">
+      <circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="currentColor" strokeWidth="1.4" />
+      <path
+        d="M12 3.8v2.1M12 18.1v2.1M20.2 12h-2.1M5.9 12H3.8M17.8 6.2l-1.5 1.5M7.7 16.3l-1.5 1.5M17.8 17.8l-1.5-1.5M7.7 7.7 6.2 6.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
 type GlassSelectOption = { value: string; label: string };
 
@@ -1041,6 +1082,17 @@ async function playCountdownAlarm() {
       oscillator.start(startAt);
       oscillator.stop(endAt);
     }
+  }
+}
+
+async function playDialClockHourlyAudio(audio: HTMLAudioElement | null) {
+  if (!audio) return;
+  try {
+    audio.pause();
+    audio.currentTime = 0;
+    await audio.play();
+  } catch (error) {
+    console.warn("[dialClock] hourly audio failed", error);
   }
 }
 
@@ -2899,6 +2951,217 @@ export function BuiltinWidgetView({
           </div>
         </div>
       </WidgetShell>
+    );
+  }
+
+  if (definition.type === "dialClock") {
+    const [clockState, setClockState] = useState(() => toDialClockTimeState(new Date("2026-03-26T03:59:00")));
+    const [sweepFrameIndex, setSweepFrameIndex] = useState(-1);
+    const [sweepDurationMs, setSweepDurationMs] = useState(DIAL_CLOCK_HOURLY_AUDIO_FALLBACK_DURATION_MS);
+    const hourlyAudioRef = useRef<HTMLAudioElement | null>(null);
+    const lastSweepKeyRef = useRef("");
+    const sweepTimerRef = useRef<number | null>(null);
+    const tickTimerRef = useRef<number | null>(null);
+    const hourlyAudioTimerRef = useRef<number | null>(null);
+    const testClockStartedAtRef = useRef(Date.now());
+    const sweepFrames = useMemo(() => getDialClockSweepFrames(sweepDurationMs), [sweepDurationMs]);
+
+    useEffect(() => {
+      if (typeof Audio === "undefined") {
+        return;
+      }
+
+      const audio = new Audio(DIAL_CLOCK_HOURLY_AUDIO_SRC);
+      audio.preload = "auto";
+      hourlyAudioRef.current = audio;
+
+      const syncDuration = () => {
+        if (!Number.isFinite(audio.duration) || audio.duration <= 0) {
+          return;
+        }
+        setSweepDurationMs(Math.round(audio.duration * 1000));
+      };
+
+      audio.addEventListener("loadedmetadata", syncDuration);
+      audio.addEventListener("durationchange", syncDuration);
+
+      return () => {
+        audio.pause();
+        audio.removeEventListener("loadedmetadata", syncDuration);
+        audio.removeEventListener("durationchange", syncDuration);
+        hourlyAudioRef.current = null;
+      };
+    }, []);
+
+    useEffect(() => {
+      const clearSweepTimer = () => {
+        if (sweepTimerRef.current !== null) {
+          window.clearTimeout(sweepTimerRef.current);
+          sweepTimerRef.current = null;
+        }
+      };
+
+      const clearHourlyAudioTimer = () => {
+        if (hourlyAudioTimerRef.current !== null) {
+          window.clearTimeout(hourlyAudioTimerRef.current);
+          hourlyAudioTimerRef.current = null;
+        }
+      };
+
+      const runSweep = () => {
+        clearSweepTimer();
+        clearHourlyAudioTimer();
+        hourlyAudioTimerRef.current = window.setTimeout(() => {
+          hourlyAudioTimerRef.current = null;
+          void playDialClockHourlyAudio(hourlyAudioRef.current);
+        }, DIAL_CLOCK_HOURLY_AUDIO_DELAY_MS);
+
+        const playFrame = (index: number) => {
+          const frame = sweepFrames[index];
+          if (!frame) {
+            setSweepFrameIndex(-1);
+            sweepTimerRef.current = null;
+            return;
+          }
+
+          setSweepFrameIndex(index);
+          if (index >= sweepFrames.length - 1) {
+            sweepTimerRef.current = window.setTimeout(() => {
+              setSweepFrameIndex(-1);
+              sweepTimerRef.current = null;
+            }, frame.frameDurationMs);
+            return;
+          }
+
+          const nextDelay =
+            frame.frameDurationMs + (frame.isPhraseEnd ? DIAL_CLOCK_SWEEP_PHRASE_PAUSE_MS : 0);
+          sweepTimerRef.current = window.setTimeout(() => playFrame(index + 1), nextDelay);
+        };
+
+        playFrame(0);
+      };
+
+      const syncClock = () => {
+        const now = new Date(2026, 2, 26, 3, 59, 0, 0);
+        const elapsedMs = Date.now() - testClockStartedAtRef.current;
+        const cycleMs = 61_000;
+        const normalizedMs = ((elapsedMs % cycleMs) + cycleMs) % cycleMs;
+        now.setSeconds(Math.floor(normalizedMs / 1000), normalizedMs % 1000);
+        setClockState(toDialClockTimeState(now));
+
+        if (shouldTriggerDialClockSweep(now)) {
+          const sweepKey = `${Math.floor(elapsedMs / cycleMs)}`;
+          if (lastSweepKeyRef.current !== sweepKey) {
+            lastSweepKeyRef.current = sweepKey;
+            runSweep();
+          }
+        }
+
+        tickTimerRef.current = window.setTimeout(syncClock, Math.max(32, 1000 - now.getMilliseconds()));
+      };
+
+      syncClock();
+      return () => {
+        clearSweepTimer();
+        clearHourlyAudioTimer();
+        if (tickTimerRef.current !== null) {
+          window.clearTimeout(tickTimerRef.current);
+          tickTimerRef.current = null;
+        }
+      };
+    }, [sweepFrames]);
+
+    const marks = buildDialClockMarkStates(
+      clockState,
+      sweepFrameIndex >= 0 ? sweepFrames[sweepFrameIndex] : null
+    );
+
+    return (
+      <Card
+        tone="slate"
+        style={{
+          padding: isMobileMode ? 12 : 14,
+          borderRadius: 22
+        }}
+      >
+        <div className="dial-clock-widget">
+          <div className="dial-clock-square">
+            <div className="dial-clock-face">
+              {marks.map((mark) => {
+                const angle = mark.index * 6;
+                const radians = ((angle - 90) * Math.PI) / 180;
+                const radius = mark.isMajor ? 43.98 : 44.7;
+                const left = 50 + Math.cos(radians) * radius;
+                const top = 50 + Math.sin(radians) * radius;
+                const className = [
+                  "dial-clock-mark",
+                  mark.isMajor ? "is-major" : "",
+                  mark.minuteActive ? "is-minute-active" : "",
+                  mark.secondTrailLevel !== null ? `is-second-tail-${mark.secondTrailLevel}` : "",
+                  mark.sweepTrailLevel !== null ? "is-sweep-active" : ""
+                ]
+                  .filter(Boolean)
+                  .join(" ");
+                const sweepStyle =
+                  mark.sweepTrailLevel === null
+                    ? {}
+                    : (() => {
+                        const sweepOpacity = Math.max(0.16, 1 - mark.sweepTrailLevel * 0.085);
+                        return {
+                          background: `rgba(255, 255, 255, ${sweepOpacity})`,
+                          boxShadow: `0 0 ${12 - Math.min(mark.sweepTrailLevel, 9) * 0.8}px rgba(255, 255, 255, ${
+                            Math.max(0.18, sweepOpacity * 0.96)
+                          }), 0 0 ${24 - Math.min(mark.sweepTrailLevel, 9) * 1.2}px rgba(226, 232, 240, ${
+                            Math.max(0.12, sweepOpacity * 0.62)
+                          })`
+                        } satisfies CSSProperties;
+                      })();
+
+                return (
+                  <span
+                    key={mark.index}
+                    className={className}
+                    style={{
+                      left: `${left}%`,
+                      top: `${top}%`,
+                      transform: `translate(-50%, -50%) rotate(${angle}deg)`,
+                      ...sweepStyle
+                    }}
+                  />
+                );
+              })}
+
+              {DIAL_CLOCK_NUMBERS.map((number, index) => {
+                const angle = index * 30;
+                const radians = ((angle - 90) * Math.PI) / 180;
+                const radius = number === 12 || number === 6 ? 32.5 : 34.2;
+                const left = 50 + Math.cos(radians) * radius;
+                const top = 50 + Math.sin(radians) * radius;
+                return (
+                  <span
+                    key={number}
+                    className={`dial-clock-number${clockState.hourNumber === number ? " is-active" : ""}`}
+                    style={{
+                      left: `${left}%`,
+                      top: `${top}%`
+                    }}
+                  >
+                    {number}
+                  </span>
+                );
+              })}
+
+              <div className={`dial-clock-icon dial-clock-icon-moon${clockState.isAm ? "" : " is-active"}`}>
+                <DialClockMoonIcon active={!clockState.isAm} />
+              </div>
+              <div className="dial-clock-brand">BALMUDA</div>
+              <div className={`dial-clock-icon dial-clock-icon-sun${clockState.isAm ? " is-active" : ""}`}>
+                <DialClockSunIcon active={clockState.isAm} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
     );
   }
 
