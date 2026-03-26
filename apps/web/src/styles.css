@@ -624,6 +624,7 @@ body {
 .dial-clock-icon-moon.is-active {
   color: #6F9FE0;
   filter:
+    drop-shadow(0 0 5px rgba(255, 255, 255, 0.82))
     drop-shadow(0 0 8px rgba(111, 159, 224, 0.94))
     drop-shadow(0 0 18px rgba(79, 132, 208, 0.48));
 }
