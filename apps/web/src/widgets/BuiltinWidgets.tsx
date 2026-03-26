@@ -943,13 +943,20 @@ interface MessageBoardRow {
   created_at: string;
 }
 
-let messageBoardAudioContext: AudioContext | null = null;
 let messageBoardHistoryPromise: Promise<MessageBoardItem[]> | null = null;
 let messageBoardHistoryCache: MessageBoardItem[] | null = null;
 let messageBoardHistoryCacheExpiresAt = 0;
 let sharedAudioUnlockState: "idle" | "listening" | "ready" = "idle";
 let activeCountdownAlarmOwnerId: string | null = null;
 let activeCountdownAlarmCleanup: (() => void) | null = null;
+let countdownAlarmAudio: HTMLAudioElement | null = null;
+let countdownAlarmAudioPrimed = false;
+let countdownAlarmAudioSrc: string | null = null;
+let messageBoardChimeAudio: HTMLAudioElement | null = null;
+let messageBoardChimeAudioPrimed = false;
+let messageBoardChimeAudioSrc: string | null = null;
+let dialClockHourlyAudio: HTMLAudioElement | null = null;
+let dialClockHourlyAudioPrimed = false;
 
 function getScreenWakeLockApi(): RecorderWakeLockApi | null {
   if (typeof navigator === "undefined") return null;
@@ -957,19 +964,175 @@ function getScreenWakeLockApi(): RecorderWakeLockApi | null {
   return candidate ?? null;
 }
 
-async function getMessageBoardAudioContext() {
-  if (typeof window === "undefined") return null;
-  const AudioContextCtor =
-    window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AudioContextCtor) return null;
-  if (!messageBoardAudioContext) {
-    messageBoardAudioContext = new AudioContextCtor();
+function writeCountdownAlarmWav() {
+  const sampleRate = 22_050;
+  const repeatCount = 4;
+  const repeatSpacingSeconds = 1.45;
+  const noteBlueprint = [
+    { at: 0.0, duration: 0.24, frequency: 880 },
+    { at: 0.28, duration: 0.24, frequency: 1046.5 },
+    { at: 0.56, duration: 0.3, frequency: 1318.5 },
+    { at: 0.9, duration: 0.42, frequency: 1046.5 }
+  ] as const;
+  const lastNote = noteBlueprint[noteBlueprint.length - 1];
+  const totalDurationSeconds = (repeatCount - 1) * repeatSpacingSeconds + lastNote.at + lastNote.duration + 0.18;
+  const totalSamples = Math.ceil(totalDurationSeconds * sampleRate);
+  const pcm = new Int16Array(totalSamples);
+
+  const triangleAt = (frequency: number, timeSeconds: number) => {
+    const phase = (timeSeconds * frequency) % 1;
+    return 1 - 4 * Math.abs(phase - 0.5);
+  };
+
+  for (let round = 0; round < repeatCount; round += 1) {
+    const roundOffset = round * repeatSpacingSeconds;
+    for (const note of noteBlueprint) {
+      const noteStart = roundOffset + note.at;
+      const noteEnd = noteStart + note.duration;
+      const startSample = Math.max(0, Math.floor(noteStart * sampleRate));
+      const endSample = Math.min(totalSamples, Math.ceil(noteEnd * sampleRate));
+      for (let sampleIndex = startSample; sampleIndex < endSample; sampleIndex += 1) {
+        const timeSeconds = sampleIndex / sampleRate;
+        const localTime = timeSeconds - noteStart;
+        const attack = Math.min(1, localTime / 0.03);
+        const releaseProgress = note.duration <= 0 ? 1 : localTime / note.duration;
+        const release = Math.max(0, 1 - releaseProgress);
+        const envelope = attack * release * release;
+        const wave = triangleAt(note.frequency, localTime);
+        const value = pcm[sampleIndex] + wave * envelope * 0.22 * 32767;
+        pcm[sampleIndex] = Math.max(-32768, Math.min(32767, Math.round(value)));
+      }
+    }
   }
-  const ctx = messageBoardAudioContext;
-  if (ctx.state === "suspended") {
-    await ctx.resume();
+
+  const header = new ArrayBuffer(44);
+  const view = new DataView(header);
+  const byteRate = sampleRate * 2;
+  const blockAlign = 2;
+  const dataSize = pcm.length * 2;
+  const writeAscii = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) {
+      view.setUint8(offset + index, value.charCodeAt(index));
+    }
+  };
+
+  writeAscii(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeAscii(8, "WAVE");
+  writeAscii(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeAscii(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  return new Blob([header, pcm], { type: "audio/wav" });
+}
+
+function getCountdownAlarmAudio() {
+  if (typeof Audio === "undefined" || typeof URL === "undefined") {
+    return null;
   }
-  return ctx;
+
+  if (!countdownAlarmAudioSrc) {
+    countdownAlarmAudioSrc = URL.createObjectURL(writeCountdownAlarmWav());
+  }
+
+  if (!countdownAlarmAudio) {
+    countdownAlarmAudio = new Audio(countdownAlarmAudioSrc);
+    countdownAlarmAudio.preload = "auto";
+  }
+
+  return countdownAlarmAudio;
+}
+
+function writeMessageBoardChimeWav() {
+  const sampleRate = 22_050;
+  const durationSeconds = 0.34;
+  const totalSamples = Math.ceil(durationSeconds * sampleRate);
+  const pcm = new Int16Array(totalSamples);
+  const noteBlueprint = [
+    { at: 0, duration: 0.09, frequency: 880, gain: 0.14 },
+    { at: 0.1, duration: 0.12, frequency: 1318, gain: 0.13 }
+  ] as const;
+
+  const triangleAt = (frequency: number, timeSeconds: number) => {
+    const phase = (timeSeconds * frequency) % 1;
+    return 1 - 4 * Math.abs(phase - 0.5);
+  };
+
+  for (const note of noteBlueprint) {
+    const startSample = Math.max(0, Math.floor(note.at * sampleRate));
+    const endSample = Math.min(totalSamples, Math.ceil((note.at + note.duration) * sampleRate));
+    for (let sampleIndex = startSample; sampleIndex < endSample; sampleIndex += 1) {
+      const timeSeconds = sampleIndex / sampleRate;
+      const localTime = timeSeconds - note.at;
+      const attack = Math.min(1, localTime / 0.02);
+      const release = Math.max(0, 1 - localTime / note.duration);
+      const envelope = attack * release * release;
+      const value = pcm[sampleIndex] + triangleAt(note.frequency, localTime) * envelope * note.gain * 32767;
+      pcm[sampleIndex] = Math.max(-32768, Math.min(32767, Math.round(value)));
+    }
+  }
+
+  const header = new ArrayBuffer(44);
+  const view = new DataView(header);
+  const dataSize = pcm.length * 2;
+  const writeAscii = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) {
+      view.setUint8(offset + index, value.charCodeAt(index));
+    }
+  };
+
+  writeAscii(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeAscii(8, "WAVE");
+  writeAscii(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeAscii(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  return new Blob([header, pcm], { type: "audio/wav" });
+}
+
+function getMessageBoardChimeAudio() {
+  if (typeof Audio === "undefined" || typeof URL === "undefined") {
+    return null;
+  }
+
+  if (!messageBoardChimeAudioSrc) {
+    messageBoardChimeAudioSrc = URL.createObjectURL(writeMessageBoardChimeWav());
+  }
+
+  if (!messageBoardChimeAudio) {
+    messageBoardChimeAudio = new Audio(messageBoardChimeAudioSrc);
+    messageBoardChimeAudio.preload = "auto";
+  }
+
+  return messageBoardChimeAudio;
+}
+
+function getDialClockHourlyAudio() {
+  if (typeof Audio === "undefined") {
+    return null;
+  }
+
+  if (!dialClockHourlyAudio) {
+    dialClockHourlyAudio = new Audio(DIAL_CLOCK_HOURLY_AUDIO_SRC);
+    dialClockHourlyAudio.preload = "auto";
+  }
+
+  return dialClockHourlyAudio;
 }
 
 function stopCountdownAlarm(ownerId?: string) {
@@ -980,6 +1143,17 @@ function stopCountdownAlarm(ownerId?: string) {
   activeCountdownAlarmCleanup?.();
   activeCountdownAlarmCleanup = null;
   activeCountdownAlarmOwnerId = null;
+}
+
+function stopCountdownAlarmAudio() {
+  const audio = getCountdownAlarmAudio();
+  if (!audio) return;
+  audio.pause();
+  try {
+    audio.currentTime = 0;
+  } catch {
+    // ignore currentTime reset failures before metadata is ready
+  }
 }
 
 function ensureSharedAudioUnlock() {
@@ -995,11 +1169,7 @@ function ensureSharedAudioUnlock() {
   };
 
   const unlockSharedAudio = () => {
-    void primeMessageBoardAudio()
-      .catch((error) => {
-        console.warn("[audio] shared unlock failed", error);
-      })
-      .finally(() => {
+    void Promise.allSettled([primeMessageBoardAudio(), primeCountdownAlarmAudio(), primeDialClockHourlyAudio()]).finally(() => {
         removeListeners();
         sharedAudioUnlockState = "ready";
       });
@@ -1054,98 +1224,26 @@ async function fetchMessageBoardHistory(): Promise<MessageBoardItem[]> {
 }
 
 async function playMessageBoardChime() {
-  const ctx = await getMessageBoardAudioContext();
-  if (!ctx) return;
+  if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+    return;
+  }
 
-  const startAt = ctx.currentTime + 0.01;
-  const duration = 0.22;
-  const gainNode = ctx.createGain();
-  gainNode.connect(ctx.destination);
-  gainNode.gain.setValueAtTime(0.0001, startAt);
-  gainNode.gain.exponentialRampToValueAtTime(0.14, startAt + 0.02);
-  gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+  const audio = getMessageBoardChimeAudio();
+  if (!audio) return;
 
-  const first = ctx.createOscillator();
-  first.type = "triangle";
-  first.frequency.setValueAtTime(880, startAt);
-  first.connect(gainNode);
-  first.start(startAt);
-  first.stop(startAt + 0.09);
-
-  const second = ctx.createOscillator();
-  second.type = "triangle";
-  second.frequency.setValueAtTime(1318, startAt + 0.1);
-  second.connect(gainNode);
-  second.start(startAt + 0.1);
-  second.stop(startAt + duration);
-}
-
-async function primeMessageBoardAudio() {
-  const ctx = await getMessageBoardAudioContext();
-  if (!ctx) return;
-  const startAt = ctx.currentTime + 0.005;
-  const gainNode = ctx.createGain();
-  gainNode.connect(ctx.destination);
-  gainNode.gain.setValueAtTime(0.00001, startAt);
-  const oscillator = ctx.createOscillator();
-  oscillator.type = "sine";
-  oscillator.frequency.setValueAtTime(440, startAt);
-  oscillator.connect(gainNode);
-  oscillator.start(startAt);
-  oscillator.stop(startAt + 0.01);
-}
-
-async function playCountdownAlarm(ownerId: string) {
-  const ctx = await getMessageBoardAudioContext();
-  if (!ctx) return;
-
-  stopCountdownAlarm();
-  activeCountdownAlarmOwnerId = ownerId;
-  const gainNode = ctx.createGain();
-  gainNode.connect(ctx.destination);
-
-  const notes = [
-    { at: 0.0, duration: 0.24, frequency: 880 },
-    { at: 0.28, duration: 0.24, frequency: 1046.5 },
-    { at: 0.56, duration: 0.3, frequency: 1318.5 },
-    { at: 0.9, duration: 0.42, frequency: 1046.5 }
-  ] as const;
-
-  const oscillators: OscillatorNode[] = [];
-  activeCountdownAlarmCleanup = () => {
-    gainNode.gain.cancelScheduledValues(ctx.currentTime);
-    gainNode.gain.setValueAtTime(0.00001, ctx.currentTime);
-    oscillators.forEach((oscillator) => {
-      try {
-        oscillator.stop(ctx.currentTime);
-      } catch {
-        // oscillator may already be stopped
-      }
-      oscillator.disconnect();
-    });
-    gainNode.disconnect();
-  };
-
-  for (let round = 0; round < 2; round += 1) {
-    for (const note of notes) {
-      const startAt = ctx.currentTime + 0.01 + round * 1.45 + note.at;
-      const endAt = startAt + note.duration;
-      const oscillator = ctx.createOscillator();
-      oscillator.type = "triangle";
-      oscillator.frequency.setValueAtTime(note.frequency, startAt);
-      oscillator.connect(gainNode);
-      oscillators.push(oscillator);
-      gainNode.gain.setValueAtTime(0.0001, startAt);
-      gainNode.gain.exponentialRampToValueAtTime(0.16, startAt + 0.03);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, endAt);
-      oscillator.start(startAt);
-      oscillator.stop(endAt);
-    }
+  try {
+    audio.pause();
+    audio.currentTime = 0;
+    await audio.play();
+  } catch (error) {
+    console.warn("[messageBoard] chime failed", error);
   }
 }
 
-async function primeDialClockHourlyAudio(audio: HTMLAudioElement | null) {
+async function primeMessageBoardAudio() {
+  const audio = getMessageBoardChimeAudio();
   if (!audio) return false;
+  if (messageBoardChimeAudioPrimed) return true;
   try {
     const wasMuted = audio.muted;
     audio.pause();
@@ -1155,16 +1253,97 @@ async function primeDialClockHourlyAudio(audio: HTMLAudioElement | null) {
     audio.pause();
     audio.currentTime = 0;
     audio.muted = wasMuted;
+    messageBoardChimeAudioPrimed = true;
     return true;
   } catch {
     audio.pause();
-    audio.currentTime = 0;
+    try {
+      audio.currentTime = 0;
+    } catch {
+      // ignore currentTime reset failures before metadata is ready
+    }
     audio.muted = false;
     return false;
   }
 }
 
-function stopDialClockHourlyAudio(audio: HTMLAudioElement | null) {
+async function primeCountdownAlarmAudio() {
+  const audio = getCountdownAlarmAudio();
+  if (!audio) return false;
+  if (countdownAlarmAudioPrimed) return true;
+  try {
+    const wasMuted = audio.muted;
+    audio.pause();
+    audio.currentTime = 0;
+    audio.muted = true;
+    await audio.play();
+    audio.pause();
+    audio.currentTime = 0;
+    audio.muted = wasMuted;
+    countdownAlarmAudioPrimed = true;
+    return true;
+  } catch {
+    audio.pause();
+    try {
+      audio.currentTime = 0;
+    } catch {
+      // ignore currentTime reset failures before metadata is ready
+    }
+    audio.muted = false;
+    return false;
+  }
+}
+
+async function playCountdownAlarm(ownerId: string) {
+  if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+    return;
+  }
+
+  const audio = getCountdownAlarmAudio();
+  if (!audio) return;
+
+  stopCountdownAlarm();
+  activeCountdownAlarmOwnerId = ownerId;
+  activeCountdownAlarmCleanup = () => {
+    stopCountdownAlarmAudio();
+  };
+
+  try {
+    stopCountdownAlarmAudio();
+    await audio.play();
+  } catch (error) {
+    console.warn("[countdown] play alarm failed", error);
+  }
+}
+
+async function primeDialClockHourlyAudio() {
+  const audio = getDialClockHourlyAudio();
+  if (!audio) return false;
+  if (dialClockHourlyAudioPrimed) return true;
+  try {
+    const wasMuted = audio.muted;
+    audio.pause();
+    audio.currentTime = 0;
+    audio.muted = true;
+    await audio.play();
+    audio.pause();
+    audio.currentTime = 0;
+    audio.muted = wasMuted;
+    dialClockHourlyAudioPrimed = true;
+    return true;
+  } catch {
+    audio.pause();
+    try {
+      audio.currentTime = 0;
+    } catch {
+      // currentTime reset can fail before metadata loads
+    }
+    audio.muted = false;
+    return false;
+  }
+}
+
+function stopDialClockHourlyAudio(audio: HTMLAudioElement | null = getDialClockHourlyAudio()) {
   if (!audio) return;
   audio.pause();
   try {
@@ -1174,7 +1353,7 @@ function stopDialClockHourlyAudio(audio: HTMLAudioElement | null) {
   }
 }
 
-async function playDialClockHourlyAudio(audio: HTMLAudioElement | null) {
+async function playDialClockHourlyAudio(audio: HTMLAudioElement | null = getDialClockHourlyAudio()) {
   if (!audio) return;
   if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
   try {
@@ -1867,6 +2046,19 @@ export function BuiltinWidgetView({
       };
     }, [instance.id]);
 
+    useEffect(() => {
+      if (typeof document === "undefined") return;
+      const handleVisibilityChange = () => {
+        if (document.visibilityState !== "visible") {
+          stopCountdownAlarm(instance.id);
+        }
+      };
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+      return () => {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      };
+    }, [instance.id]);
+
     const progressRatio = totalSeconds > 0 ? (totalSeconds - remainingSeconds) / totalSeconds : 0;
     const progress = Math.min(100, Math.max(0, progressRatio * 100));
     const hh = Math.floor(remainingSeconds / 3600)
@@ -1953,9 +2145,7 @@ export function BuiltinWidgetView({
               onClick={() => {
                 const total = inputHours * 3600 + inputMinutes * 60 + inputSeconds;
                 stopCountdownAlarm(instance.id);
-                void primeMessageBoardAudio().catch((error) => {
-                  console.warn("[countdown] prime audio failed", error);
-                });
+                void Promise.allSettled([primeMessageBoardAudio(), primeCountdownAlarmAudio()]);
                 onStateChange({
                   ...instance.state,
                   totalSeconds: total,
@@ -3095,7 +3285,6 @@ export function BuiltinWidgetView({
     const [sweepFrameIndex, setSweepFrameIndex] = useState(-1);
     const [sweepDurationMs, setSweepDurationMs] = useState(DIAL_CLOCK_HOURLY_AUDIO_FALLBACK_DURATION_MS);
     const hourlyAudioRef = useRef<HTMLAudioElement | null>(null);
-    const hourlyAudioPrimedRef = useRef(false);
     const lastSweepKeyRef = useRef("");
     const lastClockSampleRef = useRef<Date | null>(null);
     const sweepTimerRef = useRef<number | null>(null);
@@ -3105,12 +3294,11 @@ export function BuiltinWidgetView({
     const sweepFrames = useMemo(() => getDialClockSweepFrames(sweepDurationMs), [sweepDurationMs]);
 
     useEffect(() => {
-      if (typeof Audio === "undefined" || typeof window === "undefined") {
+      const audio = getDialClockHourlyAudio();
+      if (!audio) {
         return;
       }
 
-      const audio = new Audio(DIAL_CLOCK_HOURLY_AUDIO_SRC);
-      audio.preload = "auto";
       hourlyAudioRef.current = audio;
 
       const syncDuration = () => {
@@ -3123,34 +3311,8 @@ export function BuiltinWidgetView({
       audio.addEventListener("loadedmetadata", syncDuration);
       audio.addEventListener("durationchange", syncDuration);
 
-      const removePrimeListeners = () => {
-        window.removeEventListener("pointerdown", primeAudio);
-        window.removeEventListener("keydown", primeAudio);
-        window.removeEventListener("touchstart", primeAudio);
-      };
-
-      const primeAudio = () => {
-        if (hourlyAudioPrimedRef.current) {
-          removePrimeListeners();
-          return;
-        }
-
-        void primeDialClockHourlyAudio(audio).then((primed) => {
-          if (primed) {
-            hourlyAudioPrimedRef.current = true;
-            removePrimeListeners();
-          }
-        });
-      };
-
-      window.addEventListener("pointerdown", primeAudio, { passive: true });
-      window.addEventListener("keydown", primeAudio);
-      window.addEventListener("touchstart", primeAudio, { passive: true });
-
       return () => {
         hourlyAudioPlayTokenRef.current += 1;
-        removePrimeListeners();
-        stopDialClockHourlyAudio(audio);
         audio.removeEventListener("loadedmetadata", syncDuration);
         audio.removeEventListener("durationchange", syncDuration);
         hourlyAudioRef.current = null;
@@ -4117,19 +4279,7 @@ export function BuiltinWidgetView({
     }, [messages, userId]);
 
     useEffect(() => {
-      const unlock = () => {
-        void primeMessageBoardAudio().catch((error) => {
-          console.warn("[messageBoard] audio unlock failed", error);
-        });
-      };
-      window.addEventListener("pointerdown", unlock, { passive: true });
-      window.addEventListener("keydown", unlock);
-      window.addEventListener("touchstart", unlock, { passive: true });
-      return () => {
-        window.removeEventListener("pointerdown", unlock);
-        window.removeEventListener("keydown", unlock);
-        window.removeEventListener("touchstart", unlock);
-      };
+      ensureSharedAudioUnlock();
     }, []);
 
     useEffect(() => {
