@@ -481,11 +481,11 @@ body {
 }
 
 .dial-clock-widget.is-mobile .dial-clock-mark {
-  width: 3.74px;
+  width: 3.18px;
 }
 
 .dial-clock-widget.is-mobile .dial-clock-mark.is-major {
-  width: 4.75px;
+  width: 4.04px;
 }
 
 .dial-clock-face::before {
