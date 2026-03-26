@@ -480,6 +480,14 @@ body {
   height: 89.1%;
 }
 
+.dial-clock-widget.is-mobile .dial-clock-mark {
+  width: 3.12px;
+}
+
+.dial-clock-widget.is-mobile .dial-clock-mark.is-major {
+  width: 3.96px;
+}
+
 .dial-clock-face::before {
   content: "";
   position: absolute;
@@ -575,7 +583,7 @@ body {
 }
 
 .dial-clock-widget.is-mobile .dial-clock-number {
-  font-size: 17px;
+  font-size: 18px;
 }
 
 .dial-clock-number.is-active {
@@ -598,7 +606,7 @@ body {
 }
 
 .dial-clock-widget.is-mobile .dial-clock-brand {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dial-clock-icon {
