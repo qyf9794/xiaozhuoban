@@ -1,6 +1,7 @@
 export const DIAL_CLOCK_MARK_COUNT = 60;
 export const DIAL_CLOCK_SWEEP_PHRASE_PAUSE_MS = 1000;
 export const DIAL_CLOCK_SWEEP_TOTAL_DURATION_MS = 10_000;
+export const DIAL_CLOCK_SWEEP_CATCHUP_WINDOW_MS = 5_000;
 
 export interface DialClockTimeState {
   hourNumber: number;
@@ -54,6 +55,34 @@ export function toDialClockTimeState(date: Date): DialClockTimeState {
 export function shouldTriggerDialClockSweep(date: Date) {
   const state = toDialClockTimeState(date);
   return state.isOnHour;
+}
+
+export function getDialClockSweepTriggerKey(
+  previousDate: Date | null,
+  currentDate: Date,
+  catchupWindowMs = DIAL_CLOCK_SWEEP_CATCHUP_WINDOW_MS
+) {
+  const hourKey = `${currentDate.getFullYear()}-${currentDate.getMonth()}-${currentDate.getDate()}-${currentDate.getHours()}`;
+  if (shouldTriggerDialClockSweep(currentDate)) {
+    return hourKey;
+  }
+
+  if (!previousDate) {
+    return null;
+  }
+
+  const hourBoundary = new Date(currentDate);
+  hourBoundary.setMinutes(0, 0, 0);
+  const hourBoundaryTime = hourBoundary.getTime();
+  if (
+    previousDate.getTime() < hourBoundaryTime &&
+    currentDate.getTime() >= hourBoundaryTime &&
+    currentDate.getTime() - hourBoundaryTime <= catchupWindowMs
+  ) {
+    return hourKey;
+  }
+
+  return null;
 }
 
 function buildSweepPath(start: number, end: number, direction: 1 | -1) {

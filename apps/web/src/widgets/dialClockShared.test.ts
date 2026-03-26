@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDialClockMarkStates,
+  DIAL_CLOCK_SWEEP_CATCHUP_WINDOW_MS,
   DIAL_CLOCK_SWEEP_PHRASE_PAUSE_MS,
   DIAL_CLOCK_SWEEP_TOTAL_DURATION_MS,
+  getDialClockSweepTriggerKey,
   getDialClockSweepFrames,
   getDialClockSweepPhraseDurations,
   shouldTriggerDialClockSweep,
@@ -41,6 +43,30 @@ describe("shouldTriggerDialClockSweep", () => {
     expect(shouldTriggerDialClockSweep(new Date("2026-03-26T05:00:00"))).toBe(true);
     expect(shouldTriggerDialClockSweep(new Date("2026-03-26T05:00:01"))).toBe(false);
     expect(shouldTriggerDialClockSweep(new Date("2026-03-26T05:01:00"))).toBe(false);
+  });
+});
+
+describe("getDialClockSweepTriggerKey", () => {
+  it("returns the current hour key on the exact hour", () => {
+    expect(getDialClockSweepTriggerKey(null, new Date("2026-03-26T05:00:00"))).toBe("2026-2-26-5");
+  });
+
+  it("catches a recently crossed hour without replaying late", () => {
+    expect(
+      getDialClockSweepTriggerKey(
+        new Date("2026-03-26T04:59:59"),
+        new Date("2026-03-26T05:00:03"),
+        DIAL_CLOCK_SWEEP_CATCHUP_WINDOW_MS
+      )
+    ).toBe("2026-2-26-5");
+
+    expect(
+      getDialClockSweepTriggerKey(
+        new Date("2026-03-26T04:59:59"),
+        new Date("2026-03-26T05:05:00"),
+        DIAL_CLOCK_SWEEP_CATCHUP_WINDOW_MS
+      )
+    ).toBeNull();
   });
 });
 

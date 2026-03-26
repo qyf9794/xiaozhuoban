@@ -6,8 +6,8 @@ import { WidgetShell } from "./WidgetShell";
 import {
   buildDialClockMarkStates,
   DIAL_CLOCK_SWEEP_PHRASE_PAUSE_MS,
+  getDialClockSweepTriggerKey,
   getDialClockSweepFrames,
-  shouldTriggerDialClockSweep,
   toDialClockTimeState
 } from "./dialClockShared";
 import { GomokuWidget } from "./GomokuWidget";
@@ -947,6 +947,9 @@ let messageBoardAudioContext: AudioContext | null = null;
 let messageBoardHistoryPromise: Promise<MessageBoardItem[]> | null = null;
 let messageBoardHistoryCache: MessageBoardItem[] | null = null;
 let messageBoardHistoryCacheExpiresAt = 0;
+let sharedAudioUnlockState: "idle" | "listening" | "ready" = "idle";
+let activeCountdownAlarmOwnerId: string | null = null;
+let activeCountdownAlarmCleanup: (() => void) | null = null;
 
 function getScreenWakeLockApi(): RecorderWakeLockApi | null {
   if (typeof navigator === "undefined") return null;
@@ -967,6 +970,44 @@ async function getMessageBoardAudioContext() {
     await ctx.resume();
   }
   return ctx;
+}
+
+function stopCountdownAlarm(ownerId?: string) {
+  if (ownerId && activeCountdownAlarmOwnerId !== ownerId) {
+    return;
+  }
+
+  activeCountdownAlarmCleanup?.();
+  activeCountdownAlarmCleanup = null;
+  activeCountdownAlarmOwnerId = null;
+}
+
+function ensureSharedAudioUnlock() {
+  if (typeof window === "undefined" || sharedAudioUnlockState !== "idle") {
+    return;
+  }
+
+  sharedAudioUnlockState = "listening";
+  const removeListeners = () => {
+    window.removeEventListener("pointerdown", unlockSharedAudio);
+    window.removeEventListener("keydown", unlockSharedAudio);
+    window.removeEventListener("touchstart", unlockSharedAudio);
+  };
+
+  const unlockSharedAudio = () => {
+    void primeMessageBoardAudio()
+      .catch((error) => {
+        console.warn("[audio] shared unlock failed", error);
+      })
+      .finally(() => {
+        removeListeners();
+        sharedAudioUnlockState = "ready";
+      });
+  };
+
+  window.addEventListener("pointerdown", unlockSharedAudio, { passive: true });
+  window.addEventListener("keydown", unlockSharedAudio);
+  window.addEventListener("touchstart", unlockSharedAudio, { passive: true });
 }
 
 function messageFromRow(row: MessageBoardRow): MessageBoardItem {
@@ -1054,10 +1095,12 @@ async function primeMessageBoardAudio() {
   oscillator.stop(startAt + 0.01);
 }
 
-async function playCountdownAlarm() {
+async function playCountdownAlarm(ownerId: string) {
   const ctx = await getMessageBoardAudioContext();
   if (!ctx) return;
 
+  stopCountdownAlarm();
+  activeCountdownAlarmOwnerId = ownerId;
   const gainNode = ctx.createGain();
   gainNode.connect(ctx.destination);
 
@@ -1068,6 +1111,21 @@ async function playCountdownAlarm() {
     { at: 0.9, duration: 0.42, frequency: 1046.5 }
   ] as const;
 
+  const oscillators: OscillatorNode[] = [];
+  activeCountdownAlarmCleanup = () => {
+    gainNode.gain.cancelScheduledValues(ctx.currentTime);
+    gainNode.gain.setValueAtTime(0.00001, ctx.currentTime);
+    oscillators.forEach((oscillator) => {
+      try {
+        oscillator.stop(ctx.currentTime);
+      } catch {
+        // oscillator may already be stopped
+      }
+      oscillator.disconnect();
+    });
+    gainNode.disconnect();
+  };
+
   for (let round = 0; round < 2; round += 1) {
     for (const note of notes) {
       const startAt = ctx.currentTime + 0.01 + round * 1.45 + note.at;
@@ -1076,6 +1134,7 @@ async function playCountdownAlarm() {
       oscillator.type = "triangle";
       oscillator.frequency.setValueAtTime(note.frequency, startAt);
       oscillator.connect(gainNode);
+      oscillators.push(oscillator);
       gainNode.gain.setValueAtTime(0.0001, startAt);
       gainNode.gain.exponentialRampToValueAtTime(0.16, startAt + 0.03);
       gainNode.gain.exponentialRampToValueAtTime(0.0001, endAt);
@@ -1085,11 +1144,41 @@ async function playCountdownAlarm() {
   }
 }
 
-async function playDialClockHourlyAudio(audio: HTMLAudioElement | null) {
-  if (!audio) return;
+async function primeDialClockHourlyAudio(audio: HTMLAudioElement | null) {
+  if (!audio) return false;
   try {
+    const wasMuted = audio.muted;
     audio.pause();
     audio.currentTime = 0;
+    audio.muted = true;
+    await audio.play();
+    audio.pause();
+    audio.currentTime = 0;
+    audio.muted = wasMuted;
+    return true;
+  } catch {
+    audio.pause();
+    audio.currentTime = 0;
+    audio.muted = false;
+    return false;
+  }
+}
+
+function stopDialClockHourlyAudio(audio: HTMLAudioElement | null) {
+  if (!audio) return;
+  audio.pause();
+  try {
+    audio.currentTime = 0;
+  } catch {
+    // currentTime reset can fail before metadata loads
+  }
+}
+
+async function playDialClockHourlyAudio(audio: HTMLAudioElement | null) {
+  if (!audio) return;
+  if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+  try {
+    stopDialClockHourlyAudio(audio);
     await audio.play();
   } catch (error) {
     console.warn("[dialClock] hourly audio failed", error);
@@ -1710,31 +1799,73 @@ export function BuiltinWidgetView({
     const running = instance.state.running === true;
     const totalSeconds = Number(instance.state.totalSeconds ?? inputHours * 3600 + inputMinutes * 60 + inputSeconds);
     const remainingSeconds = Number(instance.state.remainingSeconds ?? totalSeconds);
+    const targetEndsAt = Number(instance.state.targetEndsAt ?? 0);
     const prevRemainingSecondsRef = useRef(remainingSeconds);
 
     useEffect(() => {
-      if (!running) return;
-      const timer = window.setInterval(() => {
-        const next = Math.max(0, remainingSeconds - 1);
-        onStateChange({
-          ...instance.state,
-          remainingSeconds: next,
-          running: next > 0
-        });
-      }, 1000);
-      return () => window.clearInterval(timer);
-      // controlled by latest remaining/running
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [running, remainingSeconds]);
+      ensureSharedAudioUnlock();
+    }, []);
+
+    useEffect(() => {
+      if (!running || totalSeconds <= 0 || targetEndsAt > 0) return;
+      onStateChange({
+        ...instance.state,
+        targetEndsAt: Date.now() + remainingSeconds * 1000
+      });
+    }, [instance.state, onStateChange, remainingSeconds, running, targetEndsAt, totalSeconds]);
+
+    useEffect(() => {
+      if (!running || totalSeconds <= 0 || targetEndsAt <= 0) return;
+
+      let timer: number | null = null;
+      const syncRemaining = () => {
+        const msLeft = Math.max(0, targetEndsAt - Date.now());
+        const nextRemainingSeconds = msLeft > 0 ? Math.ceil(msLeft / 1000) : 0;
+        const nextRunning = msLeft > 0;
+        const nextTargetEndsAt = nextRunning ? targetEndsAt : 0;
+        if (
+          nextRemainingSeconds !== remainingSeconds ||
+          nextRunning !== running ||
+          nextTargetEndsAt !== targetEndsAt
+        ) {
+          onStateChange({
+            ...instance.state,
+            remainingSeconds: nextRemainingSeconds,
+            running: nextRunning,
+            targetEndsAt: nextTargetEndsAt
+          });
+        }
+
+        if (!nextRunning) {
+          return;
+        }
+
+        const msUntilNextSecond = msLeft - (nextRemainingSeconds - 1) * 1000;
+        timer = window.setTimeout(syncRemaining, Math.max(32, Math.min(250, msUntilNextSecond)));
+      };
+
+      syncRemaining();
+      return () => {
+        if (timer !== null) {
+          window.clearTimeout(timer);
+        }
+      };
+    }, [instance.state, onStateChange, remainingSeconds, running, targetEndsAt, totalSeconds]);
 
     useEffect(() => {
       if (totalSeconds > 0 && prevRemainingSecondsRef.current > 0 && remainingSeconds === 0) {
-        void playCountdownAlarm().catch((error) => {
+        void playCountdownAlarm(instance.id).catch((error) => {
           console.warn("[countdown] play alarm failed", error);
         });
       }
       prevRemainingSecondsRef.current = remainingSeconds;
-    }, [remainingSeconds, totalSeconds]);
+    }, [instance.id, remainingSeconds, totalSeconds]);
+
+    useEffect(() => {
+      return () => {
+        stopCountdownAlarm(instance.id);
+      };
+    }, [instance.id]);
 
     const progressRatio = totalSeconds > 0 ? (totalSeconds - remainingSeconds) / totalSeconds : 0;
     const progress = Math.min(100, Math.max(0, progressRatio * 100));
@@ -1821,6 +1952,7 @@ export function BuiltinWidgetView({
             <button
               onClick={() => {
                 const total = inputHours * 3600 + inputMinutes * 60 + inputSeconds;
+                stopCountdownAlarm(instance.id);
                 void primeMessageBoardAudio().catch((error) => {
                   console.warn("[countdown] prime audio failed", error);
                 });
@@ -1828,7 +1960,8 @@ export function BuiltinWidgetView({
                   ...instance.state,
                   totalSeconds: total,
                   remainingSeconds: total,
-                  running: total > 0
+                  running: total > 0,
+                  targetEndsAt: total > 0 ? Date.now() + total * 1000 : 0
                 });
               }}
               style={mediaIconBtnStyle({ size: 20, fontSize: 18 })}
@@ -1837,7 +1970,8 @@ export function BuiltinWidgetView({
             </button>
             <button
               onClick={() => {
-                onStateChange({ ...instance.state, running: false });
+                stopCountdownAlarm(instance.id);
+                onStateChange({ ...instance.state, running: false, targetEndsAt: 0 });
               }}
               style={mediaIconBtnStyle({ size: 20, fontSize: 18 })}
             >
@@ -1846,11 +1980,13 @@ export function BuiltinWidgetView({
             <button
               onClick={() => {
                 const total = inputHours * 3600 + inputMinutes * 60 + inputSeconds;
+                stopCountdownAlarm(instance.id);
                 onStateChange({
                   ...instance.state,
                   totalSeconds: total,
                   remainingSeconds: total,
-                  running: false
+                  running: false,
+                  targetEndsAt: 0
                 });
               }}
               style={mediaIconBtnStyle({ size: 20, fontSize: 18 })}
@@ -2959,14 +3095,17 @@ export function BuiltinWidgetView({
     const [sweepFrameIndex, setSweepFrameIndex] = useState(-1);
     const [sweepDurationMs, setSweepDurationMs] = useState(DIAL_CLOCK_HOURLY_AUDIO_FALLBACK_DURATION_MS);
     const hourlyAudioRef = useRef<HTMLAudioElement | null>(null);
+    const hourlyAudioPrimedRef = useRef(false);
     const lastSweepKeyRef = useRef("");
+    const lastClockSampleRef = useRef<Date | null>(null);
     const sweepTimerRef = useRef<number | null>(null);
     const tickTimerRef = useRef<number | null>(null);
     const hourlyAudioTimerRef = useRef<number | null>(null);
+    const hourlyAudioPlayTokenRef = useRef(0);
     const sweepFrames = useMemo(() => getDialClockSweepFrames(sweepDurationMs), [sweepDurationMs]);
 
     useEffect(() => {
-      if (typeof Audio === "undefined") {
+      if (typeof Audio === "undefined" || typeof window === "undefined") {
         return;
       }
 
@@ -2984,8 +3123,34 @@ export function BuiltinWidgetView({
       audio.addEventListener("loadedmetadata", syncDuration);
       audio.addEventListener("durationchange", syncDuration);
 
+      const removePrimeListeners = () => {
+        window.removeEventListener("pointerdown", primeAudio);
+        window.removeEventListener("keydown", primeAudio);
+        window.removeEventListener("touchstart", primeAudio);
+      };
+
+      const primeAudio = () => {
+        if (hourlyAudioPrimedRef.current) {
+          removePrimeListeners();
+          return;
+        }
+
+        void primeDialClockHourlyAudio(audio).then((primed) => {
+          if (primed) {
+            hourlyAudioPrimedRef.current = true;
+            removePrimeListeners();
+          }
+        });
+      };
+
+      window.addEventListener("pointerdown", primeAudio, { passive: true });
+      window.addEventListener("keydown", primeAudio);
+      window.addEventListener("touchstart", primeAudio, { passive: true });
+
       return () => {
-        audio.pause();
+        hourlyAudioPlayTokenRef.current += 1;
+        removePrimeListeners();
+        stopDialClockHourlyAudio(audio);
         audio.removeEventListener("loadedmetadata", syncDuration);
         audio.removeEventListener("durationchange", syncDuration);
         hourlyAudioRef.current = null;
@@ -2993,6 +3158,9 @@ export function BuiltinWidgetView({
     }, []);
 
     useEffect(() => {
+      const isDocumentVisible = () =>
+        typeof document === "undefined" || document.visibilityState === "visible";
+
       const clearSweepTimer = () => {
         if (sweepTimerRef.current !== null) {
           window.clearTimeout(sweepTimerRef.current);
@@ -3001,19 +3169,35 @@ export function BuiltinWidgetView({
       };
 
       const clearHourlyAudioTimer = () => {
+        hourlyAudioPlayTokenRef.current += 1;
         if (hourlyAudioTimerRef.current !== null) {
           window.clearTimeout(hourlyAudioTimerRef.current);
           hourlyAudioTimerRef.current = null;
         }
       };
 
+      const cancelHourlyAudio = () => {
+        clearHourlyAudioTimer();
+        stopDialClockHourlyAudio(hourlyAudioRef.current);
+      };
+
       const runSweep = () => {
         clearSweepTimer();
-        clearHourlyAudioTimer();
-        hourlyAudioTimerRef.current = window.setTimeout(() => {
-          hourlyAudioTimerRef.current = null;
-          void playDialClockHourlyAudio(hourlyAudioRef.current);
-        }, DIAL_CLOCK_HOURLY_AUDIO_DELAY_MS);
+        cancelHourlyAudio();
+        if (isDocumentVisible()) {
+          const playToken = hourlyAudioPlayTokenRef.current + 1;
+          hourlyAudioPlayTokenRef.current = playToken;
+          hourlyAudioTimerRef.current = window.setTimeout(() => {
+            hourlyAudioTimerRef.current = null;
+            if (
+              playToken !== hourlyAudioPlayTokenRef.current ||
+              !isDocumentVisible()
+            ) {
+              return;
+            }
+            void playDialClockHourlyAudio(hourlyAudioRef.current);
+          }, DIAL_CLOCK_HOURLY_AUDIO_DELAY_MS);
+        }
 
         const playFrame = (index: number) => {
           const frame = sweepFrames[index];
@@ -3043,25 +3227,43 @@ export function BuiltinWidgetView({
       const syncClock = () => {
         const now = new Date();
         setClockState(toDialClockTimeState(now));
+        const sweepKey = isDocumentVisible()
+          ? getDialClockSweepTriggerKey(lastClockSampleRef.current, now)
+          : null;
+        lastClockSampleRef.current = now;
 
-        if (shouldTriggerDialClockSweep(now)) {
-          const sweepKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}`;
-          if (lastSweepKeyRef.current !== sweepKey) {
-            lastSweepKeyRef.current = sweepKey;
-            runSweep();
-          }
+        if (sweepKey && lastSweepKeyRef.current !== sweepKey) {
+          lastSweepKeyRef.current = sweepKey;
+          runSweep();
         }
 
         tickTimerRef.current = window.setTimeout(syncClock, Math.max(32, 1000 - now.getMilliseconds()));
       };
 
+      const handleVisibilityChange = () => {
+        if (isDocumentVisible()) {
+          lastClockSampleRef.current = new Date();
+          return;
+        }
+        clearSweepTimer();
+        setSweepFrameIndex(-1);
+        cancelHourlyAudio();
+        lastClockSampleRef.current = new Date();
+      };
+
+      if (typeof document !== "undefined") {
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+      }
       syncClock();
       return () => {
         clearSweepTimer();
-        clearHourlyAudioTimer();
+        cancelHourlyAudio();
         if (tickTimerRef.current !== null) {
           window.clearTimeout(tickTimerRef.current);
           tickTimerRef.current = null;
+        }
+        if (typeof document !== "undefined") {
+          document.removeEventListener("visibilitychange", handleVisibilityChange);
         }
       };
     }, [sweepFrames]);
