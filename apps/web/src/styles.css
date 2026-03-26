@@ -534,10 +534,10 @@ body {
 }
 
 .dial-clock-mark.is-minute-active {
-  background: rgba(255, 255, 255, 0.98);
+  background: rgba(255, 255, 255, 1);
   box-shadow:
-    0 0 10px rgba(255, 255, 255, 0.96),
-    0 0 20px rgba(241, 245, 249, 0.7);
+    0 0 12px rgba(255, 255, 255, 1),
+    0 0 24px rgba(248, 250, 252, 0.88);
 }
 
 .dial-clock-mark.is-second-tail-0 {
@@ -588,10 +588,10 @@ body {
 }
 
 .dial-clock-number.is-active {
-  color: rgba(255, 255, 255, 0.98);
+  color: rgba(255, 255, 255, 1);
   text-shadow:
-    0 0 10px rgba(255, 255, 255, 0.98),
-    0 0 20px rgba(226, 232, 240, 0.82);
+    0 0 12px rgba(255, 255, 255, 1),
+    0 0 24px rgba(248, 250, 252, 0.92);
   font-weight: 600;
 }
 
