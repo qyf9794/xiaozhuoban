@@ -2955,7 +2955,7 @@ export function BuiltinWidgetView({
   }
 
   if (definition.type === "dialClock") {
-    const [clockState, setClockState] = useState(() => toDialClockTimeState(new Date("2026-03-26T03:59:00")));
+    const [clockState, setClockState] = useState(() => toDialClockTimeState(new Date()));
     const [sweepFrameIndex, setSweepFrameIndex] = useState(-1);
     const [sweepDurationMs, setSweepDurationMs] = useState(DIAL_CLOCK_HOURLY_AUDIO_FALLBACK_DURATION_MS);
     const hourlyAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -2963,7 +2963,6 @@ export function BuiltinWidgetView({
     const sweepTimerRef = useRef<number | null>(null);
     const tickTimerRef = useRef<number | null>(null);
     const hourlyAudioTimerRef = useRef<number | null>(null);
-    const testClockStartedAtRef = useRef(Date.now());
     const sweepFrames = useMemo(() => getDialClockSweepFrames(sweepDurationMs), [sweepDurationMs]);
 
     useEffect(() => {
@@ -3042,15 +3041,11 @@ export function BuiltinWidgetView({
       };
 
       const syncClock = () => {
-        const now = new Date(2026, 2, 26, 3, 59, 0, 0);
-        const elapsedMs = Date.now() - testClockStartedAtRef.current;
-        const cycleMs = 61_000;
-        const normalizedMs = ((elapsedMs % cycleMs) + cycleMs) % cycleMs;
-        now.setSeconds(Math.floor(normalizedMs / 1000), normalizedMs % 1000);
+        const now = new Date();
         setClockState(toDialClockTimeState(now));
 
         if (shouldTriggerDialClockSweep(now)) {
-          const sweepKey = `${Math.floor(elapsedMs / cycleMs)}`;
+          const sweepKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}`;
           if (lastSweepKeyRef.current !== sweepKey) {
             lastSweepKeyRef.current = sweepKey;
             runSweep();
