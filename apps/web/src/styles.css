@@ -481,11 +481,11 @@ body {
 }
 
 .dial-clock-widget.is-mobile .dial-clock-mark {
-  width: 3.12px;
+  width: 3.74px;
 }
 
 .dial-clock-widget.is-mobile .dial-clock-mark.is-major {
-  width: 3.96px;
+  width: 4.75px;
 }
 
 .dial-clock-face::before {
@@ -583,7 +583,7 @@ body {
 }
 
 .dial-clock-widget.is-mobile .dial-clock-number {
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .dial-clock-number.is-active {
@@ -606,7 +606,7 @@ body {
 }
 
 .dial-clock-widget.is-mobile .dial-clock-brand {
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .dial-clock-icon {
