@@ -490,10 +490,10 @@ body {
       circle at center,
       rgba(255, 255, 255, 0) 49%,
       rgba(148, 163, 184, 0.05) 58%,
-      rgba(107, 114, 128, 0.28) 66%,
-      rgba(120, 127, 141, 0.21) 73%,
-      rgba(173, 181, 191, 0.17) 81%,
-      rgba(107, 114, 128, 0.22) 100%
+      rgba(75, 85, 99, 0.34) 66%,
+      rgba(107, 114, 128, 0.28) 73%,
+      rgba(163, 171, 181, 0.16) 81%,
+      rgba(75, 85, 99, 0.28) 100%
     );
   pointer-events: none;
 }
@@ -621,12 +621,26 @@ body {
   top: 31.8%;
 }
 
+.dial-clock-icon-moon.is-active {
+  color: rgba(96, 165, 250, 0.98);
+  filter:
+    drop-shadow(0 0 6px rgba(96, 165, 250, 0.84))
+    drop-shadow(0 0 12px rgba(59, 130, 246, 0.6));
+}
+
 .dial-clock-icon-moon .dial-clock-icon-svg {
   transform: scaleX(-1);
 }
 
 .dial-clock-icon-sun {
   top: 60.8%;
+}
+
+.dial-clock-icon-sun.is-active {
+  color: rgba(249, 168, 212, 0.98);
+  filter:
+    drop-shadow(0 0 6px rgba(249, 168, 212, 0.82))
+    drop-shadow(0 0 12px rgba(236, 72, 153, 0.46));
 }
 
 .dial-clock-icon-svg {
