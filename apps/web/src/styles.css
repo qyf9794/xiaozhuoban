@@ -488,11 +488,11 @@ body {
   background:
     radial-gradient(
       circle at center,
-      rgba(255, 255, 255, 0) 45%,
-      rgba(148, 163, 184, 0.05) 55%,
-      rgba(75, 85, 99, 0.34) 64%,
-      rgba(107, 114, 128, 0.28) 72%,
-      rgba(163, 171, 181, 0.16) 81%,
+      rgba(255, 255, 255, 0) 50%,
+      rgba(148, 163, 184, 0.04) 58%,
+      rgba(90, 100, 114, 0.26) 65%,
+      rgba(109, 117, 130, 0.22) 72%,
+      rgba(166, 174, 183, 0.14) 80%,
       rgba(75, 85, 99, 0.28) 100%
     );
   pointer-events: none;
@@ -624,8 +624,8 @@ body {
 .dial-clock-icon-moon.is-active {
   color: rgba(125, 170, 229, 0.98);
   filter:
-    drop-shadow(0 0 6px rgba(125, 170, 229, 0.78))
-    drop-shadow(0 0 12px rgba(96, 145, 214, 0.46));
+    drop-shadow(0 0 7px rgba(125, 170, 229, 0.9))
+    drop-shadow(0 0 15px rgba(96, 145, 214, 0.58));
 }
 
 .dial-clock-icon-moon .dial-clock-icon-svg {
@@ -639,8 +639,8 @@ body {
 .dial-clock-icon-sun.is-active {
   color: rgba(236, 176, 205, 0.98);
   filter:
-    drop-shadow(0 0 6px rgba(236, 176, 205, 0.78))
-    drop-shadow(0 0 12px rgba(214, 120, 165, 0.4));
+    drop-shadow(0 0 7px rgba(236, 176, 205, 0.9))
+    drop-shadow(0 0 15px rgba(214, 120, 165, 0.5));
 }
 
 .dial-clock-icon-svg {
