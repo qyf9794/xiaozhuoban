@@ -497,11 +497,12 @@ body {
     radial-gradient(
       circle at center,
       rgba(255, 255, 255, 0) 50%,
-      rgba(148, 163, 184, 0.04) 58%,
-      rgba(90, 100, 114, 0.26) 65%,
-      rgba(109, 117, 130, 0.22) 72%,
-      rgba(166, 174, 183, 0.14) 80%,
-      rgba(75, 85, 99, 0.28) 100%
+      rgba(148, 163, 184, 0.05) 57%,
+      rgba(92, 102, 116, 0.22) 63%,
+      rgba(72, 82, 95, 0.34) 69%,
+      rgba(100, 110, 123, 0.24) 76%,
+      rgba(158, 168, 178, 0.14) 84%,
+      rgba(64, 74, 88, 0.34) 100%
     );
   pointer-events: none;
 }
@@ -606,7 +607,7 @@ body {
 }
 
 .dial-clock-widget.is-mobile .dial-clock-brand {
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .dial-clock-icon {
