@@ -622,10 +622,10 @@ body {
 }
 
 .dial-clock-icon-moon.is-active {
-  color: #82A9D9;
+  color: #6F9FE0;
   filter:
-    drop-shadow(0 0 8px rgba(130, 169, 217, 0.92))
-    drop-shadow(0 0 18px rgba(105, 142, 193, 0.42));
+    drop-shadow(0 0 8px rgba(111, 159, 224, 0.94))
+    drop-shadow(0 0 18px rgba(79, 132, 208, 0.48));
 }
 
 .dial-clock-icon-moon .dial-clock-icon-svg {
