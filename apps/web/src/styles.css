@@ -475,6 +475,11 @@ body {
     0 12px 22px rgba(15, 23, 42, 0.08);
 }
 
+.dial-clock-widget.is-mobile .dial-clock-face {
+  width: 89.1%;
+  height: 89.1%;
+}
+
 .dial-clock-face::before {
   content: "";
   position: absolute;
@@ -569,6 +574,10 @@ body {
   font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
 }
 
+.dial-clock-widget.is-mobile .dial-clock-number {
+  font-size: 17px;
+}
+
 .dial-clock-number.is-active {
   color: rgba(255, 255, 255, 0.98);
   text-shadow:
@@ -586,6 +595,10 @@ body {
   letter-spacing: 0.06em;
   color: rgba(31, 41, 55, 0.6);
   font-weight: 960;
+}
+
+.dial-clock-widget.is-mobile .dial-clock-brand {
+  font-size: 12px;
 }
 
 .dial-clock-icon {

@@ -3079,7 +3079,7 @@ export function BuiltinWidgetView({
           borderRadius: 22
         }}
       >
-        <div className="dial-clock-widget">
+        <div className={`dial-clock-widget${isMobileMode ? " is-mobile" : ""}`}>
           <div className="dial-clock-square">
             <div className="dial-clock-face">
               {marks.map((mark) => {
