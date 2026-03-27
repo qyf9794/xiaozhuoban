@@ -93,7 +93,8 @@ const DIAL_CLOCK_NIGHT_TRANSITION_MS = 3000;
 const DIAL_CLOCK_NIGHT_IGNITE_MS = 1000;
 const DIAL_CLOCK_NIGHT_FADE_MS = 3000;
 const DIAL_CLOCK_NIGHT_MIN_HOLD_MS = 3000;
-const DIAL_CLOCK_NIGHT_MAX_HOLD_MS = 6000;
+const DIAL_CLOCK_NIGHT_MARK_MAX_HOLD_MS = 6000;
+const DIAL_CLOCK_NIGHT_NUMBER_MAX_HOLD_MS = 8000;
 
 type DialClockNightSparkPhase = "igniting" | "holding" | "fading";
 
@@ -3312,12 +3313,17 @@ export function BuiltinWidgetView({
     const nightSparkTimerIdsRef = useRef<number[]>([]);
     const nightTransitionTimerRef = useRef<number | null>(null);
     const nightSparksRef = useRef<DialClockNightSpark[]>([]);
+    const clockStateRef = useRef(clockState);
     const hasNightModeMountedRef = useRef(false);
     const sweepFrames = useMemo(() => getDialClockSweepFrames(sweepDurationMs), [sweepDurationMs]);
 
     useEffect(() => {
       nightSparksRef.current = nightSparks;
     }, [nightSparks]);
+
+    useEffect(() => {
+      clockStateRef.current = clockState;
+    }, [clockState]);
 
     useEffect(() => {
       if (!hasNightModeMountedRef.current) {
@@ -3507,9 +3513,14 @@ export function BuiltinWidgetView({
 
       const spawnNightSpark = (kind: "mark" | "number", index: number) => {
         const key = `${kind}-${index}`;
+        if (nightSparksRef.current.some((spark) => spark.key === key)) {
+          return;
+        }
+        const maxHoldMs =
+          kind === "number" ? DIAL_CLOCK_NIGHT_NUMBER_MAX_HOLD_MS : DIAL_CLOCK_NIGHT_MARK_MAX_HOLD_MS;
         const holdMs =
           DIAL_CLOCK_NIGHT_MIN_HOLD_MS +
-          Math.round(Math.random() * (DIAL_CLOCK_NIGHT_MAX_HOLD_MS - DIAL_CLOCK_NIGHT_MIN_HOLD_MS));
+          Math.round(Math.random() * (maxHoldMs - DIAL_CLOCK_NIGHT_MIN_HOLD_MS));
 
         setNightSparks((current) => {
           if (current.some((spark) => spark.key === key)) {
@@ -3537,12 +3548,20 @@ export function BuiltinWidgetView({
 
       const spawnNightSparkBatch = () => {
         const activeKeys = new Set(nightSparksRef.current.map((spark) => spark.key));
+        const latestClockState = clockStateRef.current;
+        const nextMinuteIndex = (latestClockState.minuteIndex + 1) % 60;
+        const nextHourNumber = (latestClockState.hourNumber % 12) + 1;
         const candidateMarks = Array.from({ length: 60 }, (_, index) => index)
-          .filter((index) => index !== clockState.minuteIndex)
+          .filter((index) => index !== latestClockState.minuteIndex && index !== nextMinuteIndex)
           .map((index) => ({ kind: "mark" as const, index, key: `mark-${index}` }))
           .filter((entry) => !activeKeys.has(entry.key));
         const candidateNumbers = DIAL_CLOCK_NUMBERS.map((number) => ({ kind: "number" as const, index: number, key: `number-${number}` }))
-          .filter((entry) => entry.index !== clockState.hourNumber && !activeKeys.has(entry.key));
+          .filter(
+            (entry) =>
+              entry.index !== latestClockState.hourNumber &&
+              entry.index !== nextHourNumber &&
+              !activeKeys.has(entry.key)
+          );
         const pool = [...candidateMarks, ...candidateNumbers];
         if (!pool.length) {
           return;
@@ -3593,8 +3612,9 @@ export function BuiltinWidgetView({
       return () => {
         clearNightSparkLoopTimer();
         clearNightSparkTimers();
+        setNightSparks([]);
       };
-    }, [clockState.hourNumber, clockState.minuteIndex, nightMode]);
+    }, [nightMode]);
 
     const marks = buildDialClockMarkStates(
       clockState,
