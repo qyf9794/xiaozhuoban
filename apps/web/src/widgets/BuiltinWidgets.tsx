@@ -93,7 +93,7 @@ const DIAL_CLOCK_NIGHT_TRANSITION_MS = 3000;
 const DIAL_CLOCK_NIGHT_IGNITE_MS = 1000;
 const DIAL_CLOCK_NIGHT_FADE_MS = 3000;
 const DIAL_CLOCK_NIGHT_MIN_HOLD_MS = 3000;
-const DIAL_CLOCK_NIGHT_MAX_HOLD_MS = 6500;
+const DIAL_CLOCK_NIGHT_MAX_HOLD_MS = 6000;
 
 type DialClockNightSparkPhase = "igniting" | "holding" | "fading";
 
