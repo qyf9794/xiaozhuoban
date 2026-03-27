@@ -89,6 +89,20 @@ const DIAL_CLOCK_NUMBERS = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
 const DIAL_CLOCK_HOURLY_AUDIO_SRC = "/media/dial-clock-hourly.wav";
 const DIAL_CLOCK_HOURLY_AUDIO_FALLBACK_DURATION_MS = 12_341;
 const DIAL_CLOCK_HOURLY_AUDIO_DELAY_MS = 1000;
+const DIAL_CLOCK_NIGHT_TRANSITION_MS = 3000;
+const DIAL_CLOCK_NIGHT_IGNITE_MS = 1000;
+const DIAL_CLOCK_NIGHT_FADE_MS = 3000;
+const DIAL_CLOCK_NIGHT_MIN_HOLD_MS = 3000;
+const DIAL_CLOCK_NIGHT_MAX_HOLD_MS = 6500;
+
+type DialClockNightSparkPhase = "igniting" | "holding" | "fading";
+
+type DialClockNightSpark = {
+  key: string;
+  kind: "mark" | "number";
+  index: number;
+  phase: DialClockNightSparkPhase;
+};
 
 function DialClockMoonIcon({ active }: { active: boolean }) {
   return (
@@ -3281,9 +3295,12 @@ export function BuiltinWidgetView({
   }
 
   if (definition.type === "dialClock") {
+    const nightMode = instance.state.nightMode === true;
     const [clockState, setClockState] = useState(() => toDialClockTimeState(new Date()));
     const [sweepFrameIndex, setSweepFrameIndex] = useState(-1);
     const [sweepDurationMs, setSweepDurationMs] = useState(DIAL_CLOCK_HOURLY_AUDIO_FALLBACK_DURATION_MS);
+    const [nightSparks, setNightSparks] = useState<DialClockNightSpark[]>([]);
+    const [nightTransitioning, setNightTransitioning] = useState(false);
     const hourlyAudioRef = useRef<HTMLAudioElement | null>(null);
     const lastSweepKeyRef = useRef("");
     const lastClockSampleRef = useRef<Date | null>(null);
@@ -3291,7 +3308,42 @@ export function BuiltinWidgetView({
     const tickTimerRef = useRef<number | null>(null);
     const hourlyAudioTimerRef = useRef<number | null>(null);
     const hourlyAudioPlayTokenRef = useRef(0);
+    const nightSparkLoopTimerRef = useRef<number | null>(null);
+    const nightSparkTimerIdsRef = useRef<number[]>([]);
+    const nightTransitionTimerRef = useRef<number | null>(null);
+    const nightSparksRef = useRef<DialClockNightSpark[]>([]);
+    const hasNightModeMountedRef = useRef(false);
     const sweepFrames = useMemo(() => getDialClockSweepFrames(sweepDurationMs), [sweepDurationMs]);
+
+    useEffect(() => {
+      nightSparksRef.current = nightSparks;
+    }, [nightSparks]);
+
+    useEffect(() => {
+      if (!hasNightModeMountedRef.current) {
+        hasNightModeMountedRef.current = true;
+        return;
+      }
+
+      if (nightTransitionTimerRef.current !== null) {
+        window.clearTimeout(nightTransitionTimerRef.current);
+      }
+
+      setNightTransitioning(true);
+      nightTransitionTimerRef.current = window.setTimeout(() => {
+        setNightTransitioning(false);
+        nightTransitionTimerRef.current = null;
+      }, DIAL_CLOCK_NIGHT_TRANSITION_MS);
+    }, [nightMode]);
+
+    useEffect(() => {
+      return () => {
+        if (nightTransitionTimerRef.current !== null) {
+          window.clearTimeout(nightTransitionTimerRef.current);
+          nightTransitionTimerRef.current = null;
+        }
+      };
+    }, []);
 
     useEffect(() => {
       const audio = getDialClockHourlyAudio();
@@ -3389,7 +3441,7 @@ export function BuiltinWidgetView({
       const syncClock = () => {
         const now = new Date();
         setClockState(toDialClockTimeState(now));
-        const sweepKey = isDocumentVisible()
+        const sweepKey = !nightMode && isDocumentVisible()
           ? getDialClockSweepTriggerKey(lastClockSampleRef.current, now)
           : null;
         lastClockSampleRef.current = now;
@@ -3428,12 +3480,127 @@ export function BuiltinWidgetView({
           document.removeEventListener("visibilitychange", handleVisibilityChange);
         }
       };
-    }, [sweepFrames]);
+    }, [nightMode, sweepFrames]);
+
+    useEffect(() => {
+      const clearNightSparkLoopTimer = () => {
+        if (nightSparkLoopTimerRef.current !== null) {
+          window.clearTimeout(nightSparkLoopTimerRef.current);
+          nightSparkLoopTimerRef.current = null;
+        }
+      };
+
+      const clearNightSparkTimers = () => {
+        nightSparkTimerIdsRef.current.forEach((timerId) => {
+          window.clearTimeout(timerId);
+        });
+        nightSparkTimerIdsRef.current = [];
+      };
+
+      const scheduleTimer = (callback: () => void, delay: number) => {
+        const timerId = window.setTimeout(() => {
+          nightSparkTimerIdsRef.current = nightSparkTimerIdsRef.current.filter((id) => id !== timerId);
+          callback();
+        }, delay);
+        nightSparkTimerIdsRef.current.push(timerId);
+      };
+
+      const spawnNightSpark = (kind: "mark" | "number", index: number) => {
+        const key = `${kind}-${index}`;
+        const holdMs =
+          DIAL_CLOCK_NIGHT_MIN_HOLD_MS +
+          Math.round(Math.random() * (DIAL_CLOCK_NIGHT_MAX_HOLD_MS - DIAL_CLOCK_NIGHT_MIN_HOLD_MS));
+
+        setNightSparks((current) => {
+          if (current.some((spark) => spark.key === key)) {
+            return current;
+          }
+          return [...current, { key, kind, index, phase: "igniting" }];
+        });
+
+        scheduleTimer(() => {
+          setNightSparks((current) =>
+            current.map((spark) => (spark.key === key ? { ...spark, phase: "holding" } : spark))
+          );
+        }, DIAL_CLOCK_NIGHT_IGNITE_MS);
+
+        scheduleTimer(() => {
+          setNightSparks((current) =>
+            current.map((spark) => (spark.key === key ? { ...spark, phase: "fading" } : spark))
+          );
+        }, DIAL_CLOCK_NIGHT_IGNITE_MS + holdMs);
+
+        scheduleTimer(() => {
+          setNightSparks((current) => current.filter((spark) => spark.key !== key));
+        }, DIAL_CLOCK_NIGHT_IGNITE_MS + holdMs + DIAL_CLOCK_NIGHT_FADE_MS);
+      };
+
+      const spawnNightSparkBatch = () => {
+        const activeKeys = new Set(nightSparksRef.current.map((spark) => spark.key));
+        const candidateMarks = Array.from({ length: 60 }, (_, index) => index)
+          .filter((index) => index !== clockState.minuteIndex)
+          .map((index) => ({ kind: "mark" as const, index, key: `mark-${index}` }))
+          .filter((entry) => !activeKeys.has(entry.key));
+        const candidateNumbers = DIAL_CLOCK_NUMBERS.map((number) => ({ kind: "number" as const, index: number, key: `number-${number}` }))
+          .filter((entry) => entry.index !== clockState.hourNumber && !activeKeys.has(entry.key));
+        const pool = [...candidateMarks, ...candidateNumbers];
+        if (!pool.length) {
+          return;
+        }
+
+        const batchCount = Math.min(pool.length, 1 + Math.floor(Math.random() * 4));
+        for (let pickIndex = 0; pickIndex < batchCount; pickIndex += 1) {
+          const randomIndex = Math.floor(Math.random() * pool.length);
+          const [picked] = pool.splice(randomIndex, 1);
+          if (!picked) {
+            continue;
+          }
+          spawnNightSpark(picked.kind, picked.index);
+        }
+      };
+
+      const scheduleBatchLoop = () => {
+        clearNightSparkLoopTimer();
+        if (!nightMode) {
+          return;
+        }
+
+        const nextDelay = 700 + Math.round(Math.random() * 1600);
+        nightSparkLoopTimerRef.current = window.setTimeout(() => {
+          nightSparkLoopTimerRef.current = null;
+          if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+            scheduleBatchLoop();
+            return;
+          }
+          spawnNightSparkBatch();
+          scheduleBatchLoop();
+        }, nextDelay);
+      };
+
+      if (!nightMode) {
+        clearNightSparkLoopTimer();
+        clearNightSparkTimers();
+        setNightSparks([]);
+        return;
+      }
+
+      nightSparkLoopTimerRef.current = window.setTimeout(() => {
+        nightSparkLoopTimerRef.current = null;
+        spawnNightSparkBatch();
+        scheduleBatchLoop();
+      }, DIAL_CLOCK_NIGHT_TRANSITION_MS);
+
+      return () => {
+        clearNightSparkLoopTimer();
+        clearNightSparkTimers();
+      };
+    }, [clockState.hourNumber, clockState.minuteIndex, nightMode]);
 
     const marks = buildDialClockMarkStates(
       clockState,
-      sweepFrameIndex >= 0 ? sweepFrames[sweepFrameIndex] : null
+      nightMode ? null : sweepFrameIndex >= 0 ? sweepFrames[sweepFrameIndex] : null
     );
+    const nightSparkMap = useMemo(() => new Map(nightSparks.map((spark) => [spark.key, spark])), [nightSparks]);
 
     return (
       <Card
@@ -3443,7 +3610,11 @@ export function BuiltinWidgetView({
           borderRadius: 22
         }}
       >
-        <div className={`dial-clock-widget${isMobileMode ? " is-mobile" : ""}`}>
+        <div
+          className={`dial-clock-widget${isMobileMode ? " is-mobile" : ""}${nightMode ? " is-night-mode" : ""}${
+            nightTransitioning ? " is-night-transitioning" : ""
+          }`}
+        >
           <div className="dial-clock-square">
             <div className="dial-clock-face">
               {marks.map((mark) => {
@@ -3452,11 +3623,12 @@ export function BuiltinWidgetView({
                 const radius = mark.isMajor ? 43.98 : 44.7;
                 const left = 50 + Math.cos(radians) * radius;
                 const top = 50 + Math.sin(radians) * radius;
+                const nightSpark = nightSparkMap.get(`mark-${mark.index}`);
                 const className = [
                   "dial-clock-mark",
                   mark.isMajor ? "is-major" : "",
                   mark.minuteActive ? "is-minute-active" : "",
-                  mark.secondTrailLevel !== null ? `is-second-tail-${mark.secondTrailLevel}` : "",
+                  !nightMode && mark.secondTrailLevel !== null ? `is-second-tail-${mark.secondTrailLevel}` : "",
                   mark.sweepTrailLevel !== null ? "is-sweep-active" : ""
                 ]
                   .filter(Boolean)
@@ -3475,6 +3647,23 @@ export function BuiltinWidgetView({
                           })`
                         } satisfies CSSProperties;
                       })();
+                const nightSparkStyle =
+                  nightSpark === undefined
+                    ? {}
+                    : nightSpark.phase === "fading"
+                      ? ({
+                          background: "rgba(0, 0, 0, 0.92)",
+                          boxShadow: "0 0 0 rgba(255, 255, 255, 0)",
+                          transition: `background ${DIAL_CLOCK_NIGHT_FADE_MS}ms ease-out, box-shadow ${DIAL_CLOCK_NIGHT_FADE_MS}ms ease-out`
+                        } satisfies CSSProperties)
+                      : ({
+                          background: "#ffffff",
+                          boxShadow: "0 0 12px rgba(255, 255, 255, 0.98), 0 0 24px rgba(248, 250, 252, 0.82)",
+                          transition:
+                            nightSpark.phase === "igniting"
+                              ? `background ${DIAL_CLOCK_NIGHT_IGNITE_MS}ms ease-out, box-shadow ${DIAL_CLOCK_NIGHT_IGNITE_MS}ms ease-out`
+                              : "none"
+                        } satisfies CSSProperties);
 
                 return (
                   <span
@@ -3484,7 +3673,8 @@ export function BuiltinWidgetView({
                       left: `${left}%`,
                       top: `${top}%`,
                       transform: `translate(-50%, -50%) rotate(${angle}deg)`,
-                      ...sweepStyle
+                      ...sweepStyle,
+                      ...nightSparkStyle
                     }}
                   />
                 );
@@ -3496,13 +3686,32 @@ export function BuiltinWidgetView({
                 const radius = number === 12 || number === 6 ? 32.5 : 34.2;
                 const left = 50 + Math.cos(radians) * radius;
                 const top = 50 + Math.sin(radians) * radius;
+                const nightSpark = nightSparkMap.get(`number-${number}`);
+                const nightSparkStyle =
+                  nightSpark === undefined
+                    ? {}
+                    : nightSpark.phase === "fading"
+                      ? ({
+                          color: "rgba(0, 0, 0, 0.92)",
+                          textShadow: "0 0 0 rgba(255, 255, 255, 0)",
+                          transition: `color ${DIAL_CLOCK_NIGHT_FADE_MS}ms ease-out, text-shadow ${DIAL_CLOCK_NIGHT_FADE_MS}ms ease-out`
+                        } satisfies CSSProperties)
+                      : ({
+                          color: "#ffffff",
+                          textShadow: "0 0 12px rgba(255, 255, 255, 0.98), 0 0 24px rgba(248, 250, 252, 0.82)",
+                          transition:
+                            nightSpark.phase === "igniting"
+                              ? `color ${DIAL_CLOCK_NIGHT_IGNITE_MS}ms ease-out, text-shadow ${DIAL_CLOCK_NIGHT_IGNITE_MS}ms ease-out`
+                              : "none"
+                        } satisfies CSSProperties);
                 return (
                   <span
                     key={number}
                     className={`dial-clock-number${clockState.hourNumber === number ? " is-active" : ""}`}
                     style={{
                       left: `${left}%`,
-                      top: `${top}%`
+                      top: `${top}%`,
+                      ...nightSparkStyle
                     }}
                   >
                     {number}
@@ -3510,11 +3719,22 @@ export function BuiltinWidgetView({
                 );
               })}
 
-              <div className={`dial-clock-icon dial-clock-icon-moon${clockState.isAm ? "" : " is-active"}`}>
-                <DialClockMoonIcon active={!clockState.isAm} />
-              </div>
+              <button
+                type="button"
+                data-no-drag="true"
+                aria-label={nightMode ? "退出夜间模式" : "进入夜间模式"}
+                className={`dial-clock-icon-button dial-clock-icon dial-clock-icon-moon${nightMode || !clockState.isAm ? " is-active" : ""}`}
+                onClick={() => {
+                  onStateChange({
+                    ...instance.state,
+                    nightMode: !nightMode
+                  });
+                }}
+              >
+                <DialClockMoonIcon active={nightMode || !clockState.isAm} />
+              </button>
               <div className="dial-clock-brand">BALMUDA</div>
-              <div className={`dial-clock-icon dial-clock-icon-sun${clockState.isAm ? " is-active" : ""}`}>
+              <div className={`dial-clock-icon dial-clock-icon-sun${!nightMode && clockState.isAm ? " is-active" : ""}`}>
                 <DialClockSunIcon active={clockState.isAm} />
               </div>
             </div>

@@ -610,6 +610,13 @@ body {
   font-size: 13px;
 }
 
+.dial-clock-icon-button {
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
 .dial-clock-icon {
   position: absolute;
   left: 50%;
@@ -657,6 +664,111 @@ body {
   width: 100%;
   height: 100%;
   display: block;
+}
+
+.dial-clock-widget.is-night-mode .dial-clock-face,
+.dial-clock-widget.is-night-transitioning .dial-clock-face {
+  transition:
+    background 3000ms ease,
+    box-shadow 3000ms ease,
+    -webkit-backdrop-filter 3000ms ease,
+    backdrop-filter 3000ms ease;
+}
+
+.dial-clock-widget.is-night-mode .dial-clock-face::before,
+.dial-clock-widget.is-night-transitioning .dial-clock-face::before,
+.dial-clock-widget.is-night-mode .dial-clock-face::after,
+.dial-clock-widget.is-night-transitioning .dial-clock-face::after {
+  transition: background 3000ms ease;
+}
+
+.dial-clock-widget.is-night-mode .dial-clock-mark,
+.dial-clock-widget.is-night-transitioning .dial-clock-mark {
+  transition:
+    background 3000ms ease,
+    box-shadow 3000ms ease;
+}
+
+.dial-clock-widget.is-night-mode .dial-clock-number,
+.dial-clock-widget.is-night-transitioning .dial-clock-number,
+.dial-clock-widget.is-night-mode .dial-clock-brand,
+.dial-clock-widget.is-night-transitioning .dial-clock-brand {
+  transition:
+    color 3000ms ease,
+    text-shadow 3000ms ease;
+}
+
+.dial-clock-widget.is-night-mode .dial-clock-icon,
+.dial-clock-widget.is-night-transitioning .dial-clock-icon {
+  transition:
+    color 3000ms ease,
+    filter 3000ms ease;
+}
+
+.dial-clock-widget.is-night-mode .dial-clock-face {
+  background:
+    radial-gradient(circle at 30% 28%, rgba(96, 101, 108, 0.74), rgba(58, 62, 70, 0.86) 42%, rgba(24, 26, 32, 0.98) 100%),
+    linear-gradient(180deg, rgba(82, 86, 95, 0.56), rgba(20, 23, 30, 0.92));
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.08),
+    inset 0 22px 28px rgba(255, 255, 255, 0.03),
+    inset 0 -18px 30px rgba(0, 0, 0, 0.48),
+    inset 0 0 0 1px rgba(15, 23, 42, 0.78),
+    0 12px 22px rgba(15, 23, 42, 0.2);
+}
+
+.dial-clock-widget.is-night-mode .dial-clock-face::before {
+  background:
+    radial-gradient(
+      circle at center,
+      rgba(0, 0, 0, 0) 52%,
+      rgba(24, 28, 35, 0.08) 60%,
+      rgba(12, 15, 20, 0.3) 68%,
+      rgba(32, 37, 45, 0.22) 78%,
+      rgba(56, 63, 74, 0.08) 87%,
+      rgba(10, 13, 18, 0.24) 100%
+    );
+}
+
+.dial-clock-widget.is-night-mode .dial-clock-face::after {
+  background:
+    radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02) 26%, rgba(255, 255, 255, 0) 44%);
+}
+
+.dial-clock-widget.is-night-mode .dial-clock-mark,
+.dial-clock-widget.is-night-mode .dial-clock-mark.is-major {
+  background: rgba(0, 0, 0, 0.94);
+  box-shadow: none;
+}
+
+.dial-clock-widget.is-night-mode .dial-clock-mark.is-minute-active {
+  background: #adc2ff;
+  box-shadow:
+    0 0 10px rgba(219, 228, 255, 0.92),
+    0 0 22px rgba(173, 194, 255, 0.72);
+}
+
+.dial-clock-widget.is-night-mode .dial-clock-number,
+.dial-clock-widget.is-night-mode .dial-clock-brand,
+.dial-clock-widget.is-night-mode .dial-clock-icon-sun {
+  color: rgba(0, 0, 0, 0.94);
+  text-shadow: none;
+  filter: none;
+}
+
+.dial-clock-widget.is-night-mode .dial-clock-number.is-active {
+  color: #adc2ff;
+  text-shadow:
+    0 0 10px rgba(219, 228, 255, 0.92),
+    0 0 22px rgba(173, 194, 255, 0.68);
+}
+
+.dial-clock-widget.is-night-mode .dial-clock-icon-moon.is-active {
+  color: #adc2ff;
+  filter:
+    drop-shadow(0 0 8px rgba(255, 255, 255, 0.8))
+    drop-shadow(0 0 16px rgba(173, 194, 255, 0.94))
+    drop-shadow(0 0 26px rgba(173, 194, 255, 0.52));
 }
 
 .world-clock-widget {
