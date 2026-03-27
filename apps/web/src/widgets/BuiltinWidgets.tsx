@@ -90,6 +90,8 @@ const DIAL_CLOCK_HOURLY_AUDIO_SRC = "/media/dial-clock-hourly.m4a";
 const DIAL_CLOCK_NIGHT_AUDIO_SRC = "/media/dial-clock-night-mode.m4a";
 const DIAL_CLOCK_HOURLY_AUDIO_FALLBACK_DURATION_MS = 12_341;
 const DIAL_CLOCK_HOURLY_AUDIO_DELAY_MS = 0;
+const DIAL_CLOCK_NIGHT_AUDIO_DELAY_MS = 1000;
+const DIAL_CLOCK_NIGHT_AUDIO_REPEAT_COUNT = 2;
 const DIAL_CLOCK_NIGHT_TRANSITION_MS = 3000;
 const DIAL_CLOCK_NIGHT_IGNITE_MS = 1000;
 const DIAL_CLOCK_NIGHT_FADE_MS = 3000;
@@ -1161,7 +1163,7 @@ function getDialClockNightAudio() {
   if (!dialClockNightAudio) {
     dialClockNightAudio = new Audio(DIAL_CLOCK_NIGHT_AUDIO_SRC);
     dialClockNightAudio.preload = "auto";
-    dialClockNightAudio.loop = true;
+    dialClockNightAudio.loop = false;
   }
 
   return dialClockNightAudio;
@@ -1430,6 +1432,7 @@ async function playDialClockHourlyAudio(audio: HTMLAudioElement | null = getDial
 
 function stopDialClockNightAudio(audio: HTMLAudioElement | null = getDialClockNightAudio()) {
   if (!audio) return;
+  audio.onended = null;
   audio.pause();
   try {
     audio.currentTime = 0;
@@ -1443,8 +1446,26 @@ async function playDialClockNightAudio(audio: HTMLAudioElement | null = getDialC
   if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
   try {
     stopDialClockNightAudio(audio);
+    let remainingRepeats = DIAL_CLOCK_NIGHT_AUDIO_REPEAT_COUNT - 1;
+    audio.onended = () => {
+      if (remainingRepeats <= 0) {
+        audio.onended = null;
+        return;
+      }
+      remainingRepeats -= 1;
+      try {
+        audio.currentTime = 0;
+      } catch {
+        // currentTime reset can fail before metadata loads
+      }
+      void audio.play().catch((error) => {
+        audio.onended = null;
+        console.warn("[dialClock] night audio replay failed", error);
+      });
+    };
     await audio.play();
   } catch (error) {
+    audio.onended = null;
     console.warn("[dialClock] night audio failed", error);
   }
 }
@@ -3481,7 +3502,7 @@ export function BuiltinWidgetView({
       nightAudioTimerRef.current = window.setTimeout(() => {
         nightAudioTimerRef.current = null;
         void playDialClockNightAudio(nightAudioRef.current);
-      }, DIAL_CLOCK_NIGHT_TRANSITION_MS);
+      }, DIAL_CLOCK_NIGHT_AUDIO_DELAY_MS);
 
       return () => {
         if (nightAudioTimerRef.current !== null) {
