@@ -86,9 +86,10 @@ const CONVERTER_CATEGORY_OPTIONS = [
 ] as const;
 
 const DIAL_CLOCK_NUMBERS = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
-const DIAL_CLOCK_HOURLY_AUDIO_SRC = "/media/dial-clock-hourly.wav";
+const DIAL_CLOCK_HOURLY_AUDIO_SRC = "/media/dial-clock-hourly.m4a";
+const DIAL_CLOCK_NIGHT_AUDIO_SRC = "/media/dial-clock-night-mode.m4a";
 const DIAL_CLOCK_HOURLY_AUDIO_FALLBACK_DURATION_MS = 12_341;
-const DIAL_CLOCK_HOURLY_AUDIO_DELAY_MS = 1000;
+const DIAL_CLOCK_HOURLY_AUDIO_DELAY_MS = 0;
 const DIAL_CLOCK_NIGHT_TRANSITION_MS = 3000;
 const DIAL_CLOCK_NIGHT_IGNITE_MS = 1000;
 const DIAL_CLOCK_NIGHT_FADE_MS = 3000;
@@ -972,6 +973,8 @@ let messageBoardChimeAudioPrimed = false;
 let messageBoardChimeAudioSrc: string | null = null;
 let dialClockHourlyAudio: HTMLAudioElement | null = null;
 let dialClockHourlyAudioPrimed = false;
+let dialClockNightAudio: HTMLAudioElement | null = null;
+let dialClockNightAudioPrimed = false;
 
 function getScreenWakeLockApi(): RecorderWakeLockApi | null {
   if (typeof navigator === "undefined") return null;
@@ -1150,6 +1153,20 @@ function getDialClockHourlyAudio() {
   return dialClockHourlyAudio;
 }
 
+function getDialClockNightAudio() {
+  if (typeof Audio === "undefined") {
+    return null;
+  }
+
+  if (!dialClockNightAudio) {
+    dialClockNightAudio = new Audio(DIAL_CLOCK_NIGHT_AUDIO_SRC);
+    dialClockNightAudio.preload = "auto";
+    dialClockNightAudio.loop = true;
+  }
+
+  return dialClockNightAudio;
+}
+
 function stopCountdownAlarm(ownerId?: string) {
   if (ownerId && activeCountdownAlarmOwnerId !== ownerId) {
     return;
@@ -1184,7 +1201,12 @@ function ensureSharedAudioUnlock() {
   };
 
   const unlockSharedAudio = () => {
-    void Promise.allSettled([primeMessageBoardAudio(), primeCountdownAlarmAudio(), primeDialClockHourlyAudio()]).finally(() => {
+    void Promise.allSettled([
+      primeMessageBoardAudio(),
+      primeCountdownAlarmAudio(),
+      primeDialClockHourlyAudio(),
+      primeDialClockNightAudio()
+    ]).finally(() => {
         removeListeners();
         sharedAudioUnlockState = "ready";
       });
@@ -1358,6 +1380,33 @@ async function primeDialClockHourlyAudio() {
   }
 }
 
+async function primeDialClockNightAudio() {
+  const audio = getDialClockNightAudio();
+  if (!audio) return false;
+  if (dialClockNightAudioPrimed) return true;
+  try {
+    const wasMuted = audio.muted;
+    audio.pause();
+    audio.currentTime = 0;
+    audio.muted = true;
+    await audio.play();
+    audio.pause();
+    audio.currentTime = 0;
+    audio.muted = wasMuted;
+    dialClockNightAudioPrimed = true;
+    return true;
+  } catch {
+    audio.pause();
+    try {
+      audio.currentTime = 0;
+    } catch {
+      // currentTime reset can fail before metadata loads
+    }
+    audio.muted = false;
+    return false;
+  }
+}
+
 function stopDialClockHourlyAudio(audio: HTMLAudioElement | null = getDialClockHourlyAudio()) {
   if (!audio) return;
   audio.pause();
@@ -1376,6 +1425,27 @@ async function playDialClockHourlyAudio(audio: HTMLAudioElement | null = getDial
     await audio.play();
   } catch (error) {
     console.warn("[dialClock] hourly audio failed", error);
+  }
+}
+
+function stopDialClockNightAudio(audio: HTMLAudioElement | null = getDialClockNightAudio()) {
+  if (!audio) return;
+  audio.pause();
+  try {
+    audio.currentTime = 0;
+  } catch {
+    // currentTime reset can fail before metadata loads
+  }
+}
+
+async function playDialClockNightAudio(audio: HTMLAudioElement | null = getDialClockNightAudio()) {
+  if (!audio) return;
+  if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+  try {
+    stopDialClockNightAudio(audio);
+    await audio.play();
+  } catch (error) {
+    console.warn("[dialClock] night audio failed", error);
   }
 }
 
@@ -3309,9 +3379,11 @@ export function BuiltinWidgetView({
     const tickTimerRef = useRef<number | null>(null);
     const hourlyAudioTimerRef = useRef<number | null>(null);
     const hourlyAudioPlayTokenRef = useRef(0);
+    const nightAudioRef = useRef<HTMLAudioElement | null>(null);
     const nightSparkLoopTimerRef = useRef<number | null>(null);
     const nightSparkTimerIdsRef = useRef<number[]>([]);
     const nightTransitionTimerRef = useRef<number | null>(null);
+    const nightAudioTimerRef = useRef<number | null>(null);
     const nightSparksRef = useRef<DialClockNightSpark[]>([]);
     const clockStateRef = useRef(clockState);
     const hasNightModeMountedRef = useRef(false);
@@ -3376,6 +3448,49 @@ export function BuiltinWidgetView({
         hourlyAudioRef.current = null;
       };
     }, []);
+
+    useEffect(() => {
+      const audio = getDialClockNightAudio();
+      if (!audio) {
+        return;
+      }
+
+      nightAudioRef.current = audio;
+
+      return () => {
+        if (nightAudioTimerRef.current !== null) {
+          window.clearTimeout(nightAudioTimerRef.current);
+          nightAudioTimerRef.current = null;
+        }
+        stopDialClockNightAudio(audio);
+        nightAudioRef.current = null;
+      };
+    }, []);
+
+    useEffect(() => {
+      if (nightAudioTimerRef.current !== null) {
+        window.clearTimeout(nightAudioTimerRef.current);
+        nightAudioTimerRef.current = null;
+      }
+
+      if (!nightMode) {
+        stopDialClockNightAudio(nightAudioRef.current);
+        return;
+      }
+
+      nightAudioTimerRef.current = window.setTimeout(() => {
+        nightAudioTimerRef.current = null;
+        void playDialClockNightAudio(nightAudioRef.current);
+      }, DIAL_CLOCK_NIGHT_TRANSITION_MS);
+
+      return () => {
+        if (nightAudioTimerRef.current !== null) {
+          window.clearTimeout(nightAudioTimerRef.current);
+          nightAudioTimerRef.current = null;
+        }
+        stopDialClockNightAudio(nightAudioRef.current);
+      };
+    }, [nightMode]);
 
     useEffect(() => {
       const isDocumentVisible = () =>
