@@ -977,6 +977,7 @@ let dialClockHourlyAudio: HTMLAudioElement | null = null;
 let dialClockHourlyAudioPrimed = false;
 let dialClockNightAudio: HTMLAudioElement | null = null;
 let dialClockNightAudioPrimed = false;
+let dialClockNightAudioStopTimer: number | null = null;
 
 function getScreenWakeLockApi(): RecorderWakeLockApi | null {
   if (typeof navigator === "undefined") return null;
@@ -1163,7 +1164,7 @@ function getDialClockNightAudio() {
   if (!dialClockNightAudio) {
     dialClockNightAudio = new Audio(DIAL_CLOCK_NIGHT_AUDIO_SRC);
     dialClockNightAudio.preload = "auto";
-    dialClockNightAudio.loop = false;
+    dialClockNightAudio.loop = true;
   }
 
   return dialClockNightAudio;
@@ -1432,6 +1433,10 @@ async function playDialClockHourlyAudio(audio: HTMLAudioElement | null = getDial
 
 function stopDialClockNightAudio(audio: HTMLAudioElement | null = getDialClockNightAudio()) {
   if (!audio) return;
+  if (dialClockNightAudioStopTimer !== null && typeof window !== "undefined") {
+    window.clearTimeout(dialClockNightAudioStopTimer);
+    dialClockNightAudioStopTimer = null;
+  }
   audio.onended = null;
   audio.pause();
   try {
@@ -1446,24 +1451,30 @@ async function playDialClockNightAudio(audio: HTMLAudioElement | null = getDialC
   if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
   try {
     stopDialClockNightAudio(audio);
-    let remainingRepeats = DIAL_CLOCK_NIGHT_AUDIO_REPEAT_COUNT - 1;
-    audio.onended = () => {
-      if (remainingRepeats <= 0) {
-        audio.onended = null;
+    audio.loop = true;
+    await audio.play();
+    const scheduleStop = () => {
+      if (!Number.isFinite(audio.duration) || audio.duration <= 0 || typeof window === "undefined") {
         return;
       }
-      remainingRepeats -= 1;
-      try {
-        audio.currentTime = 0;
-      } catch {
-        // currentTime reset can fail before metadata loads
+      if (dialClockNightAudioStopTimer !== null) {
+        window.clearTimeout(dialClockNightAudioStopTimer);
       }
-      void audio.play().catch((error) => {
-        audio.onended = null;
-        console.warn("[dialClock] night audio replay failed", error);
-      });
+      dialClockNightAudioStopTimer = window.setTimeout(() => {
+        dialClockNightAudioStopTimer = null;
+        stopDialClockNightAudio(audio);
+      }, Math.round(audio.duration * 1000 * DIAL_CLOCK_NIGHT_AUDIO_REPEAT_COUNT));
     };
-    await audio.play();
+
+    if (Number.isFinite(audio.duration) && audio.duration > 0) {
+      scheduleStop();
+    } else {
+      const handleMetadata = () => {
+        audio.removeEventListener("loadedmetadata", handleMetadata);
+        scheduleStop();
+      };
+      audio.addEventListener("loadedmetadata", handleMetadata);
+    }
   } catch (error) {
     audio.onended = null;
     console.warn("[dialClock] night audio failed", error);
