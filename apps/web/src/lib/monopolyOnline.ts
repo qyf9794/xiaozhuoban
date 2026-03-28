@@ -13,6 +13,7 @@ import {
   normalizeMonopolyState,
   purchaseProperty,
   restartMatch,
+  sellProperty,
   skipProperty,
   sortMatches,
   startMatch,
@@ -262,6 +263,10 @@ export async function submitOnlineRoll(match: MonopolyMatch, userId: string) {
 
 export async function purchaseOnlineProperty(match: MonopolyMatch, userId: string) {
   return updateMatchWithRevision(match, purchaseProperty(match, userId));
+}
+
+export async function sellOnlineProperty(match: MonopolyMatch, userId: string, tileIndex: number) {
+  return updateMatchWithRevision(match, sellProperty(match, userId, tileIndex));
 }
 
 export async function skipOnlineProperty(match: MonopolyMatch, userId: string) {

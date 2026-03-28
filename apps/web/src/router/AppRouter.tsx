@@ -14,6 +14,10 @@ export function AppRouter() {
   const { ready, user, initialize } = useAuthStore();
 
   useEffect(() => {
+    void import("../App");
+  }, []);
+
+  useEffect(() => {
     void initialize();
   }, [initialize]);
 

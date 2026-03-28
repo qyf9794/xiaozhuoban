@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { showDesktopWindowWhenReady } from "../lib/desktopWindow";
 
 type AuthPageShellProps = {
@@ -9,6 +9,7 @@ type AuthPageShellProps = {
 
 export function AuthPageShell({ title, children, footer }: AuthPageShellProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [videoReady, setVideoReady] = useState(false);
 
   useEffect(() => {
     void showDesktopWindowWhenReady();
@@ -47,17 +48,34 @@ export function AuthPageShell({ title, children, footer }: AuthPageShellProps) {
     };
   }, []);
 
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+
+    const playPromise = video.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      void playPromise.catch(() => {
+        // Browsers may defer autoplay; the CSS fallback stays visible.
+      });
+    }
+  }, []);
+
   return (
     <main className="auth-shell">
+      <div className="auth-shell__aurora" aria-hidden="true" />
       <video
         ref={videoRef}
-        className="auth-shell__video"
+        className={`auth-shell__video${videoReady ? " is-ready" : ""}`}
         autoPlay
         muted
         loop
         playsInline
         preload="metadata"
         aria-hidden="true"
+        onLoadedData={() => setVideoReady(true)}
+        onCanPlay={() => setVideoReady(true)}
       >
         <source src="/media/auth-background.mp4" type="video/mp4" />
       </video>

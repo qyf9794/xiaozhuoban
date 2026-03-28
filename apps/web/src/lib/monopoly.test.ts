@@ -3,11 +3,13 @@ import {
   acceptMatch,
   abandonMatch,
   createPendingMatch,
+  getLiquidationValue,
   getRentForLevel,
   MONOPOLY_FATE_CARDS,
   MONOPOLY_STARTING_CASH,
   MONOPOLY_TILES,
   purchaseProperty,
+  sellProperty,
   restartMatch,
   startMatch,
   submitRoll,
@@ -66,7 +68,7 @@ describe("monopoly gameplay", () => {
 
     expect(rolled.phase).toBe("await_purchase_decision");
     expect(rolled.state.players[0]?.position).toBe(1);
-    expect(rolled.state.players[0]?.cash).toBe(MONOPOLY_STARTING_CASH + 200);
+    expect(rolled.state.players[0]?.cash).toBe(MONOPOLY_STARTING_CASH + 100);
     expect(rolled.state.pendingDecision?.tileIndex).toBe(1);
   });
 
@@ -87,7 +89,7 @@ describe("monopoly gameplay", () => {
     expect(purchased.state.currentPlayerIndex).toBe(1);
     expect(purchased.state.propertyOwners["1"]).toBe("host");
     expect(purchased.state.players[0]?.propertyIds).toEqual([1]);
-    expect(purchased.state.players[0]?.cash).toBe(MONOPOLY_STARTING_CASH + 200 - 100);
+    expect(purchased.state.players[0]?.cash).toBe(MONOPOLY_STARTING_CASH + 100 - 100);
   });
 
   it("offers upgrading when landing on owned property and increases rent", () => {
@@ -162,7 +164,57 @@ describe("monopoly gameplay", () => {
     expect(noUpgrade.state.pendingDecision).toBeNull();
   });
 
-  it("applies rent and bankrupts a player when cash is insufficient", () => {
+  it("allows selling another owned property when cash is insufficient for an upgrade", () => {
+    const started = createStartedTwoPlayerMatch();
+    const host = started.state.players[0]!;
+    const guest = started.state.players[1]!;
+    const adjusted: MonopolyMatch = {
+      ...started,
+      state: {
+        ...started.state,
+        currentPlayerIndex: 0,
+        players: [
+          {
+            ...host,
+            cash: 20,
+            position: 3,
+            propertyIds: [1, 3]
+          },
+          guest
+        ],
+        propertyOwners: {
+          "1": "host",
+          "3": "host"
+        },
+        propertyLevels: {
+          "1": 1,
+          "3": 1
+        },
+        pendingDecision: {
+          type: "upgrade",
+          playerId: "host",
+          tileIndex: 3,
+          price: 102,
+          nextLevel: 2
+        }
+      },
+      phase: "await_purchase_decision"
+    };
+
+    const liquidated = sellProperty(adjusted, "host", 1, "2026-03-19T00:03:05.000Z");
+    const saleValue = getLiquidationValue(MONOPOLY_TILES[1]!, 1);
+
+    expect(liquidated.phase).toBe("await_purchase_decision");
+    expect(liquidated.state.players[0]?.cash).toBe(20 + saleValue);
+    expect(liquidated.state.players[0]?.propertyIds).toEqual([3]);
+    expect(liquidated.state.propertyOwners["1"]).toBeUndefined();
+    expect(liquidated.state.pendingDecision?.tileIndex).toBe(3);
+
+    const upgraded = purchaseProperty(liquidated, "host", "2026-03-19T00:03:10.000Z");
+    expect(upgraded.state.propertyLevels["3"]).toBe(2);
+  });
+
+  it("enters debt settlement instead of immediate bankruptcy when the player still has assets", () => {
     const started = createStartedTwoPlayerMatch();
     const adjusted: MonopolyMatch = {
       ...started,
@@ -178,7 +230,41 @@ describe("monopoly gameplay", () => {
           {
             ...started.state.players[1]!,
             cash: 10,
-            position: 1
+            position: 1,
+            propertyIds: [1]
+          }
+        ],
+        propertyOwners: { "1": "guest", "3": "host" }
+      }
+    };
+
+    const rolled = submitRoll(adjusted, { userId: "guest", dice: [1, 1], rolledAt: "2026-03-19T00:03:00.000Z" });
+
+    expect(rolled.status).toBe("active");
+    expect(rolled.phase).toBe("await_purchase_decision");
+    expect(rolled.state.players[1]?.bankrupt).toBe(false);
+    expect(rolled.state.pendingDecision?.type).toBe("debt_settlement");
+    expect(rolled.state.pendingDecision?.price).toBeGreaterThan(10);
+  });
+
+  it("bankrupts a player only when cash is insufficient and no assets remain", () => {
+    const started = createStartedTwoPlayerMatch();
+    const adjusted: MonopolyMatch = {
+      ...started,
+      state: {
+        ...started.state,
+        currentPlayerIndex: 1,
+        players: [
+          {
+            ...started.state.players[0]!,
+            cash: MONOPOLY_STARTING_CASH,
+            propertyIds: [3]
+          },
+          {
+            ...started.state.players[1]!,
+            cash: 10,
+            position: 1,
+            propertyIds: []
           }
         ],
         propertyOwners: { "3": "host" }
@@ -208,7 +294,7 @@ describe("monopoly gameplay", () => {
     const rolled = submitRoll(adjusted, { userId: "host", dice: [1, 1], rolledAt: "2026-03-19T00:03:00.000Z" });
 
     expect(rolled.state.players[0]?.position).toBe(0);
-    expect(rolled.state.players[0]?.cash).toBe(MONOPOLY_STARTING_CASH + 200);
+    expect(rolled.state.players[0]?.cash).toBe(MONOPOLY_STARTING_CASH + 100);
     expect(rolled.state.lastEvent).toContain("回到起点");
   });
 

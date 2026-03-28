@@ -18,16 +18,30 @@ interface AuthState {
 
 let initialized = false;
 let unsubscribe: (() => void) | null = null;
+let initializingPromise: Promise<void> | null = null;
 
-export const useAuthStore = create<AuthState>((set) => ({
+function readErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+export const useAuthStore = create<AuthState>((set, get) => ({
   ready: false,
   loading: false,
   user: null,
   session: null,
   error: "",
   async initialize() {
+    if (get().ready && initialized) {
+      return;
+    }
+
+    if (initializingPromise) {
+      await initializingPromise;
+      return;
+    }
+
     if (initialized) {
-      set({ ready: true });
+      set((state) => ({ ready: true, session: state.session, user: state.user }));
       return;
     }
 
@@ -36,23 +50,100 @@ export const useAuthStore = create<AuthState>((set) => ({
       return;
     }
 
-    const {
-      data: { session },
-      error
-    } = await supabase.auth.getSession();
+    if (!unsubscribe) {
+      const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+        set({
+          session: nextSession,
+          user: nextSession?.user ?? null,
+          ready: true,
+          loading: false
+        });
+      });
 
-    if (error) {
-      set({ ready: true, error: error.message, session: null, user: null });
-    } else {
-      set({ ready: true, session, user: session?.user ?? null, error: "" });
+      unsubscribe = () => data.subscription.unsubscribe();
     }
 
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      set({ session: nextSession, user: nextSession?.user ?? null, ready: true });
-    });
+    initializingPromise = (async () => {
+      const sessionRequest = supabase.auth.getSession();
+      const timeoutMs = 900;
 
-    unsubscribe = () => data.subscription.unsubscribe();
-    initialized = true;
+      const initialResult = await new Promise<
+        | { kind: "session"; session: Session | null; error: Error | null }
+        | { kind: "timeout" }
+      >((resolve) => {
+        const timeoutId = window.setTimeout(() => resolve({ kind: "timeout" }), timeoutMs);
+
+        void sessionRequest
+          .then(({ data: { session }, error }) => {
+            window.clearTimeout(timeoutId);
+            resolve({
+              kind: "session",
+              session,
+              error: error ? new Error(error.message) : null
+            });
+          })
+          .catch((error) => {
+            window.clearTimeout(timeoutId);
+            resolve({
+              kind: "session",
+              session: null,
+              error: new Error(readErrorMessage(error, "登录态初始化失败"))
+            });
+          });
+      });
+
+      if (initialResult.kind === "timeout") {
+        set((state) =>
+          state.ready
+            ? state
+            : {
+                ...state,
+                ready: true,
+                error: ""
+              }
+        );
+
+        void sessionRequest
+          .then(({ data: { session }, error }) => {
+            if (error) {
+              set({ ready: true, error: error.message, session: null, user: null, loading: false });
+              return;
+            }
+            set({ ready: true, session, user: session?.user ?? null, error: "", loading: false });
+            initialized = true;
+          })
+          .catch((error) => {
+            set({
+              ready: true,
+              error: readErrorMessage(error, "登录态初始化失败"),
+              session: null,
+              user: null,
+              loading: false
+            });
+          });
+        return;
+      }
+
+      if (initialResult.error) {
+        set({ ready: true, error: initialResult.error.message, session: null, user: null, loading: false });
+        return;
+      }
+
+      set({
+        ready: true,
+        session: initialResult.session,
+        user: initialResult.session?.user ?? null,
+        error: "",
+        loading: false
+      });
+      initialized = true;
+    })();
+
+    try {
+      await initializingPromise;
+    } finally {
+      initializingPromise = null;
+    }
   },
   async signIn(email, password) {
     if (supabaseConfigError) {

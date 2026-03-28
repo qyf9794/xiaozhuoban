@@ -36,6 +36,19 @@ body {
   background: #020617;
 }
 
+.auth-shell__aurora {
+  position: absolute;
+  inset: -12%;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(125, 211, 252, 0.42), transparent 34%),
+    radial-gradient(circle at 82% 24%, rgba(196, 181, 253, 0.26), transparent 28%),
+    radial-gradient(circle at 56% 78%, rgba(45, 212, 191, 0.24), transparent 34%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(2, 6, 23, 0.98));
+  filter: saturate(1.1);
+  transform: translate3d(0, 0, 0) scale(1.04);
+  animation: auth-aurora-drift 16s ease-in-out infinite alternate;
+}
+
 .auth-shell__video {
   position: absolute;
   inset: 0;
@@ -43,6 +56,12 @@ body {
   height: 100%;
   object-fit: cover;
   object-position: center;
+  opacity: 0;
+  transition: opacity 360ms ease;
+}
+
+.auth-shell__video.is-ready {
+  opacity: 0.76;
 }
 
 .auth-shell__scrim {
@@ -52,6 +71,18 @@ body {
     linear-gradient(180deg, rgba(2, 6, 23, 0.06), rgba(2, 6, 23, 0.26)),
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.28), transparent 34%),
     radial-gradient(circle at bottom right, rgba(191, 219, 254, 0.14), transparent 30%);
+}
+
+@keyframes auth-aurora-drift {
+  0% {
+    transform: translate3d(-2%, -1%, 0) scale(1.04);
+  }
+  50% {
+    transform: translate3d(1.5%, 2%, 0) scale(1.08);
+  }
+  100% {
+    transform: translate3d(3%, -2%, 0) scale(1.05);
+  }
 }
 
 .auth-card {

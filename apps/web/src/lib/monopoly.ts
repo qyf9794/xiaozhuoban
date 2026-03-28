@@ -5,7 +5,7 @@ export const MONOPOLY_BOARD_SIDE = 7;
 export const MONOPOLY_TILE_COUNT = 24;
 export const MONOPOLY_INVITE_TTL_MS = 5 * 60 * 1000;
 export const MONOPOLY_STARTING_CASH = 1000;
-export const MONOPOLY_PASS_START_REWARD = 200;
+export const MONOPOLY_PASS_START_REWARD = 100;
 export const MONOPOLY_MAX_UPGRADE_LEVEL = 2;
 export const MONOPOLY_MAX_INVITEES = 3;
 export const MONOPOLY_MAX_PLAYERS = 4;
@@ -65,11 +65,13 @@ export interface MonopolyLastMovement {
 }
 
 export interface MonopolyPendingDecision {
-  type: "purchase" | "upgrade";
+  type: "purchase" | "upgrade" | "debt_settlement";
   playerId: string;
   tileIndex: number;
   price: number;
   nextLevel?: number;
+  recipientUserId?: string | null;
+  reasonText?: string;
 }
 
 export interface MonopolyTile {
@@ -129,7 +131,7 @@ export interface MonopolyMatch {
 }
 
 export const MONOPOLY_TILES: MonopolyTile[] = [
-  { index: 0, name: "起点", shortName: "起点", kind: "corner", cornerKind: "start", badge: "+200" },
+  { index: 0, name: "起点", shortName: "起点", kind: "corner", cornerKind: "start", badge: "+100" },
   { index: 1, name: "像素街区", shortName: "像素街", kind: "property", propertyTier: "normal", price: 100, rent: 26, color: "#93c5fd" },
   { index: 2, name: "命运", shortName: "命运", kind: "fate", badge: "F" },
   { index: 3, name: "相机大道", shortName: "相机道", kind: "property", propertyTier: "normal", price: 120, rent: 30, color: "#93c5fd" },
@@ -161,7 +163,7 @@ export const MONOPOLY_CHANCE_CARDS: MonopolyCardEffect[] = [
   { id: "chance_forward_three", kind: "move_relative", amount: 3, text: "灵感爆发，前进 3 格" },
   { id: "chance_back_two", kind: "move_relative", amount: -2, text: "迷路绕行，后退 2 格" },
   { id: "chance_to_hub", kind: "move_absolute", tileIndex: 5, text: "被平台推荐，前往流量中枢" },
-  { id: "chance_to_start", kind: "move_absolute", tileIndex: 0, collectStartReward: true, text: "快速返场，回到起点并领取 200" }
+  { id: "chance_to_start", kind: "move_absolute", tileIndex: 0, collectStartReward: true, text: "快速返场，回到起点并领取 100" }
 ] as const;
 
 export const MONOPOLY_FATE_CARDS: MonopolyCardEffect[] = [
@@ -170,7 +172,7 @@ export const MONOPOLY_FATE_CARDS: MonopolyCardEffect[] = [
   { id: "fate_forward_four", kind: "move_relative", amount: 4, text: "热度上升，前进 4 格" },
   { id: "fate_back_three", kind: "move_relative", amount: -3, text: "项目延期，后退 3 格" },
   { id: "fate_to_plaza", kind: "move_absolute", tileIndex: 21, text: "受邀参加展会，前往跨界广场" },
-  { id: "fate_to_start", kind: "move_absolute", tileIndex: 0, collectStartReward: true, text: "重新整装，回到起点并领取 200" }
+  { id: "fate_to_start", kind: "move_absolute", tileIndex: 0, collectStartReward: true, text: "重新整装，回到起点并领取 100" }
 ] as const;
 
 const chanceCardMap = new Map(MONOPOLY_CHANCE_CARDS.map((card) => [card.id, card]));
@@ -287,6 +289,10 @@ export function getPropertyTotalInvestedValue(tile: MonopolyTile, level: number)
     total += getUpgradeCost(tile, nextLevel);
   }
   return total;
+}
+
+export function getLiquidationValue(tile: MonopolyTile, level: number) {
+  return Math.round(getPropertyTotalInvestedValue(tile, level) * 0.5);
 }
 
 function buildRanking(players: MonopolyPlayerState[], propertyLevels: Record<string, number>): MonopolyRankingEntry[] {
@@ -503,7 +509,7 @@ function releasePlayerProperties(state: MonopolyState, player: MonopolyPlayerSta
   player.propertyIds = [];
 }
 
-function chargePlayer(
+function bankruptPlayer(
   state: MonopolyState,
   playerIndex: number,
   amount: number,
@@ -522,14 +528,6 @@ function chargePlayer(
   const recipientIndex = recipientUserId ? getPlayerIndexByUser(players, recipientUserId) : -1;
   const recipient = recipientIndex >= 0 ? players[recipientIndex] : null;
 
-  if (payer.cash >= amount) {
-    payer.cash -= amount;
-    if (recipient) {
-      recipient.cash += amount;
-    }
-    return `${payer.userName}${reasonText}`;
-  }
-
   const paidAmount = payer.cash;
   if (recipient && paidAmount > 0) {
     recipient.cash += paidAmount;
@@ -537,7 +535,77 @@ function chargePlayer(
   payer.cash = 0;
   payer.bankrupt = true;
   releasePlayerProperties(state, payer);
-  return `${payer.userName}${reasonText}，资金不足已破产出局`;
+  return `${payer.userName}${reasonText}，资金不足且名下已无资产，已破产出局`;
+}
+
+function chargePlayer(
+  state: MonopolyState,
+  playerIndex: number,
+  amount: number,
+  recipientUserId: string | null,
+  reasonText: string
+): { kind: "resolved" | "debt"; eventText: string } {
+  const players = state.players;
+  const payer = players[playerIndex];
+  if (!payer) {
+    throw new Error("玩家不存在");
+  }
+  if (amount <= 0) {
+    return { kind: "resolved", eventText: `${payer.userName}${reasonText}` };
+  }
+
+  const recipientIndex = recipientUserId ? getPlayerIndexByUser(players, recipientUserId) : -1;
+  const recipient = recipientIndex >= 0 ? players[recipientIndex] : null;
+
+  if (payer.cash >= amount) {
+    payer.cash -= amount;
+    if (recipient) {
+      recipient.cash += amount;
+    }
+    return { kind: "resolved", eventText: `${payer.userName}${reasonText}` };
+  }
+
+  if (payer.propertyIds.length > 0) {
+    state.pendingDecision = {
+      type: "debt_settlement",
+      playerId: payer.userId,
+      tileIndex: -1,
+      price: amount,
+      recipientUserId,
+      reasonText
+    };
+    return {
+      kind: "debt",
+      eventText: `${payer.userName}${reasonText}，现金不足，可先变卖地产清偿`
+    };
+  }
+
+  return {
+    kind: "resolved",
+    eventText: bankruptPlayer(state, playerIndex, amount, recipientUserId, reasonText)
+  };
+}
+
+function resolveChargeOutcome(
+  match: MonopolyMatch,
+  state: MonopolyState,
+  amount: number,
+  recipientUserId: string | null,
+  reasonText: string,
+  eventPrefix: string,
+  actionAt: string
+) {
+  const outcome = chargePlayer(state, state.currentPlayerIndex, amount, recipientUserId, reasonText);
+  if (outcome.kind === "debt") {
+    state.lastEvent = joinEventText(eventPrefix, outcome.eventText);
+    state.turnStep = "roll";
+    return withState(match, state, { phase: "await_purchase_decision" }, actionAt);
+  }
+  return advanceToNextTurn(
+    withTransientState(match, state, { phase: "await_roll" }),
+    joinEventText(eventPrefix, outcome.eventText),
+    actionAt
+  );
 }
 
 function movePlayerPosition(current: number, steps: number) {
@@ -591,14 +659,13 @@ function resolveTile(
   if (tile.kind === "corner") {
     let eventText = `${currentPlayer.userName} 停在 ${tile.name}`;
     if (tile.cornerKind === "audit") {
-      eventText = chargePlayer(state, state.currentPlayerIndex, 180, null, " 在稽核站支付 180");
+      return resolveChargeOutcome(match, state, 180, null, " 在稽核站支付 180", eventPrefix, actionAt);
     }
     return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), joinEventText(eventPrefix, eventText), actionAt);
   }
 
   if (tile.kind === "fee") {
-    const eventText = chargePlayer(state, state.currentPlayerIndex, tile.amount ?? 0, null, ` 支付 ${tile.name} ${tile.amount ?? 0}`);
-    return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), joinEventText(eventPrefix, eventText), actionAt);
+    return resolveChargeOutcome(match, state, tile.amount ?? 0, null, ` 支付 ${tile.name} ${tile.amount ?? 0}`, eventPrefix, actionAt);
   }
 
   if (tile.kind === "property") {
@@ -610,7 +677,10 @@ function resolveTile(
         tileIndex: tile.index,
         price: tile.price ?? 0
       };
-      state.lastEvent = joinEventText(eventPrefix, `${currentPlayer.userName} 来到 ${tile.name}，可选择购买`);
+      state.lastEvent = joinEventText(
+        eventPrefix,
+        `${currentPlayer.userName} 来到 ${tile.name}，可选择购买（地价 ${tile.price ?? 0}）`
+      );
       state.turnStep = "roll";
       return withState(match, state, { phase: "await_purchase_decision" }, actionAt);
     }
@@ -640,14 +710,7 @@ function resolveTile(
     const ownerIndex = getPlayerIndexByUser(state.players, ownerUserId);
     const ownerName = ownerIndex >= 0 ? state.players[ownerIndex]?.userName ?? "其他玩家" : "其他玩家";
     const rent = getRentForLevel(tile, getPropertyLevel(state, tile.index));
-    const eventText = chargePlayer(
-      state,
-      state.currentPlayerIndex,
-      rent,
-      ownerUserId,
-      ` 支付 ${ownerName} 过路费 ${rent}`
-    );
-    return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), joinEventText(eventPrefix, eventText), actionAt);
+    return resolveChargeOutcome(match, state, rent, ownerUserId, ` 支付 ${ownerName} 过路费 ${rent}`, eventPrefix, actionAt);
   }
 
   const cardKind: MonopolyCardKind = tile.kind === "chance" ? "chance" : "fate";
@@ -659,8 +722,7 @@ function resolveTile(
       currentPlayer.cash += card.amount ?? 0;
       return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), state.lastEvent, actionAt);
     }
-    const eventText = chargePlayer(state, state.currentPlayerIndex, Math.abs(card.amount ?? 0), null, ` 抽到${tile.name}卡：${card.text}`);
-    return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), eventText, actionAt);
+    return resolveChargeOutcome(match, state, Math.abs(card.amount ?? 0), null, ` 抽到${tile.name}卡：${card.text}`, "", actionAt);
   }
 
   const movementFrom = currentPlayer.position;
@@ -869,18 +931,29 @@ export function normalizeMonopolyState(value: unknown): MonopolyState {
     raw.pendingDecision &&
     typeof raw.pendingDecision === "object" &&
     ((raw.pendingDecision as Record<string, unknown>).type === "purchase" ||
-      (raw.pendingDecision as Record<string, unknown>).type === "upgrade")
+      (raw.pendingDecision as Record<string, unknown>).type === "upgrade" ||
+      (raw.pendingDecision as Record<string, unknown>).type === "debt_settlement")
       ? {
           type:
             (raw.pendingDecision as Record<string, unknown>).type === "upgrade"
               ? ("upgrade" as const)
-              : ("purchase" as const),
+              : (raw.pendingDecision as Record<string, unknown>).type === "debt_settlement"
+                ? ("debt_settlement" as const)
+                : ("purchase" as const),
           playerId: typeof (raw.pendingDecision as Record<string, unknown>).playerId === "string"
             ? ((raw.pendingDecision as Record<string, unknown>).playerId as string)
             : "",
           tileIndex: Number((raw.pendingDecision as Record<string, unknown>).tileIndex) || 0,
           price: Number((raw.pendingDecision as Record<string, unknown>).price) || 0,
-          nextLevel: Number((raw.pendingDecision as Record<string, unknown>).nextLevel) || undefined
+          nextLevel: Number((raw.pendingDecision as Record<string, unknown>).nextLevel) || undefined,
+          recipientUserId:
+            typeof (raw.pendingDecision as Record<string, unknown>).recipientUserId === "string"
+              ? ((raw.pendingDecision as Record<string, unknown>).recipientUserId as string)
+              : null,
+          reasonText:
+            typeof (raw.pendingDecision as Record<string, unknown>).reasonText === "string"
+              ? ((raw.pendingDecision as Record<string, unknown>).reasonText as string)
+              : undefined
         }
       : null;
   const lastRollRaw = raw.lastRoll && typeof raw.lastRoll === "object" ? (raw.lastRoll as Record<string, unknown>) : null;
@@ -1173,6 +1246,27 @@ export function purchaseProperty(match: MonopolyMatch, userId: string, purchased
     throw new Error("当前无需购买地产");
   }
 
+  if (decision.type === "debt_settlement") {
+    if (currentPlayer.cash < decision.price) {
+      throw new Error("当前资金不足，无法完成清偿");
+    }
+    currentPlayer.cash -= decision.price;
+    if (decision.recipientUserId) {
+      const recipientIndex = getPlayerIndexByUser(state.players, decision.recipientUserId);
+      const recipient = recipientIndex >= 0 ? state.players[recipientIndex] : null;
+      if (recipient) {
+        recipient.cash += decision.price;
+      }
+    }
+    state.pendingDecision = null;
+    state.turnStep = "roll";
+    return advanceToNextTurn(
+      withTransientState(match, state, { phase: "await_roll" }),
+      `${currentPlayer.userName}${decision.reasonText ?? ` 支付款项 ${decision.price}`}`,
+      purchasedAt
+    );
+  }
+
   const tile = getTile(decision.tileIndex);
   if (tile.kind !== "property" || !tile.price) {
     throw new Error("地产信息无效");
@@ -1217,6 +1311,53 @@ export function purchaseProperty(match: MonopolyMatch, userId: string, purchased
   );
 }
 
+export function sellProperty(match: MonopolyMatch, userId: string, tileIndex: number, soldAt = nowIso()) {
+  ensureActiveMatch(match);
+  ensureParticipant(match, userId);
+  if (match.phase !== "await_purchase_decision") {
+    throw new Error("当前无需处理购买决策");
+  }
+  if (!canUserActOnTurn(match, userId)) {
+    throw new Error("还没轮到你");
+  }
+
+  const state = cloneState(match.state);
+  const decision = state.pendingDecision;
+  const currentPlayer = getCurrentPlayer(state);
+  if (!decision || decision.playerId !== userId || !currentPlayer) {
+    throw new Error("当前无需处理购买决策");
+  }
+  if (currentPlayer.cash >= decision.price) {
+    throw new Error("当前资金充足，无需变卖地产");
+  }
+
+  const tile = getTile(tileIndex);
+  if (tile.kind !== "property" || !tile.price) {
+    throw new Error("仅可变卖持有地产");
+  }
+  if (state.propertyOwners[String(tile.index)] !== currentPlayer.userId) {
+    throw new Error("该地产不属于当前玩家");
+  }
+  if (decision.type === "upgrade" && decision.tileIndex === tile.index) {
+    throw new Error("当前待升级的地产不可直接变卖");
+  }
+
+  const propertyIndex = currentPlayer.propertyIds.indexOf(tile.index);
+  if (propertyIndex < 0) {
+    throw new Error("该地产不属于当前玩家");
+  }
+
+  const level = getPropertyLevel(state, tile.index);
+  const salePrice = getLiquidationValue(tile, level);
+  currentPlayer.cash += salePrice;
+  currentPlayer.propertyIds = currentPlayer.propertyIds.filter((propertyId) => propertyId !== tile.index);
+  delete state.propertyOwners[String(tile.index)];
+  delete state.propertyLevels[String(tile.index)];
+  state.lastEvent = `${currentPlayer.userName} 变卖 ${tile.name}，获得 ${salePrice}`;
+  state.turnStep = "roll";
+  return withState(match, state, { phase: "await_purchase_decision" }, soldAt);
+}
+
 export function skipProperty(match: MonopolyMatch, userId: string, skippedAt = nowIso()) {
   ensureActiveMatch(match);
   ensureParticipant(match, userId);
@@ -1232,6 +1373,25 @@ export function skipProperty(match: MonopolyMatch, userId: string, skippedAt = n
   const currentPlayer = getCurrentPlayer(state);
   if (!decision || decision.playerId !== userId || !currentPlayer) {
     throw new Error("当前无需处理购买决策");
+  }
+
+  if (decision.type === "debt_settlement") {
+    if (currentPlayer.cash >= decision.price) {
+      throw new Error("当前资金足够，请直接支付款项");
+    }
+    if (currentPlayer.propertyIds.length > 0) {
+      throw new Error("当前仍有可变卖资产，无法直接破产");
+    }
+    const eventText = bankruptPlayer(
+      state,
+      state.currentPlayerIndex,
+      decision.price,
+      decision.recipientUserId ?? null,
+      decision.reasonText ?? ` 支付款项 ${decision.price}`
+    );
+    state.pendingDecision = null;
+    state.turnStep = "roll";
+    return advanceToNextTurn(withTransientState(match, state, { phase: "await_roll" }), eventText, skippedAt);
   }
 
   const tile = getTile(decision.tileIndex);

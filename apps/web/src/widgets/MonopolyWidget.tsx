@@ -7,6 +7,7 @@ import {
   MONOPOLY_BOARD_SIDE,
   MONOPOLY_MAX_INVITEES,
   MONOPOLY_TILES,
+  getLiquidationValue,
   getPropertyLevel,
   getRentForLevel,
   upsertMatchList,
@@ -24,6 +25,7 @@ import {
   purchaseOnlineProperty,
   removeMatchChannel,
   restartOnlineMatch,
+  sellOnlineProperty,
   skipOnlineProperty,
   startOnlineMatch,
   submitOnlineRoll,
@@ -150,10 +152,25 @@ function getStatusText(match: MonopolyMatch | null, userId: string) {
   if (match.phase === "await_purchase_decision") {
     const decision = match.state.pendingDecision;
     const currentPlayer = getCurrentPlayer(match);
+    const selfPlayer = getPlayerDisplay(match, userId);
+    const actionText =
+      decision?.type === "upgrade" ? "升级" : decision?.type === "debt_settlement" ? "清偿" : "购买";
+    const priceText = `价格 ${decision?.price ?? 0}`;
     if (decision?.playerId === userId) {
-      return decision.type === "upgrade" ? "你回到自己的地产，可选择升级或跳过" : "你停在空地产，可选择购买或跳过";
+      if ((selfPlayer?.cash ?? 0) < (decision?.price ?? 0)) {
+        return decision?.type === "debt_settlement"
+          ? `你需支付 ${decision?.price ?? 0}，现金不足时需先变卖地产`
+          : `${actionText}需要 ${decision?.price ?? 0}，现金不足，可先变卖地产`;
+      }
+      return decision.type === "debt_settlement"
+        ? `你可支付 ${decision.price} 完成清偿`
+        : decision.type === "upgrade"
+        ? `你回到自己的地产，可选择升级或跳过（${priceText}）`
+        : `你停在空地产，可选择购买或跳过（${priceText}）`;
     }
-    return `等待 ${currentPlayer?.userName ?? "当前玩家"} 决定是否${decision?.type === "upgrade" ? "升级地产" : "购买地产"}`;
+    return decision?.type === "debt_settlement"
+      ? `等待 ${currentPlayer?.userName ?? "当前玩家"} 清偿 ${decision?.price ?? 0}`
+      : `等待 ${currentPlayer?.userName ?? "当前玩家"} 决定是否${actionText}地产（${priceText}）`;
   }
   if (match.phase === "await_roll") {
     const currentPlayer = getCurrentPlayer(match);
@@ -176,15 +193,15 @@ function cardBackStyle(kind: "chance" | "fate", compact = false): CSSProperties 
           background: "linear-gradient(145deg, rgba(249,115,22,0.96), rgba(234,88,12,0.92))"
         };
   return {
-    width: compact ? scaledCompact(78, 46) : 78,
-    height: compact ? scaledCompact(100, 60) : 100,
-    borderRadius: compact ? scaledCompact(18, 12) : 18,
+    width: compact ? scaledCompact(68, 42) : 68,
+    height: compact ? scaledCompact(88, 56) : 88,
+    borderRadius: compact ? scaledCompact(16, 11) : 16,
     border: `1px solid ${palette.edge}`,
     background: palette.background,
     boxShadow: `0 14px 26px ${palette.glow}, inset 0 1px 0 rgba(255,255,255,0.28)`,
     backdropFilter: "blur(16px) saturate(1.2)",
     color: "#ffffff",
-    fontSize: compact ? scaledCompact(13, 9) : 13,
+    fontSize: compact ? scaledCompact(12, 8.5) : 12,
     fontWeight: 700,
     display: "grid",
     placeItems: "center",
@@ -210,6 +227,10 @@ function getPlayersOnDisplayTile(match: MonopolyMatch | null, positions: Record<
 function getAssetSummary(player: MonopolyPlayerState | null) {
   if (!player) return "尚未入局";
   return `现金 ${player.cash} · 地产 ${player.propertyIds.length}`;
+}
+
+function getPendingDecisionLabel(decision: MonopolyMatch["state"]["pendingDecision"]) {
+  return decision?.type === "upgrade" ? "升级" : decision?.type === "debt_settlement" ? "支付" : "购买";
 }
 
 function truncatePlayerName(name: string, limit = 6) {
@@ -339,6 +360,7 @@ export function MonopolyWidget({
   const [busyId, setBusyId] = useState("");
   const [invitePickerOpen, setInvitePickerOpen] = useState(false);
   const [selectedInviteIds, setSelectedInviteIds] = useState<string[]>([]);
+  const [selectedLiquidationTile, setSelectedLiquidationTile] = useState<number | null>(null);
   const [animatedPositions, setAnimatedPositions] = useState<Record<string, number>>({});
   const [rollingDice, setRollingDice] = useState(false);
   const [rollingDiceValues, setRollingDiceValues] = useState<[number, number]>([2, 5]);
@@ -445,6 +467,32 @@ export function MonopolyWidget({
       !animationLocked
   );
   const pendingDecision = activeMatch?.state.pendingDecision ?? null;
+  const canAffordPendingDecision = Boolean(selfPlayer && pendingDecision && selfPlayer.cash >= pendingDecision.price);
+  const sellablePropertyIds = useMemo(() => {
+    if (!selfPlayer || !pendingDecision) {
+      return [];
+    }
+    return selfPlayer.propertyIds.filter(
+      (tileIndex) => !(pendingDecision.type === "upgrade" && pendingDecision.tileIndex === tileIndex)
+    );
+  }, [pendingDecision, selfPlayer]);
+  const canLiquidate = Boolean(canBuy && pendingDecision && !canAffordPendingDecision && sellablePropertyIds.length > 0);
+  const canDeclareBankruptcy = Boolean(
+    canBuy &&
+      pendingDecision?.type === "debt_settlement" &&
+      !canAffordPendingDecision &&
+      sellablePropertyIds.length === 0
+  );
+  const selectedLiquidationTileData =
+    selectedLiquidationTile !== null && sellablePropertyIds.includes(selectedLiquidationTile)
+      ? MONOPOLY_TILES[selectedLiquidationTile] ?? null
+      : null;
+  const selectedLiquidationLevel =
+    selectedLiquidationTile !== null && boardMatch ? getPropertyLevel(boardMatch.state, selectedLiquidationTile) : 0;
+  const selectedLiquidationValue =
+    selectedLiquidationTileData && selectedLiquidationTileData.kind === "property"
+      ? getLiquidationValue(selectedLiquidationTileData, selectedLiquidationLevel)
+      : 0;
   const inviteableUsers = useMemo(() => otherUsers.slice(0, 20), [otherUsers]);
   const latestEvent = currentMatch?.state.lastEvent || "大厅已就绪";
   const topRanking = (activeMatch ?? completedMatch)?.state.ranking.slice(0, 4) ?? [];
@@ -479,6 +527,16 @@ export function MonopolyWidget({
       setDisplayedTurnPlayerId(currentPlayer?.userId ?? "");
     }
   }, [animationLocked, currentPlayer?.userId, statusText]);
+
+  useEffect(() => {
+    if (!canLiquidate) {
+      setSelectedLiquidationTile(null);
+      return;
+    }
+    if (selectedLiquidationTile !== null && !sellablePropertyIds.includes(selectedLiquidationTile)) {
+      setSelectedLiquidationTile(null);
+    }
+  }, [canLiquidate, selectedLiquidationTile, sellablePropertyIds]);
 
   useEffect(() => {
     clearAnimationTimers();
@@ -676,6 +734,13 @@ export function MonopolyWidget({
         invitees
       })
     );
+  };
+
+  const toggleLiquidationSelection = (tileIndex: number) => {
+    if (!canLiquidate || !sellablePropertyIds.includes(tileIndex)) {
+      return;
+    }
+    setSelectedLiquidationTile((current) => (current === tileIndex ? null : tileIndex));
   };
 
   const cardPadding = isMobileMode ? `${scaledValue(6, 5)}px ${scaledValue(10, 8)}px ${scaledValue(6, 5)}px` : 8;
@@ -1052,11 +1117,10 @@ export function MonopolyWidget({
                             gap: scaledValue(10, 4),
                             alignItems: "center",
                             borderRadius: isMobileMode ? 12 : 16,
-                            padding: isMobileMode ? "5px 8px" : `${scaledValue(8, 7)}px ${scaledValue(9, 8)}px`,
+                            padding: isMobileMode ? "6px 8px" : `${scaledValue(9, 8)}px ${scaledValue(10, 9)}px`,
                             background: "rgba(255,255,255,0.42)",
                             backdropFilter: "blur(12px)",
-                            minHeight: isMobileMode ? 46 : undefined,
-                            maxHeight: isMobileMode ? 46 : undefined,
+                            minHeight: isMobileMode ? 58 : 72,
                             width: isMobileMode ? "calc(100% - 10px)" : "100%",
                             maxWidth: "100%",
                             justifySelf: "center",
@@ -1073,7 +1137,7 @@ export function MonopolyWidget({
                                 marginTop: isMobileMode ? 0 : scaledValue(2, 2),
                                 display: "-webkit-box",
                                 WebkitBoxOrient: "vertical",
-                                WebkitLineClamp: 2,
+                                WebkitLineClamp: 3,
                                 overflow: "hidden",
                                 textAlign: "left"
                               }}
@@ -1110,7 +1174,7 @@ export function MonopolyWidget({
                         style={{
                           display: "flex",
                           justifyContent: "space-between",
-                          alignItems: "center",
+                          alignItems: "flex-start",
                           gap: scaledValue(10, 6),
                           marginTop: isMobileMode ? 2 : scaledValue(10, 4)
                         }}
@@ -1119,7 +1183,15 @@ export function MonopolyWidget({
                           <div style={cardBackStyle("chance", isMobileMode)}>机会</div>
                           <div style={cardBackStyle("fate", isMobileMode)}>命运</div>
                         </div>
-                        <div style={{ display: "grid", gap: scaledValue(8, 6), justifyItems: "end", marginRight: isMobileMode ? 1 : scaledValue(16, 4) }}>
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: scaledValue(6, 5),
+                            justifyItems: "end",
+                            marginRight: isMobileMode ? 1 : scaledValue(16, 4),
+                            maxWidth: scaledValue(170, 152)
+                          }}
+                        >
                           {canRoll ? (
                             <button
                               type="button"
@@ -1131,27 +1203,64 @@ export function MonopolyWidget({
                             </button>
                           ) : null}
                           {canBuy ? (
-                            <div style={{ display: "flex", gap: 6 }}>
-                              <button
-                                type="button"
-                                style={actionButtonStyle(Boolean(busyId), true)}
-                                disabled={Boolean(busyId)}
-                                onClick={() =>
-                                  activeMatch && void runOnlineAction(`buy:${activeMatch.id}`, () => purchaseOnlineProperty(activeMatch, userId))
-                                }
-                              >
-                                {pendingDecision?.type === "upgrade" ? "升级" : "购买"}
-                              </button>
-                              <button
-                                type="button"
-                                style={actionButtonStyle(Boolean(busyId))}
-                                disabled={Boolean(busyId)}
-                                onClick={() =>
-                                  activeMatch && void runOnlineAction(`skip:${activeMatch.id}`, () => skipOnlineProperty(activeMatch, userId))
-                                }
-                              >
-                                跳过
-                              </button>
+                            <div style={{ display: "grid", gap: 6, justifyItems: "end" }}>
+                              {!canAffordPendingDecision ? (
+                                <div
+                                  style={{
+                                    fontSize: isMobileMode ? 8 : 10.5,
+                                    lineHeight: 1.25,
+                                    color: canLiquidate ? "#92400e" : "#991b1b",
+                                    textAlign: "right",
+                                    maxWidth: "100%"
+                                  }}
+                                >
+                                  {canLiquidate
+                                    ? `现金不足，先点持有土地再变卖后${getPendingDecisionLabel(pendingDecision)}`
+                                    : canDeclareBankruptcy
+                                      ? "现金不足且名下已无资产，可判定破产"
+                                      : "现金不足"}
+                                </div>
+                              ) : null}
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                                <button
+                                  type="button"
+                                  style={actionButtonStyle(Boolean(busyId) || !canAffordPendingDecision, true)}
+                                  disabled={Boolean(busyId) || !canAffordPendingDecision}
+                                  onClick={() =>
+                                    activeMatch && void runOnlineAction(`buy:${activeMatch.id}`, () => purchaseOnlineProperty(activeMatch, userId))
+                                  }
+                                >
+                                  {getPendingDecisionLabel(pendingDecision)}
+                                </button>
+                                {canLiquidate ? (
+                                  <button
+                                    type="button"
+                                    style={actionButtonStyle(Boolean(busyId) || selectedLiquidationTileData === null)}
+                                    disabled={Boolean(busyId) || selectedLiquidationTileData === null}
+                                    onClick={() =>
+                                      activeMatch &&
+                                      selectedLiquidationTile !== null &&
+                                      void runOnlineAction(`sell:${activeMatch.id}:${selectedLiquidationTile}`, () =>
+                                        sellOnlineProperty(activeMatch, userId, selectedLiquidationTile)
+                                      )
+                                    }
+                                  >
+                                    {selectedLiquidationTileData ? `变卖 +${selectedLiquidationValue}` : "变卖"}
+                                  </button>
+                                ) : null}
+                                {pendingDecision?.type !== "debt_settlement" || canAffordPendingDecision || canDeclareBankruptcy ? (
+                                  <button
+                                    type="button"
+                                    style={actionButtonStyle(Boolean(busyId))}
+                                    disabled={Boolean(busyId)}
+                                    onClick={() =>
+                                      activeMatch && void runOnlineAction(`skip:${activeMatch.id}`, () => skipOnlineProperty(activeMatch, userId))
+                                    }
+                                  >
+                                    {canDeclareBankruptcy ? "破产" : "跳过"}
+                                  </button>
+                                ) : null}
+                              </div>
                             </div>
                           ) : null}
                         </div>
@@ -1214,12 +1323,12 @@ export function MonopolyWidget({
                                 <span
                                   style={{
                                     fontWeight: 700,
-                                    minWidth: isMobileMode ? 28 : undefined,
+                                    minWidth: isMobileMode ? 56 : 78,
                                     textAlign: "right",
                                     fontVariantNumeric: "tabular-nums"
                                   }}
                                 >
-                                  {entry.totalAssets}
+                                  {`${entry.totalAssets} (${entry.cash})`}
                                 </span>
                               </div>
                             ))}
@@ -1249,6 +1358,9 @@ export function MonopolyWidget({
                 const ownerPlayer = boardMatch?.state.players.find((player) => player.userId === ownerUserId);
                 const propertyLevel = boardMatch ? getPropertyLevel(boardMatch.state, tile.index) : 0;
                 const isCorner = tile.kind === "corner";
+                const isSellableProperty =
+                  tile.kind === "property" && canLiquidate && ownerUserId === userId && sellablePropertyIds.includes(tile.index);
+                const isSelectedForLiquidation = isSellableProperty && selectedLiquidationTile === tile.index;
                 const tokenInset = scaledValue(4, 3);
                 const stripeThickness = isMobileMode ? scaledCompact(7, 5) : 7;
                 const tokenBottomInset = tokenInset + (row === 0 && tile.color ? stripeThickness : 0);
@@ -1265,18 +1377,38 @@ export function MonopolyWidget({
                 return (
                   <div
                     key={tileCellKey(row, col)}
+                    data-no-drag={isSellableProperty ? "true" : undefined}
+                    onClick={isSellableProperty ? () => toggleLiquidationSelection(tile.index) : undefined}
                     style={{
                       position: "relative",
                       display: "grid",
                       alignContent: "space-between",
                       padding: scaledValue(7, 4),
                       borderRadius: isCorner ? (isMobileMode ? 9 : 16) : isMobileMode ? 7 : 12,
-                      border: "1px solid rgba(15,23,42,0.08)",
+                      border: isSelectedForLiquidation
+                        ? "2px solid rgba(217,119,6,0.92)"
+                        : isSellableProperty
+                          ? "1px solid rgba(217,119,6,0.56)"
+                          : "1px solid rgba(15,23,42,0.08)",
                       background: tileBackground,
-                      overflow: "hidden"
+                      overflow: "hidden",
+                      cursor: isSellableProperty ? "pointer" : "default",
+                      boxShadow: isSelectedForLiquidation
+                        ? "0 0 0 2px rgba(255,251,235,0.92), 0 14px 24px rgba(217,119,6,0.2)"
+                        : undefined
                     }}
                   >
                     {tile.color ? <div style={getStripeStyle(row, col, tile.color, isMobileMode)} /> : null}
+                    {isSelectedForLiquidation ? (
+                      <div
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          background: "linear-gradient(160deg, rgba(251,191,36,0.18), rgba(245,158,11,0.06))",
+                          zIndex: 0
+                        }}
+                      />
+                    ) : null}
                     <div
                       style={{
                         display: "grid",
