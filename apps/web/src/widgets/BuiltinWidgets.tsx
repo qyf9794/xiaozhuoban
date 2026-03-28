@@ -93,6 +93,7 @@ const DIAL_CLOCK_HOURLY_AUDIO_DELAY_MS = 0;
 const DIAL_CLOCK_TEST_TIME_ENABLED = true;
 const DIAL_CLOCK_TEST_HOUR = 3;
 const DIAL_CLOCK_TEST_MINUTE = 59;
+const DIAL_CLOCK_SWEEP_SPEED_MULTIPLIER = 0.88;
 const DIAL_CLOCK_NIGHT_AUDIO_DELAY_MS = 1000;
 const DIAL_CLOCK_NIGHT_AUDIO_REPEAT_COUNT = 1;
 const DIAL_CLOCK_NIGHT_TRANSITION_MS = 3000;
@@ -3416,6 +3417,20 @@ export function BuiltinWidgetView({
     const nightMode = instance.state.nightMode === true;
     const testClockAnchorMsRef = useRef<number | null>(null);
     const testClockStartMsRef = useRef<number | null>(null);
+    const applyDialClockTestStart = (baseNow: Date) => {
+      const testStart = new Date(baseNow);
+      testStart.setHours(DIAL_CLOCK_TEST_HOUR, DIAL_CLOCK_TEST_MINUTE, 0, 0);
+      testClockAnchorMsRef.current = baseNow.getTime();
+      testClockStartMsRef.current = testStart.getTime();
+      return testStart;
+    };
+    const resetDialClockTestTime = () => {
+      const baseNow = new Date();
+      const resetNow = applyDialClockTestStart(baseNow);
+      lastSweepKeyRef.current = "";
+      lastClockSampleRef.current = resetNow;
+      setClockState(toDialClockTimeState(resetNow));
+    };
     const getDialClockNow = () => {
       const now = new Date();
       if (!DIAL_CLOCK_TEST_TIME_ENABLED) {
@@ -3423,10 +3438,7 @@ export function BuiltinWidgetView({
       }
 
       if (testClockAnchorMsRef.current === null || testClockStartMsRef.current === null) {
-        const testStart = new Date(now);
-        testStart.setHours(DIAL_CLOCK_TEST_HOUR, DIAL_CLOCK_TEST_MINUTE, 0, 0);
-        testClockAnchorMsRef.current = now.getTime();
-        testClockStartMsRef.current = testStart.getTime();
+        return applyDialClockTestStart(now);
       }
 
       return new Date(testClockStartMsRef.current + (now.getTime() - testClockAnchorMsRef.current));
@@ -3443,6 +3455,7 @@ export function BuiltinWidgetView({
     const tickTimerRef = useRef<number | null>(null);
     const hourlyAudioTimerRef = useRef<number | null>(null);
     const hourlyAudioPlayTokenRef = useRef(0);
+    const testResetTimerRef = useRef<number | null>(null);
     const nightAudioRef = useRef<HTMLAudioElement | null>(null);
     const nightSparkLoopTimerRef = useRef<number | null>(null);
     const nightSparkTimerIdsRef = useRef<number[]>([]);
@@ -3451,7 +3464,11 @@ export function BuiltinWidgetView({
     const nightSparksRef = useRef<DialClockNightSpark[]>([]);
     const clockStateRef = useRef(clockState);
     const hasNightModeMountedRef = useRef(false);
-    const sweepFrames = useMemo(() => getDialClockSweepFrames(sweepDurationMs), [sweepDurationMs]);
+    const animationSweepDurationMs = useMemo(
+      () => Math.max(1000, Math.round(sweepDurationMs * DIAL_CLOCK_SWEEP_SPEED_MULTIPLIER)),
+      [sweepDurationMs]
+    );
+    const sweepFrames = useMemo(() => getDialClockSweepFrames(animationSweepDurationMs), [animationSweepDurationMs]);
 
     useEffect(() => {
       ensureSharedAudioUnlock();
@@ -3487,6 +3504,10 @@ export function BuiltinWidgetView({
         if (nightTransitionTimerRef.current !== null) {
           window.clearTimeout(nightTransitionTimerRef.current);
           nightTransitionTimerRef.current = null;
+        }
+        if (testResetTimerRef.current !== null) {
+          window.clearTimeout(testResetTimerRef.current);
+          testResetTimerRef.current = null;
         }
       };
     }, []);
@@ -3579,6 +3600,13 @@ export function BuiltinWidgetView({
         }
       };
 
+      const clearTestResetTimer = () => {
+        if (testResetTimerRef.current !== null) {
+          window.clearTimeout(testResetTimerRef.current);
+          testResetTimerRef.current = null;
+        }
+      };
+
       const cancelHourlyAudio = () => {
         clearHourlyAudioTimer();
         stopDialClockHourlyAudio(hourlyAudioRef.current);
@@ -3587,6 +3615,7 @@ export function BuiltinWidgetView({
       const runSweep = () => {
         clearSweepTimer();
         cancelHourlyAudio();
+        clearTestResetTimer();
         if (isDocumentVisible()) {
           const playToken = hourlyAudioPlayTokenRef.current + 1;
           hourlyAudioPlayTokenRef.current = playToken;
@@ -3600,6 +3629,13 @@ export function BuiltinWidgetView({
             }
             void playDialClockHourlyAudio(hourlyAudioRef.current);
           }, DIAL_CLOCK_HOURLY_AUDIO_DELAY_MS);
+        }
+
+        if (DIAL_CLOCK_TEST_TIME_ENABLED) {
+          testResetTimerRef.current = window.setTimeout(() => {
+            testResetTimerRef.current = null;
+            resetDialClockTestTime();
+          }, animationSweepDurationMs + 120);
         }
 
         const playFrame = (index: number) => {
@@ -3661,6 +3697,7 @@ export function BuiltinWidgetView({
       return () => {
         clearSweepTimer();
         cancelHourlyAudio();
+        clearTestResetTimer();
         if (tickTimerRef.current !== null) {
           window.clearTimeout(tickTimerRef.current);
           tickTimerRef.current = null;
