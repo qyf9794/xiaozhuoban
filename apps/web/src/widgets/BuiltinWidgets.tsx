@@ -1195,7 +1195,24 @@ function stopCountdownAlarmAudio() {
 }
 
 function ensureSharedAudioUnlock() {
-  if (typeof window === "undefined" || sharedAudioUnlockState !== "idle") {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const primeAllSharedAudio = () =>
+    Promise.allSettled([
+      primeMessageBoardAudio(),
+      primeCountdownAlarmAudio(),
+      primeDialClockHourlyAudio(),
+      primeDialClockNightAudio()
+    ]);
+
+  if (sharedAudioUnlockState === "ready") {
+    void primeAllSharedAudio();
+    return;
+  }
+
+  if (sharedAudioUnlockState !== "idle") {
     return;
   }
 
@@ -1207,12 +1224,7 @@ function ensureSharedAudioUnlock() {
   };
 
   const unlockSharedAudio = () => {
-    void Promise.allSettled([
-      primeMessageBoardAudio(),
-      primeCountdownAlarmAudio(),
-      primeDialClockHourlyAudio(),
-      primeDialClockNightAudio()
-    ]).finally(() => {
+    void primeAllSharedAudio().finally(() => {
         removeListeners();
         sharedAudioUnlockState = "ready";
       });
@@ -3412,7 +3424,7 @@ export function BuiltinWidgetView({
 
       if (testClockAnchorMsRef.current === null || testClockStartMsRef.current === null) {
         const testStart = new Date(now);
-        testStart.setHours(DIAL_CLOCK_TEST_HOUR, DIAL_CLOCK_TEST_MINUTE, now.getSeconds(), now.getMilliseconds());
+        testStart.setHours(DIAL_CLOCK_TEST_HOUR, DIAL_CLOCK_TEST_MINUTE, 0, 0);
         testClockAnchorMsRef.current = now.getTime();
         testClockStartMsRef.current = testStart.getTime();
       }
