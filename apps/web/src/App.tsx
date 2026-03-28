@@ -131,6 +131,7 @@ export function App() {
   });
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileToolbarMenuOpen, setMobileToolbarMenuOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [desktopViewportBottomInset, setDesktopViewportBottomInset] = useState(14);
   const [mobileChromeVisible, setMobileChromeVisible] = useState(true);
@@ -158,6 +159,8 @@ export function App() {
   const activeBoard = useMemo(() => boards.find((item) => item.id === activeBoardId), [activeBoardId, boards]);
   const appBackgroundColor = activeBoard?.background.type === "color" ? activeBoard.background.value : "#0f172a";
   const appBackgroundImage = activeBoard?.background.type === "image" ? activeBoard.background.value : null;
+  const hasMobileWidgets = widgetInstances.length > 0;
+  const mobileChromeLockedVisible = mobileSidebarOpen || mobileToolbarMenuOpen;
 
   useEffect(() => {
     if (!userId) return;
@@ -262,16 +265,18 @@ export function App() {
   useEffect(() => {
     if (!isMobileMode) {
       setMobileSidebarOpen(false);
+      setMobileToolbarMenuOpen(false);
       setMobileChromeVisible(true);
     }
   }, [isMobileMode]);
 
   useEffect(() => {
-    if (!isMobileMode) {
+    if (!isMobileMode || !hasMobileWidgets || mobileChromeLockedVisible) {
       if (mobileChromeHideTimerRef.current !== null) {
         window.clearTimeout(mobileChromeHideTimerRef.current);
         mobileChromeHideTimerRef.current = null;
       }
+      setMobileChromeVisible(true);
       return;
     }
 
@@ -310,7 +315,7 @@ export function App() {
         mobileChromeHideTimerRef.current = null;
       }
     };
-  }, [isMobileMode]);
+  }, [hasMobileWidgets, isMobileMode, mobileChromeLockedVisible]);
 
   useEffect(() => {
     const previousBackground = document.body.style.background;
@@ -420,6 +425,7 @@ export function App() {
               sidebarOpen={sidebarOpen}
               isMobileMode={isMobileMode}
               mobileVisible={mobileChromeVisible}
+              onMenuOpenChange={setMobileToolbarMenuOpen}
               fullscreen={fullscreen}
               onToggleFullscreen={() => {
                 if (document.fullscreenElement) {

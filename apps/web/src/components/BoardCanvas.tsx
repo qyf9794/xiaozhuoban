@@ -70,9 +70,10 @@ export function BoardCanvas({
   );
   const useTouchScrollableDesktopCanvas = supportsTouchScroll && !isMobileMode;
   const useFixedViewportBackground = supportsTouchScroll && !isMobileMode;
-const noDragSelector =
+  const noDragSelector =
     "input, textarea, select, button, video, audio, iframe, [contenteditable='true'], [data-no-drag='true']";
-  const mobileCanvasPadding = "calc(env(safe-area-inset-top) + 74px) 14px calc(env(safe-area-inset-bottom) + 124px)";
+  const mobileCanvasPadding = "calc(env(safe-area-inset-top) + 74px) 14px 0";
+  const mobileCanvasBottomSpacerHeight = "calc(env(safe-area-inset-bottom) + 140px)";
 
   const dragPosition = useMemo(() => {
     if (!drag) return null;
@@ -418,6 +419,7 @@ const noDragSelector =
           </div>
         );
       })}
+      {isMobileMode ? <div aria-hidden="true" style={{ height: mobileCanvasBottomSpacerHeight, flex: "0 0 auto" }} /> : null}
     </div>
   );
 }

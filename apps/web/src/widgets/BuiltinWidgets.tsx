@@ -27,6 +27,7 @@ import {
 } from "./worldClockShared";
 import { useAuthStore } from "../auth/authStore";
 import { supabase } from "../lib/supabase";
+import { useContainedScrollableArea } from "../lib/useContainedScrollableArea";
 import {
   colorForUser,
   MESSAGE_BOARD_CHANNEL,
@@ -162,6 +163,8 @@ function GlassSelect({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
+
+  useContainedScrollableArea(panelRef, open);
   const prevWidgetZRef = useRef<string>("");
   const selected = options.find((item) => item.value === value) ?? options[0];
 

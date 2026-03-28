@@ -1141,6 +1141,9 @@ select:focus-visible {
   background: linear-gradient(170deg, rgba(255, 255, 255, 0.97), rgba(255, 255, 255, 0.9));
   box-shadow: 0 12px 26px rgba(15, 23, 42, 0.16);
   backdrop-filter: blur(16px) saturate(130%);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   z-index: 9999;
 }
 

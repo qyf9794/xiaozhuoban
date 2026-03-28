@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Board } from "@xiaozhuoban/domain";
+import { useContainedScrollableArea } from "../lib/useContainedScrollableArea";
 
 function BoardRow({
   board,
@@ -18,6 +19,9 @@ function BoardRow({
   const [draftName, setDraftName] = useState(board.name);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const menuPanelRef = useRef<HTMLDivElement | null>(null);
+
+  useContainedScrollableArea(menuPanelRef, menuOpen);
 
   useEffect(() => {
     const onDocClick = (event: MouseEvent) => {
@@ -92,6 +96,7 @@ function BoardRow({
         </button>
         {menuOpen ? (
           <div
+            ref={menuPanelRef}
             className="glass-dropdown-panel"
             style={{
               position: "absolute",

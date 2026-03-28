@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Board, WidgetDefinition } from "@xiaozhuoban/domain";
+import { useContainedScrollableArea } from "../lib/useContainedScrollableArea";
 
 function SidebarToggleIcon({ open }: { open: boolean }) {
   return (
@@ -29,6 +30,7 @@ export function Toolbar({
   sidebarOpen,
   isMobileMode = false,
   mobileVisible = true,
+  onMenuOpenChange,
   fullscreen,
   onToggleFullscreen,
   onToggleSidebar,
@@ -47,6 +49,7 @@ export function Toolbar({
   sidebarOpen: boolean;
   isMobileMode?: boolean;
   mobileVisible?: boolean;
+  onMenuOpenChange?: (open: boolean) => void;
   fullscreen: boolean;
   onToggleFullscreen: () => void;
   onToggleSidebar: () => void;
@@ -64,6 +67,15 @@ export function Toolbar({
   const [menuOpen, setMenuOpen] = useState(false);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const addMenuPanelRef = useRef<HTMLDivElement | null>(null);
+  const menuPanelRef = useRef<HTMLDivElement | null>(null);
+
+  useContainedScrollableArea(addMenuPanelRef, addMenuOpen);
+  useContainedScrollableArea(menuPanelRef, menuOpen);
+
+  useEffect(() => {
+    onMenuOpenChange?.(addMenuOpen || menuOpen);
+  }, [addMenuOpen, menuOpen, onMenuOpenChange]);
 
   useEffect(() => {
     const onDocClick = (event: MouseEvent) => {
@@ -210,6 +222,7 @@ export function Toolbar({
           </button>
           {addMenuOpen ? (
             <div
+              ref={addMenuPanelRef}
               className="glass-dropdown-panel"
               style={{
                 position: "absolute",
@@ -264,6 +277,7 @@ export function Toolbar({
           </button>
           {menuOpen ? (
             <div
+              ref={menuPanelRef}
               className="glass-dropdown-panel"
               style={{
                 position: "absolute",
