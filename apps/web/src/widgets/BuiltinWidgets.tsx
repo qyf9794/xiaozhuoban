@@ -1431,6 +1431,40 @@ async function primeDialClockNightAudio() {
   }
 }
 
+async function ensureAudioLoaded(audio: HTMLAudioElement) {
+  if (audio.readyState >= 2) {
+    return true;
+  }
+
+  try {
+    audio.load();
+  } catch {
+    // ignore load errors and rely on the events below
+  }
+
+  return await new Promise<boolean>((resolve) => {
+    let settled = false;
+    const cleanup = () => {
+      audio.removeEventListener("loadeddata", handleReady);
+      audio.removeEventListener("canplay", handleReady);
+      audio.removeEventListener("error", handleError);
+    };
+    const finish = (result: boolean) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(result);
+    };
+    const handleReady = () => finish(true);
+    const handleError = () => finish(false);
+
+    audio.addEventListener("loadeddata", handleReady, { once: true });
+    audio.addEventListener("canplay", handleReady, { once: true });
+    audio.addEventListener("error", handleError, { once: true });
+    window.setTimeout(() => finish(audio.readyState >= 2), 1500);
+  });
+}
+
 function stopDialClockHourlyAudio(audio: HTMLAudioElement | null = getDialClockHourlyAudio()) {
   if (!audio) return;
   audio.pause();
@@ -1445,6 +1479,10 @@ async function playDialClockHourlyAudio(audio: HTMLAudioElement | null = getDial
   if (!audio) return;
   if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
   try {
+    await ensureAudioLoaded(audio);
+    if (!dialClockHourlyAudioPrimed) {
+      await primeDialClockHourlyAudio();
+    }
     stopDialClockHourlyAudio(audio);
     await audio.play();
   } catch (error) {
@@ -1471,6 +1509,10 @@ async function playDialClockNightAudio(audio: HTMLAudioElement | null = getDialC
   if (!audio) return;
   if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
   try {
+    await ensureAudioLoaded(audio);
+    if (!dialClockNightAudioPrimed) {
+      await primeDialClockNightAudio();
+    }
     stopDialClockNightAudio(audio);
     audio.loop = true;
     await audio.play();
@@ -2118,6 +2160,7 @@ export function BuiltinWidgetView({
     const remainingSeconds = Number(instance.state.remainingSeconds ?? totalSeconds);
     const targetEndsAt = Number(instance.state.targetEndsAt ?? 0);
     const prevRemainingSecondsRef = useRef(remainingSeconds);
+    const skipInitialExpiredAlarmRef = useRef(targetEndsAt > 0 && targetEndsAt <= Date.now());
 
     useEffect(() => {
       ensureSharedAudioUnlock();
@@ -2171,9 +2214,13 @@ export function BuiltinWidgetView({
 
     useEffect(() => {
       if (totalSeconds > 0 && prevRemainingSecondsRef.current > 0 && remainingSeconds === 0) {
-        void playCountdownAlarm(instance.id).catch((error) => {
-          console.warn("[countdown] play alarm failed", error);
-        });
+        if (skipInitialExpiredAlarmRef.current) {
+          skipInitialExpiredAlarmRef.current = false;
+        } else {
+          void playCountdownAlarm(instance.id).catch((error) => {
+            console.warn("[countdown] play alarm failed", error);
+          });
+        }
       }
       prevRemainingSecondsRef.current = remainingSeconds;
     }, [instance.id, remainingSeconds, totalSeconds]);

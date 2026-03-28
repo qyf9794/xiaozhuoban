@@ -2,20 +2,12 @@ import { Suspense, lazy, useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuthStore } from "../auth/authStore";
 import { showDesktopWindowWhenReady } from "../lib/desktopWindow";
+import { LoginPage } from "../pages/LoginPage";
+import { RegisterPage } from "../pages/RegisterPage";
 
 const App = lazy(async () => {
   const module = await import("../App");
   return { default: module.App };
-});
-
-const LoginPage = lazy(async () => {
-  const module = await import("../pages/LoginPage");
-  return { default: module.LoginPage };
-});
-
-const RegisterPage = lazy(async () => {
-  const module = await import("../pages/RegisterPage");
-  return { default: module.RegisterPage };
 });
 
 export function AppRouter() {
@@ -26,11 +18,7 @@ export function AppRouter() {
   }, [initialize]);
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      void showDesktopWindowWhenReady();
-    }, 4000);
-
-    return () => window.clearTimeout(timeoutId);
+    void showDesktopWindowWhenReady();
   }, []);
 
   if (!ready) {
