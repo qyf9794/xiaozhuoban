@@ -70,8 +70,9 @@ export function BoardCanvas({
   );
   const useTouchScrollableDesktopCanvas = supportsTouchScroll && !isMobileMode;
   const useFixedViewportBackground = supportsTouchScroll && !isMobileMode;
-  const noDragSelector =
+const noDragSelector =
     "input, textarea, select, button, video, audio, iframe, [contenteditable='true'], [data-no-drag='true']";
+  const mobileCanvasPadding = "calc(env(safe-area-inset-top) + 74px) 14px calc(env(safe-area-inset-bottom) + 124px)";
 
   const dragPosition = useMemo(() => {
     if (!drag) return null;
@@ -202,9 +203,7 @@ export function BoardCanvas({
         display: isMobileMode ? "flex" : "block",
         flexDirection: isMobileMode ? "column" : "row",
         gap: isMobileMode ? 16 : 0,
-        padding: isMobileMode
-          ? "calc(env(safe-area-inset-top) + 74px) 14px calc(env(safe-area-inset-bottom) + 84px)"
-          : 0,
+        padding: isMobileMode ? mobileCanvasPadding : 0,
         minWidth: desktopCanvasBounds?.minWidth,
         minHeight: desktopCanvasBounds?.minHeight ?? 0,
         flex: isMobileMode ? undefined : 1,
