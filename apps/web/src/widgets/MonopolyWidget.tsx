@@ -1053,7 +1053,7 @@ export function MonopolyWidget({
                           style={{
                             display: "grid",
                             gridTemplateColumns: "minmax(0, 1fr) auto",
-                            gap: 6,
+                            gap: isMobileMode ? 4 : 6,
                             alignItems: "center",
                             width: "100%",
                             maxWidth: "100%",
@@ -1097,9 +1097,13 @@ export function MonopolyWidget({
                                 fontSize: isMobileMode ? 7 : scaledValue(11, 10),
                                 color: "#64748b",
                                 marginTop: scaledValue(2, 2),
-                                whiteSpace: "nowrap",
+                                whiteSpace: isMobileMode ? "normal" : "nowrap",
                                 overflow: "hidden",
-                                textOverflow: "ellipsis"
+                                textOverflow: "ellipsis",
+                                display: isMobileMode ? "-webkit-box" : undefined,
+                                WebkitBoxOrient: isMobileMode ? "vertical" : undefined,
+                                WebkitLineClamp: isMobileMode ? 2 : undefined,
+                                lineHeight: isMobileMode ? 1.15 : undefined
                               }}
                             >
                               {displayedCompleted
@@ -1199,10 +1203,11 @@ export function MonopolyWidget({
                         <div
                           style={{
                             display: "grid",
-                            gap: scaledValue(6, 5),
+                            gap: scaledValue(5, 4),
                             justifyItems: "end",
-                            marginRight: isMobileMode ? 1 : scaledValue(16, 4),
-                            maxWidth: scaledValue(170, 152)
+                            marginRight: isMobileMode ? 0 : scaledValue(16, 4),
+                            maxWidth: isMobileMode ? scaledValue(132, 126) : scaledValue(170, 152),
+                            minWidth: 0
                           }}
                         >
                           {canRoll ? (
@@ -1220,11 +1225,12 @@ export function MonopolyWidget({
                               {!canAffordPendingDecision ? (
                                 <div
                                   style={{
-                                    fontSize: isMobileMode ? 8 : 10.5,
+                                    fontSize: isMobileMode ? 7.5 : 10.5,
                                     lineHeight: 1.25,
                                     color: canLiquidate ? "#92400e" : "#991b1b",
                                     textAlign: "right",
-                                    maxWidth: "100%"
+                                    maxWidth: "100%",
+                                    wordBreak: "break-word"
                                   }}
                                 >
                                   {canLiquidate
@@ -1234,17 +1240,27 @@ export function MonopolyWidget({
                                       : "现金不足"}
                                 </div>
                               ) : null}
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                                <button
-                                  type="button"
-                                  style={actionButtonStyle(Boolean(busyId) || !canAffordPendingDecision, true)}
-                                  disabled={Boolean(busyId) || !canAffordPendingDecision}
-                                  onClick={() =>
-                                    activeMatch && void runOnlineAction(`buy:${activeMatch.id}`, () => purchaseOnlineProperty(activeMatch, userId))
-                                  }
-                                >
-                                  {getPendingDecisionLabel(pendingDecision)}
-                                </button>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: isMobileMode ? 4 : 6,
+                                  flexWrap: "wrap",
+                                  justifyContent: "flex-end",
+                                  maxWidth: "100%"
+                                }}
+                              >
+                                {canAffordPendingDecision ? (
+                                  <button
+                                    type="button"
+                                    style={actionButtonStyle(Boolean(busyId), true)}
+                                    disabled={Boolean(busyId)}
+                                    onClick={() =>
+                                      activeMatch && void runOnlineAction(`buy:${activeMatch.id}`, () => purchaseOnlineProperty(activeMatch, userId))
+                                    }
+                                  >
+                                    {getPendingDecisionLabel(pendingDecision)}
+                                  </button>
+                                ) : null}
                                 {canLiquidate ? (
                                   <button
                                     type="button"
@@ -1311,7 +1327,8 @@ export function MonopolyWidget({
                               gap: topRanking.length === 2 ? (isMobileMode ? 4 : scaledValue(10, 8)) : isMobileMode ? 0 : scaledValue(4, 2),
                               alignItems: "end",
                               width: "100%",
-                              maxWidth: "100%"
+                              maxWidth: "100%",
+                              minWidth: 0
                             }}
                           >
                             {topRanking.map((entry, index) => (
@@ -1321,9 +1338,9 @@ export function MonopolyWidget({
                                   display: "grid",
                                   gridTemplateColumns: "auto minmax(0, 1fr) auto",
                                   alignItems: "center",
-                                  gap: isMobileMode ? 1.5 : scaledValue(5, 3),
+                                  gap: isMobileMode ? 1 : scaledValue(5, 3),
                                   padding: isMobileMode ? "0.5px 0" : "1px 0",
-                                  fontSize: isMobileMode ? 6.5 : displayedCompleted ? 10.5 : 10,
+                                  fontSize: isMobileMode ? 6 : displayedCompleted ? 10.5 : 10,
                                   color: "#0f172a",
                                   minWidth: 0,
                                   lineHeight: 1
@@ -1336,9 +1353,12 @@ export function MonopolyWidget({
                                 <span
                                   style={{
                                     fontWeight: 700,
-                                    minWidth: isMobileMode ? 56 : 78,
+                                    minWidth: isMobileMode ? 42 : 78,
                                     textAlign: "right",
-                                    fontVariantNumeric: "tabular-nums"
+                                    fontVariantNumeric: "tabular-nums",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap"
                                   }}
                                 >
                                   {`${entry.totalAssets} (${entry.cash})`}
