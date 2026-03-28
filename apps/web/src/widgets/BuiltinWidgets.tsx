@@ -90,6 +90,9 @@ const DIAL_CLOCK_HOURLY_AUDIO_SRC = "/media/dial-clock-hourly.m4a";
 const DIAL_CLOCK_NIGHT_AUDIO_SRC = "/media/dial-clock-night-mode.m4a";
 const DIAL_CLOCK_HOURLY_AUDIO_FALLBACK_DURATION_MS = 12_341;
 const DIAL_CLOCK_HOURLY_AUDIO_DELAY_MS = 0;
+const DIAL_CLOCK_TEST_TIME_ENABLED = true;
+const DIAL_CLOCK_TEST_HOUR = 3;
+const DIAL_CLOCK_TEST_MINUTE = 59;
 const DIAL_CLOCK_NIGHT_AUDIO_DELAY_MS = 1000;
 const DIAL_CLOCK_NIGHT_AUDIO_REPEAT_COUNT = 1;
 const DIAL_CLOCK_NIGHT_TRANSITION_MS = 3000;
@@ -3399,7 +3402,24 @@ export function BuiltinWidgetView({
 
   if (definition.type === "dialClock") {
     const nightMode = instance.state.nightMode === true;
-    const [clockState, setClockState] = useState(() => toDialClockTimeState(new Date()));
+    const testClockAnchorMsRef = useRef<number | null>(null);
+    const testClockStartMsRef = useRef<number | null>(null);
+    const getDialClockNow = () => {
+      const now = new Date();
+      if (!DIAL_CLOCK_TEST_TIME_ENABLED) {
+        return now;
+      }
+
+      if (testClockAnchorMsRef.current === null || testClockStartMsRef.current === null) {
+        const testStart = new Date(now);
+        testStart.setHours(DIAL_CLOCK_TEST_HOUR, DIAL_CLOCK_TEST_MINUTE, now.getSeconds(), now.getMilliseconds());
+        testClockAnchorMsRef.current = now.getTime();
+        testClockStartMsRef.current = testStart.getTime();
+      }
+
+      return new Date(testClockStartMsRef.current + (now.getTime() - testClockAnchorMsRef.current));
+    };
+    const [clockState, setClockState] = useState(() => toDialClockTimeState(getDialClockNow()));
     const [sweepFrameIndex, setSweepFrameIndex] = useState(-1);
     const [sweepDurationMs, setSweepDurationMs] = useState(DIAL_CLOCK_HOURLY_AUDIO_FALLBACK_DURATION_MS);
     const [nightSparks, setNightSparks] = useState<DialClockNightSpark[]>([]);
@@ -3420,6 +3440,10 @@ export function BuiltinWidgetView({
     const clockStateRef = useRef(clockState);
     const hasNightModeMountedRef = useRef(false);
     const sweepFrames = useMemo(() => getDialClockSweepFrames(sweepDurationMs), [sweepDurationMs]);
+
+    useEffect(() => {
+      ensureSharedAudioUnlock();
+    }, []);
 
     useEffect(() => {
       nightSparksRef.current = nightSparks;
@@ -3592,7 +3616,7 @@ export function BuiltinWidgetView({
       };
 
       const syncClock = () => {
-        const now = new Date();
+        const now = getDialClockNow();
         setClockState(toDialClockTimeState(now));
         const sweepKey = !nightMode && isDocumentVisible()
           ? getDialClockSweepTriggerKey(lastClockSampleRef.current, now)
@@ -3609,13 +3633,13 @@ export function BuiltinWidgetView({
 
       const handleVisibilityChange = () => {
         if (isDocumentVisible()) {
-          lastClockSampleRef.current = new Date();
+          lastClockSampleRef.current = getDialClockNow();
           return;
         }
         clearSweepTimer();
         setSweepFrameIndex(-1);
         cancelHourlyAudio();
-        lastClockSampleRef.current = new Date();
+        lastClockSampleRef.current = getDialClockNow();
       };
 
       if (typeof document !== "undefined") {
