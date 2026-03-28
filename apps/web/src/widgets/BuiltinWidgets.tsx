@@ -1195,18 +1195,19 @@ function stopCountdownAlarmAudio() {
   }
 }
 
+function primeAllSharedAudio() {
+  return Promise.allSettled([
+    primeMessageBoardAudio(),
+    primeCountdownAlarmAudio(),
+    primeDialClockHourlyAudio(),
+    primeDialClockNightAudio()
+  ]);
+}
+
 function ensureSharedAudioUnlock() {
   if (typeof window === "undefined") {
     return;
   }
-
-  const primeAllSharedAudio = () =>
-    Promise.allSettled([
-      primeMessageBoardAudio(),
-      primeCountdownAlarmAudio(),
-      primeDialClockHourlyAudio(),
-      primeDialClockNightAudio()
-    ]);
 
   if (sharedAudioUnlockState === "ready") {
     void primeAllSharedAudio();
@@ -1220,6 +1221,8 @@ function ensureSharedAudioUnlock() {
   sharedAudioUnlockState = "listening";
   const removeListeners = () => {
     window.removeEventListener("pointerdown", unlockSharedAudio);
+    window.removeEventListener("mousedown", unlockSharedAudio);
+    window.removeEventListener("click", unlockSharedAudio);
     window.removeEventListener("keydown", unlockSharedAudio);
     window.removeEventListener("touchstart", unlockSharedAudio);
   };
@@ -1232,6 +1235,8 @@ function ensureSharedAudioUnlock() {
   };
 
   window.addEventListener("pointerdown", unlockSharedAudio, { passive: true });
+  window.addEventListener("mousedown", unlockSharedAudio, { passive: true });
+  window.addEventListener("click", unlockSharedAudio, { passive: true });
   window.addEventListener("keydown", unlockSharedAudio);
   window.addEventListener("touchstart", unlockSharedAudio, { passive: true });
 }
@@ -3964,6 +3969,12 @@ export function BuiltinWidgetView({
                 data-no-drag="true"
                 aria-label={nightMode ? "退出夜间模式" : "进入夜间模式"}
                 className={`dial-clock-icon-button dial-clock-icon dial-clock-icon-moon${nightMode || !clockState.isAm ? " is-active" : ""}`}
+                onMouseDown={() => {
+                  void primeAllSharedAudio();
+                }}
+                onClickCapture={() => {
+                  void primeAllSharedAudio();
+                }}
                 onClick={() => {
                   onStateChange({
                     ...instance.state,
