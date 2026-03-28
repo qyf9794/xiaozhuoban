@@ -1176,6 +1176,26 @@ function getDialClockNightAudio() {
   return dialClockNightAudio;
 }
 
+function isDesktopRuntime() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return Boolean(window.__TAURI__?.window?.getCurrentWindow?.() || window.__TAURI__?.webviewWindow?.getCurrentWebviewWindow?.());
+}
+
+function isForegroundPlaybackAllowed() {
+  if (typeof document === "undefined") {
+    return true;
+  }
+
+  if (isDesktopRuntime()) {
+    return true;
+  }
+
+  return document.visibilityState !== "hidden";
+}
+
 function stopCountdownAlarm(ownerId?: string) {
   if (ownerId && activeCountdownAlarmOwnerId !== ownerId) {
     return;
@@ -1516,7 +1536,7 @@ function stopDialClockHourlyAudio(audio: HTMLAudioElement | null = getDialClockH
 
 async function playDialClockHourlyAudio(audio: HTMLAudioElement | null = getDialClockHourlyAudio()) {
   if (!audio) return;
-  if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+  if (!isForegroundPlaybackAllowed()) return;
   try {
     await ensureAudioLoaded(audio);
     if (!dialClockHourlyAudioPrimed) {
@@ -1546,7 +1566,7 @@ function stopDialClockNightAudio(audio: HTMLAudioElement | null = getDialClockNi
 
 async function playDialClockNightAudio(audio: HTMLAudioElement | null = getDialClockNightAudio()) {
   if (!audio) return;
-  if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+  if (!isForegroundPlaybackAllowed()) return;
   try {
     await ensureAudioLoaded(audio);
     if (!dialClockNightAudioPrimed) {
@@ -3673,8 +3693,7 @@ export function BuiltinWidgetView({
     }, [nightMode]);
 
     useEffect(() => {
-      const isDocumentVisible = () =>
-        typeof document === "undefined" || document.visibilityState === "visible";
+      const isDocumentVisible = () => isForegroundPlaybackAllowed();
 
       const clearSweepTimer = () => {
         if (sweepTimerRef.current !== null) {
@@ -3898,7 +3917,7 @@ export function BuiltinWidgetView({
         const nextDelay = 700 + Math.round(Math.random() * 1600);
         nightSparkLoopTimerRef.current = window.setTimeout(() => {
           nightSparkLoopTimerRef.current = null;
-          if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+          if (!isForegroundPlaybackAllowed()) {
             scheduleBatchLoop();
             return;
           }
