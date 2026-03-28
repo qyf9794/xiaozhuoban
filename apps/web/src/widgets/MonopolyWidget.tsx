@@ -369,6 +369,7 @@ export function MonopolyWidget({
   const [displayedEvent, setDisplayedEvent] = useState("大厅已就绪");
   const [displayedStatusText, setDisplayedStatusText] = useState("选择 1 到 3 名在线用户发起房间邀请");
   const [displayedTurnPlayerId, setDisplayedTurnPlayerId] = useState("");
+  const [displayedBoardMatch, setDisplayedBoardMatch] = useState<MonopolyMatch | null>(null);
   const invitePickerRef = useRef<HTMLDivElement | null>(null);
   const prevBoardMatchRef = useRef<MonopolyMatch | null>(null);
   const animationTimersRef = useRef<number[]>([]);
@@ -495,10 +496,17 @@ export function MonopolyWidget({
       : 0;
   const inviteableUsers = useMemo(() => otherUsers.slice(0, 20), [otherUsers]);
   const latestEvent = currentMatch?.state.lastEvent || "大厅已就绪";
-  const topRanking = (activeMatch ?? completedMatch)?.state.ranking.slice(0, 4) ?? [];
+  const displayedSelfPlayer = getPlayerDisplay(displayedBoardMatch, userId);
+  const displayedCompleted = displayedBoardMatch?.status === "completed";
+  const displayedSelfRank =
+    displayedSelfPlayer && displayedBoardMatch
+      ? displayedBoardMatch.state.ranking.findIndex((entry) => entry.userId === displayedSelfPlayer.userId) + 1
+      : 0;
+  const topRanking = displayedBoardMatch?.state.ranking.slice(0, 4) ?? [];
   const currentDice = activeMatch?.state.lastRoll?.dice ?? completedMatch?.state.lastRoll?.dice ?? null;
-  const winnerEntry = completedMatch?.state.ranking[0] ?? null;
+  const winnerEntry = displayedCompleted ? displayedBoardMatch.state.ranking[0] ?? null : null;
   const displayedTurnPlayer =
+    displayedBoardMatch?.state.players.find((player) => player.userId === displayedTurnPlayerId) ??
     activeMatch?.state.players.find((player) => player.userId === displayedTurnPlayerId) ??
     boardMatch?.state.players.find((player) => player.userId === displayedTurnPlayerId) ??
     currentPlayer ??
@@ -550,6 +558,7 @@ export function MonopolyWidget({
       setDisplayedEvent(latestEvent);
       setDisplayedStatusText(statusText);
       setDisplayedTurnPlayerId("");
+      setDisplayedBoardMatch(null);
       setRollingDice(false);
       setAnimationLocked(false);
       return;
@@ -565,6 +574,7 @@ export function MonopolyWidget({
       setDisplayedEvent(latestEvent);
       setDisplayedStatusText(statusText);
       setDisplayedTurnPlayerId(currentPlayer?.userId ?? "");
+      setDisplayedBoardMatch(boardMatch);
       setRollingDice(false);
       setAnimationLocked(false);
       prevBoardMatchRef.current = boardMatch;
@@ -582,6 +592,7 @@ export function MonopolyWidget({
       setDisplayedEvent(latestEvent);
       setDisplayedStatusText(statusText);
       setDisplayedTurnPlayerId(currentPlayer?.userId ?? "");
+      setDisplayedBoardMatch(boardMatch);
       prevBoardMatchRef.current = boardMatch;
       return;
     }
@@ -611,6 +622,7 @@ export function MonopolyWidget({
       setDisplayedEvent(boardMatch.state.lastEvent);
       setDisplayedStatusText(statusText);
       setDisplayedTurnPlayerId(currentPlayer?.userId ?? "");
+      setDisplayedBoardMatch(boardMatch);
       setRollingDice(false);
       setAnimationLocked(false);
       prevBoardMatchRef.current = boardMatch;
@@ -656,6 +668,7 @@ export function MonopolyWidget({
       setDisplayedEvent(boardMatch.state.lastEvent);
       setDisplayedStatusText(statusText);
       setDisplayedTurnPlayerId(boardMatch.status === "active" ? (boardMatch.state.players[boardMatch.state.currentPlayerIndex]?.userId ?? "") : "");
+      setDisplayedBoardMatch(boardMatch);
       setAnimationLocked(false);
       rollStartedAtRef.current = null;
     }, revealDelay + EVENT_REVEAL_DELAY_MS + movementDuration);
@@ -1059,18 +1072,18 @@ export function MonopolyWidget({
                               }}
                             >
                               <span style={{ fontSize: isMobileMode ? 6.5 : scaledValue(10, 9), fontWeight: 700, color: "#64748b", flexShrink: 0 }}>
-                                {completedMatch ? "胜者" : "当前玩家"}
+                                {displayedCompleted ? "胜者" : "当前玩家"}
                               </span>
                               <span
                                 style={{
                                   fontSize: isMobileMode ? 10 : scaledValue(15, 13),
                                   fontWeight: 700,
-                                  color: completedMatch ? (winnerEntry ? colorForUser(winnerEntry.userId) : "#0f172a") : displayedTurnPlayer?.color ?? "#0f172a",
+                                  color: displayedCompleted ? (winnerEntry ? colorForUser(winnerEntry.userId) : "#0f172a") : displayedTurnPlayer?.color ?? "#0f172a",
                                   overflow: "hidden",
                                   textOverflow: "ellipsis"
                                 }}
                               >
-                                {completedMatch
+                                {displayedCompleted
                                   ? winnerEntry
                                     ? `#${winnerEntry.seat + 1} ${truncatePlayerName(winnerEntry.userName)}`
                                     : "等待结果"
@@ -1089,22 +1102,22 @@ export function MonopolyWidget({
                                 textOverflow: "ellipsis"
                               }}
                             >
-                              {completedMatch
+                              {displayedCompleted
                                 ? winnerEntry
                                   ? canHostRestart
                                     ? `${winnerEntry.userName} 成为最后的胜利者，可点击右上角重新开始`
                                     : `${winnerEntry.userName} 成为最后的胜利者，等待房主决定是否重新开始`
                                   : "对局已结束"
-                                : selfPlayer
-                                  ? `我的资产：${getAssetSummary(selfPlayer)}`
+                                : displayedSelfPlayer
+                                  ? `我的资产：${getAssetSummary(displayedSelfPlayer)}`
                                   : "房主邀请后开始"}
                             </div>
                           </div>
-                          {selfPlayer && !completedMatch ? (
+                          {displayedSelfPlayer && !displayedCompleted ? (
                             <div style={{ textAlign: "right", flexShrink: 0 }}>
                               <div style={{ fontSize: isMobileMode ? 7 : scaledValue(10, 9), color: "#64748b" }}>我的位次</div>
                               <div style={{ fontSize: isMobileMode ? 9 : scaledValue(12, 11), fontWeight: 700, color: "#0f172a" }}>
-                                #{(boardMatch?.state.ranking.findIndex((entry) => entry.userId === selfPlayer.userId) ?? 0) + 1}
+                                #{displayedSelfRank || 1}
                               </div>
                             </div>
                           ) : null}
@@ -1283,7 +1296,7 @@ export function MonopolyWidget({
                         }}
                       >
                         <div style={{ fontSize: isMobileMode ? 7 : scaledValue(10, 8.5), color: "#475569", fontWeight: 600, lineHeight: 1 }}>
-                          {completedMatch ? "最终排名" : "资产榜"}
+                          {displayedCompleted ? "最终排名" : "资产榜"}
                         </div>
                         {topRanking.length > 0 ? (
                           <div
@@ -1310,13 +1323,13 @@ export function MonopolyWidget({
                                   alignItems: "center",
                                   gap: isMobileMode ? 1.5 : scaledValue(5, 3),
                                   padding: isMobileMode ? "0.5px 0" : "1px 0",
-                                  fontSize: isMobileMode ? 6.5 : completedMatch ? 10.5 : 10,
+                                  fontSize: isMobileMode ? 6.5 : displayedCompleted ? 10.5 : 10,
                                   color: "#0f172a",
                                   minWidth: 0,
                                   lineHeight: 1
                                 }}
                               >
-                                <span style={{ color: completedMatch && index === 0 ? "#b91c1c" : "#64748b", fontWeight: 700 }}>{`No.${index + 1}`}</span>
+                                <span style={{ color: displayedCompleted && index === 0 ? "#b91c1c" : "#64748b", fontWeight: 700 }}>{`No.${index + 1}`}</span>
                                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                   {truncatePlayerName(entry.userName)}
                                 </span>
