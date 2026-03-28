@@ -1206,7 +1206,7 @@ export function MonopolyWidget({
                             gap: scaledValue(5, 4),
                             justifyItems: "end",
                             marginRight: isMobileMode ? 0 : scaledValue(16, 4),
-                            maxWidth: isMobileMode ? scaledValue(132, 126) : scaledValue(170, 152),
+                            maxWidth: isMobileMode ? scaledValue(118, 112) : scaledValue(152, 140),
                             minWidth: 0
                           }}
                         >
@@ -1234,7 +1234,7 @@ export function MonopolyWidget({
                                   }}
                                 >
                                   {canLiquidate
-                                    ? `现金不足，先点持有土地再变卖后${getPendingDecisionLabel(pendingDecision)}`
+                                    ? "现金不足，点选土地变卖后支付"
                                     : canDeclareBankruptcy
                                       ? "现金不足且名下已无资产，可判定破产"
                                       : "现金不足"}
