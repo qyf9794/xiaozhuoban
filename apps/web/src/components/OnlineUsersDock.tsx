@@ -5,9 +5,11 @@ import { useOnlineUsers } from "../lib/useOnlineUsers";
 
 export function OnlineUsersDock({
   isMobileMode = false,
+  mobileVisible = true,
   desktopBottomInset = 12
 }: {
   isMobileMode?: boolean;
+  mobileVisible?: boolean;
   desktopBottomInset?: number;
 }) {
   const { user } = useAuthStore();
@@ -39,7 +41,11 @@ export function OnlineUsersDock({
           boxShadow: "0 8px 18px rgba(15,23,42,0.12)",
           padding: "4px 10px",
           fontSize: 12,
-          color: "#334155"
+          color: "#334155",
+          opacity: mobileVisible ? 1 : 0,
+          transform: `translateY(${mobileVisible ? "0" : "18px"})`,
+          pointerEvents: mobileVisible ? "auto" : "none",
+          transition: "opacity 220ms ease, transform 220ms ease"
         }}
       >
         在线 {onlineNames.length}

@@ -17,6 +17,8 @@ const MOBILE_FRAME_WIDTH = 390;
 const MOBILE_VIEWPORT_MAX = 900;
 const WALLPAPER_MIN_LONG_EDGE = 1600;
 const WALLPAPER_MAX_LONG_EDGE = 2560;
+const MOBILE_CHROME_IDLE_HIDE_MS = 3000;
+const MOBILE_CHROME_SCROLL_THRESHOLD = 6;
 const repositoryByUserId = new Map<string, SupabaseRepository>();
 
 function isLikelyMobileUA() {
@@ -131,6 +133,7 @@ export function App() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [desktopViewportBottomInset, setDesktopViewportBottomInset] = useState(14);
+  const [mobileChromeVisible, setMobileChromeVisible] = useState(true);
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window === "undefined" ? MOBILE_FRAME_WIDTH : window.innerWidth
   );
@@ -148,6 +151,7 @@ export function App() {
   };
   const wallpaperInputRef = useRef<HTMLInputElement | null>(null);
   const backupInputRef = useRef<HTMLInputElement | null>(null);
+  const mobileChromeHideTimerRef = useRef<number | null>(null);
   const isMobileUa = useMemo(() => isLikelyMobileUA(), []);
   const isMobileMode = isMobileUa || viewportWidth <= MOBILE_VIEWPORT_MAX;
 
@@ -258,7 +262,54 @@ export function App() {
   useEffect(() => {
     if (!isMobileMode) {
       setMobileSidebarOpen(false);
+      setMobileChromeVisible(true);
     }
+  }, [isMobileMode]);
+
+  useEffect(() => {
+    if (!isMobileMode) {
+      if (mobileChromeHideTimerRef.current !== null) {
+        window.clearTimeout(mobileChromeHideTimerRef.current);
+        mobileChromeHideTimerRef.current = null;
+      }
+      return;
+    }
+
+    let lastScrollY = window.scrollY;
+
+    const scheduleHide = () => {
+      if (mobileChromeHideTimerRef.current !== null) {
+        window.clearTimeout(mobileChromeHideTimerRef.current);
+      }
+      mobileChromeHideTimerRef.current = window.setTimeout(() => {
+        setMobileChromeVisible(false);
+        mobileChromeHideTimerRef.current = null;
+      }, MOBILE_CHROME_IDLE_HIDE_MS);
+    };
+
+    const onScroll = () => {
+      const nextScrollY = Math.max(0, window.scrollY);
+      const delta = nextScrollY - lastScrollY;
+      if (delta >= MOBILE_CHROME_SCROLL_THRESHOLD) {
+        setMobileChromeVisible(false);
+      } else if (delta <= -MOBILE_CHROME_SCROLL_THRESHOLD) {
+        setMobileChromeVisible(true);
+      }
+      lastScrollY = nextScrollY;
+      scheduleHide();
+    };
+
+    setMobileChromeVisible(true);
+    scheduleHide();
+    window.addEventListener("scroll", onScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (mobileChromeHideTimerRef.current !== null) {
+        window.clearTimeout(mobileChromeHideTimerRef.current);
+        mobileChromeHideTimerRef.current = null;
+      }
+    };
   }, [isMobileMode]);
 
   useEffect(() => {
@@ -368,6 +419,7 @@ export function App() {
               definitions={widgetDefinitions}
               sidebarOpen={sidebarOpen}
               isMobileMode={isMobileMode}
+              mobileVisible={mobileChromeVisible}
               fullscreen={fullscreen}
               onToggleFullscreen={() => {
                 if (document.fullscreenElement) {
@@ -503,7 +555,11 @@ export function App() {
         onGenerate={(prompt) => generateAiWidget(prompt, { mobileMode: isMobileMode })}
       />
 
-      <OnlineUsersDock isMobileMode={isMobileMode} desktopBottomInset={desktopViewportBottomInset} />
+      <OnlineUsersDock
+        isMobileMode={isMobileMode}
+        mobileVisible={mobileChromeVisible}
+        desktopBottomInset={desktopViewportBottomInset}
+      />
 
       <input
         ref={wallpaperInputRef}

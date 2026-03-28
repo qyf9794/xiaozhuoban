@@ -28,6 +28,7 @@ export function Toolbar({
   definitions,
   sidebarOpen,
   isMobileMode = false,
+  mobileVisible = true,
   fullscreen,
   onToggleFullscreen,
   onToggleSidebar,
@@ -45,6 +46,7 @@ export function Toolbar({
   definitions: WidgetDefinition[];
   sidebarOpen: boolean;
   isMobileMode?: boolean;
+  mobileVisible?: boolean;
   fullscreen: boolean;
   onToggleFullscreen: () => void;
   onToggleSidebar: () => void;
@@ -107,7 +109,13 @@ export function Toolbar({
         background: "transparent",
         borderBottom: "none",
         backdropFilter: "none",
-        paddingTop: isMobileMode ? "calc(env(safe-area-inset-top) + 8px)" : "10px"
+        paddingTop: isMobileMode ? "calc(env(safe-area-inset-top) + 8px)" : "10px",
+        opacity: isMobileMode ? (mobileVisible ? 1 : 0) : 1,
+        transform: isMobileMode
+          ? `translateX(-50%) translateY(${mobileVisible ? "0" : "calc(-100% - 12px)"})`
+          : undefined,
+        pointerEvents: isMobileMode && !mobileVisible ? "none" : "auto",
+        transition: isMobileMode ? "opacity 220ms ease, transform 220ms ease" : undefined
       }}
     >
       <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
