@@ -1196,18 +1196,27 @@ export function MonopolyWidget({
                           marginTop: isMobileMode ? 2 : scaledValue(10, 4)
                         }}
                       >
-                        <div style={{ display: "flex", gap: isMobileMode ? 4 : scaledValue(12, 5), alignItems: "center", minWidth: 0 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: isMobileMode ? 4 : scaledValue(12, 5),
+                            alignItems: "center",
+                            minWidth: 0,
+                            flexShrink: 0
+                          }}
+                        >
                           <div style={cardBackStyle("chance", isMobileMode)}>机会</div>
                           <div style={cardBackStyle("fate", isMobileMode)}>命运</div>
                         </div>
                         <div
                           style={{
                             display: "grid",
-                            gap: scaledValue(5, 4),
+                            gap: scaledValue(4, 3),
                             justifyItems: "end",
                             marginRight: isMobileMode ? 0 : scaledValue(16, 4),
-                            maxWidth: isMobileMode ? scaledValue(118, 112) : scaledValue(152, 140),
-                            minWidth: 0
+                            maxWidth: isMobileMode ? scaledValue(102, 96) : scaledValue(136, 124),
+                            minWidth: 0,
+                            flexShrink: 1
                           }}
                         >
                           {canRoll ? (
@@ -1221,12 +1230,12 @@ export function MonopolyWidget({
                             </button>
                           ) : null}
                           {canBuy ? (
-                            <div style={{ display: "grid", gap: 6, justifyItems: "end" }}>
+                            <div style={{ display: "grid", gap: isMobileMode ? 4 : 6, justifyItems: "end", maxWidth: "100%" }}>
                               {!canAffordPendingDecision ? (
                                 <div
                                   style={{
-                                    fontSize: isMobileMode ? 7.5 : 10.5,
-                                    lineHeight: 1.25,
+                                    fontSize: isMobileMode ? 7 : 10.5,
+                                    lineHeight: 1.2,
                                     color: canLiquidate ? "#92400e" : "#991b1b",
                                     textAlign: "right",
                                     maxWidth: "100%",
@@ -1243,7 +1252,7 @@ export function MonopolyWidget({
                               <div
                                 style={{
                                   display: "flex",
-                                  gap: isMobileMode ? 4 : 6,
+                                  gap: isMobileMode ? 3 : 6,
                                   flexWrap: "wrap",
                                   justifyContent: "flex-end",
                                   maxWidth: "100%"
