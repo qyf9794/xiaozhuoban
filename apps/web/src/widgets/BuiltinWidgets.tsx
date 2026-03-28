@@ -981,9 +981,11 @@ let messageBoardChimeAudioPrimed = false;
 let messageBoardChimeAudioSrc: string | null = null;
 let dialClockHourlyAudio: HTMLAudioElement | null = null;
 let dialClockHourlyAudioPrimed = false;
+let activeDialClockHourlyAudioOwnerId: string | null = null;
 let dialClockNightAudio: HTMLAudioElement | null = null;
 let dialClockNightAudioPrimed = false;
 let dialClockNightAudioStopTimer: number | null = null;
+let activeDialClockNightAudioOwnerId: string | null = null;
 
 function getScreenWakeLockApi(): RecorderWakeLockApi | null {
   if (typeof navigator === "undefined") return null;
@@ -1524,8 +1526,15 @@ async function ensureAudioLoaded(audio: HTMLAudioElement) {
   });
 }
 
-function stopDialClockHourlyAudio(audio: HTMLAudioElement | null = getDialClockHourlyAudio()) {
+function stopDialClockHourlyAudio(
+  audio: HTMLAudioElement | null = getDialClockHourlyAudio(),
+  ownerId?: string
+) {
   if (!audio) return;
+  if (ownerId && activeDialClockHourlyAudioOwnerId && activeDialClockHourlyAudioOwnerId !== ownerId) {
+    return;
+  }
+  activeDialClockHourlyAudioOwnerId = null;
   audio.pause();
   try {
     audio.currentTime = 0;
@@ -1534,7 +1543,10 @@ function stopDialClockHourlyAudio(audio: HTMLAudioElement | null = getDialClockH
   }
 }
 
-async function playDialClockHourlyAudio(audio: HTMLAudioElement | null = getDialClockHourlyAudio()) {
+async function playDialClockHourlyAudio(
+  ownerId: string,
+  audio: HTMLAudioElement | null = getDialClockHourlyAudio()
+) {
   if (!audio) return;
   if (!isForegroundPlaybackAllowed()) return;
   try {
@@ -1543,18 +1555,29 @@ async function playDialClockHourlyAudio(audio: HTMLAudioElement | null = getDial
       await primeDialClockHourlyAudio();
     }
     stopDialClockHourlyAudio(audio);
+    activeDialClockHourlyAudioOwnerId = ownerId;
     await audio.play();
   } catch (error) {
+    if (activeDialClockHourlyAudioOwnerId === ownerId) {
+      activeDialClockHourlyAudioOwnerId = null;
+    }
     console.warn("[dialClock] hourly audio failed", error);
   }
 }
 
-function stopDialClockNightAudio(audio: HTMLAudioElement | null = getDialClockNightAudio()) {
+function stopDialClockNightAudio(
+  audio: HTMLAudioElement | null = getDialClockNightAudio(),
+  ownerId?: string
+) {
   if (!audio) return;
+  if (ownerId && activeDialClockNightAudioOwnerId && activeDialClockNightAudioOwnerId !== ownerId) {
+    return;
+  }
   if (dialClockNightAudioStopTimer !== null && typeof window !== "undefined") {
     window.clearTimeout(dialClockNightAudioStopTimer);
     dialClockNightAudioStopTimer = null;
   }
+  activeDialClockNightAudioOwnerId = null;
   audio.onended = null;
   audio.pause();
   try {
@@ -1564,7 +1587,10 @@ function stopDialClockNightAudio(audio: HTMLAudioElement | null = getDialClockNi
   }
 }
 
-async function playDialClockNightAudio(audio: HTMLAudioElement | null = getDialClockNightAudio()) {
+async function playDialClockNightAudio(
+  ownerId: string,
+  audio: HTMLAudioElement | null = getDialClockNightAudio()
+) {
   if (!audio) return;
   if (!isForegroundPlaybackAllowed()) return;
   try {
@@ -1573,6 +1599,7 @@ async function playDialClockNightAudio(audio: HTMLAudioElement | null = getDialC
       await primeDialClockNightAudio();
     }
     stopDialClockNightAudio(audio);
+    activeDialClockNightAudioOwnerId = ownerId;
     audio.loop = true;
     await audio.play();
     const scheduleStop = () => {
@@ -1584,7 +1611,7 @@ async function playDialClockNightAudio(audio: HTMLAudioElement | null = getDialC
       }
       dialClockNightAudioStopTimer = window.setTimeout(() => {
         dialClockNightAudioStopTimer = null;
-        stopDialClockNightAudio(audio);
+        stopDialClockNightAudio(audio, ownerId);
       }, Math.round(audio.duration * 1000 * DIAL_CLOCK_NIGHT_AUDIO_REPEAT_COUNT));
     };
 
@@ -1598,6 +1625,9 @@ async function playDialClockNightAudio(audio: HTMLAudioElement | null = getDialC
       audio.addEventListener("loadedmetadata", handleMetadata);
     }
   } catch (error) {
+    if (activeDialClockNightAudioOwnerId === ownerId) {
+      activeDialClockNightAudioOwnerId = null;
+    }
     audio.onended = null;
     console.warn("[dialClock] night audio failed", error);
   }
@@ -3662,7 +3692,7 @@ export function BuiltinWidgetView({
           window.clearTimeout(nightAudioTimerRef.current);
           nightAudioTimerRef.current = null;
         }
-        stopDialClockNightAudio(audio);
+        stopDialClockNightAudio(audio, instance.id);
         nightAudioRef.current = null;
       };
     }, []);
@@ -3674,13 +3704,13 @@ export function BuiltinWidgetView({
       }
 
       if (!nightMode) {
-        stopDialClockNightAudio(nightAudioRef.current);
+        stopDialClockNightAudio(nightAudioRef.current, instance.id);
         return;
       }
 
       nightAudioTimerRef.current = window.setTimeout(() => {
         nightAudioTimerRef.current = null;
-        void playDialClockNightAudio(nightAudioRef.current);
+        void playDialClockNightAudio(instance.id, nightAudioRef.current);
       }, DIAL_CLOCK_NIGHT_AUDIO_DELAY_MS);
 
       return () => {
@@ -3688,9 +3718,9 @@ export function BuiltinWidgetView({
           window.clearTimeout(nightAudioTimerRef.current);
           nightAudioTimerRef.current = null;
         }
-        stopDialClockNightAudio(nightAudioRef.current);
+        stopDialClockNightAudio(nightAudioRef.current, instance.id);
       };
-    }, [nightMode]);
+    }, [instance.id, nightMode]);
 
     useEffect(() => {
       const isDocumentVisible = () => isForegroundPlaybackAllowed();
@@ -3719,7 +3749,7 @@ export function BuiltinWidgetView({
 
       const cancelHourlyAudio = () => {
         clearHourlyAudioTimer();
-        stopDialClockHourlyAudio(hourlyAudioRef.current);
+        stopDialClockHourlyAudio(hourlyAudioRef.current, instance.id);
       };
 
       const runSweep = () => {
@@ -3737,7 +3767,7 @@ export function BuiltinWidgetView({
             ) {
               return;
             }
-            void playDialClockHourlyAudio(hourlyAudioRef.current);
+            void playDialClockHourlyAudio(instance.id, hourlyAudioRef.current);
           }, DIAL_CLOCK_HOURLY_AUDIO_DELAY_MS);
         }
 
@@ -3816,7 +3846,7 @@ export function BuiltinWidgetView({
           document.removeEventListener("visibilitychange", handleVisibilityChange);
         }
       };
-    }, [nightMode, sweepFrames]);
+    }, [instance.id, nightMode, sweepFrames]);
 
     useEffect(() => {
       const clearNightSparkLoopTimer = () => {
