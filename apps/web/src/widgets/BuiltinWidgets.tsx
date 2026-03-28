@@ -969,6 +969,8 @@ let messageBoardHistoryPromise: Promise<MessageBoardItem[]> | null = null;
 let messageBoardHistoryCache: MessageBoardItem[] | null = null;
 let messageBoardHistoryCacheExpiresAt = 0;
 let sharedAudioUnlockState: "idle" | "listening" | "ready" = "idle";
+let sharedAudioUnlockInFlight = false;
+let sharedAudioUnlockCleanup: (() => void) | null = null;
 let activeCountdownAlarmOwnerId: string | null = null;
 let activeCountdownAlarmCleanup: (() => void) | null = null;
 let countdownAlarmAudio: HTMLAudioElement | null = null;
@@ -1195,13 +1197,23 @@ function stopCountdownAlarmAudio() {
   }
 }
 
-function primeAllSharedAudio() {
-  return Promise.allSettled([
+function allSharedAudioPrimed() {
+  return (
+    messageBoardChimeAudioPrimed &&
+    countdownAlarmAudioPrimed &&
+    dialClockHourlyAudioPrimed &&
+    dialClockNightAudioPrimed
+  );
+}
+
+async function primeAllSharedAudio() {
+  const results = await Promise.all([
     primeMessageBoardAudio(),
     primeCountdownAlarmAudio(),
     primeDialClockHourlyAudio(),
     primeDialClockNightAudio()
   ]);
+  return results.every(Boolean);
 }
 
 function ensureSharedAudioUnlock() {
@@ -1209,29 +1221,52 @@ function ensureSharedAudioUnlock() {
     return;
   }
 
+  const removeListeners = () => {
+    if (!sharedAudioUnlockCleanup) {
+      return;
+    }
+    sharedAudioUnlockCleanup();
+    sharedAudioUnlockCleanup = null;
+  };
+
+  const unlockSharedAudio = () => {
+    if (sharedAudioUnlockInFlight) {
+      return;
+    }
+    sharedAudioUnlockInFlight = true;
+    void primeAllSharedAudio()
+      .then((allPrimed) => {
+        if (allPrimed || allSharedAudioPrimed()) {
+          removeListeners();
+          sharedAudioUnlockState = "ready";
+          return;
+        }
+        sharedAudioUnlockState = "listening";
+      })
+      .finally(() => {
+        sharedAudioUnlockInFlight = false;
+      });
+  };
+
   if (sharedAudioUnlockState === "ready") {
-    void primeAllSharedAudio();
+    if (!allSharedAudioPrimed()) {
+      sharedAudioUnlockState = "listening";
+      unlockSharedAudio();
+    }
     return;
   }
 
-  if (sharedAudioUnlockState !== "idle") {
+  if (sharedAudioUnlockState === "listening") {
     return;
   }
 
   sharedAudioUnlockState = "listening";
-  const removeListeners = () => {
+  sharedAudioUnlockCleanup = () => {
     window.removeEventListener("pointerdown", unlockSharedAudio);
     window.removeEventListener("mousedown", unlockSharedAudio);
     window.removeEventListener("click", unlockSharedAudio);
     window.removeEventListener("keydown", unlockSharedAudio);
     window.removeEventListener("touchstart", unlockSharedAudio);
-  };
-
-  const unlockSharedAudio = () => {
-    void primeAllSharedAudio().finally(() => {
-        removeListeners();
-        sharedAudioUnlockState = "ready";
-      });
   };
 
   window.addEventListener("pointerdown", unlockSharedAudio, { passive: true });
@@ -1306,6 +1341,7 @@ async function primeMessageBoardAudio() {
   if (!audio) return false;
   if (messageBoardChimeAudioPrimed) return true;
   try {
+    await ensureAudioLoaded(audio);
     const wasMuted = audio.muted;
     audio.pause();
     audio.currentTime = 0;
@@ -1333,6 +1369,7 @@ async function primeCountdownAlarmAudio() {
   if (!audio) return false;
   if (countdownAlarmAudioPrimed) return true;
   try {
+    await ensureAudioLoaded(audio);
     const wasMuted = audio.muted;
     audio.pause();
     audio.currentTime = 0;
@@ -1382,6 +1419,7 @@ async function primeDialClockHourlyAudio() {
   if (!audio) return false;
   if (dialClockHourlyAudioPrimed) return true;
   try {
+    await ensureAudioLoaded(audio);
     const wasMuted = audio.muted;
     audio.pause();
     audio.currentTime = 0;
@@ -1409,6 +1447,7 @@ async function primeDialClockNightAudio() {
   if (!audio) return false;
   if (dialClockNightAudioPrimed) return true;
   try {
+    await ensureAudioLoaded(audio);
     const wasMuted = audio.muted;
     audio.pause();
     audio.currentTime = 0;
