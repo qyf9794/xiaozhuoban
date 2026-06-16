@@ -84,4 +84,22 @@ describe("realtime session API", () => {
     const [, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
     expect(init?.headers).not.toHaveProperty("OpenAI-Safety-Identifier");
   });
+
+  it("returns JSON when the OpenAI client secret request fails before a response", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "sk-test");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("network down");
+      })
+    );
+
+    const response = await callHandler(JSON.stringify({}));
+
+    expect(response.statusCode).toBe(502);
+    expect(JSON.parse(response.body)).toEqual({
+      error: "OPENAI_REALTIME_SESSION_REQUEST_FAILED",
+      message: "network down"
+    });
+  });
 });
