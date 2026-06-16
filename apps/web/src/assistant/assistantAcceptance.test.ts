@@ -50,8 +50,14 @@ function widget(type: string): WidgetInstance {
 }
 
 function createAcceptanceHarness(options?: { modelCall?: AssistantToolCall | null; initialWidgetTypes?: string[] }) {
-  const definitions = [definition("weather", "天气"), definition("countdown", "倒计时"), definition("note", "便签")];
-  let widgets = (options?.initialWidgetTypes ?? ["weather", "countdown", "note"]).map(widget);
+  const definitions = [
+    definition("weather", "天气"),
+    definition("countdown", "倒计时"),
+    definition("note", "便签"),
+    definition("todo", "待办"),
+    definition("clipboard", "剪贴板")
+  ];
+  let widgets = (options?.initialWidgetTypes ?? ["weather", "countdown", "note", "todo", "clipboard"]).map(widget);
   let boards = [{ id: "board_1", name: "我的桌板" }];
   let activeBoardId = "board_1";
   const sentResults: AssistantToolResult[] = [];
@@ -240,6 +246,42 @@ describe("stage-one assistant acceptance scenarios", () => {
       remainingSeconds: 600,
       running: true
     });
+  });
+
+  it("writes a note through shortcut-first Harness without model fallback", async () => {
+    const { harness, modelInputs, getWidget } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("便签记下明早九点开会");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(getWidget("note")?.state.content).toBe("明早九点开会");
+    expect(modelInputs).toEqual([]);
+  });
+
+  it("adds a todo item through shortcut-first Harness without model fallback", async () => {
+    const { harness, modelInputs, getWidget } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("添加待办买牛奶");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(getWidget("todo")?.state.items).toMatchObject([{ text: "买牛奶" }]);
+    expect(modelInputs).toEqual([]);
+  });
+
+  it("adds a clipboard widget and saves text when clipboard is absent", async () => {
+    const { harness, modelInputs, getWidget } = createAcceptanceHarness({ initialWidgetTypes: ["weather", "countdown", "note", "todo"] });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("保存到剪贴板账号是 demo");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(getWidget("clipboard")?.state.items).toMatchObject([{ text: "账号是 demo" }]);
+    expect(modelInputs).toEqual([]);
   });
 
   it("cancels a destructive pending action without mutation", async () => {

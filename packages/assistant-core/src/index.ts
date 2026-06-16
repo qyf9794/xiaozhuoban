@@ -578,6 +578,91 @@ function findBoardByName(context: IntentShortcutContext, rawName: string) {
   );
 }
 
+function cleanCommandContent(value: string) {
+  return value
+    .replace(/^[：:，,\s]+/, "")
+    .replace(/[。.!！\s]+$/, "")
+    .trim();
+}
+
+function inferNoteContent(raw: string) {
+  const patterns = [
+    /(?:便签|笔记).*(?:写|记录|记下|添加|追加)(?:一下|一个|一条)?[：:\s]*(.+)/,
+    /(?:写|记录|记下|添加|追加)(?:到|进)?(?:便签|笔记)[：:\s]*(.+)/,
+    /把(.+?)(?:写|记录|记下|添加|追加)(?:到|进)?(?:便签|笔记)/
+  ];
+  for (const pattern of patterns) {
+    const match = raw.match(pattern);
+    const content = cleanCommandContent(match?.[1] ?? "");
+    if (content) return content;
+  }
+  return "";
+}
+
+function inferTodoText(raw: string) {
+  const patterns = [
+    /(?:添加|新增|记下|记录|加入)(?:一个|一条)?(?:待办|任务|清单)[：:\s]*(.+)/,
+    /(?:待办|任务|清单).*(?:添加|新增|记下|记录|加入)(?:一个|一条)?[：:\s]*(.+)/,
+    /把(.+?)(?:添加|新增|记下|记录|加入)(?:到|进)?(?:待办|任务|清单)/
+  ];
+  for (const pattern of patterns) {
+    const match = raw.match(pattern);
+    const text = cleanCommandContent(match?.[1] ?? "");
+    if (text) return text;
+  }
+  return "";
+}
+
+function inferClipboardText(raw: string) {
+  const patterns = [
+    /(?:保存|加入|添加|记录)(?:到|进)?(?:剪贴板|剪贴板历史)[：:\s]*(.+)/,
+    /(?:剪贴板|剪贴板历史).*(?:保存|加入|添加|记录)[：:\s]*(.+)/,
+    /把(.+?)(?:保存|加入|添加|记录)(?:到|进)?(?:剪贴板|剪贴板历史)/
+  ];
+  for (const pattern of patterns) {
+    const match = raw.match(pattern);
+    const text = cleanCommandContent(match?.[1] ?? "");
+    if (text) return text;
+  }
+  return "";
+}
+
+function routeWidgetDetailOrAdd(
+  context: IntentShortcutContext,
+  raw: string,
+  widgetType: string,
+  toolName: string,
+  toolArguments: Record<string, unknown>,
+  confidence: number
+) {
+  const widget = findWidgetByType(context, widgetType);
+  if (widget) {
+    return shortcutMatch(
+      toolName,
+      { widgetId: widget.widgetId, ...toolArguments },
+      confidence,
+      context.source ?? "shortcut",
+      raw
+    );
+  }
+
+  const definition = findDefinitionByType(context, widgetType);
+  if (!definition) return null;
+  return shortcutMatch(
+    "board.add_widget",
+    {
+      definitionId: definition.definitionId,
+      followUp: {
+        name: toolName,
+        arguments: toolArguments
+      }
+    },
+    Math.max(0.7, confidence - 0.1),
+    context.source ?? "shortcut",
+    raw
+  );
+}
+
 export class IntentShortcutRouter {
   constructor(private readonly rules: IntentShortcutRule[]) {}
 
@@ -760,6 +845,54 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
           );
         }
         return { matched: false, reason: "countdown_target_missing" };
+      }
+    },
+    {
+      name: "note_write",
+      match(normalized, raw, context) {
+        if (!/(便签|笔记)/.test(normalized) || !/(写|记录|记下|添加|追加)/.test(normalized)) {
+          return { matched: false, reason: "not_note_write" };
+        }
+        const content = inferNoteContent(raw);
+        if (!content) return { matched: false, reason: "note_content_missing" };
+        return (
+          routeWidgetDetailOrAdd(context, raw, "note", "note.write", { content, mode: "append" }, 0.9) ?? {
+            matched: false,
+            reason: "note_target_missing"
+          }
+        );
+      }
+    },
+    {
+      name: "todo_add",
+      match(normalized, raw, context) {
+        if (!/(待办|任务|清单)/.test(normalized) || !/(添加|新增|记下|记录|加入)/.test(normalized)) {
+          return { matched: false, reason: "not_todo_add" };
+        }
+        const text = inferTodoText(raw);
+        if (!text) return { matched: false, reason: "todo_text_missing" };
+        return (
+          routeWidgetDetailOrAdd(context, raw, "todo", "todo.add_item", { text }, 0.9) ?? {
+            matched: false,
+            reason: "todo_target_missing"
+          }
+        );
+      }
+    },
+    {
+      name: "clipboard_add",
+      match(normalized, raw, context) {
+        if (!/(剪贴板|剪贴板历史)/.test(normalized) || !/(保存|加入|添加|记录)/.test(normalized)) {
+          return { matched: false, reason: "not_clipboard_add" };
+        }
+        const text = inferClipboardText(raw);
+        if (!text) return { matched: false, reason: "clipboard_text_missing" };
+        return (
+          routeWidgetDetailOrAdd(context, raw, "clipboard", "clipboard.add_text", { text }, 0.88) ?? {
+            matched: false,
+            reason: "clipboard_target_missing"
+          }
+        );
       }
     },
     {

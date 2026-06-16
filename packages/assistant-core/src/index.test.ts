@@ -178,7 +178,10 @@ describe("IntentShortcutRouter", () => {
     availableDefinitions: [
       { definitionId: "wd_weather", type: "weather", name: "天气" },
       { definitionId: "wd_countdown", type: "countdown", name: "倒计时" },
-      { definitionId: "wd_note", type: "note", name: "便签" }
+      { definitionId: "wd_note", type: "note", name: "便签" },
+      { definitionId: "wd_todo", type: "todo", name: "待办" },
+      { definitionId: "wd_clipboard", type: "clipboard", name: "剪贴板" },
+      { definitionId: "wd_music", type: "music", name: "音乐" }
     ],
     availableWidgets: [
       {
@@ -206,6 +209,24 @@ describe("IntentShortcutRouter", () => {
         name: "倒计时",
         order: 3,
         summary: "未运行",
+        recent: false
+      },
+      {
+        widgetId: "wi_note",
+        definitionId: "wd_note",
+        type: "note",
+        name: "便签",
+        order: 4,
+        summary: "明早九点开会",
+        recent: false
+      },
+      {
+        widgetId: "wi_todo",
+        definitionId: "wd_todo",
+        type: "todo",
+        name: "待办",
+        order: 5,
+        summary: "2 项待办",
         recent: false
       }
     ],
@@ -368,6 +389,48 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes note writing commands to the existing note widget", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("便签记下明早九点开会", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("note.write");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_note", content: "明早九点开会", mode: "append" });
+    }
+  });
+
+  it("routes todo add commands before generic widget opening", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("添加待办买牛奶", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("todo.add_item");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_todo", text: "买牛奶" });
+    }
+  });
+
+  it("routes clipboard save commands to add-and-save when clipboard is absent", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("保存到剪贴板账号是 demo", {
+      ...context,
+      availableWidgets: context.availableWidgets?.filter((widget) => widget.type !== "clipboard")
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("board.add_widget");
+      expect(result.toolCall.arguments).toEqual({
+        definitionId: "wd_clipboard",
+        followUp: {
+          name: "clipboard.add_text",
+          arguments: { text: "账号是 demo" }
+        }
+      });
+    }
+  });
+
   it("routes TV channel playback with fullscreen follow-up", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("播放 CCTV1，并全屏", context);
@@ -417,12 +480,12 @@ describe("IntentShortcutRouter", () => {
 
   it("routes open widget commands to add when only a definition exists", () => {
     const router = createDefaultIntentShortcutRouter();
-    const result = router.route("打开便签", context);
+    const result = router.route("打开音乐", context);
 
     expect(result.matched).toBe(true);
     if (result.matched) {
       expect(result.toolCall.name).toBe("board.add_widget");
-      expect(result.toolCall.arguments).toEqual({ definitionId: "wd_note" });
+      expect(result.toolCall.arguments).toEqual({ definitionId: "wd_music" });
     }
   });
 
