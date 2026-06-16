@@ -179,6 +179,143 @@ body {
   text-decoration: none;
 }
 
+.voice-assistant-dock {
+  position: fixed;
+  right: 14px;
+  z-index: 1510;
+  width: min(312px, calc(100vw - 28px));
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.56);
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.4));
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.voice-assistant-dock-mobile {
+  left: 50%;
+  right: auto;
+  width: min(340px, calc(100vw - 24px));
+}
+
+.voice-assistant-dock__top {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.voice-assistant-dock__orb {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  background: linear-gradient(150deg, #0f172a, #334155);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 10px 22px rgba(15, 23, 42, 0.18);
+}
+
+.voice-assistant-dock__orb.is-listening {
+  background: linear-gradient(150deg, #0284c7, #14b8a6);
+}
+
+.voice-assistant-dock__orb.is-thinking,
+.voice-assistant-dock__orb.is-executing {
+  background: linear-gradient(150deg, #2563eb, #7c3aed);
+}
+
+.voice-assistant-dock__orb.is-waiting_confirmation {
+  background: linear-gradient(150deg, #b45309, #ea580c);
+}
+
+.voice-assistant-dock__orb.is-error {
+  background: linear-gradient(150deg, #991b1b, #dc2626);
+}
+
+.voice-assistant-dock__orb.is-muted,
+.voice-assistant-dock__orb.is-disconnected {
+  background: linear-gradient(150deg, #475569, #94a3b8);
+}
+
+.voice-assistant-dock__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.voice-assistant-dock__copy strong {
+  color: #0f172a;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.voice-assistant-dock__copy span {
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-assistant-dock__form {
+  display: grid;
+  grid-template-columns: 1fr 28px;
+  gap: 6px;
+}
+
+.voice-assistant-dock__form input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.62);
+  color: #0f172a;
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 1.2;
+  outline: none;
+}
+
+.voice-assistant-dock__form input:focus {
+  border-color: rgba(37, 99, 235, 0.48);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
+}
+
+.voice-assistant-dock__form button,
+.voice-assistant-dock__confirm button {
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  border-radius: 10px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.42));
+  color: #0f172a;
+  cursor: pointer;
+  min-height: 28px;
+  font-size: 12px;
+}
+
+.voice-assistant-dock__form button:disabled,
+.voice-assistant-dock__form input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.voice-assistant-dock__confirm {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
 .auth-message {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.96);

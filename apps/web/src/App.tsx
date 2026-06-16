@@ -5,6 +5,9 @@ import { Toolbar } from "./components/Toolbar";
 import { AIGeneratorDialog } from "./components/AIGeneratorDialog";
 import { CommandPalette } from "./components/CommandPalette";
 import { OnlineUsersDock } from "./components/OnlineUsersDock";
+import { VoiceAssistantDock } from "./components/VoiceAssistantDock";
+import { createLocalAssistantHarness } from "./assistant/createLocalAssistantHarness";
+import { WidgetCapabilityBridge } from "./assistant/widgetCapabilityBridge";
 import { useAppStore } from "./store";
 import { useAuthStore } from "./auth/authStore";
 import { supabase } from "./lib/supabase";
@@ -153,8 +156,13 @@ export function App() {
   const wallpaperInputRef = useRef<HTMLInputElement | null>(null);
   const backupInputRef = useRef<HTMLInputElement | null>(null);
   const mobileChromeHideTimerRef = useRef<number | null>(null);
+  const assistantCapabilityBridgeRef = useRef(new WidgetCapabilityBridge());
   const isMobileUa = useMemo(() => isLikelyMobileUA(), []);
   const isMobileMode = isMobileUa || viewportWidth <= MOBILE_VIEWPORT_MAX;
+  const assistantHarness = useMemo(
+    () => createLocalAssistantHarness({ capabilityBridge: assistantCapabilityBridgeRef.current }),
+    []
+  );
 
   const activeBoard = useMemo(() => boards.find((item) => item.id === activeBoardId), [activeBoardId, boards]);
   const appBackgroundColor = activeBoard?.background.type === "color" ? activeBoard.background.value : "#0f172a";
@@ -562,6 +570,13 @@ export function App() {
       />
 
       <OnlineUsersDock
+        isMobileMode={isMobileMode}
+        mobileVisible={mobileChromeVisible}
+        desktopBottomInset={desktopViewportBottomInset}
+      />
+
+      <VoiceAssistantDock
+        harness={assistantHarness}
         isMobileMode={isMobileMode}
         mobileVisible={mobileChromeVisible}
         desktopBottomInset={desktopViewportBottomInset}
