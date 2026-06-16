@@ -44,6 +44,9 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.62.9
         version: 5.90.20(react@18.3.1)
+      '@xiaozhuoban/assistant-core':
+        specifier: workspace:*
+        version: link:../../packages/assistant-core
       '@xiaozhuoban/ai-builder':
         specifier: workspace:*
         version: link:../../packages/ai-builder

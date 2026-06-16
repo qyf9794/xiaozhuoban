@@ -1,0 +1,269 @@
+import {
+  ActionRegistry,
+  createPassthroughSchema,
+  type AssistantAction,
+  type AssistantToolResult
+} from "@xiaozhuoban/assistant-core";
+import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
+import { clampTvWidgetSize } from "../widgets/tvShared";
+
+type AddWidgetArgs = { definitionId: string; mobileMode?: boolean };
+type WidgetIdArgs = { widgetId: string };
+type MoveWidgetArgs = WidgetIdArgs & { x: number; y: number };
+type ResizeWidgetArgs = WidgetIdArgs & { w: number; h: number };
+type AutoAlignArgs = { viewportWidth?: number; mobileMode?: boolean };
+type SwitchBoardArgs = { boardId: string };
+type CreateBoardArgs = { name?: string };
+type RenameBoardArgs = { boardId: string; name: string };
+
+export interface BoardActionStore {
+  getWidgetInstances: () => WidgetInstance[];
+  getWidgetDefinitions: () => WidgetDefinition[];
+  addWidgetInstance: (definitionId: string, options?: { mobileMode?: boolean }) => Promise<void> | void;
+  removeWidgetInstance: (widgetId: string) => Promise<void> | void;
+  updateWidgetPosition: (widgetId: string, x: number, y: number) => Promise<void> | void;
+  updateWidgetSize: (widgetId: string, w: number, h: number) => Promise<void> | void;
+  bringWidgetToFront?: (widgetId: string) => Promise<void> | void;
+  autoAlignWidgets: (viewportWidth: number, options?: { mobileMode?: boolean }) => Promise<void> | void;
+  setActiveBoard: (boardId: string) => Promise<void> | void;
+  addBoard: (name?: string) => Promise<void> | void;
+  renameBoard: (boardId: string, name: string) => Promise<void> | void;
+}
+
+export interface WidgetSizePolicy {
+  resizable: boolean;
+  reason?: string;
+  clamp?: (w: number, h: number) => { w: number; h: number };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
+}
+
+function hasString(value: Record<string, unknown>, key: string) {
+  return typeof value[key] === "string" && value[key].trim().length > 0;
+}
+
+function hasNumber(value: Record<string, unknown>, key: string) {
+  return typeof value[key] === "number" && Number.isFinite(value[key]);
+}
+
+function parseWith<T>(guard: (value: unknown) => value is T) {
+  return createPassthroughSchema<T>(guard);
+}
+
+const addWidgetSchema = parseWith<AddWidgetArgs>(
+  (value): value is AddWidgetArgs =>
+    isRecord(value) &&
+    hasString(value, "definitionId") &&
+    (value.mobileMode === undefined || typeof value.mobileMode === "boolean")
+);
+
+const widgetIdSchema = parseWith<WidgetIdArgs>(
+  (value): value is WidgetIdArgs => isRecord(value) && hasString(value, "widgetId")
+);
+
+const moveWidgetSchema = parseWith<MoveWidgetArgs>(
+  (value): value is MoveWidgetArgs =>
+    isRecord(value) && hasString(value, "widgetId") && hasNumber(value, "x") && hasNumber(value, "y")
+);
+
+const resizeWidgetSchema = parseWith<ResizeWidgetArgs>(
+  (value): value is ResizeWidgetArgs =>
+    isRecord(value) && hasString(value, "widgetId") && hasNumber(value, "w") && hasNumber(value, "h")
+);
+
+const autoAlignSchema = parseWith<AutoAlignArgs>(
+  (value): value is AutoAlignArgs =>
+    isRecord(value) &&
+    (value.viewportWidth === undefined || hasNumber(value, "viewportWidth")) &&
+    (value.mobileMode === undefined || typeof value.mobileMode === "boolean")
+);
+
+const switchBoardSchema = parseWith<SwitchBoardArgs>(
+  (value): value is SwitchBoardArgs => isRecord(value) && hasString(value, "boardId")
+);
+
+const createBoardSchema = parseWith<CreateBoardArgs>(
+  (value): value is CreateBoardArgs => isRecord(value) && (value.name === undefined || typeof value.name === "string")
+);
+
+const renameBoardSchema = parseWith<RenameBoardArgs>(
+  (value): value is RenameBoardArgs => isRecord(value) && hasString(value, "boardId") && hasString(value, "name")
+);
+
+export function getWidgetSizePolicy(definitionType: string): WidgetSizePolicy {
+  if (definitionType === "tv") {
+    return {
+      resizable: true,
+      clamp: clampTvWidgetSize
+    };
+  }
+
+  return {
+    resizable: false,
+    reason: "这个小工具的面板大小是固定的，不能调整"
+  };
+}
+
+function success(message: string, data?: unknown): AssistantToolResult {
+  return { status: "success", message, data };
+}
+
+function failed(message: string, errorCode: string): AssistantToolResult {
+  return { status: "failed", message, errorCode };
+}
+
+function defineAction<TArgs>(action: AssistantAction<TArgs>): AssistantAction<TArgs> {
+  return action;
+}
+
+function findWidget(store: BoardActionStore, widgetId: string) {
+  const widget = store.getWidgetInstances().find((item) => item.id === widgetId);
+  if (!widget) {
+    return null;
+  }
+  const definition = store.getWidgetDefinitions().find((item) => item.id === widget.definitionId);
+  return { widget, definition };
+}
+
+function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
+  const actions = [
+    defineAction<AddWidgetArgs>({
+      spec: {
+        name: "board.add_widget",
+        description: "Add an existing widget definition to the current board.",
+        parameters: addWidgetSchema,
+        risk: "safe",
+        scope: "desktop"
+      },
+      async execute(args) {
+        await store.addWidgetInstance(args.definitionId, { mobileMode: args.mobileMode });
+        return success("已添加小工具", { definitionId: args.definitionId });
+      }
+    }),
+    defineAction<WidgetIdArgs>({
+      spec: {
+        name: "widget.remove",
+        description: "Remove a widget from the current board after confirmation.",
+        parameters: widgetIdSchema,
+        risk: "destructive",
+        scope: "desktop"
+      },
+      async execute(args) {
+        await store.removeWidgetInstance(args.widgetId);
+        return success("已删除小工具", { widgetId: args.widgetId });
+      }
+    }),
+    defineAction<MoveWidgetArgs>({
+      spec: {
+        name: "widget.move",
+        description: "Move a widget to a new board position.",
+        parameters: moveWidgetSchema,
+        risk: "safe",
+        scope: "desktop"
+      },
+      async execute(args) {
+        await store.updateWidgetPosition(args.widgetId, Math.round(args.x), Math.round(args.y));
+        return success("已移动小工具", { widgetId: args.widgetId, x: Math.round(args.x), y: Math.round(args.y) });
+      }
+    }),
+    defineAction<ResizeWidgetArgs>({
+      spec: {
+        name: "widget.resize",
+        description: "Resize a widget only when its existing panel supports resizing.",
+        parameters: resizeWidgetSchema,
+        risk: "safe",
+        scope: "desktop"
+      },
+      async execute(args) {
+        const target = findWidget(store, args.widgetId);
+        if (!target) {
+          return failed("没有找到这个小工具", "WIDGET_NOT_FOUND");
+        }
+
+        const policy = getWidgetSizePolicy(target.definition?.type ?? "");
+        if (!policy.resizable) {
+          return failed(policy.reason ?? "这个小工具不能调整大小", "WIDGET_SIZE_FIXED");
+        }
+
+        const size = policy.clamp ? policy.clamp(args.w, args.h) : { w: Math.round(args.w), h: Math.round(args.h) };
+        await store.updateWidgetSize(args.widgetId, size.w, size.h);
+        return success("已调整小工具大小", { widgetId: args.widgetId, size });
+      }
+    }),
+    defineAction<WidgetIdArgs>({
+      spec: {
+        name: "widget.bring_to_front",
+        description: "Bring a widget to the front if the store supports layer changes.",
+        parameters: widgetIdSchema,
+        risk: "safe",
+        scope: "desktop"
+      },
+      async execute(args) {
+        if (!store.bringWidgetToFront) {
+          return failed("当前版本还不能调整小工具层级", "BRING_TO_FRONT_UNAVAILABLE");
+        }
+        await store.bringWidgetToFront(args.widgetId);
+        return success("已置顶小工具", { widgetId: args.widgetId });
+      }
+    }),
+    defineAction<AutoAlignArgs>({
+      spec: {
+        name: "board.auto_align",
+        description: "Auto-align widgets on the current board.",
+        parameters: autoAlignSchema,
+        risk: "confirm",
+        scope: "desktop"
+      },
+      async execute(args) {
+        await store.autoAlignWidgets(args.viewportWidth ?? 0, { mobileMode: args.mobileMode });
+        return success("已整理桌面小工具");
+      }
+    }),
+    defineAction<SwitchBoardArgs>({
+      spec: {
+        name: "board.switch",
+        description: "Switch to another board.",
+        parameters: switchBoardSchema,
+        risk: "safe",
+        scope: "desktop"
+      },
+      async execute(args) {
+        await store.setActiveBoard(args.boardId);
+        return success("已切换桌板", { boardId: args.boardId });
+      }
+    }),
+    defineAction<CreateBoardArgs>({
+      spec: {
+        name: "board.create",
+        description: "Create a new board.",
+        parameters: createBoardSchema,
+        risk: "safe",
+        scope: "desktop"
+      },
+      async execute(args) {
+        await store.addBoard(args.name);
+        return success("已新建桌板", { name: args.name });
+      }
+    }),
+    defineAction<RenameBoardArgs>({
+      spec: {
+        name: "board.rename",
+        description: "Rename an existing board.",
+        parameters: renameBoardSchema,
+        risk: "safe",
+        scope: "desktop"
+      },
+      async execute(args) {
+        await store.renameBoard(args.boardId, args.name.trim());
+        return success("已重命名桌板", { boardId: args.boardId, name: args.name.trim() });
+      }
+    })
+  ];
+  return actions as Array<AssistantAction<any>>;
+}
+
+export function registerBoardActions(registry: ActionRegistry, store: BoardActionStore): void {
+  boardActions(store).forEach((action) => registry.register(action));
+}
