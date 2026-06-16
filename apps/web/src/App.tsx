@@ -5,8 +5,9 @@ import { Toolbar } from "./components/Toolbar";
 import { AIGeneratorDialog } from "./components/AIGeneratorDialog";
 import { CommandPalette } from "./components/CommandPalette";
 import { OnlineUsersDock } from "./components/OnlineUsersDock";
-import { VoiceAssistantDock } from "./components/VoiceAssistantDock";
+import { VoiceAssistantDock, type VoiceAssistantOperationStatus } from "./components/VoiceAssistantDock";
 import { createRealtimeAssistantRuntime } from "./assistant/createRealtimeAssistantRuntime";
+import type { AssistantOperationEvent } from "./assistant/AssistantHarness";
 import type { RealtimeConnectionStatus } from "./assistant/openaiRealtimeAdapter";
 import { WidgetCapabilityBridge } from "./assistant/widgetCapabilityBridge";
 import { useAppStore } from "./store";
@@ -28,6 +29,19 @@ const repositoryByUserId = new Map<string, SupabaseRepository>();
 function isLikelyMobileUA() {
   if (typeof navigator === "undefined") return false;
   return /android|iphone|ipad|ipod|mobile|windows phone/i.test(navigator.userAgent);
+}
+
+export function getAssistantOperationStatus(event: AssistantOperationEvent): VoiceAssistantOperationStatus {
+  if (event.phase === "running") {
+    return { phase: "executing", command: event.toolName, message: event.message };
+  }
+  if (event.phase === "waiting_confirmation") {
+    return { phase: "waiting_confirmation", command: event.toolName, message: event.message };
+  }
+  if (event.phase === "success") {
+    return { phase: "success", command: event.toolName, message: event.message };
+  }
+  return { phase: "error", command: event.toolName, message: event.message };
 }
 
 async function normalizeWallpaperFile(file: File): Promise<string> {
@@ -141,6 +155,7 @@ export function App() {
   const [desktopViewportBottomInset, setDesktopViewportBottomInset] = useState(14);
   const [mobileChromeVisible, setMobileChromeVisible] = useState(true);
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeConnectionStatus>("disconnected");
+  const [assistantOperation, setAssistantOperation] = useState<VoiceAssistantOperationStatus | null>(null);
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window === "undefined" ? MOBILE_FRAME_WIDTH : window.innerWidth
   );
@@ -169,7 +184,8 @@ export function App() {
         adapterOptions: {
           getSafetyIdentifier: () => useAuthStore.getState().user?.id
         },
-        onStatusChange: setRealtimeStatus
+        onStatusChange: setRealtimeStatus,
+        onOperation: (event) => setAssistantOperation(getAssistantOperationStatus(event))
       }),
     []
   );
@@ -601,6 +617,7 @@ export function App() {
         isMobileMode={isMobileMode}
         mobileVisible={mobileChromeVisible}
         desktopBottomInset={desktopViewportBottomInset}
+        operationStatus={assistantOperation}
       />
 
       <input

@@ -39,6 +39,16 @@ export interface AssistantAuditAdapter {
   write: (event: AssistantAuditEvent) => Promise<void> | void;
 }
 
+export type AssistantOperationPhase = "running" | "waiting_confirmation" | "success" | "failed";
+
+export interface AssistantOperationEvent {
+  id: string;
+  phase: AssistantOperationPhase;
+  route: AssistantRoute;
+  toolName?: string;
+  message?: string;
+}
+
 export interface AssistantHarnessOptions {
   registry: ActionRegistry;
   shortcutRouter: IntentShortcutRouter;
@@ -47,6 +57,7 @@ export interface AssistantHarnessOptions {
   contextSummarizer: ContextSummarizer;
   realtime: AssistantRealtimeAdapter;
   audit?: AssistantAuditAdapter;
+  onOperation?: (event: AssistantOperationEvent) => void;
   getContextInput: () => ContextSummarizerInput;
   actionTimeoutMs?: number;
   now?: () => string;
@@ -160,7 +171,15 @@ export class AssistantHarness {
     route: AssistantRoute = "function_call",
     startedAt = Date.now()
   ): Promise<AssistantHarnessResponse> {
+    this.emitOperation({ id: call.id, phase: "running", route, toolName: call.name });
     const result = await this.executeCall(call);
+    this.emitOperation({
+      id: call.id,
+      phase: result.status === "needs_confirmation" ? "waiting_confirmation" : result.status === "success" ? "success" : "failed",
+      route,
+      toolName: call.name,
+      message: result.message
+    });
     await this.options.realtime.sendToolResult(call, result);
     await this.updateRealtimeContext();
     await this.audit({ route, call, result, durationMs: Date.now() - startedAt });
@@ -405,5 +424,9 @@ export class AssistantHarness {
 
   private async audit(event: AssistantAuditEvent): Promise<void> {
     await this.options.audit?.write(event);
+  }
+
+  private emitOperation(event: AssistantOperationEvent): void {
+    this.options.onOperation?.(event);
   }
 }

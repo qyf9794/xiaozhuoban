@@ -4,6 +4,7 @@ import {
   getVoiceAssistantDockStateForRealtimeStatus,
   getVoiceAssistantErrorMessage,
   getVoiceAssistantDockStatusText,
+  getVisibleVoiceAssistantOperation,
   getVoiceAssistantOperationText,
   prependVoiceAssistantHistory,
   resolveVoiceAssistantSubmitText,
@@ -80,6 +81,16 @@ describe("VoiceAssistantDock", () => {
   it("keeps send available for DOM-backed command fallback", () => {
     expect(shouldDisableVoiceAssistantSend(false)).toBe(false);
     expect(shouldDisableVoiceAssistantSend(true)).toBe(true);
+  });
+
+  it("uses external tool operation only while the dock is idle", () => {
+    const external = { phase: "executing" as const, command: "board.add_widget" };
+
+    expect(getVisibleVoiceAssistantOperation({ phase: "idle" }, external)).toBe(external);
+    expect(getVisibleVoiceAssistantOperation({ phase: "thinking", command: "连接语音" }, external)).toEqual({
+      phase: "thinking",
+      command: "连接语音"
+    });
   });
 
   it("maps realtime connection status to dock state and short messages", () => {

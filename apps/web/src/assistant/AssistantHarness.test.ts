@@ -12,7 +12,12 @@ import {
   type CompactAssistantContext,
   type ContextSummarizerInput
 } from "@xiaozhuoban/assistant-core";
-import { AssistantHarness, type AssistantAuditEvent, type AssistantRealtimeAdapter } from "./AssistantHarness";
+import {
+  AssistantHarness,
+  type AssistantAuditEvent,
+  type AssistantOperationEvent,
+  type AssistantRealtimeAdapter
+} from "./AssistantHarness";
 
 function createTools(): AssistantToolSpec[] {
   const schema = createPassthroughSchema<Record<string, unknown>>();
@@ -115,6 +120,7 @@ function createHarness(options?: {
   const contextUpdates: CompactAssistantContext[] = [];
   const sentResults: AssistantToolResult[] = [];
   const auditEvents: AssistantAuditEvent[] = [];
+  const operationEvents: AssistantOperationEvent[] = [];
   const realtime: AssistantRealtimeAdapter = {
     updateTools(tools) {
       toolUpdates.push(tools.map((tool) => tool.name));
@@ -141,11 +147,14 @@ function createHarness(options?: {
         auditEvents.push(event);
       }
     },
+    onOperation(event) {
+      operationEvents.push(event);
+    },
     getContextInput: createContextInput,
     actionTimeoutMs: options?.actionTimeoutMs ?? 500,
     now: () => "2026-06-16T00:00:00.000Z"
   });
-  return { harness, toolUpdates, contextUpdates, sentResults, auditEvents, executed: registryState.executed };
+  return { harness, toolUpdates, contextUpdates, sentResults, auditEvents, operationEvents, executed: registryState.executed };
 }
 
 describe("AssistantHarness", () => {
@@ -184,7 +193,7 @@ describe("AssistantHarness", () => {
   });
 
   it("executes shortcut-routed commands without model fallback", async () => {
-    const { harness, sentResults, auditEvents, executed } = createHarness();
+    const { harness, sentResults, auditEvents, operationEvents, executed } = createHarness();
     await harness.initialize();
 
     const response = await harness.handleUserInput("整理桌面");
@@ -195,10 +204,14 @@ describe("AssistantHarness", () => {
     expect(executed).toEqual([]);
     expect(sentResults[0].status).toBe("needs_confirmation");
     expect(auditEvents[0].route).toBe("shortcut");
+    expect(operationEvents).toMatchObject([
+      { phase: "running", route: "shortcut", toolName: "board.auto_align" },
+      { phase: "waiting_confirmation", route: "shortcut", toolName: "board.auto_align", message: "确认执行 board.auto_align 吗？" }
+    ]);
   });
 
   it("uses full available definitions when opening an absent widget", async () => {
-    const { harness, executed } = createHarness();
+    const { harness, executed, operationEvents } = createHarness();
     await harness.initialize();
 
     const response = await harness.handleUserInput("打开音乐");
@@ -210,6 +223,10 @@ describe("AssistantHarness", () => {
     });
     expect(response.result.status).toBe("success");
     expect(executed).toEqual(["board.add_widget:none"]);
+    expect(operationEvents).toMatchObject([
+      { phase: "running", route: "shortcut", toolName: "board.add_widget" },
+      { phase: "success", route: "shortcut", toolName: "board.add_widget", message: "board.add_widget done" }
+    ]);
   });
 
   it("confirms and executes a pending action", async () => {

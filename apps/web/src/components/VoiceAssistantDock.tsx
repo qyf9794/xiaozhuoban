@@ -111,6 +111,13 @@ export function shouldDisableVoiceAssistantSend(muted: boolean): boolean {
   return muted;
 }
 
+export function getVisibleVoiceAssistantOperation(
+  internalOperation: VoiceAssistantOperationStatus,
+  externalOperation?: VoiceAssistantOperationStatus | null
+): VoiceAssistantOperationStatus {
+  return internalOperation.phase === "idle" ? externalOperation ?? internalOperation : internalOperation;
+}
+
 function getResultText(status: string, message: string) {
   if (status === "success") return message || "好了";
   if (status === "needs_confirmation") return message || "请确认";
@@ -127,7 +134,8 @@ export function VoiceAssistantDock({
   onDisconnectVoice,
   isMobileMode = false,
   mobileVisible = true,
-  desktopBottomInset = 14
+  desktopBottomInset = 14,
+  operationStatus
 }: {
   harness: AssistantHarness;
   voiceStatus?: RealtimeConnectionStatus;
@@ -136,6 +144,7 @@ export function VoiceAssistantDock({
   isMobileMode?: boolean;
   mobileVisible?: boolean;
   desktopBottomInset?: number;
+  operationStatus?: VoiceAssistantOperationStatus | null;
 }) {
   const [state, setState] = useState<VoiceAssistantDockState>("disconnected");
   const [muted, setMuted] = useState(false);
@@ -171,6 +180,7 @@ export function VoiceAssistantDock({
 
   const pending = harness.getPendingConfirmation();
   const visualState = muted ? "muted" : pending ? "waiting_confirmation" : state;
+  const visibleOperation = getVisibleVoiceAssistantOperation(operation, operationStatus);
 
   const runCommand = async (command: string) => {
     const input = command.trim();
@@ -290,11 +300,11 @@ export function VoiceAssistantDock({
       </div>
 
       <div
-        className={`voice-assistant-dock__operation is-${operation.phase}`}
+        className={`voice-assistant-dock__operation is-${visibleOperation.phase}`}
         aria-live="polite"
         data-testid="voice-assistant-operation"
       >
-        <span>{getVoiceAssistantOperationText(operation)}</span>
+        <span>{getVoiceAssistantOperationText(visibleOperation)}</span>
       </div>
 
       {voiceEnabled ? (

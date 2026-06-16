@@ -9,7 +9,7 @@ import {
 import { useAuthStore } from "../auth/authStore";
 import { useAppStore } from "../store";
 import { registerBoardActions } from "./boardActions";
-import { AssistantHarness, type AssistantRealtimeAdapter } from "./AssistantHarness";
+import { AssistantHarness, type AssistantOperationEvent, type AssistantRealtimeAdapter } from "./AssistantHarness";
 import { createLocalAssistantAuditAdapter } from "./assistantAudit";
 import { createGuardrailActions } from "./guardrailActions";
 import { WidgetCapabilityBridge, createWidgetCapabilityActions } from "./widgetCapabilityBridge";
@@ -56,6 +56,7 @@ function createContextInput(): ContextSummarizerInput {
 export function createLocalAssistantHarness(options?: {
   capabilityBridge?: WidgetCapabilityBridge;
   realtime?: AssistantRealtimeAdapter;
+  onOperation?: (event: AssistantOperationEvent) => void;
 }): AssistantHarness {
   const registry = new ActionRegistry();
   const capabilityBridge = options?.capabilityBridge ?? new WidgetCapabilityBridge();
@@ -114,6 +115,7 @@ export function createLocalAssistantHarness(options?: {
       getUserId: () => useAuthStore.getState().user?.id,
       getBoardId: () => useAppStore.getState().activeBoardId
     }),
+    onOperation: options?.onOperation,
     getContextInput: createContextInput,
     actionTimeoutMs: 8_000,
     now: () => new Date().toISOString()
