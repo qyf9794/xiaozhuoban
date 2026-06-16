@@ -192,6 +192,8 @@ export class AssistantHarness {
     return {
       source: "shortcut",
       pendingConfirmation: this.pendingConfirmation ?? undefined,
+      boardId: context.boardId,
+      boardName: context.boardName,
       availableWidgets: context.widgets,
       availableDefinitions: input.availableDefinitions ?? context.widgets.map((widget) => ({
         definitionId: widget.definitionId,

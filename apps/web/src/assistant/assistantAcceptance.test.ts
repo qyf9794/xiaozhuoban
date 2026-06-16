@@ -53,6 +53,8 @@ function widget(type: string): WidgetInstance {
 function createAcceptanceHarness(options?: { modelCall?: AssistantToolCall | null; initialWidgetTypes?: string[] }) {
   const definitions = [definition("weather", "天气"), definition("countdown", "倒计时"), definition("note", "便签")];
   let widgets = (options?.initialWidgetTypes ?? ["weather", "countdown", "note"]).map(widget);
+  let boards = [{ id: "board_1", name: "我的桌板" }];
+  let activeBoardId = "board_1";
   const sentResults: AssistantToolResult[] = [];
   const modelInputs: string[] = [];
   const registry = new ActionRegistry();
@@ -75,9 +77,17 @@ function createAcceptanceHarness(options?: { modelCall?: AssistantToolCall | nul
       widgets = widgets.map((item) => (item.id === widgetId ? { ...item, state } : item));
     },
     autoAlignWidgets() {},
-    setActiveBoard() {},
-    addBoard() {},
-    renameBoard() {}
+    setActiveBoard(boardId: string) {
+      activeBoardId = boardId;
+    },
+    addBoard(name?: string) {
+      const id = `board_${boards.length + 1}`;
+      boards = [...boards, { id, name: name?.trim() || `桌板 ${boards.length + 1}` }];
+      activeBoardId = id;
+    },
+    renameBoard(boardId: string, name: string) {
+      boards = boards.map((board) => (board.id === boardId ? { ...board, name } : board));
+    }
   };
   registerBoardActions(registry, adapter);
   createGuardrailActions().forEach((action) => registry.register(action));
@@ -94,8 +104,8 @@ function createAcceptanceHarness(options?: { modelCall?: AssistantToolCall | nul
     }
   };
   const getContextInput = (): ContextSummarizerInput => ({
-    boardId: "board_1",
-    boardName: "我的桌板",
+    boardId: activeBoardId,
+    boardName: boards.find((board) => board.id === activeBoardId)?.name,
     focusedWidgetId: "wi_weather",
     availableDefinitions: definitions.map((item) => ({
       definitionId: item.id,
@@ -130,6 +140,8 @@ function createAcceptanceHarness(options?: { modelCall?: AssistantToolCall | nul
     harness,
     sentResults,
     modelInputs,
+    getBoards: () => boards,
+    getActiveBoard: () => boards.find((board) => board.id === activeBoardId),
     getWidget: (type: string) => widgets.find((item) => item.id === `wi_${type}`)
   };
 }
@@ -172,6 +184,31 @@ describe("stage-one assistant acceptance scenarios", () => {
       remainingSeconds: 600,
       running: true
     });
+  });
+
+  it("creates a named board through shortcut-first Harness without model fallback", async () => {
+    const { harness, modelInputs, getActiveBoard, getBoards } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("新建桌板叫测试桌板");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(getBoards()).toHaveLength(2);
+    expect(getActiveBoard()?.name).toBe("测试桌板");
+    expect(modelInputs).toEqual([]);
+  });
+
+  it("renames the active board through shortcut-first Harness without model fallback", async () => {
+    const { harness, modelInputs, getActiveBoard } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("把当前桌板重命名为工作台");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(getActiveBoard()?.name).toBe("工作台");
+    expect(modelInputs).toEqual([]);
   });
 
   it("adds a countdown widget and starts ten minutes when countdown is absent", async () => {

@@ -263,6 +263,32 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes named board creation without model fallback", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("新建桌板叫测试桌板", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("board.create");
+      expect(result.toolCall.arguments).toEqual({ name: "测试桌板" });
+    }
+  });
+
+  it("routes current board rename with the active board id", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("把当前桌板重命名为工作台", {
+      ...context,
+      boardId: "board_1",
+      boardName: "我的桌板"
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("board.rename");
+      expect(result.toolCall.arguments).toEqual({ boardId: "board_1", name: "工作台" });
+    }
+  });
+
   it("routes weather city commands to the existing weather widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("上海天气", context);

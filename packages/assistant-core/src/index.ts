@@ -103,6 +103,8 @@ export type IntentShortcutResult<TArgs = unknown> = IntentShortcutMatch<TArgs> |
 export interface IntentShortcutContext {
   pendingConfirmation?: ConfirmationRequest;
   source?: AssistantToolSource;
+  boardId?: string;
+  boardName?: string;
   availableWidgets?: CompactWidgetSummary[];
   availableDefinitions?: Array<{
     definitionId: string;
@@ -527,6 +529,26 @@ function inferTvChannelName(input: string) {
   return "";
 }
 
+function cleanBoardName(value: string) {
+  return value
+    .replace(/^(一个|一张|新的|新|空白|的)+/, "")
+    .replace(/(桌板|桌面|面板)$/, "")
+    .trim();
+}
+
+function inferNamedBoard(raw: string) {
+  const quoted = raw.match(/[「“"']([^」”"']+)[」”"']/);
+  if (quoted?.[1]?.trim()) return quoted[1].trim();
+
+  const explicit = raw.match(/(?:名为|命名为|改名为|重命名为|叫做|叫成|叫)\s*([^，。,.]+)/);
+  if (explicit?.[1]?.trim()) return explicit[1].trim();
+
+  const createPrefix = raw.match(/(?:新建|创建|新增|添加)(?:一个|一张)?\s*([^，。,.]*?)(?:桌板|桌面|面板)/);
+  if (createPrefix?.[1]?.trim()) return cleanBoardName(createPrefix[1]);
+
+  return "";
+}
+
 function inferOutOfScopeRequest(input: string):
   | {
       category: "deferred_widget" | "ai_form" | "dynamic_widget_generation" | "complex_planning" | "long_text_rewrite";
@@ -634,6 +656,37 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
           return shortcutMatch("board.auto_align", {}, 0.9, context.source ?? "shortcut", raw);
         }
         return { matched: false, reason: "not_auto_align" };
+      }
+    },
+    {
+      name: "create_board",
+      match(normalized, raw, context) {
+        if (!/(新建|创建|新增|添加).*(桌板|桌面|面板)/.test(normalized)) {
+          return { matched: false, reason: "not_create_board" };
+        }
+        const name = inferNamedBoard(raw);
+        return shortcutMatch("board.create", name ? { name } : {}, 0.88, context.source ?? "shortcut", raw);
+      }
+    },
+    {
+      name: "rename_board",
+      match(normalized, raw, context) {
+        if (
+          !(
+            /(重命名|改名|命名|叫做|叫成).*(桌板|桌面|面板|当前)/.test(normalized) ||
+            /(桌板|桌面|面板|当前).*(重命名|改名|命名|叫做|叫成)/.test(normalized)
+          )
+        ) {
+          return { matched: false, reason: "not_rename_board" };
+        }
+        if (!context.boardId) {
+          return { matched: false, reason: "board_id_missing" };
+        }
+        const name = inferNamedBoard(raw);
+        if (!name) {
+          return { matched: false, reason: "board_name_missing" };
+        }
+        return shortcutMatch("board.rename", { boardId: context.boardId, name }, 0.88, context.source ?? "shortcut", raw);
       }
     },
     {
