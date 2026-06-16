@@ -17,7 +17,8 @@ export type RealtimeConnectionStatus =
   | "connecting"
   | "connected"
   | "failed"
-  | "microphone_denied";
+  | "microphone_denied"
+  | "microphone_unavailable";
 
 export interface OpenAIRealtimeWebRtcAdapterOptions {
   sessionEndpoint?: string;
@@ -29,6 +30,15 @@ export interface OpenAIRealtimeWebRtcAdapterOptions {
 }
 
 type RealtimeEvent = Record<string, unknown>;
+type MicrophonePermissionState = PermissionState | "unsupported" | "error";
+type MicrophoneNavigator = {
+  mediaDevices?: {
+    getUserMedia?: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
+  };
+  permissions?: {
+    query?: (descriptor: { name: PermissionName }) => Promise<{ state: PermissionState }>;
+  };
+};
 type RealtimeClosableResources = {
   dataChannel?: { close: () => void; onclose?: unknown } | null;
   peerConnection?: { close: () => void } | null;
@@ -153,6 +163,27 @@ export function shouldQueueRealtimeEventWhenClosed(event: RealtimeEvent): boolea
   return event.type === "session.update";
 }
 
+export async function getMicrophonePermissionState(
+  navigatorLike: MicrophoneNavigator | undefined
+): Promise<MicrophonePermissionState> {
+  const query = navigatorLike?.permissions?.query;
+  if (!query) return "unsupported";
+  try {
+    const result = await query({ name: "microphone" as PermissionName });
+    return result.state;
+  } catch {
+    return "error";
+  }
+}
+
+export function resolveMicrophoneAccessErrorCode(error: unknown): "MICROPHONE_DENIED" | "MICROPHONE_UNAVAILABLE" {
+  const name = error instanceof Error ? error.name : "";
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+    return "MICROPHONE_UNAVAILABLE";
+  }
+  return "MICROPHONE_DENIED";
+}
+
 export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private peerConnection: RTCPeerConnection | null = null;
   private dataChannel: RTCDataChannel | null = null;
@@ -190,14 +221,30 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.handledFunctionCallIds.clear();
 
     let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
+    const permissionState = await getMicrophonePermissionState(navigator);
+    if (permissionState === "denied") {
       if (!this.isCurrentAttempt(attemptId)) {
         return;
       }
       this.options.onStatusChange?.("microphone_denied");
       throw new Error("MICROPHONE_DENIED");
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      if (!this.isCurrentAttempt(attemptId)) {
+        return;
+      }
+      this.options.onStatusChange?.("microphone_unavailable");
+      throw new Error("MICROPHONE_UNAVAILABLE");
+    }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (error) {
+      if (!this.isCurrentAttempt(attemptId)) {
+        return;
+      }
+      const errorCode = resolveMicrophoneAccessErrorCode(error);
+      this.options.onStatusChange?.(errorCode === "MICROPHONE_UNAVAILABLE" ? "microphone_unavailable" : "microphone_denied");
+      throw new Error(errorCode);
     }
     if (!this.isCurrentAttempt(attemptId)) {
       stream.getTracks().forEach((track) => track.stop());

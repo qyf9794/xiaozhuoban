@@ -99,10 +99,14 @@ describe("VoiceAssistantDock", () => {
     expect(getVoiceAssistantDockStateForRealtimeStatus("connected")).toBe("listening");
     expect(getVoiceAssistantDockStateForRealtimeStatus("failed")).toBe("error");
     expect(getVoiceAssistantDockStateForRealtimeStatus("microphone_denied")).toBe("error");
+    expect(getVoiceAssistantDockStateForRealtimeStatus("microphone_unavailable")).toBe("error");
 
     expect(getVoiceAssistantConnectionMessage("connected")).toBe("语音已连接，可以直接说话。");
     expect(getVoiceAssistantConnectionMessage("microphone_denied")).toBe(
       "麦克风权限被拒绝，请在浏览器地址栏允许麦克风后重试。"
+    );
+    expect(getVoiceAssistantConnectionMessage("microphone_unavailable")).toBe(
+      "没有检测到可用麦克风，或当前浏览器不支持录音。"
     );
   });
 
@@ -112,6 +116,9 @@ describe("VoiceAssistantDock", () => {
     );
     expect(getVoiceAssistantErrorMessage(new Error("MICROPHONE_DENIED"))).toBe(
       "麦克风权限被拒绝，请在浏览器地址栏允许麦克风后重试。"
+    );
+    expect(getVoiceAssistantErrorMessage(new Error("MICROPHONE_UNAVAILABLE"))).toBe(
+      "没有检测到可用麦克风，或当前浏览器不支持录音。"
     );
     expect(getVoiceAssistantErrorMessage(new Error("REALTIME_SDP_FAILED"))).toBe("Realtime 语音通道连接失败。");
     expect(getVoiceAssistantErrorMessage(new Error("custom"))).toBe("custom");

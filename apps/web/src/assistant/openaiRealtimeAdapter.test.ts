@@ -6,8 +6,10 @@ import {
   createRealtimeSessionRequestBody,
   createRealtimeToolResultEvents,
   extractRealtimeSessionErrorCode,
+  getMicrophonePermissionState,
   isCurrentRealtimeConnectAttempt,
   parseRealtimeFunctionCallEvent,
+  resolveMicrophoneAccessErrorCode,
   resolveRealtimePeerStatus,
   shouldQueueRealtimeEventWhenClosed,
   shouldHandleRealtimeFunctionCall,
@@ -153,6 +155,34 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(shouldQueueRealtimeEventWhenClosed({ type: "session.update", session: {} })).toBe(true);
     expect(shouldQueueRealtimeEventWhenClosed({ type: "conversation.item.create", item: {} })).toBe(false);
     expect(shouldQueueRealtimeEventWhenClosed({ type: "response.create" })).toBe(false);
+  });
+
+  it("reads microphone permission state when the browser exposes it", async () => {
+    await expect(
+      getMicrophonePermissionState({
+        permissions: {
+          query: async () => ({ state: "denied" })
+        }
+      })
+    ).resolves.toBe("denied");
+    await expect(getMicrophonePermissionState({})).resolves.toBe("unsupported");
+    await expect(
+      getMicrophonePermissionState({
+        permissions: {
+          query: async () => {
+            throw new Error("permission query failed");
+          }
+        }
+      })
+    ).resolves.toBe("error");
+  });
+
+  it("distinguishes missing microphones from denied microphone access", () => {
+    expect(resolveMicrophoneAccessErrorCode(new DOMException("missing", "NotFoundError"))).toBe(
+      "MICROPHONE_UNAVAILABLE"
+    );
+    expect(resolveMicrophoneAccessErrorCode(new DOMException("denied", "NotAllowedError"))).toBe("MICROPHONE_DENIED");
+    expect(resolveMicrophoneAccessErrorCode(new Error("unknown"))).toBe("MICROPHONE_DENIED");
   });
 
   it("extracts server-side realtime session error codes", () => {
