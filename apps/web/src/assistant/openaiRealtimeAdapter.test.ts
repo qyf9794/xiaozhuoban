@@ -9,6 +9,7 @@ import {
   isCurrentRealtimeConnectAttempt,
   parseRealtimeFunctionCallEvent,
   resolveRealtimePeerStatus,
+  shouldQueueRealtimeEventWhenClosed,
   shouldHandleRealtimeFunctionCall,
   shouldReuseRealtimeConnect
 } from "./openaiRealtimeAdapter";
@@ -148,6 +149,12 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(isCurrentRealtimeConnectAttempt(4, 3)).toBe(false);
   });
 
+  it("queues only reusable realtime session updates while disconnected", () => {
+    expect(shouldQueueRealtimeEventWhenClosed({ type: "session.update", session: {} })).toBe(true);
+    expect(shouldQueueRealtimeEventWhenClosed({ type: "conversation.item.create", item: {} })).toBe(false);
+    expect(shouldQueueRealtimeEventWhenClosed({ type: "response.create" })).toBe(false);
+  });
+
   it("extracts server-side realtime session error codes", () => {
     expect(extractRealtimeSessionErrorCode({ error: "OPENAI_API_KEY_MISSING" })).toBe("OPENAI_API_KEY_MISSING");
     expect(extractRealtimeSessionErrorCode({ error: 500 })).toBe("");
@@ -171,6 +178,17 @@ describe("OpenAI realtime adapter helpers", () => {
       .queuedEvents[0];
     expect(event.type).toBe("session.update");
     expect(event.session.tools[0].name).toBe("board__dot__auto_align");
+  });
+
+  it("does not queue stale tool results before the data channel opens", () => {
+    const adapter = new OpenAIRealtimeWebRtcAdapter();
+
+    adapter.sendToolResult(
+      { id: "call_1", name: "board.auto_align", arguments: {}, source: "realtime" },
+      { status: "success", message: "已整理" }
+    );
+
+    expect((adapter as unknown as { queuedEvents: unknown[] }).queuedEvents).toHaveLength(0);
   });
 
   it("queues compact context instructions before the data channel opens", () => {

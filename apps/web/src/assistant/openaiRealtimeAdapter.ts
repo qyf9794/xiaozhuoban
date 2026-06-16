@@ -149,6 +149,10 @@ export function isCurrentRealtimeConnectAttempt(activeAttemptId: number, attempt
   return activeAttemptId === attemptId;
 }
 
+export function shouldQueueRealtimeEventWhenClosed(event: RealtimeEvent): boolean {
+  return event.type === "session.update";
+}
+
 export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private peerConnection: RTCPeerConnection | null = null;
   private dataChannel: RTCDataChannel | null = null;
@@ -350,15 +354,17 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   }
 
   sendToolResult(call: AssistantToolCall, result: AssistantToolResult): void {
-    createRealtimeToolResultEvents(call, result).forEach((event) => this.sendEvent(event));
+    createRealtimeToolResultEvents(call, result).forEach((event) => this.sendEvent(event, { queueWhenClosed: false }));
   }
 
-  private sendEvent(event: RealtimeEvent): void {
+  private sendEvent(event: RealtimeEvent, options: { queueWhenClosed?: boolean } = {}): void {
     if (this.dataChannel?.readyState === "open") {
       this.dataChannel.send(JSON.stringify(event));
       return;
     }
-    this.queuedEvents.push(event);
+    if (options.queueWhenClosed ?? shouldQueueRealtimeEventWhenClosed(event)) {
+      this.queuedEvents.push(event);
+    }
   }
 
   private flushQueuedEvents(): void {
