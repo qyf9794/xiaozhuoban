@@ -408,7 +408,9 @@ export default async function handler(request: IncomingMessage, response: Server
       } catch {
         // Keep the structured status without leaking raw text.
       }
-      sendJson(response, 502, {
+      sendJson(response, 200, {
+        call: null,
+        selection: null,
         error: "TEXT_TOOL_SELECTION_FAILED",
         model,
         status: selectionResponse.status,
@@ -431,7 +433,9 @@ export default async function handler(request: IncomingMessage, response: Server
       } catch {
         // Keep the structured status without leaking raw text.
       }
-      sendJson(response, 502, {
+      sendJson(response, 200, {
+        call: null,
+        selection,
         error: "TEXT_TOOL_CALL_FAILED",
         model,
         status: toolCallResponse.status,
@@ -445,7 +449,9 @@ export default async function handler(request: IncomingMessage, response: Server
       call: extractToolCall(await toolCallResponse.json(), allowedToolNames)
     });
   } catch (error) {
-    sendJson(response, 500, {
+    sendJson(response, 200, {
+      call: null,
+      selection: null,
       error: "TEXT_TOOL_CALL_UNHANDLED",
       message: error instanceof Error ? error.message : "Unknown realtime text tool-call error"
     });
