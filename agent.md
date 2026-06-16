@@ -186,6 +186,27 @@ The assistant should not attempt these inside the Realtime session during stage 
 
 When users request these, the assistant should give a short refusal or deferral and keep the conversation concise.
 
+## Stage-One Implementation Status
+
+The current stage-one branch implements the assistant foundation but should still be treated as a credentialed-live-test candidate, not a fully rolled-out voice product.
+
+Implemented:
+
+- Shortcut-first local routing.
+- Harness lifecycle, confirmation, cancellation, timeout, target resolution, and audit hooks.
+- Desktop and existing widget state actions for the allowed non-game widgets.
+- Capability bridge for mounted media/widget effects.
+- Stage-one guardrails for games, AI forms, dynamic widget generation, complex planning, and long-text rewriting.
+- Realtime session endpoint and WebRTC adapter following the current OpenAI Realtime documentation.
+- Voice/text dock running through the same Harness with bounded command history.
+- Local and Supabase audit logging without raw audio.
+
+Still limited:
+
+- Real live Realtime validation requires `OPENAI_API_KEY`, Supabase credentials, and microphone permission.
+- TV/music/recorder/dial-clock UI components still need to register their mounted capabilities before all media commands work live.
+- Dynamic Codex-backed widget generation remains a separate stage-two project.
+
 ## First-Stage Tool Scope
 
 ### Board and Widget Shell
