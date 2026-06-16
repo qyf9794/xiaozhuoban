@@ -11,7 +11,6 @@ import { useAppStore } from "../store";
 import { registerBoardActions } from "./boardActions";
 import { AssistantHarness, type AssistantOperationEvent, type AssistantRealtimeAdapter } from "./AssistantHarness";
 import { createLocalAssistantAuditAdapter } from "./assistantAudit";
-import { createGuardrailActions } from "./guardrailActions";
 import { WidgetCapabilityBridge, createWidgetCapabilityActions } from "./widgetCapabilityBridge";
 import { createWidgetStateActions } from "./widgetStateActions";
 
@@ -105,7 +104,6 @@ export function createLocalAssistantHarness(options?: {
   };
 
   registerBoardActions(registry, adapter);
-  createGuardrailActions().forEach((action) => registry.register(action));
   createWidgetStateActions(adapter).forEach((action) => registry.register(action));
   createWidgetCapabilityActions(adapter, capabilityBridge).forEach((action) => registry.register(action));
 

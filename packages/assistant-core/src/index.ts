@@ -578,38 +578,6 @@ function findBoardByName(context: IntentShortcutContext, rawName: string) {
   );
 }
 
-function inferOutOfScopeRequest(input: string):
-  | {
-      category: "deferred_widget" | "ai_form" | "dynamic_widget_generation" | "complex_planning" | "long_text_rewrite";
-      targetType?: string;
-    }
-  | null {
-  const compact = input.replace(/\s+/g, "");
-
-  if (/五子棋|gomoku/i.test(compact) && /(落子|下棋|接受|邀请|开局|悔棋|加入|对战)/.test(compact)) {
-    return { category: "deferred_widget", targetType: "gomoku" };
-  }
-  if (/大富翁|monopoly/i.test(compact) && /(掷骰|骰|买地|开局|邀请|加入|行动)/.test(compact)) {
-    return { category: "deferred_widget", targetType: "monopoly" };
-  }
-  if (/掼蛋|guandan/i.test(compact) && /(出牌|过牌|贡|还牌|接受|邀请|开局)/.test(compact)) {
-    return { category: "deferred_widget", targetType: "guandan" };
-  }
-  if (/(ai表单|AI表单|表单)/.test(input) && /(提交|填写|生成|运行|调用)/.test(input)) {
-    return { category: "ai_form", targetType: "aiForm" };
-  }
-  if (/(生成|创建|做|定制|开发).*(新)?(小工具|工具|widget)/i.test(input)) {
-    return { category: "dynamic_widget_generation" };
-  }
-  if (/(重写|改写|润色|扩写|总结).*(长文|文章|文档|这篇|全文)/.test(input)) {
-    return { category: "long_text_rewrite" };
-  }
-  if (/(复杂规划|长期规划|旅行规划|项目计划|多步骤计划|帮我规划.*(一天|一周|项目|旅行))/.test(input)) {
-    return { category: "complex_planning" };
-  }
-  return null;
-}
-
 export class IntentShortcutRouter {
   constructor(private readonly rules: IntentShortcutRule[]) {}
 
@@ -662,20 +630,6 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
           );
         }
         return { matched: false, reason: "not_cancel" };
-      }
-    },
-    {
-      name: "out_of_scope",
-      match(_normalized, raw, context) {
-        const request = inferOutOfScopeRequest(raw);
-        if (!request) return { matched: false, reason: "not_out_of_scope" };
-        return shortcutMatch(
-          "assistant.out_of_scope",
-          { ...request, request: raw },
-          0.96,
-          context.source ?? "shortcut",
-          raw
-        );
       }
     },
     {

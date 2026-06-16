@@ -44,22 +44,21 @@ type InitialToolMetadata = {
 
 export const XIAOZHUOBAN_REALTIME_INSTRUCTIONS = [
   "# Role and Objective",
-  "你是小桌板里的语音助手，只能控制小桌板 Web 桌面和本阶段已开放的小工具能力。",
+  "你是小桌板里的语音助手，负责控制小桌板 Web 桌面、已加载小工具和已注册工具。",
   "",
   "# Tool Policy",
   "- 优先等待本地 AssistantHarness 的 shortcut 结果；你只在工具已注册时调用工具。",
-  "- 初始阶段只能做桌板级操作和目标选择，不要猜测未加载小工具的细节参数。",
+  "- 可以调用当前工具列表里的桌板、小工具状态、媒体、游戏和表单工具；工具缺失时再简短说明缺少对应能力。",
   "- 调用小工具细节前，先选择或确认目标小工具上下文。",
   "- 删除、覆盖、批量操作必须请求确认。",
   "- 不控制 macOS、Windows、浏览器外部桌面或用户本地系统。",
-  "- 不生成动态小工具，不调用 Codex，不做复杂规划，不改写长文本。",
-  "- 游戏小工具和 AI 表单细节能力在本阶段不可用。",
+  "- 不调用 Codex 或浏览器外部系统；动态生成、复杂规划和长文本改写需要对应工具注册后才执行。",
   "",
   "# Context",
   "你只会收到摘要状态。不要要求完整桌面状态，也不要输出完整 widget payload。",
   "",
   "# Voice Style",
-  "回复要短，通常一句话。成功时说“好了”或简短结果；不支持时一句话说明这一阶段不可用。"
+  "回复要短，通常一句话。成功时说“好了”或简短结果；不支持时说明缺少哪个工具或目标。"
 ].join("\n");
 
 function formatRealtimeContextList(items: string[], fallback: string) {
@@ -193,24 +192,8 @@ const initialToolMetadata: InitialToolMetadata[] = [
     parameters: objectSchema({ boardId: stringSchema(), name: stringSchema() }, ["boardId", "name"])
   },
   {
-    name: "assistant.out_of_scope",
-    description: "Return a short stage-one out-of-scope response without planning or server tool calls.",
-    scope: "desktop",
-    parameters: objectSchema(
-      {
-        category: {
-          type: "string",
-          enum: ["deferred_widget", "ai_form", "dynamic_widget_generation", "complex_planning", "long_text_rewrite"]
-        },
-        targetType: stringSchema(),
-        request: stringSchema()
-      },
-      ["category"]
-    )
-  },
-  {
     name: "gomoku.play",
-    description: "Deferred game action; never exposed in stage one.",
+    description: "Play a Gomoku move when a registered game action is available.",
     scope: "deferred",
     parameters: objectSchema({})
   }

@@ -12,7 +12,6 @@ import {
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { AssistantHarness, type AssistantRealtimeAdapter } from "./AssistantHarness";
 import { registerBoardActions } from "./boardActions";
-import { createGuardrailActions } from "./guardrailActions";
 import { createWidgetStateActions } from "./widgetStateActions";
 
 const NOW = "2026-06-16T12:00:00.000Z";
@@ -90,7 +89,6 @@ function createAcceptanceHarness(options?: { modelCall?: AssistantToolCall | nul
     }
   };
   registerBoardActions(registry, adapter);
-  createGuardrailActions().forEach((action) => registry.register(action));
   createWidgetStateActions(adapter).forEach((action) => registry.register(action));
 
   const realtime: AssistantRealtimeAdapter = {
@@ -260,15 +258,14 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(getWidget("note")).toBeTruthy();
   });
 
-  it("keeps out-of-scope requests short and local", async () => {
+  it("does not block previously deferred requests before model fallback", async () => {
     const { harness, modelInputs } = createAcceptanceHarness();
     await harness.initialize();
 
     const response = await harness.handleUserInput("帮我生成一个新工具");
 
-    expect(response.route).toBe("shortcut");
-    expect(response.result).toMatchObject({ status: "failed", errorCode: "OUT_OF_SCOPE" });
-    expect(response.result.message.length).toBeLessThan(24);
-    expect(modelInputs).toEqual([]);
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("needs_clarification");
+    expect(modelInputs).toEqual(["帮我生成一个新工具"]);
   });
 });

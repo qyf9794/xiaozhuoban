@@ -28,7 +28,7 @@ describe("realtime session config", () => {
     expect(names).toContain("widget.focus");
     expect(names).toContain("widget.fullscreen_focus");
     expect(names).toContain("board.auto_align");
-    expect(names).toContain("assistant.out_of_scope");
+    expect(names).not.toContain("assistant.out_of_scope");
     expect(names).not.toContain("gomoku.play");
     expect(names.some((name) => name.includes("note.") || name.includes("weather.") || name.includes("tv."))).toBe(false);
     expect(specs.every((tool) => tool.scope === "desktop")).toBe(true);
@@ -65,7 +65,7 @@ describe("realtime session config", () => {
     });
     expect(payload.session.tool_choice).toBe("auto");
     expect(payload.session.parallel_tool_calls).toBe(true);
-    expect(payload.session.tools.map((tool) => tool.name)).toContain("assistant__dot__out_of_scope");
+    expect(payload.session.tools.map((tool) => tool.name)).not.toContain("assistant__dot__out_of_scope");
   });
 
   it("allows semantic VAD eagerness to be tuned for cutoff testing", () => {
@@ -82,8 +82,8 @@ describe("realtime session config", () => {
   });
 
   it("keeps instructions short-response and xiaozhuoban-only", () => {
-    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("只能控制小桌板");
-    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("不生成动态小工具");
+    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("控制小桌板");
+    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("已注册工具");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("回复要短");
   });
 

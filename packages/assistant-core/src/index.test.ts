@@ -386,29 +386,22 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
-  it("routes deferred game commands to a local out-of-scope result", () => {
+  it("does not locally block deferred game commands before model fallback", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("大富翁掷骰", context);
 
-    expect(result.matched).toBe(true);
-    if (result.matched) {
-      expect(result.toolCall.name).toBe("assistant.out_of_scope");
-      expect(result.toolCall.arguments).toMatchObject({ category: "deferred_widget", targetType: "monopoly" });
-    }
+    expect(result).toEqual({ matched: false, reason: "no_shortcut_match" });
   });
 
-  it("routes AI form, dynamic widget, and long text requests out of scope", () => {
+  it("does not locally block AI form, dynamic widget, or long text requests", () => {
     const router = createDefaultIntentShortcutRouter();
     const aiForm = router.route("提交这个 AI 表单", context);
     const dynamicWidget = router.route("帮我生成一个新工具", context);
     const longText = router.route("帮我重写这篇长文", context);
 
-    expect(aiForm.matched && aiForm.toolCall.name).toBe("assistant.out_of_scope");
-    expect(dynamicWidget.matched && dynamicWidget.toolCall.name).toBe("assistant.out_of_scope");
-    expect(longText.matched && longText.toolCall.name).toBe("assistant.out_of_scope");
-    if (aiForm.matched) expect(aiForm.toolCall.arguments).toMatchObject({ category: "ai_form" });
-    if (dynamicWidget.matched) expect(dynamicWidget.toolCall.arguments).toMatchObject({ category: "dynamic_widget_generation" });
-    if (longText.matched) expect(longText.toolCall.arguments).toMatchObject({ category: "long_text_rewrite" });
+    expect(aiForm).toEqual({ matched: false, reason: "no_shortcut_match" });
+    expect(dynamicWidget).toEqual({ matched: false, reason: "no_shortcut_match" });
+    expect(longText).toEqual({ matched: false, reason: "no_shortcut_match" });
   });
 
   it("routes open widget commands to focus when the widget exists", () => {
