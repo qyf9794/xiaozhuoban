@@ -19,6 +19,7 @@ export type AssistantRoute = "shortcut" | "model" | "function_call";
 
 export interface AssistantRealtimeAdapter {
   updateTools: (tools: AssistantToolSpec[]) => Promise<void> | void;
+  updateContext?: (context: CompactAssistantContext) => Promise<void> | void;
   sendToolResult: (call: AssistantToolCall, result: AssistantToolResult) => Promise<void> | void;
   requestToolCall?: (
     input: string,
@@ -102,11 +103,13 @@ export class AssistantHarness {
   async initialize(): Promise<void> {
     this.currentTools = this.options.toolScopeManager.getInitialTools();
     await this.options.realtime.updateTools(this.currentTools);
+    await this.updateRealtimeContext();
   }
 
   async enterWidgetContext(widgetType: string): Promise<void> {
     this.currentTools = this.options.toolScopeManager.getWidgetDetailTools(widgetType);
     await this.options.realtime.updateTools(this.currentTools);
+    await this.updateRealtimeContext();
   }
 
   getPendingConfirmation(): ConfirmationRequest | null {
@@ -151,6 +154,7 @@ export class AssistantHarness {
   ): Promise<AssistantHarnessResponse> {
     const result = await this.executeCall(call);
     await this.options.realtime.sendToolResult(call, result);
+    await this.updateRealtimeContext();
     await this.audit({ route, call, result, durationMs: Date.now() - startedAt });
     return { route, call, result };
   }
@@ -333,6 +337,10 @@ export class AssistantHarness {
 
   private sameToolList(left: AssistantToolSpec[], right: AssistantToolSpec[]): boolean {
     return left.length === right.length && left.every((tool, index) => tool.name === right[index]?.name);
+  }
+
+  private async updateRealtimeContext(): Promise<void> {
+    await this.options.realtime.updateContext?.(this.getCurrentContext());
   }
 
   private async audit(event: AssistantAuditEvent): Promise<void> {

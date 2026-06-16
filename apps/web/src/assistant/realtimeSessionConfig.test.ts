@@ -5,6 +5,7 @@ import {
   clampRealtimeClientSecretTtl,
   createInitialRealtimeToolSpecs,
   createInitialRealtimeTools,
+  createRealtimeContextInstructions,
   createRealtimeClientSecretPayload
 } from "./realtimeSessionConfig";
 
@@ -60,5 +61,39 @@ describe("realtime session config", () => {
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("只能控制小桌板");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("不生成动态小工具");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("回复要短");
+  });
+
+  it("appends compact board context for Realtime session updates", () => {
+    const instructions = createRealtimeContextInstructions({
+      boardId: "board_1",
+      boardName: "我的桌板",
+      availableDefinitions: [{ definitionId: "wd_music", type: "music", name: "音乐" }],
+      widgetCountsByType: { tv: 1 },
+      widgets: [
+        {
+          widgetId: "wi_tv",
+          definitionId: "wd_tv",
+          type: "tv",
+          name: "电视",
+          order: 1,
+          summary: "CCTV1",
+          focused: true
+        }
+      ],
+      focusedWidget: {
+        widgetId: "wi_tv",
+        definitionId: "wd_tv",
+        type: "tv",
+        name: "电视",
+        order: 1,
+        summary: "CCTV1",
+        focused: true
+      }
+    });
+
+    expect(instructions).toContain("Current Xiaozhuoban Context");
+    expect(instructions).toContain("board: 我的桌板");
+    expect(instructions).toContain("电视(tv) widgetId=wi_tv");
+    expect(instructions).toContain("音乐(music) definitionId=wd_music");
   });
 });

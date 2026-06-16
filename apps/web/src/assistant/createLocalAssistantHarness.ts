@@ -17,6 +17,7 @@ import { createWidgetStateActions } from "./widgetStateActions";
 
 const noopRealtimeAdapter: AssistantRealtimeAdapter = {
   updateTools() {},
+  updateContext() {},
   sendToolResult() {},
   requestToolCall() {
     return null;

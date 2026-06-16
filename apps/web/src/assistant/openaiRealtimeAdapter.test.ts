@@ -88,4 +88,29 @@ describe("OpenAI realtime adapter helpers", () => {
     expect((adapter as unknown as { queuedEvents: unknown[] }).queuedEvents).toHaveLength(1);
     expect((adapter as unknown as { queuedEvents: Array<{ type: string }> }).queuedEvents[0].type).toBe("session.update");
   });
+
+  it("queues compact context instructions before the data channel opens", () => {
+    const adapter = new OpenAIRealtimeWebRtcAdapter();
+
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "我的桌板",
+      availableDefinitions: [{ definitionId: "wd_music", type: "music", name: "音乐" }],
+      widgetCountsByType: { tv: 1 },
+      widgets: [
+        {
+          widgetId: "wi_tv",
+          definitionId: "wd_tv",
+          type: "tv",
+          name: "电视",
+          order: 1,
+          summary: "CCTV1"
+        }
+      ]
+    });
+
+    const event = (adapter as unknown as { queuedEvents: Array<{ session: { instructions: string } }> }).queuedEvents[0];
+    expect(event.session.instructions).toContain("board: 我的桌板");
+    expect(event.session.instructions).toContain("音乐(music) definitionId=wd_music");
+  });
 });

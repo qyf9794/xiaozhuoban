@@ -1,6 +1,15 @@
-import type { AssistantToolCall, AssistantToolResult, AssistantToolSpec } from "@xiaozhuoban/assistant-core";
+import type {
+  AssistantToolCall,
+  AssistantToolResult,
+  AssistantToolSpec,
+  CompactAssistantContext
+} from "@xiaozhuoban/assistant-core";
 import type { AssistantRealtimeAdapter } from "./AssistantHarness";
-import { XIAOZHUOBAN_REALTIME_MODEL, serializeAssistantToolForRealtime } from "./realtimeSessionConfig";
+import {
+  XIAOZHUOBAN_REALTIME_MODEL,
+  createRealtimeContextInstructions,
+  serializeAssistantToolForRealtime
+} from "./realtimeSessionConfig";
 
 export type RealtimeConnectionStatus =
   | "disconnected"
@@ -107,6 +116,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private mediaStream: MediaStream | null = null;
   private queuedEvents: RealtimeEvent[] = [];
   private currentTools: AssistantToolSpec[] = [];
+  private currentContext: CompactAssistantContext | null = null;
 
   constructor(private readonly options: OpenAIRealtimeWebRtcAdapterOptions = {}) {}
 
@@ -163,6 +173,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       if (this.currentTools.length > 0) {
         void this.updateTools(this.currentTools);
       }
+      if (this.currentContext) {
+        void this.updateContext(this.currentContext);
+      }
       this.options.onStatusChange?.("connected");
     };
     dataChannel.onmessage = (event) => {
@@ -214,6 +227,16 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       session: {
         tools: tools.map((tool) => serializeAssistantToolForRealtime(tool)),
         tool_choice: "auto"
+      }
+    });
+  }
+
+  updateContext(context: CompactAssistantContext): void {
+    this.currentContext = context;
+    this.sendEvent({
+      type: "session.update",
+      session: {
+        instructions: createRealtimeContextInstructions(context)
       }
     });
   }

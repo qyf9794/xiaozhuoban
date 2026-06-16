@@ -569,6 +569,10 @@ describe("ContextSummarizer", () => {
       boardName: "我的桌板",
       focusedWidgetId: "wi_note",
       recentWidgetIds: ["wi_clipboard"],
+      availableDefinitions: [
+        { definitionId: "wd_note", type: "note", name: "便签" },
+        { definitionId: "wd_music", type: "music", name: "音乐" }
+      ],
       pendingConfirmation: {
         id: "confirm_1",
         actionName: "widget.remove",
@@ -602,6 +606,10 @@ describe("ContextSummarizer", () => {
     });
 
     const serialized = JSON.stringify(result);
+    expect(result.availableDefinitions).toEqual([
+      { definitionId: "wd_note", type: "note", name: "便签" },
+      { definitionId: "wd_music", type: "music", name: "音乐" }
+    ]);
     expect(result.widgetCountsByType).toEqual({ note: 1, clipboard: 1 });
     expect(result.focusedWidget?.widgetId).toBe("wi_note");
     expect(result.pendingConfirmation).toEqual({

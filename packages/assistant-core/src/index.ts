@@ -132,6 +132,11 @@ export interface CompactWidgetSummary {
 export interface CompactAssistantContext {
   boardId?: string;
   boardName?: string;
+  availableDefinitions?: Array<{
+    definitionId: string;
+    type: string;
+    name: string;
+  }>;
   widgetCountsByType: Record<string, number>;
   widgets: CompactWidgetSummary[];
   focusedWidget?: CompactWidgetSummary;
@@ -402,6 +407,7 @@ export class ContextSummarizer {
     return {
       boardId: input.boardId,
       boardName: input.boardName,
+      availableDefinitions: input.availableDefinitions,
       widgetCountsByType,
       widgets,
       focusedWidget,

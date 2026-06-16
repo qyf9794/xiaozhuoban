@@ -2,6 +2,7 @@ import {
   ToolScopeManager,
   createPassthroughSchema,
   type AssistantParameterSchema,
+  type CompactAssistantContext,
   type AssistantToolScopeKind,
   type AssistantToolSpec
 } from "@xiaozhuoban/assistant-core";
@@ -58,6 +59,48 @@ export const XIAOZHUOBAN_REALTIME_INSTRUCTIONS = [
   "# Voice Style",
   "回复要短，通常一句话。成功时说“好了”或简短结果；不支持时一句话说明这一阶段不可用。"
 ].join("\n");
+
+function formatRealtimeContextList(items: string[], fallback: string) {
+  return items.length > 0 ? items.join("\n") : fallback;
+}
+
+export function createRealtimeContextInstructions(context?: CompactAssistantContext): string {
+  if (!context) return XIAOZHUOBAN_REALTIME_INSTRUCTIONS;
+
+  const boardName = context.boardName ?? context.boardId ?? "当前桌板";
+  const focused = context.focusedWidget
+    ? `${context.focusedWidget.name}(${context.focusedWidget.type}, widgetId=${context.focusedWidget.widgetId})`
+    : "无";
+  const widgets = formatRealtimeContextList(
+    context.widgets.map((widget) => {
+      const flags = [widget.focused ? "focused" : "", widget.recent ? "recent" : ""].filter(Boolean).join(",");
+      return `- ${widget.name}(${widget.type}) widgetId=${widget.widgetId} definitionId=${widget.definitionId} summary=${widget.summary}${flags ? ` flags=${flags}` : ""}`;
+    }),
+    "- 当前桌板没有已加载小工具"
+  );
+  const definitions = formatRealtimeContextList(
+    (context.availableDefinitions ?? []).map(
+      (definition) => `- ${definition.name}(${definition.type}) definitionId=${definition.definitionId}`
+    ),
+    "- 没有可添加组件定义摘要"
+  );
+  const pending = context.pendingConfirmation
+    ? `${context.pendingConfirmation.actionName}: ${context.pendingConfirmation.message}`
+    : "无";
+
+  return [
+    XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
+    "",
+    "# Current Xiaozhuoban Context",
+    `- board: ${boardName}`,
+    `- focusedWidget: ${focused}`,
+    `- pendingConfirmation: ${pending}`,
+    "- loadedWidgets:",
+    widgets,
+    "- availableDefinitions:",
+    definitions
+  ].join("\n");
+}
 
 const anyObjectSchema = createPassthroughSchema<Record<string, unknown>>((value): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object"
@@ -227,7 +270,7 @@ export function createRealtimeClientSecretPayload(options: RealtimeSessionOption
     session: {
       type: "realtime",
       model: XIAOZHUOBAN_REALTIME_MODEL,
-      instructions: XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
+      instructions: createRealtimeContextInstructions(),
       reasoning: {
         effort: options.reasoningEffort ?? "low"
       },

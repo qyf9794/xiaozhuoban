@@ -9,6 +9,7 @@ import {
   type AssistantToolCall,
   type AssistantToolResult,
   type AssistantToolSpec,
+  type CompactAssistantContext,
   type ContextSummarizerInput
 } from "@xiaozhuoban/assistant-core";
 import { AssistantHarness, type AssistantAuditEvent, type AssistantRealtimeAdapter } from "./AssistantHarness";
@@ -102,11 +103,15 @@ function createHarness(options?: {
 }) {
   const registryState = options?.registryFactory?.() ?? createRegistry();
   const toolUpdates: string[][] = [];
+  const contextUpdates: CompactAssistantContext[] = [];
   const sentResults: AssistantToolResult[] = [];
   const auditEvents: AssistantAuditEvent[] = [];
   const realtime: AssistantRealtimeAdapter = {
     updateTools(tools) {
       toolUpdates.push(tools.map((tool) => tool.name));
+    },
+    updateContext(context) {
+      contextUpdates.push(context);
     },
     sendToolResult(_call, result) {
       sentResults.push(result);
@@ -131,16 +136,20 @@ function createHarness(options?: {
     actionTimeoutMs: options?.actionTimeoutMs ?? 500,
     now: () => "2026-06-16T00:00:00.000Z"
   });
-  return { harness, toolUpdates, sentResults, auditEvents, executed: registryState.executed };
+  return { harness, toolUpdates, contextUpdates, sentResults, auditEvents, executed: registryState.executed };
 }
 
 describe("AssistantHarness", () => {
   it("initializes with desktop-level tools", async () => {
-    const { harness, toolUpdates } = createHarness();
+    const { harness, toolUpdates, contextUpdates } = createHarness();
 
     await harness.initialize();
 
     expect(toolUpdates).toEqual([["board.auto_align", "widget.focus", "widget.remove"]]);
+    expect(contextUpdates[0]).toMatchObject({
+      boardName: "我的桌板",
+      availableDefinitions: [{ definitionId: "wd_tv" }, { definitionId: "wd_note" }, { definitionId: "wd_music" }]
+    });
   });
 
   it("updates tools when entering a widget context", async () => {
