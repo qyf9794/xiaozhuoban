@@ -13,6 +13,7 @@ cp apps/web/.env.example apps/web/.env.local
 并填写：
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
+- `OPENAI_API_KEY`（仅服务端使用，不要添加 `VITE_` 前缀）
 
 如果你使用 `git worktree`，忽略文件不会自动带过去。仓库提供了自动同步脚本：
 ```bash

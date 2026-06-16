@@ -1,0 +1,62 @@
+import { describe, expect, it } from "vitest";
+import {
+  XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
+  XIAOZHUOBAN_REALTIME_MODEL,
+  clampRealtimeClientSecretTtl,
+  createInitialRealtimeToolSpecs,
+  createInitialRealtimeTools,
+  createRealtimeClientSecretPayload
+} from "./realtimeSessionConfig";
+
+describe("realtime session config", () => {
+  it("clamps client secret TTL to a bounded short-lived range", () => {
+    expect(clampRealtimeClientSecretTtl(undefined)).toBe(600);
+    expect(clampRealtimeClientSecretTtl(2)).toBe(10);
+    expect(clampRealtimeClientSecretTtl(999_999)).toBe(7200);
+    expect(clampRealtimeClientSecretTtl(30.8)).toBe(30);
+  });
+
+  it("creates only desktop-level initial tool specs", () => {
+    const specs = createInitialRealtimeToolSpecs();
+    const names = specs.map((tool) => tool.name);
+
+    expect(names).toContain("board.add_widget");
+    expect(names).toContain("board.auto_align");
+    expect(names).toContain("assistant.out_of_scope");
+    expect(names).not.toContain("gomoku.play");
+    expect(names.some((name) => name.includes("note.") || name.includes("weather.") || name.includes("tv."))).toBe(false);
+    expect(specs.every((tool) => tool.scope === "desktop")).toBe(true);
+  });
+
+  it("serializes initial Realtime tools as function tool schemas", () => {
+    const tools = createInitialRealtimeTools();
+    const addWidget = tools.find((tool) => tool.name === "board.add_widget");
+
+    expect(tools.every((tool) => tool.type === "function")).toBe(true);
+    expect(addWidget?.parameters).toMatchObject({
+      type: "object",
+      required: ["definitionId"],
+      additionalProperties: false
+    });
+  });
+
+  it("builds an official-doc-aligned Realtime client secret payload", () => {
+    const payload = createRealtimeClientSecretPayload({ ttlSeconds: 120, reasoningEffort: "minimal" });
+
+    expect(payload.expires_after).toEqual({ anchor: "created_at", seconds: 120 });
+    expect(payload.session.model).toBe(XIAOZHUOBAN_REALTIME_MODEL);
+    expect(payload.session.type).toBe("realtime");
+    expect(payload.session.reasoning.effort).toBe("minimal");
+    expect(payload.session.output_modalities).toEqual(["audio"]);
+    expect(payload.session.audio.output.voice).toBe("marin");
+    expect(payload.session.tool_choice).toBe("auto");
+    expect(payload.session.parallel_tool_calls).toBe(false);
+    expect(payload.session.tools.map((tool) => tool.name)).toContain("assistant.out_of_scope");
+  });
+
+  it("keeps instructions short-response and xiaozhuoban-only", () => {
+    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("只能控制小桌板");
+    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("不生成动态小工具");
+    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("回复要短");
+  });
+});
