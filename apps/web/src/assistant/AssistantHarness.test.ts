@@ -207,6 +207,39 @@ describe("AssistantHarness", () => {
     expect(executed).toEqual(["widget.focus:none"]);
   });
 
+  it("syncs realtime tools to a focused widget after successful focus", async () => {
+    const { harness, toolUpdates } = createHarness({
+      modelCall: {
+        id: "model_1",
+        name: "widget.focus",
+        arguments: { widgetId: "wi_tv" },
+        source: "realtime"
+      }
+    });
+    await harness.initialize();
+
+    await harness.handleUserInput("聚焦电视");
+
+    expect(toolUpdates).toEqual([
+      ["board.auto_align", "widget.focus", "widget.remove"],
+      ["board.auto_align", "widget.focus", "widget.remove", "tv.play"]
+    ]);
+  });
+
+  it("syncs realtime tools to the target widget type after detail action success", async () => {
+    const { harness, toolUpdates } = createHarness();
+    await harness.initialize();
+
+    await harness.handleFunctionCall({
+      id: "call_1",
+      name: "note.append",
+      arguments: { targetText: "最近的便签", text: "补充内容" },
+      source: "test"
+    });
+
+    expect(toolUpdates[1]).toEqual(["board.auto_align", "widget.focus", "widget.remove", "note.append"]);
+  });
+
   it("returns clarification when no shortcut or model call exists", async () => {
     const { harness } = createHarness({ modelCall: null });
     await harness.initialize();

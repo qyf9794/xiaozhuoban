@@ -204,7 +204,9 @@ export class AssistantHarness {
       };
     }
 
-    return this.executeRegistryCall(call, target.target);
+    const result = await this.executeRegistryCall(call, target.target);
+    await this.syncWidgetDetailToolsAfterSuccess(call, spec, target.target, result);
+    return result;
   }
 
   private resolveTargetIfNeeded(
@@ -295,6 +297,40 @@ export class AssistantHarness {
       return { status: "timed_out", message: "工具执行超时", errorCode: "ACTION_TIMEOUT" };
     }
     return result;
+  }
+
+  private async syncWidgetDetailToolsAfterSuccess(
+    call: AssistantToolCall,
+    spec: AssistantToolSpec,
+    target: ResolvedWidgetTarget | undefined,
+    result: AssistantToolResult
+  ): Promise<void> {
+    if (result.status !== "success" || call.name === "widget.remove") {
+      return;
+    }
+
+    const widgetType = spec.widgetType ?? target?.type ?? this.getWidgetTypeFromCallArguments(call.arguments);
+    if (!widgetType) {
+      return;
+    }
+
+    const nextTools = this.options.toolScopeManager.getWidgetDetailTools(widgetType);
+    if (this.sameToolList(nextTools, this.currentTools)) {
+      return;
+    }
+    this.currentTools = nextTools;
+    await this.options.realtime.updateTools(this.currentTools);
+  }
+
+  private getWidgetTypeFromCallArguments(args: unknown): string | undefined {
+    if (!isRecord(args) || typeof args.widgetId !== "string") {
+      return undefined;
+    }
+    return this.getCurrentContext().widgets.find((widget) => widget.widgetId === args.widgetId)?.type;
+  }
+
+  private sameToolList(left: AssistantToolSpec[], right: AssistantToolSpec[]): boolean {
+    return left.length === right.length && left.every((tool, index) => tool.name === right[index]?.name);
   }
 
   private async audit(event: AssistantAuditEvent): Promise<void> {
