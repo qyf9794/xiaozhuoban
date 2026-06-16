@@ -106,6 +106,7 @@ describe("widget state assistant actions", () => {
 
     expect(names).toContain("note.write");
     expect(names).toContain("weather.set_city");
+    expect(names).toContain("todo.complete_item");
     expect(names).toContain("clipboard.clear");
     expect(names.some((name) => name.includes("gomoku") || name.includes("monopoly") || name.includes("guandan"))).toBe(false);
     expect(names.some((name) => name.includes("ai"))).toBe(false);
@@ -163,6 +164,40 @@ describe("widget state assistant actions", () => {
 
     expect(result.status).toBe("success");
     expect(getWidget("todo")?.state.items).toMatchObject([{ text: "交报告", dueAt: "2026-06-17T15:00:00.000Z" }]);
+  });
+
+  it("completes a matching todo item by text", async () => {
+    const { store, getWidget } = createStore();
+    const registry = createRegistry(store);
+    await store.updateWidgetState("wi_todo", {
+      items: [
+        { id: "todo_1", text: "买牛奶" },
+        { id: "todo_2", text: "交报告" }
+      ]
+    });
+
+    const result = await registry.execute(
+      { id: "call_1", name: "todo.complete_item", arguments: { text: "买牛奶" }, source: "test" },
+      { target: targetFor("todo"), now: () => NOW }
+    );
+
+    expect(result).toMatchObject({ status: "success", message: "已完成待办" });
+    expect(getWidget("todo")?.state.items).toEqual([{ id: "todo_2", text: "交报告" }]);
+  });
+
+  it("keeps todo items unchanged when completion text does not match", async () => {
+    const { store, getWidget } = createStore();
+    const registry = createRegistry(store);
+    const items = [{ id: "todo_1", text: "买牛奶" }];
+    await store.updateWidgetState("wi_todo", { items });
+
+    const result = await registry.execute(
+      { id: "call_1", name: "todo.complete_item", arguments: { text: "不存在" }, source: "test" },
+      { target: targetFor("todo"), now: () => NOW }
+    );
+
+    expect(result).toMatchObject({ status: "failed", errorCode: "TODO_ITEM_NOT_FOUND" });
+    expect(getWidget("todo")?.state.items).toEqual(items);
   });
 
   it("sets and starts a countdown", async () => {

@@ -15,6 +15,7 @@ export interface WidgetStateActionStore {
 
 type NoteWriteArgs = { content: string; mode?: "replace" | "append" };
 type TodoAddArgs = { text: string; dueAt?: string };
+type TodoCompleteArgs = { text: string };
 type CountdownSetArgs = { hours?: number; minutes?: number; seconds?: number; totalSeconds?: number; start?: boolean };
 type WeatherCityArgs = { city?: string; cityCode?: string };
 type CalculatorSetArgs = { display: string | number };
@@ -119,6 +120,8 @@ const todoAddSchema = parseWith<TodoAddArgs>(
   (value): value is TodoAddArgs =>
     isRecord(value) && hasString(value, "text") && (value.dueAt === undefined || typeof value.dueAt === "string")
 );
+
+const todoCompleteSchema = parseWith<TodoCompleteArgs>((value): value is TodoCompleteArgs => isRecord(value) && hasString(value, "text"));
 
 const countdownSetSchema = parseWith<CountdownSetArgs>(
   (value): value is CountdownSetArgs =>
@@ -261,6 +264,16 @@ function normalizeTodoItems(raw: unknown): TodoStateItem[] {
     .filter((item): item is TodoStateItem => item !== null);
 }
 
+function findTodoItemByText(items: TodoStateItem[], text: string) {
+  const query = text.trim();
+  if (!query) return null;
+  return (
+    items.find((item) => item.text.trim() === query) ??
+    items.find((item) => item.text.includes(query) || query.includes(item.text)) ??
+    null
+  );
+}
+
 function normalizeClipboardRecords(raw: unknown): ClipboardStateItem[] {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -346,6 +359,27 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
           inputTime: ""
         });
         return success("已新增待办", { widgetId: target.widget.id, item: nextItem });
+      }
+    }),
+    defineAction<TodoCompleteArgs>({
+      spec: {
+        name: "todo.complete_item",
+        description: "Complete and remove a matching todo item from a todo widget.",
+        parameters: todoCompleteSchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "todo",
+        requiresTarget: true
+      },
+      async execute(args, context) {
+        const target = getTarget(store, context, "todo");
+        if (isToolResult(target)) return target;
+        const items = normalizeTodoItems(target.widget.state.items);
+        const item = findTodoItemByText(items, args.text);
+        if (!item) return failed("没有找到匹配的待办", "TODO_ITEM_NOT_FOUND");
+        const nextItems = items.filter((candidate) => candidate.id !== item.id);
+        await patchWidgetState(store, target.widget, { items: nextItems });
+        return success("已完成待办", { widgetId: target.widget.id, item });
       }
     }),
     defineAction<CountdownSetArgs>({

@@ -490,6 +490,28 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes todo completion commands to the existing todo widget", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("完成待办买牛奶", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("todo.complete_item");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_todo", text: "买牛奶" });
+    }
+  });
+
+  it("routes todo item deletion before generic widget removal when an item is named", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("删除待办买牛奶", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("todo.complete_item");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_todo", text: "买牛奶" });
+    }
+  });
+
   it("routes clipboard save commands to add-and-save when clipboard is absent", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("保存到剪贴板账号是 demo", {

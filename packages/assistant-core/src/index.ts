@@ -645,6 +645,20 @@ function inferTodoText(raw: string) {
   return "";
 }
 
+function inferTodoCompleteText(raw: string) {
+  const patterns = [
+    /(?:完成|做完|办完|勾掉|勾选|删除|移除|去掉)(?:一个|一条)?(?:待办|任务|清单)[：:\s]*(.+)/,
+    /(?:待办|任务|清单).*(?:完成|做完|办完|勾掉|勾选|删除|移除|去掉)(?:一个|一条)?[：:\s]*(.+)/,
+    /把(.+?)(?:标记为已完成|标记完成|设为完成|完成|做完|办完|勾掉|勾选|删除|移除|去掉)(?:待办|任务|清单)?/
+  ];
+  for (const pattern of patterns) {
+    const match = raw.match(pattern);
+    const text = cleanCommandContent(match?.[1] ?? "");
+    if (text) return text;
+  }
+  return "";
+}
+
 function inferClipboardText(raw: string) {
   const patterns = [
     /(?:保存|加入|添加|记录)(?:到|进)?(?:剪贴板|剪贴板历史)[：:\s]*(.+)/,
@@ -1012,6 +1026,25 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
             matched: false,
             reason: "todo_target_missing"
           }
+        );
+      }
+    },
+    {
+      name: "todo_complete",
+      match(normalized, raw, context) {
+        if (!/(待办|任务|清单)/.test(normalized) || !/(完成|做完|办完|勾掉|勾选|删除|移除|去掉|标记)/.test(normalized)) {
+          return { matched: false, reason: "not_todo_complete" };
+        }
+        const text = inferTodoCompleteText(raw);
+        if (!text) return { matched: false, reason: "todo_complete_text_missing" };
+        const widget = findWidgetByType(context, "todo");
+        if (!widget) return { matched: false, reason: "todo_target_missing" };
+        return shortcutMatch(
+          "todo.complete_item",
+          { widgetId: widget.widgetId, text },
+          0.88,
+          context.source ?? "shortcut",
+          raw
         );
       }
     },
