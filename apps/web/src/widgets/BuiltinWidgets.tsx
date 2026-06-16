@@ -3245,7 +3245,11 @@ export function BuiltinWidgetView({
       try {
         await audio.play();
       } catch {
-        return { status: "failed" as const, message: "音乐播放失败，请手动点击播放", errorCode: "MUSIC_PLAY_FAILED" };
+        return {
+          status: "success" as const,
+          message: "已找到音乐，请手动点击播放",
+          data: { itemId: item.id, title: item.title, playbackBlocked: true }
+        };
       }
       return { status: "success" as const, message: "已开始播放音乐", data: { itemId: item.id, title: item.title } };
     };
