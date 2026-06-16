@@ -5361,9 +5361,137 @@ export function BuiltinWidgetView({
     const wakeLockRef = useRef<RecorderWakeLockSentinel | null>(null);
     const recordings = (Array.isArray(instance.state.recordings) ? instance.state.recordings : []) as RecordingItem[];
     const recording = instance.state.recording === true;
+    const recordingsRef = useRef(recordings);
+    const latestRecorderStateRef = useRef(instance.state);
     const [playingId, setPlayingId] = useState("");
     const [progressMap, setProgressMap] = useState<Record<string, number>>({});
     const [wakeLockStatus, setWakeLockStatus] = useState<"idle" | "active" | "unsupported" | "failed">("idle");
+
+    useEffect(() => {
+      recordingsRef.current = recordings;
+    }, [recordings]);
+
+    useEffect(() => {
+      latestRecorderStateRef.current = instance.state;
+    }, [instance.state]);
+
+    const stopRecording = () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.stop();
+        return { status: "success" as const, message: "已停止录音" };
+      }
+      onStateChange({ ...latestRecorderStateRef.current, recording: false });
+      return { status: "success" as const, message: "当前没有正在录音" };
+    };
+
+    const startRecording = async () => {
+      if (mediaRecorderRef.current?.state === "recording") {
+        return { status: "success" as const, message: "录音已经在进行中" };
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = stream;
+        chunksRef.current = [];
+        const recorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = recorder;
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) chunksRef.current.push(event.data);
+        };
+        recorder.onstop = () => {
+          void (async () => {
+            const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+            const dataUrl = await blobToDataUrl(blob);
+            const createdAt = new Date().toISOString();
+            const nextRecordings = [
+              {
+                id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                createdAt,
+                name: `录音 ${new Date(createdAt).toLocaleTimeString()}`,
+                dataUrl,
+                mimeType: recorder.mimeType || "audio/webm"
+              },
+              ...recordingsRef.current
+            ];
+            onStateChange({
+              ...latestRecorderStateRef.current,
+              recording: false,
+              recordings: nextRecordings
+            });
+            streamRef.current?.getTracks().forEach((track) => track.stop());
+            streamRef.current = null;
+          })();
+        };
+        recorder.start();
+        onStateChange({ ...latestRecorderStateRef.current, recording: true, recordError: "" });
+        return { status: "success" as const, message: "已开始录音" };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "无法启动录音";
+        onStateChange({
+          ...latestRecorderStateRef.current,
+          recording: false,
+          recordError: message
+        });
+        return { status: "failed" as const, message, errorCode: "RECORDER_START_FAILED" };
+      }
+    };
+
+    const playRecording = async (recordingId?: string) => {
+      const targetId = recordingId?.trim() || recordingsRef.current[0]?.id || "";
+      if (!targetId) {
+        return { status: "failed" as const, message: "没有可播放的录音", errorCode: "RECORDER_ITEM_NOT_FOUND" };
+      }
+      const audio = audioRefs.current[targetId];
+      if (!audio) {
+        return { status: "failed" as const, message: "录音播放器还没有准备好", errorCode: "RECORDER_AUDIO_NOT_READY" };
+      }
+      Object.entries(audioRefs.current).forEach(([id, target]) => {
+        if (id !== targetId && target) {
+          target.pause();
+        }
+      });
+      try {
+        await audio.play();
+      } catch {
+        return { status: "failed" as const, message: "录音播放失败", errorCode: "RECORDER_PLAY_FAILED" };
+      }
+      setPlayingId(targetId);
+      audio.onended = () => {
+        setPlayingId("");
+      };
+      return { status: "success" as const, message: "已播放录音", data: { recordingId: targetId } };
+    };
+
+    const pauseRecording = (recordingId?: string) => {
+      const targetId = recordingId?.trim() || playingId;
+      if (targetId && audioRefs.current[targetId]) {
+        audioRefs.current[targetId]?.pause();
+      } else {
+        Object.values(audioRefs.current).forEach((audio) => audio?.pause());
+      }
+      setPlayingId("");
+      return { status: "success" as const, message: "已暂停录音" };
+    };
+
+    useEffect(() => {
+      if (!assistantCapabilityBridge) return undefined;
+
+      return assistantCapabilityBridge.register(instance.id, {
+        start() {
+          return startRecording();
+        },
+        stop() {
+          return stopRecording();
+        },
+        play(args) {
+          const recordingId = typeof args.recordingId === "string" ? args.recordingId : undefined;
+          return playRecording(recordingId);
+        },
+        pause(args) {
+          const recordingId = typeof args.recordingId === "string" ? args.recordingId : undefined;
+          return pauseRecording(recordingId);
+        }
+      });
+    }, [assistantCapabilityBridge, instance.id, pauseRecording, playRecording, startRecording, stopRecording]);
 
     useEffect(() => {
       const releaseWakeLock = async () => {
@@ -5438,55 +5566,10 @@ export function BuiltinWidgetView({
           <button
             onClick={() => {
               if (recording) {
-                if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-                  mediaRecorderRef.current.stop();
-                }
+                stopRecording();
                 return;
               }
-              void (async () => {
-                try {
-                  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                  streamRef.current = stream;
-                  chunksRef.current = [];
-                  const recorder = new MediaRecorder(stream);
-                  mediaRecorderRef.current = recorder;
-                  recorder.ondataavailable = (event) => {
-                    if (event.data.size > 0) chunksRef.current.push(event.data);
-                  };
-                  recorder.onstop = () => {
-                    void (async () => {
-                      const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
-                      const dataUrl = await blobToDataUrl(blob);
-                      const createdAt = new Date().toISOString();
-                      const nextRecordings = [
-                        {
-                          id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-                          createdAt,
-                          name: `录音 ${new Date(createdAt).toLocaleTimeString()}`,
-                          dataUrl,
-                          mimeType: recorder.mimeType || "audio/webm"
-                        },
-                        ...recordings
-                      ];
-                      onStateChange({
-                        ...instance.state,
-                        recording: false,
-                        recordings: nextRecordings
-                      });
-                      streamRef.current?.getTracks().forEach((track) => track.stop());
-                      streamRef.current = null;
-                    })();
-                  };
-                  recorder.start();
-                  onStateChange({ ...instance.state, recording: true, recordError: "" });
-                } catch (error) {
-                  onStateChange({
-                    ...instance.state,
-                    recording: false,
-                    recordError: error instanceof Error ? error.message : "无法启动录音"
-                  });
-                }
-              })();
+              void startRecording();
             }}
             title={recording ? "停止录音" : "开始录音"}
             style={{
@@ -5602,23 +5685,11 @@ export function BuiltinWidgetView({
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
                     <button
                       onClick={() => {
-                        const audio = audioRefs.current[item.id];
-                        if (!audio) return;
                         if (playingId === item.id) {
-                          audio.pause();
-                          setPlayingId("");
+                          pauseRecording(item.id);
                           return;
                         }
-                        Object.entries(audioRefs.current).forEach(([id, target]) => {
-                          if (id !== item.id && target) {
-                            target.pause();
-                          }
-                        });
-                        void audio.play();
-                        setPlayingId(item.id);
-                        audio.onended = () => {
-                          setPlayingId("");
-                        };
+                        void playRecording(item.id);
                       }}
                       className="recorder-play-btn"
                       title={playingId === item.id ? "暂停" : "播放"}
