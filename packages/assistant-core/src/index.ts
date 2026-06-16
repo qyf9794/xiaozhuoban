@@ -539,6 +539,13 @@ function inferTvChannelName(input: string) {
   return "";
 }
 
+function inferMusicQuery(input: string) {
+  return input
+    .replace(/(播放|搜索|查找|找一下|找|来一首|放一首|放首|听一下|听|音乐播放器|音乐|歌曲|歌单|专辑|歌手|歌|一下|给我)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function cleanBoardName(value: string) {
   return value
     .replace(/^(一个|一张|新的|新|空白|的)+/, "")
@@ -1122,16 +1129,26 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
       match(normalized, raw, context) {
         const isPlay = /(播放|继续)/.test(normalized);
         const isPause = /(暂停|停一下|停止|停掉)/.test(normalized);
-        if (!isPlay && !isPause) return { matched: false, reason: "not_media_control" };
-        const targetType = raw.includes("电视") ? "tv" : raw.includes("音乐") || raw.includes("歌") ? "music" : "";
+        const isNext = /(下一首|下首|切歌|换一首|跳过)/.test(normalized);
+        if (!isPlay && !isPause && !isNext) return { matched: false, reason: "not_media_control" };
+        const channelName = inferTvChannelName(raw);
+        let targetType = raw.includes("电视") || channelName ? "tv" : raw.includes("音乐") || raw.includes("歌") ? "music" : "";
+        const musicQuery = isPlay ? inferMusicQuery(raw) : "";
+        if (!targetType && isPlay && musicQuery && findWidgetByType(context, "music")) {
+          targetType = "music";
+        }
         const widget = targetType ? findWidgetByType(context, targetType) : context.focusedWidget;
         if (!widget || !["tv", "music", "recorder"].includes(widget.type)) {
           return { matched: false, reason: "media_target_missing" };
         }
-        const channelName = widget.type === "tv" && isPlay ? inferTvChannelName(raw) : "";
+        if (isNext) {
+          if (widget.type !== "music") return { matched: false, reason: "media_next_target_missing" };
+          return shortcutMatch("music.next", { widgetId: widget.widgetId }, 0.86, context.source ?? "shortcut", raw);
+        }
         const args = {
           widgetId: widget.widgetId,
           ...(channelName ? { channelName } : {}),
+          ...(widget.type === "music" && isPlay && musicQuery ? { query: musicQuery } : {}),
           ...(widget.type === "tv" && isPlay && /(全屏|放大)/.test(normalized)
             ? {
                 followUp: {

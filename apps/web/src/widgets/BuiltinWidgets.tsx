@@ -14,6 +14,16 @@ import {
 import { GomokuWidget } from "./GomokuWidget";
 import { GuandanWidget } from "./GuandanWidget";
 import { MonopolyWidget } from "./MonopolyWidget";
+import {
+  configureMusicKit,
+  createMusicKitQueueDescriptor,
+  getMusicKitDeveloperToken,
+  normalizeITunesTracks,
+  normalizeMusicKitSearchResults,
+  type ITunesTrack,
+  type MusicKitInstanceLike,
+  type MusicSearchItem
+} from "./musicKitClient";
 import { DEFAULT_TV_PLAYLIST_URL, parseM3UPlaylist, type TvChannel } from "./tvShared";
 import {
   CHINA_TIME_ZONE,
@@ -460,16 +470,6 @@ function formatForecastDayLabel(date: string, index: number): string {
   return new Intl.DateTimeFormat("zh-CN", { weekday: "short", timeZone: "UTC" }).format(
     new Date(Date.UTC(year, month - 1, day))
   );
-}
-
-interface ITunesTrack {
-  trackId: number;
-  trackName: string;
-  artistName: string;
-  collectionName?: string;
-  artworkUrl100?: string;
-  previewUrl?: string;
-  trackTimeMillis?: number;
 }
 
 async function searchITunesTracks(term: string): Promise<ITunesTrack[]> {
@@ -3036,23 +3036,27 @@ export function BuiltinWidgetView({
 
   if (definition.type === "music") {
     const query = asString(instance.state.query);
-    const [results, setResults] = useState<ITunesTrack[]>([]);
+    const musicKitDeveloperToken = getMusicKitDeveloperToken();
+    const musicKitAvailable = Boolean(musicKitDeveloperToken);
+    const [results, setResults] = useState<MusicSearchItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
-    const [activeTrackId, setActiveTrackId] = useState<number | null>(null);
+    const [activeItemId, setActiveItemId] = useState<string | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [progress, setProgress] = useState(0);
+    const [musicKitStatus, setMusicKitStatus] = useState(musicKitAvailable ? "待登录 Apple Music" : "未配置 Apple Music Token");
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const musicKitRef = useRef<MusicKitInstanceLike | null>(null);
     const searchSeqRef = useRef(0);
     const composingRef = useRef(false);
     const [queryDraft, setQueryDraft] = useState(query);
-    const resultsRef = useRef<ITunesTrack[]>([]);
-    const activeTrackIdRef = useRef<number | null>(null);
+    const resultsRef = useRef<MusicSearchItem[]>([]);
+    const activeItemIdRef = useRef<string | null>(null);
     const latestMusicStateRef = useRef(instance.state);
 
     const inputStyle: CSSProperties = {
       width: "100%",
-      borderRadius: 12,
+      borderRadius: 8,
       border: "1px solid rgba(203, 213, 225, 0.65)",
       padding: "6px 8px",
       background: "linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32))",
@@ -3074,8 +3078,8 @@ export function BuiltinWidgetView({
     }, [results]);
 
     useEffect(() => {
-      activeTrackIdRef.current = activeTrackId;
-    }, [activeTrackId]);
+      activeItemIdRef.current = activeItemId;
+    }, [activeItemId]);
 
     useEffect(() => {
       const audio = new Audio();
@@ -3090,22 +3094,23 @@ export function BuiltinWidgetView({
       const onPlay = () => setIsPlaying(true);
       const onPause = () => setIsPlaying(false);
       const onEnded = () => {
-        const currentId = activeTrackIdRef.current;
+        const currentId = activeItemIdRef.current;
         const currentResults = resultsRef.current;
         if (!currentId || !currentResults.length) {
           setIsPlaying(false);
           setProgress(0);
           return;
         }
-        const currentIndex = currentResults.findIndex((item) => item.trackId === currentId);
-        const nextTrack = currentIndex >= 0 ? currentResults.slice(currentIndex + 1).find((item) => Boolean(item.previewUrl)) : null;
+        const playable = currentResults.filter((item) => item.previewUrl);
+        const currentIndex = playable.findIndex((item) => item.id === currentId);
+        const nextTrack = currentIndex >= 0 ? playable[currentIndex + 1] : null;
         if (!nextTrack?.previewUrl) {
           setIsPlaying(false);
           setProgress(0);
           return;
         }
         audio.src = nextTrack.previewUrl;
-        setActiveTrackId(nextTrack.trackId);
+        setActiveItemId(nextTrack.id);
         setProgress(0);
         void audio.play().catch(() => {
           setError("自动播放下一首失败，请手动点击播放");
@@ -3126,32 +3131,61 @@ export function BuiltinWidgetView({
       };
     }, []);
 
-    const runSearch = (rawKeyword?: string) => {
+    const ensureMusicKit = async () => {
+      if (!musicKitAvailable) {
+        throw new Error("请先配置 VITE_APPLE_MUSIC_DEVELOPER_TOKEN");
+      }
+      if (musicKitRef.current) return musicKitRef.current;
+      const music = await configureMusicKit(musicKitDeveloperToken);
+      musicKitRef.current = music;
+      setMusicKitStatus(music.isAuthorized ? "Apple Music 已登录" : "Apple Music 待登录");
+      return music;
+    };
+
+    const authorizeMusicKit = async () => {
+      try {
+        const music = await ensureMusicKit();
+        await music.authorize();
+        setMusicKitStatus("Apple Music 已登录");
+        return music;
+      } catch (authError) {
+        setMusicKitStatus("Apple Music 登录失败");
+        setError(authError instanceof Error ? authError.message : "Apple Music 登录失败");
+        return null;
+      }
+    };
+
+    const runSearch = async (rawKeyword?: string): Promise<MusicSearchItem[]> => {
       const keyword = (rawKeyword ?? query).trim();
       if (!keyword) {
         setResults([]);
         setError("");
         setLoading(false);
-        return;
+        return [];
       }
       const seq = ++searchSeqRef.current;
       setLoading(true);
       setError("");
-      void searchITunesTracks(keyword)
-        .then((items) => {
-          if (seq !== searchSeqRef.current) return;
-          setResults(items);
-          if (!items.length) setError("未找到可试听结果");
-        })
-        .catch((searchError) => {
-          if (seq !== searchSeqRef.current) return;
-          setError(searchError instanceof Error ? searchError.message : "搜索失败");
-          setResults([]);
-        })
-        .finally(() => {
-          if (seq !== searchSeqRef.current) return;
+      try {
+        const items = musicKitAvailable
+          ? normalizeMusicKitSearchResults(await (await ensureMusicKit()).api?.search(keyword, { types: "songs,albums,playlists", limit: 18 }))
+          : normalizeITunesTracks(await searchITunesTracks(keyword));
+        if (seq !== searchSeqRef.current) return [];
+        setResults(items);
+        if (!items.length) {
+          setError(musicKitAvailable ? "未找到 Apple Music 结果" : "未找到可试听结果");
+        }
+        return items;
+      } catch (searchError) {
+        if (seq !== searchSeqRef.current) return [];
+        setError(searchError instanceof Error ? searchError.message : "搜索失败");
+        setResults([]);
+        return [];
+      } finally {
+        if (seq === searchSeqRef.current) {
           setLoading(false);
-        });
+        }
+      }
     };
 
     useEffect(() => {
@@ -3164,42 +3198,86 @@ export function BuiltinWidgetView({
         return;
       }
       const timer = window.setTimeout(() => {
-        runSearch(keyword);
+        void runSearch(keyword);
       }, 300);
       return () => window.clearTimeout(timer);
       // search depends on query only
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [query]);
 
-    useEffect(() => {
-      if (!assistantCapabilityBridge) return undefined;
+    const playItem = async (item: MusicSearchItem | undefined) => {
+      if (!item) {
+        return { status: "failed" as const, message: "没有可播放的音乐", errorCode: "MUSIC_TRACK_NOT_FOUND" };
+      }
 
-      const playTrack = async (track: ITunesTrack | undefined) => {
-        const audio = audioRef.current;
-        if (!audio) {
-          return { status: "failed" as const, message: "音乐播放器还没有准备好", errorCode: "MUSIC_PLAYER_NOT_READY" };
-        }
-        if (!track?.previewUrl) {
-          return { status: "failed" as const, message: "没有可播放的试听结果", errorCode: "MUSIC_TRACK_NOT_FOUND" };
-        }
-        if (audio.src !== track.previewUrl) {
-          audio.src = track.previewUrl;
-          setActiveTrackId(track.trackId);
-          setProgress(0);
+      if (item.source === "apple") {
+        const music = musicKitRef.current ?? (await authorizeMusicKit());
+        if (!music) {
+          return { status: "failed" as const, message: "Apple Music 登录失败", errorCode: "MUSIC_AUTH_FAILED" };
         }
         try {
-          await audio.play();
+          await music.setQueue(createMusicKitQueueDescriptor(item));
+          await music.play();
+          audioRef.current?.pause();
+          setActiveItemId(item.id);
+          setProgress(0);
+          setIsPlaying(true);
+          setMusicKitStatus("Apple Music 播放中");
+          return { status: "success" as const, message: "已开始播放音乐", data: { itemId: item.id, title: item.title, kind: item.kind } };
         } catch {
-          return { status: "failed" as const, message: "音乐播放失败，请手动点击播放", errorCode: "MUSIC_PLAY_FAILED" };
+          setIsPlaying(false);
+          return { status: "failed" as const, message: "Apple Music 播放失败，请确认账号订阅和浏览器播放权限", errorCode: "MUSIC_PLAY_FAILED" };
         }
-        return { status: "success" as const, message: "已开始播放音乐", data: { trackId: track.trackId, trackName: track.trackName } };
-      };
+      }
 
-      const currentOrFirstTrack = () => {
-        const currentResults = resultsRef.current;
-        const activeId = activeTrackIdRef.current;
-        return currentResults.find((track) => track.trackId === activeId && track.previewUrl) ?? currentResults.find((track) => track.previewUrl);
-      };
+      const audio = audioRef.current;
+      if (!audio) {
+        return { status: "failed" as const, message: "音乐播放器还没有准备好", errorCode: "MUSIC_PLAYER_NOT_READY" };
+      }
+      if (!item.previewUrl) {
+        return { status: "failed" as const, message: "没有可播放的试听结果", errorCode: "MUSIC_TRACK_NOT_FOUND" };
+      }
+      if (audio.src !== item.previewUrl) {
+        audio.src = item.previewUrl;
+        setActiveItemId(item.id);
+        setProgress(0);
+      }
+      try {
+        await audio.play();
+      } catch {
+        return { status: "failed" as const, message: "音乐播放失败，请手动点击播放", errorCode: "MUSIC_PLAY_FAILED" };
+      }
+      return { status: "success" as const, message: "已开始播放音乐", data: { itemId: item.id, title: item.title } };
+    };
+
+    const currentOrFirstTrack = () => {
+      const currentResults = resultsRef.current;
+      const activeId = activeItemIdRef.current;
+      return currentResults.find((track) => track.id === activeId) ?? currentResults[0];
+    };
+
+    const playNext = async () => {
+      const currentResults = resultsRef.current;
+      if (!currentResults.length) {
+        return { status: "failed" as const, message: "没有下一首可播放音乐", errorCode: "MUSIC_TRACK_NOT_FOUND" };
+      }
+      const activeId = activeItemIdRef.current;
+      const activeIndex = currentResults.findIndex((track) => track.id === activeId);
+      const nextTrack = currentResults[(activeIndex + 1) % currentResults.length];
+      if (musicKitRef.current && currentOrFirstTrack()?.source === "apple" && musicKitRef.current.skipToNextItem) {
+        try {
+          await musicKitRef.current.skipToNextItem();
+          if (nextTrack) setActiveItemId(nextTrack.id);
+          return { status: "success" as const, message: "已切到下一首" };
+        } catch {
+          return playItem(nextTrack);
+        }
+      }
+      return playItem(nextTrack);
+    };
+
+    useEffect(() => {
+      if (!assistantCapabilityBridge) return undefined;
 
       return assistantCapabilityBridge.register(instance.id, {
         async play(args) {
@@ -3207,33 +3285,113 @@ export function BuiltinWidgetView({
           if (nextQuery) {
             setQueryDraft(nextQuery);
             onStateChange({ ...latestMusicStateRef.current, query: nextQuery });
-            runSearch(nextQuery);
-            return { status: "success", message: "已搜索音乐，请稍后播放或选择结果", data: { query: nextQuery } };
+            const items = await runSearch(nextQuery);
+            return playItem(items[0]);
           }
-          return playTrack(currentOrFirstTrack());
+          return playItem(currentOrFirstTrack());
         },
         pause() {
           audioRef.current?.pause();
+          void musicKitRef.current?.pause();
+          setIsPlaying(false);
           return { status: "success", message: "已暂停音乐" };
         },
         resume() {
-          return playTrack(currentOrFirstTrack());
+          return playItem(currentOrFirstTrack());
         },
         next() {
-          const currentResults = resultsRef.current.filter((track) => track.previewUrl);
-          if (!currentResults.length) {
-            return { status: "failed", message: "没有下一首可播放音乐", errorCode: "MUSIC_TRACK_NOT_FOUND" };
-          }
-          const activeId = activeTrackIdRef.current;
-          const activeIndex = currentResults.findIndex((track) => track.trackId === activeId);
-          const nextTrack = currentResults[(activeIndex + 1) % currentResults.length];
-          return playTrack(nextTrack);
+          return playNext();
         }
       });
-    }, [assistantCapabilityBridge, instance.id, onStateChange, runSearch]);
+    }, [assistantCapabilityBridge, instance.id, onStateChange, runSearch, playItem, playNext]);
+
+    const activeItem = results.find((item) => item.id === activeItemId) ?? results[0];
+    const kindLabel: Record<string, string> = { song: "歌曲", album: "专辑", playlist: "歌单" };
+    const sourceLabel = musicKitAvailable ? musicKitStatus : "iTunes 试听模式";
 
     return (
       <WidgetShell definition={definition} instance={instance}>
+        <div style={{ display: "grid", gridTemplateColumns: "74px minmax(0, 1fr)", gap: 10, alignItems: "center", marginBottom: 8 }}>
+          {activeItem?.artworkUrl ? (
+            <img
+              src={activeItem.artworkUrl}
+              alt={activeItem.title}
+              style={{ width: 74, height: 74, borderRadius: 8, objectFit: "cover", background: "rgba(226, 232, 240, 0.5)" }}
+            />
+          ) : (
+            <div
+              style={{
+                width: 74,
+                height: 74,
+                borderRadius: 8,
+                background: "linear-gradient(135deg, rgba(15,23,42,0.18), rgba(14,165,233,0.18))",
+                display: "grid",
+                placeItems: "center",
+                color: "#334155",
+                fontSize: 24
+              }}
+            >
+              ♪
+            </div>
+          )}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 11, color: "#64748b", marginBottom: 3 }}>{sourceLabel}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {activeItem?.title ?? "搜索 Apple Music"}
+            </div>
+            <div style={{ fontSize: 12, color: "#334155", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {activeItem?.subtitle ?? "歌曲 / 专辑 / 播放列表"}
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+              <button
+                onClick={() => {
+                  void playItem(currentOrFirstTrack()).then((result) => {
+                    if (result.status !== "success") setError(result.message);
+                  });
+                }}
+                style={mediaIconBtnStyle({ size: 24, fontSize: 13 })}
+                title={isPlaying ? "继续播放" : "播放"}
+              >
+                {renderMediaControlIcon("play")}
+              </button>
+              <button
+                onClick={() => {
+                  audioRef.current?.pause();
+                  void musicKitRef.current?.pause();
+                  setIsPlaying(false);
+                }}
+                style={mediaIconBtnStyle({ size: 24, fontSize: 13 })}
+                title="暂停"
+              >
+                {renderMediaControlIcon("pause")}
+              </button>
+              <button
+                onClick={() => {
+                  void playNext().then((result) => {
+                    if (result.status !== "success") setError(result.message);
+                  });
+                }}
+                style={mediaIconBtnStyle({ size: 24, fontSize: 13 })}
+                title="下一首"
+              >
+                <span style={{ fontSize: 13, lineHeight: 1 }}>⏭</span>
+              </button>
+              {musicKitAvailable ? (
+                <Button onClick={() => void authorizeMusicKit()}>{musicKitStatus.includes("已登录") ? "已登录" : "登录"}</Button>
+              ) : null}
+            </div>
+            <div style={{ marginTop: 6, height: 2, borderRadius: 2, background: "rgba(100, 116, 139, 0.25)", overflow: "hidden" }}>
+              <div
+                style={{
+                  height: "100%",
+                  width: activeItem?.source === "itunes" ? `${progress}%` : isPlaying ? "100%" : "0%",
+                  background: "rgba(31, 41, 55, 0.75)",
+                  transition: "width 120ms linear"
+                }}
+              />
+            </div>
+          </div>
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 8 }}>
           <input
             value={queryDraft}
@@ -3257,13 +3415,18 @@ export function BuiltinWidgetView({
               if (event.key === "Enter" && !event.nativeEvent.isComposing) {
                 event.preventDefault();
                 onStateChange({ ...instance.state, query: queryDraft });
-                runSearch(queryDraft);
+                void runSearch(queryDraft);
               }
             }}
-            placeholder="搜索歌曲 / 歌手"
+            placeholder={musicKitAvailable ? "搜索歌曲 / 专辑 / 歌单" : "搜索歌曲 / 歌手"}
             style={inputStyle}
           />
-          <Button onClick={runSearch}>
+          <Button
+            onClick={() => {
+              onStateChange({ ...instance.state, query: queryDraft });
+              void runSearch(queryDraft);
+            }}
+          >
             <span style={{ fontSize: 24, lineHeight: 1, display: "inline-block" }}>⌕</span>
           </Button>
         </div>
@@ -3271,10 +3434,10 @@ export function BuiltinWidgetView({
         {error ? <div style={{ fontSize: 12, color: "#b91c1c", marginBottom: 6 }}>{error}</div> : null}
         <div className="glass-scrollbar" style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>
           {results.map((track) => {
-            const active = activeTrackId === track.trackId;
+            const active = activeItemId === track.id;
             return (
               <div
-                key={track.trackId}
+                key={`${track.source}-${track.kind}-${track.id}`}
                 style={{
                   display: "grid",
                   gridTemplateColumns: "40px auto 1fr",
@@ -3282,10 +3445,10 @@ export function BuiltinWidgetView({
                   alignItems: "center"
                 }}
               >
-                {track.artworkUrl100 ? (
+                {track.artworkUrl ? (
                   <img
-                    src={track.artworkUrl100}
-                    alt={track.trackName}
+                    src={track.artworkUrl}
+                    alt={track.title}
                     style={{
                       width: 38,
                       height: 38,
@@ -3306,18 +3469,14 @@ export function BuiltinWidgetView({
                 )}
                 <button
                   onClick={() => {
-                    if (!track.previewUrl || !audioRef.current) return;
                     if (active && isPlaying) {
-                      audioRef.current.pause();
+                      audioRef.current?.pause();
+                      void musicKitRef.current?.pause();
+                      setIsPlaying(false);
                       return;
                     }
-                    if (!active) {
-                      audioRef.current.src = track.previewUrl;
-                      setActiveTrackId(track.trackId);
-                      setProgress(0);
-                    }
-                    void audioRef.current.play().catch(() => {
-                      setError("播放失败，请重试");
+                    void playItem(track).then((result) => {
+                      if (result.status !== "success") setError(result.message);
                     });
                   }}
                   style={mediaIconBtnStyle({ size: 16, fontSize: 14 })}
@@ -3335,7 +3494,7 @@ export function BuiltinWidgetView({
                       color: "#0f172a"
                     }}
                   >
-                    {track.trackName}
+                    {track.title}
                   </div>
                   <div
                     style={{
@@ -3346,7 +3505,7 @@ export function BuiltinWidgetView({
                       color: "#334155"
                     }}
                   >
-                    {track.artistName}
+                    {kindLabel[track.kind]} · {track.subtitle}
                   </div>
                   <div
                     style={{
@@ -3361,7 +3520,7 @@ export function BuiltinWidgetView({
                     <div
                       style={{
                         height: "100%",
-                        width: active ? `${progress}%` : 0,
+                        width: active ? (track.source === "itunes" ? `${progress}%` : isPlaying ? "100%" : 0) : 0,
                         background: "rgba(31, 41, 55, 0.75)",
                         transition: "width 120ms linear"
                       }}
@@ -3372,7 +3531,9 @@ export function BuiltinWidgetView({
             );
           })}
           {!loading && !results.length && !error ? (
-            <div style={{ fontSize: 12, color: "#64748b" }}>输入关键词后搜索并试听 30 秒。</div>
+            <div style={{ fontSize: 12, color: "#64748b" }}>
+              {musicKitAvailable ? "登录后可搜索并播放 Apple Music 歌曲、专辑和歌单。" : "输入关键词后搜索并试听 30 秒。"}
+            </div>
           ) : null}
         </div>
       </WidgetShell>

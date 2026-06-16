@@ -725,6 +725,56 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes music search playback with a query", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("播放周杰伦音乐", {
+      ...context,
+      availableWidgets: [
+        ...(context.availableWidgets ?? []),
+        {
+          widgetId: "wi_music",
+          definitionId: "wd_music",
+          type: "music",
+          name: "音乐",
+          order: 6,
+          summary: "",
+          recent: true
+        }
+      ]
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("music.play");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_music", query: "周杰伦" });
+    }
+  });
+
+  it("routes next music commands to the music next action", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("下一首音乐", {
+      ...context,
+      availableWidgets: [
+        ...(context.availableWidgets ?? []),
+        {
+          widgetId: "wi_music",
+          definitionId: "wd_music",
+          type: "music",
+          name: "音乐",
+          order: 6,
+          summary: "",
+          recent: true
+        }
+      ]
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("music.next");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_music" });
+    }
+  });
+
   it("routes fullscreen to the focused widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("全屏", context);
