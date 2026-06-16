@@ -270,7 +270,7 @@ describe("IntentShortcutRouter", () => {
     expect(result.matched).toBe(true);
     if (result.matched) {
       expect(result.toolCall.name).toBe("weather.set_city");
-      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_weather", cityName: "上海" });
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_weather", city: "上海" });
     }
   });
 
@@ -280,9 +280,34 @@ describe("IntentShortcutRouter", () => {
 
     expect(result.matched).toBe(true);
     if (result.matched) {
-      expect(result.toolCall.name).toBe("countdown.set_duration");
-      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_countdown", durationSeconds: 600, start: true });
+      expect(result.toolCall.name).toBe("countdown.set");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_countdown", totalSeconds: 600, start: true });
     }
+  });
+
+  it("routes deferred game commands to a local out-of-scope result", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("大富翁掷骰", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("assistant.out_of_scope");
+      expect(result.toolCall.arguments).toMatchObject({ category: "deferred_widget", targetType: "monopoly" });
+    }
+  });
+
+  it("routes AI form, dynamic widget, and long text requests out of scope", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const aiForm = router.route("提交这个 AI 表单", context);
+    const dynamicWidget = router.route("帮我生成一个新工具", context);
+    const longText = router.route("帮我重写这篇长文", context);
+
+    expect(aiForm.matched && aiForm.toolCall.name).toBe("assistant.out_of_scope");
+    expect(dynamicWidget.matched && dynamicWidget.toolCall.name).toBe("assistant.out_of_scope");
+    expect(longText.matched && longText.toolCall.name).toBe("assistant.out_of_scope");
+    if (aiForm.matched) expect(aiForm.toolCall.arguments).toMatchObject({ category: "ai_form" });
+    if (dynamicWidget.matched) expect(dynamicWidget.toolCall.arguments).toMatchObject({ category: "dynamic_widget_generation" });
+    if (longText.matched) expect(longText.toolCall.arguments).toMatchObject({ category: "long_text_rewrite" });
   });
 
   it("routes open widget commands to focus when the widget exists", () => {
