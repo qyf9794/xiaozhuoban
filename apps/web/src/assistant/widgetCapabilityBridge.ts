@@ -1,0 +1,391 @@
+import {
+  createPassthroughSchema,
+  type AssistantAction,
+  type AssistantActionContext,
+  type AssistantToolResult
+} from "@xiaozhuoban/assistant-core";
+import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
+
+export interface WidgetCapabilityStore {
+  getWidgetInstances: () => WidgetInstance[];
+  getWidgetDefinitions: () => WidgetDefinition[];
+  updateWidgetState?: (widgetId: string, state: Record<string, unknown>) => Promise<void> | void;
+}
+
+export type WidgetCapabilityHandler = (
+  args: Record<string, unknown>,
+  context: AssistantActionContext
+) => Promise<AssistantToolResult | void> | AssistantToolResult | void;
+
+export type WidgetCapabilityMap = Record<string, WidgetCapabilityHandler>;
+
+type WidgetCapabilityArgs = {
+  query?: string;
+  channelName?: string;
+  channelUrl?: string;
+  recordingId?: string;
+  enabled?: boolean;
+};
+
+const CAPABILITY_WIDGET_TYPES = ["music", "tv", "recorder", "dialClock"] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
+}
+
+function hasOptionalString(value: Record<string, unknown>, key: string) {
+  return value[key] === undefined || typeof value[key] === "string";
+}
+
+function parseWith<T>(guard: (value: unknown) => value is T) {
+  return createPassthroughSchema<T>(guard);
+}
+
+const genericCapabilitySchema = parseWith<WidgetCapabilityArgs>(
+  (value): value is WidgetCapabilityArgs =>
+    isRecord(value) &&
+    hasOptionalString(value, "query") &&
+    hasOptionalString(value, "channelName") &&
+    hasOptionalString(value, "channelUrl") &&
+    hasOptionalString(value, "recordingId") &&
+    (value.enabled === undefined || typeof value.enabled === "boolean")
+);
+
+function success(message: string, data?: unknown): AssistantToolResult {
+  return { status: "success", message, data };
+}
+
+function failed(message: string, errorCode: string): AssistantToolResult {
+  return { status: "failed", message, errorCode };
+}
+
+function defineAction<TArgs>(action: AssistantAction<TArgs>): AssistantAction<TArgs> {
+  return action;
+}
+
+function isSuccess(result: AssistantToolResult) {
+  return result.status === "success";
+}
+
+function getDefinition(store: WidgetCapabilityStore, widget: WidgetInstance) {
+  return store.getWidgetDefinitions().find((item) => item.id === widget.definitionId);
+}
+
+function getTarget(
+  store: WidgetCapabilityStore,
+  context: AssistantActionContext,
+  expectedType: string
+): { widget: WidgetInstance; definition: WidgetDefinition } | AssistantToolResult {
+  const targetId = context.target?.widgetId;
+  if (!targetId) {
+    return failed("需要先指定一个小工具", "TARGET_REQUIRED");
+  }
+  const widget = store.getWidgetInstances().find((item) => item.id === targetId);
+  if (!widget) {
+    return failed("没有找到这个小工具", "WIDGET_NOT_FOUND");
+  }
+  const definition = getDefinition(store, widget);
+  if (!definition) {
+    return failed("没有找到这个小工具定义", "WIDGET_DEFINITION_NOT_FOUND");
+  }
+  if (definition.type !== expectedType) {
+    return failed(`这个操作只能用于${expectedType}小工具`, "WIDGET_TYPE_MISMATCH");
+  }
+  return { widget, definition };
+}
+
+function isToolResult(value: { widget: WidgetInstance; definition: WidgetDefinition } | AssistantToolResult): value is AssistantToolResult {
+  return "status" in value;
+}
+
+async function patchWidgetState(store: WidgetCapabilityStore, widget: WidgetInstance, patch: Record<string, unknown>) {
+  if (!store.updateWidgetState) return;
+  await store.updateWidgetState(widget.id, { ...widget.state, ...patch });
+}
+
+export class WidgetCapabilityBridge {
+  private readonly capabilitiesByWidgetId = new Map<string, WidgetCapabilityMap>();
+
+  register(widgetId: string, capabilities: WidgetCapabilityMap): () => void {
+    this.capabilitiesByWidgetId.set(widgetId, capabilities);
+    return () => {
+      if (this.capabilitiesByWidgetId.get(widgetId) === capabilities) {
+        this.capabilitiesByWidgetId.delete(widgetId);
+      }
+    };
+  }
+
+  has(widgetId: string, capabilityName: string): boolean {
+    return typeof this.capabilitiesByWidgetId.get(widgetId)?.[capabilityName] === "function";
+  }
+
+  async invoke(
+    widgetId: string,
+    capabilityName: string,
+    args: Record<string, unknown>,
+    context: AssistantActionContext
+  ): Promise<AssistantToolResult> {
+    const capabilities = this.capabilitiesByWidgetId.get(widgetId);
+    if (!capabilities) {
+      return failed("这个小工具还没有挂载，暂时不能执行该操作", "WIDGET_NOT_MOUNTED");
+    }
+    const handler = capabilities[capabilityName];
+    if (!handler) {
+      return failed("这个小工具暂不支持该操作", "WIDGET_CAPABILITY_UNAVAILABLE");
+    }
+    const result = await handler(args, context);
+    return result ?? success("已执行小工具操作", { widgetId, capabilityName });
+  }
+}
+
+async function invokeCapability(
+  store: WidgetCapabilityStore,
+  bridge: WidgetCapabilityBridge,
+  context: AssistantActionContext,
+  expectedType: string,
+  capabilityName: string,
+  args: WidgetCapabilityArgs,
+  message: string,
+  statePatch?: Record<string, unknown>
+): Promise<AssistantToolResult> {
+  const target = getTarget(store, context, expectedType);
+  if (isToolResult(target)) return target;
+  const result = await bridge.invoke(target.widget.id, capabilityName, args as Record<string, unknown>, context);
+  if (isSuccess(result) && statePatch) {
+    await patchWidgetState(store, target.widget, statePatch);
+  }
+  if (result.message === "已执行小工具操作") {
+    return success(message, { widgetId: target.widget.id, capabilityName });
+  }
+  return result;
+}
+
+function createMusicActions(store: WidgetCapabilityStore, bridge: WidgetCapabilityBridge): Array<AssistantAction<WidgetCapabilityArgs>> {
+  return [
+    defineAction<WidgetCapabilityArgs>({
+      spec: {
+        name: "music.play",
+        description: "Play music, optionally searching by query first.",
+        parameters: genericCapabilitySchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      },
+      execute(args, context) {
+        const patch = args.query?.trim() ? { query: args.query.trim() } : undefined;
+        return invokeCapability(store, bridge, context, "music", "play", args, "已开始播放音乐", patch);
+      }
+    }),
+    defineAction<WidgetCapabilityArgs>({
+      spec: {
+        name: "music.pause",
+        description: "Pause the current music widget playback.",
+        parameters: genericCapabilitySchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      },
+      execute(args, context) {
+        return invokeCapability(store, bridge, context, "music", "pause", args, "已暂停音乐");
+      }
+    }),
+    defineAction<WidgetCapabilityArgs>({
+      spec: {
+        name: "music.resume",
+        description: "Resume music widget playback.",
+        parameters: genericCapabilitySchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      },
+      execute(args, context) {
+        return invokeCapability(store, bridge, context, "music", "resume", args, "已继续播放音乐");
+      }
+    }),
+    defineAction<WidgetCapabilityArgs>({
+      spec: {
+        name: "music.next",
+        description: "Play the next music result.",
+        parameters: genericCapabilitySchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      },
+      execute(args, context) {
+        return invokeCapability(store, bridge, context, "music", "next", args, "已切到下一首");
+      }
+    })
+  ];
+}
+
+function createTvActions(store: WidgetCapabilityStore, bridge: WidgetCapabilityBridge): Array<AssistantAction<WidgetCapabilityArgs>> {
+  return [
+    defineAction<WidgetCapabilityArgs>({
+      spec: {
+        name: "tv.play",
+        description: "Play TV, optionally selecting a channel.",
+        parameters: genericCapabilitySchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "tv",
+        requiresTarget: true
+      },
+      execute(args, context) {
+        const patch = args.channelName?.trim()
+          ? { selectedChannelName: args.channelName.trim(), ...(args.channelUrl?.trim() ? { selectedChannelUrl: args.channelUrl.trim() } : {}) }
+          : undefined;
+        return invokeCapability(store, bridge, context, "tv", "play", args, "已播放电视", patch);
+      }
+    }),
+    defineAction<WidgetCapabilityArgs>({
+      spec: {
+        name: "tv.pause",
+        description: "Pause TV playback.",
+        parameters: genericCapabilitySchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "tv",
+        requiresTarget: true
+      },
+      execute(args, context) {
+        return invokeCapability(store, bridge, context, "tv", "pause", args, "已暂停电视");
+      }
+    }),
+    defineAction<WidgetCapabilityArgs>({
+      spec: {
+        name: "tv.fullscreen",
+        description: "Enter fullscreen for TV playback.",
+        parameters: genericCapabilitySchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "tv",
+        requiresTarget: true
+      },
+      execute(args, context) {
+        return invokeCapability(store, bridge, context, "tv", "fullscreen", args, "已全屏电视");
+      }
+    }),
+    defineAction<WidgetCapabilityArgs>({
+      spec: {
+        name: "tv.select_channel",
+        description: "Select a TV channel by name or URL.",
+        parameters: genericCapabilitySchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "tv",
+        requiresTarget: true
+      },
+      execute(args, context) {
+        const patch = {
+          ...(args.channelName?.trim() ? { selectedChannelName: args.channelName.trim() } : {}),
+          ...(args.channelUrl?.trim() ? { selectedChannelUrl: args.channelUrl.trim() } : {})
+        };
+        return invokeCapability(store, bridge, context, "tv", "selectChannel", args, "已切换电视频道", patch);
+      }
+    })
+  ];
+}
+
+function createRecorderActions(store: WidgetCapabilityStore, bridge: WidgetCapabilityBridge): Array<AssistantAction<WidgetCapabilityArgs>> {
+  return [
+    defineAction<WidgetCapabilityArgs>({
+      spec: {
+        name: "recorder.start",
+        description: "Start recording audio.",
+        parameters: genericCapabilitySchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "recorder",
+        requiresTarget: true
+      },
+      execute(args, context) {
+        return invokeCapability(store, bridge, context, "recorder", "start", args, "已开始录音", { recording: true, recordError: "" });
+      }
+    }),
+    defineAction<WidgetCapabilityArgs>({
+      spec: {
+        name: "recorder.stop",
+        description: "Stop recording audio.",
+        parameters: genericCapabilitySchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "recorder",
+        requiresTarget: true
+      },
+      execute(args, context) {
+        return invokeCapability(store, bridge, context, "recorder", "stop", args, "已停止录音", { recording: false });
+      }
+    }),
+    defineAction<WidgetCapabilityArgs>({
+      spec: {
+        name: "recorder.play",
+        description: "Play a recorder item.",
+        parameters: genericCapabilitySchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "recorder",
+        requiresTarget: true
+      },
+      execute(args, context) {
+        return invokeCapability(store, bridge, context, "recorder", "play", args, "已播放录音");
+      }
+    }),
+    defineAction<WidgetCapabilityArgs>({
+      spec: {
+        name: "recorder.pause",
+        description: "Pause recorder playback.",
+        parameters: genericCapabilitySchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "recorder",
+        requiresTarget: true
+      },
+      execute(args, context) {
+        return invokeCapability(store, bridge, context, "recorder", "pause", args, "已暂停录音");
+      }
+    })
+  ];
+}
+
+function createDialClockActions(store: WidgetCapabilityStore, bridge: WidgetCapabilityBridge): Array<AssistantAction<WidgetCapabilityArgs>> {
+  return [
+    defineAction<WidgetCapabilityArgs>({
+      spec: {
+        name: "dialClock.set_night_mode",
+        description: "Turn dial clock night mode on or off.",
+        parameters: genericCapabilitySchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "dialClock",
+        requiresTarget: true
+      },
+      execute(args, context) {
+        const enabled = args.enabled !== false;
+        return invokeCapability(store, bridge, context, "dialClock", "setNightMode", { ...args, enabled }, "已切换时钟夜间模式", {
+          nightMode: enabled
+        });
+      }
+    })
+  ];
+}
+
+export function createWidgetCapabilityActions(
+  store: WidgetCapabilityStore,
+  bridge: WidgetCapabilityBridge
+): Array<AssistantAction<any>> {
+  const availableTypes = new Set(store.getWidgetDefinitions().filter((item) => item.kind === "system").map((item) => item.type));
+  const allowedTypes = new Set<string>(CAPABILITY_WIDGET_TYPES);
+  return [
+    ...createMusicActions(store, bridge),
+    ...createTvActions(store, bridge),
+    ...createRecorderActions(store, bridge),
+    ...createDialClockActions(store, bridge)
+  ].filter((action) => {
+    const type = action.spec.widgetType;
+    return Boolean(type && allowedTypes.has(type) && availableTypes.has(type));
+  });
+}
