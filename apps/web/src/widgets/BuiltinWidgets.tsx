@@ -3048,6 +3048,7 @@ export function BuiltinWidgetView({
     const [queryDraft, setQueryDraft] = useState(query);
     const resultsRef = useRef<ITunesTrack[]>([]);
     const activeTrackIdRef = useRef<number | null>(null);
+    const latestMusicStateRef = useRef(instance.state);
 
     const inputStyle: CSSProperties = {
       width: "100%",
@@ -3063,6 +3064,10 @@ export function BuiltinWidgetView({
         setQueryDraft(query);
       }
     }, [query]);
+
+    useEffect(() => {
+      latestMusicStateRef.current = instance.state;
+    }, [instance.state]);
 
     useEffect(() => {
       resultsRef.current = results;
@@ -3165,6 +3170,67 @@ export function BuiltinWidgetView({
       // search depends on query only
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [query]);
+
+    useEffect(() => {
+      if (!assistantCapabilityBridge) return undefined;
+
+      const playTrack = async (track: ITunesTrack | undefined) => {
+        const audio = audioRef.current;
+        if (!audio) {
+          return { status: "failed" as const, message: "音乐播放器还没有准备好", errorCode: "MUSIC_PLAYER_NOT_READY" };
+        }
+        if (!track?.previewUrl) {
+          return { status: "failed" as const, message: "没有可播放的试听结果", errorCode: "MUSIC_TRACK_NOT_FOUND" };
+        }
+        if (audio.src !== track.previewUrl) {
+          audio.src = track.previewUrl;
+          setActiveTrackId(track.trackId);
+          setProgress(0);
+        }
+        try {
+          await audio.play();
+        } catch {
+          return { status: "failed" as const, message: "音乐播放失败，请手动点击播放", errorCode: "MUSIC_PLAY_FAILED" };
+        }
+        return { status: "success" as const, message: "已开始播放音乐", data: { trackId: track.trackId, trackName: track.trackName } };
+      };
+
+      const currentOrFirstTrack = () => {
+        const currentResults = resultsRef.current;
+        const activeId = activeTrackIdRef.current;
+        return currentResults.find((track) => track.trackId === activeId && track.previewUrl) ?? currentResults.find((track) => track.previewUrl);
+      };
+
+      return assistantCapabilityBridge.register(instance.id, {
+        async play(args) {
+          const nextQuery = typeof args.query === "string" ? args.query.trim() : "";
+          if (nextQuery) {
+            setQueryDraft(nextQuery);
+            onStateChange({ ...latestMusicStateRef.current, query: nextQuery });
+            runSearch(nextQuery);
+            return { status: "success", message: "已搜索音乐，请稍后播放或选择结果", data: { query: nextQuery } };
+          }
+          return playTrack(currentOrFirstTrack());
+        },
+        pause() {
+          audioRef.current?.pause();
+          return { status: "success", message: "已暂停音乐" };
+        },
+        resume() {
+          return playTrack(currentOrFirstTrack());
+        },
+        next() {
+          const currentResults = resultsRef.current.filter((track) => track.previewUrl);
+          if (!currentResults.length) {
+            return { status: "failed", message: "没有下一首可播放音乐", errorCode: "MUSIC_TRACK_NOT_FOUND" };
+          }
+          const activeId = activeTrackIdRef.current;
+          const activeIndex = currentResults.findIndex((track) => track.trackId === activeId);
+          const nextTrack = currentResults[(activeIndex + 1) % currentResults.length];
+          return playTrack(nextTrack);
+        }
+      });
+    }, [assistantCapabilityBridge, instance.id, onStateChange, runSearch]);
 
     return (
       <WidgetShell definition={definition} instance={instance}>
