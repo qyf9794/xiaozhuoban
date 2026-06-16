@@ -29,6 +29,11 @@ export interface OpenAIRealtimeWebRtcAdapterOptions {
 }
 
 type RealtimeEvent = Record<string, unknown>;
+type RealtimeClosableResources = {
+  dataChannel?: { close: () => void } | null;
+  peerConnection?: { close: () => void } | null;
+  mediaStream?: { getTracks: () => Array<{ stop: () => void }> } | null;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
@@ -121,6 +126,12 @@ export function createRealtimeSessionRequestBody(safetyIdentifier: string | unde
   return JSON.stringify(trimmed ? { safetyIdentifier: trimmed } : {});
 }
 
+export function closeRealtimeConnectionResources(resources: RealtimeClosableResources): void {
+  resources.dataChannel?.close();
+  resources.peerConnection?.close();
+  resources.mediaStream?.getTracks().forEach((track) => track.stop());
+}
+
 export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private peerConnection: RTCPeerConnection | null = null;
   private dataChannel: RTCDataChannel | null = null;
@@ -144,94 +155,103 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.options.onStatusChange?.("microphone_denied");
       throw new Error("MICROPHONE_DENIED");
     }
-
-    const sessionResponse = await fetchImpl(this.options.sessionEndpoint ?? "/api/realtime/session", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: createRealtimeSessionRequestBody(this.options.getSafetyIdentifier?.())
-    });
-    if (!sessionResponse.ok) {
-      this.options.onStatusChange?.("failed");
-      let errorCode = "";
-      try {
-        errorCode = extractRealtimeSessionErrorCode(await sessionResponse.json());
-      } catch {
-        // Keep the generic session failure if the endpoint returns a non-JSON error.
-      }
-      throw new Error(errorCode || "REALTIME_SESSION_FAILED");
-    }
-    const secret = extractClientSecret(await sessionResponse.json());
-    if (!secret) {
-      this.options.onStatusChange?.("failed");
-      throw new Error("REALTIME_CLIENT_SECRET_MISSING");
-    }
-
-    const peerConnection = new RTCPeerConnection();
-    const dataChannel = peerConnection.createDataChannel("openai-realtime-data");
-    this.peerConnection = peerConnection;
-    this.dataChannel = dataChannel;
     this.mediaStream = stream;
 
-    stream.getAudioTracks().forEach((track) => peerConnection.addTrack(track, stream));
-    peerConnection.ontrack = (event) => {
-      const [remoteStream] = event.streams;
-      if (!remoteStream || typeof Audio === "undefined") return;
-      const audio = new Audio();
-      audio.autoplay = true;
-      audio.srcObject = remoteStream;
-    };
-
-    dataChannel.onopen = () => {
-      this.flushQueuedEvents();
-      if (this.currentTools.length > 0) {
-        void this.updateTools(this.currentTools);
-      }
-      if (this.currentContext) {
-        void this.updateContext(this.currentContext);
-      }
-      this.options.onStatusChange?.("connected");
-    };
-    dataChannel.onmessage = (event) => {
-      try {
-        const call = parseRealtimeFunctionCallEvent(event.data);
-        if (shouldHandleRealtimeFunctionCall(call, this.handledFunctionCallIds)) {
-          void this.options.onFunctionCall?.(call);
-        }
-      } catch {
-        // Ignore malformed Realtime data-channel messages.
-      }
-    };
-    dataChannel.onclose = () => this.options.onStatusChange?.("disconnected");
-
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-    const sdpResponse = await fetchImpl(
-      `https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(this.options.model ?? XIAOZHUOBAN_REALTIME_MODEL)}`,
-      {
+    try {
+      const sessionResponse = await fetchImpl(this.options.sessionEndpoint ?? "/api/realtime/session", {
         method: "POST",
-        headers: {
-          authorization: `Bearer ${secret}`,
-          "content-type": "application/sdp"
-        },
-        body: offer.sdp ?? ""
+        headers: { "content-type": "application/json" },
+        body: createRealtimeSessionRequestBody(this.options.getSafetyIdentifier?.())
+      });
+      if (!sessionResponse.ok) {
+        let errorCode = "";
+        try {
+          errorCode = extractRealtimeSessionErrorCode(await sessionResponse.json());
+        } catch {
+          // Keep the generic session failure if the endpoint returns a non-JSON error.
+        }
+        throw new Error(errorCode || "REALTIME_SESSION_FAILED");
       }
-    );
-    if (!sdpResponse.ok) {
+      const secret = extractClientSecret(await sessionResponse.json());
+      if (!secret) {
+        throw new Error("REALTIME_CLIENT_SECRET_MISSING");
+      }
+
+      const peerConnection = new RTCPeerConnection();
+      const dataChannel = peerConnection.createDataChannel("openai-realtime-data");
+      this.peerConnection = peerConnection;
+      this.dataChannel = dataChannel;
+
+      stream.getAudioTracks().forEach((track) => peerConnection.addTrack(track, stream));
+      peerConnection.ontrack = (event) => {
+        const [remoteStream] = event.streams;
+        if (!remoteStream || typeof Audio === "undefined") return;
+        const audio = new Audio();
+        audio.autoplay = true;
+        audio.srcObject = remoteStream;
+      };
+
+      dataChannel.onopen = () => {
+        this.flushQueuedEvents();
+        if (this.currentTools.length > 0) {
+          void this.updateTools(this.currentTools);
+        }
+        if (this.currentContext) {
+          void this.updateContext(this.currentContext);
+        }
+        this.options.onStatusChange?.("connected");
+      };
+      dataChannel.onmessage = (event) => {
+        try {
+          const call = parseRealtimeFunctionCallEvent(event.data);
+          if (shouldHandleRealtimeFunctionCall(call, this.handledFunctionCallIds)) {
+            void this.options.onFunctionCall?.(call);
+          }
+        } catch {
+          // Ignore malformed Realtime data-channel messages.
+        }
+      };
+      dataChannel.onclose = () => this.options.onStatusChange?.("disconnected");
+
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      const sdpResponse = await fetchImpl(
+        `https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(this.options.model ?? XIAOZHUOBAN_REALTIME_MODEL)}`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${secret}`,
+            "content-type": "application/sdp"
+          },
+          body: offer.sdp ?? ""
+        }
+      );
+      if (!sdpResponse.ok) {
+        throw new Error("REALTIME_SDP_FAILED");
+      }
+      await peerConnection.setRemoteDescription({ type: "answer", sdp: await sdpResponse.text() });
+    } catch (error) {
+      this.closeResources();
       this.options.onStatusChange?.("failed");
-      throw new Error("REALTIME_SDP_FAILED");
+      throw error;
     }
-    await peerConnection.setRemoteDescription({ type: "answer", sdp: await sdpResponse.text() });
   }
 
   disconnect(): void {
-    this.dataChannel?.close();
-    this.peerConnection?.close();
-    this.mediaStream?.getTracks().forEach((track) => track.stop());
+    this.closeResources();
+    this.handledFunctionCallIds.clear();
+    this.options.onStatusChange?.("disconnected");
+  }
+
+  private closeResources(): void {
+    closeRealtimeConnectionResources({
+      dataChannel: this.dataChannel,
+      peerConnection: this.peerConnection,
+      mediaStream: this.mediaStream
+    });
     this.dataChannel = null;
     this.peerConnection = null;
     this.mediaStream = null;
-    this.handledFunctionCallIds.clear();
-    this.options.onStatusChange?.("disconnected");
   }
 
   updateTools(tools: AssistantToolSpec[]): void {

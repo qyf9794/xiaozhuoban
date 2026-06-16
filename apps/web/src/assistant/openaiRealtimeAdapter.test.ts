@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createPassthroughSchema } from "@xiaozhuoban/assistant-core";
 import {
   OpenAIRealtimeWebRtcAdapter,
+  closeRealtimeConnectionResources,
   createRealtimeSessionRequestBody,
   createRealtimeToolResultEvents,
   extractRealtimeSessionErrorCode,
@@ -95,6 +96,23 @@ describe("OpenAI realtime adapter helpers", () => {
     });
     expect(JSON.parse(createRealtimeSessionRequestBody("   "))).toEqual({});
     expect(JSON.parse(createRealtimeSessionRequestBody(undefined))).toEqual({});
+  });
+
+  it("closes realtime resources and stops local media tracks", () => {
+    const calls: string[] = [];
+
+    closeRealtimeConnectionResources({
+      dataChannel: { close: () => calls.push("dataChannel.close") },
+      peerConnection: { close: () => calls.push("peerConnection.close") },
+      mediaStream: {
+        getTracks: () => [
+          { stop: () => calls.push("track.one.stop") },
+          { stop: () => calls.push("track.two.stop") }
+        ]
+      }
+    });
+
+    expect(calls).toEqual(["dataChannel.close", "peerConnection.close", "track.one.stop", "track.two.stop"]);
   });
 
   it("extracts server-side realtime session error codes", () => {
