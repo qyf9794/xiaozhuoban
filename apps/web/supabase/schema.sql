@@ -76,6 +76,24 @@ create table if not exists public.message_board_messages (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.assistant_command_logs (
+  id text primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  board_id text null references public.boards(id) on delete set null,
+  route text not null,
+  source_mode text not null,
+  transcript text null,
+  tool_name text null,
+  sanitized_args jsonb null,
+  target_widget jsonb null,
+  result_status text not null,
+  result_message text not null,
+  error_code text null,
+  confirmation_state text null,
+  duration_ms integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.gomoku_matches (
   id text primary key,
   host_user_id uuid not null references auth.users(id) on delete cascade,
@@ -260,6 +278,8 @@ create index if not exists idx_widget_instances_user_deleted on public.widget_in
 create index if not exists idx_widget_instances_board on public.widget_instances(board_id);
 create index if not exists idx_widget_instances_definition on public.widget_instances(definition_id);
 create index if not exists idx_message_board_messages_created_at on public.message_board_messages(created_at desc);
+create index if not exists idx_assistant_command_logs_user_created on public.assistant_command_logs(user_id, created_at desc);
+create index if not exists idx_assistant_command_logs_board_created on public.assistant_command_logs(board_id, created_at desc);
 create index if not exists idx_gomoku_matches_host_status on public.gomoku_matches(host_user_id, status, updated_at desc);
 create index if not exists idx_gomoku_matches_guest_status on public.gomoku_matches(guest_user_id, status, updated_at desc);
 create index if not exists idx_gomoku_matches_expires on public.gomoku_matches(expires_at);
@@ -275,6 +295,7 @@ alter table public.boards enable row level security;
 alter table public.widget_definitions enable row level security;
 alter table public.widget_instances enable row level security;
 alter table public.message_board_messages enable row level security;
+alter table public.assistant_command_logs enable row level security;
 alter table public.gomoku_matches enable row level security;
 alter table public.monopoly_matches enable row level security;
 alter table public.guandan_matches enable row level security;
@@ -314,6 +335,18 @@ create policy message_board_messages_auth_insert on public.message_board_message
 for insert
 to authenticated
 with check (auth.uid() = sender_id);
+
+drop policy if exists assistant_command_logs_owner_select on public.assistant_command_logs;
+create policy assistant_command_logs_owner_select on public.assistant_command_logs
+for select
+to authenticated
+using (auth.uid() = user_id);
+
+drop policy if exists assistant_command_logs_owner_insert on public.assistant_command_logs;
+create policy assistant_command_logs_owner_insert on public.assistant_command_logs
+for insert
+to authenticated
+with check (auth.uid() = user_id);
 
 drop policy if exists gomoku_matches_players_select on public.gomoku_matches;
 create policy gomoku_matches_players_select on public.gomoku_matches

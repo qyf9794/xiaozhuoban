@@ -6,9 +6,11 @@ import {
   createDefaultIntentShortcutRouter,
   type ContextSummarizerInput
 } from "@xiaozhuoban/assistant-core";
+import { useAuthStore } from "../auth/authStore";
 import { useAppStore } from "../store";
 import { registerBoardActions } from "./boardActions";
 import { AssistantHarness, type AssistantRealtimeAdapter } from "./AssistantHarness";
+import { createLocalAssistantAuditAdapter } from "./assistantAudit";
 import { createGuardrailActions } from "./guardrailActions";
 import { WidgetCapabilityBridge, createWidgetCapabilityActions } from "./widgetCapabilityBridge";
 import { createWidgetStateActions } from "./widgetStateActions";
@@ -80,6 +82,10 @@ export function createLocalAssistantHarness(options?: {
     toolScopeManager: new ToolScopeManager(registry.list()),
     contextSummarizer: new ContextSummarizer(),
     realtime: options?.realtime ?? noopRealtimeAdapter,
+    audit: createLocalAssistantAuditAdapter({
+      getUserId: () => useAuthStore.getState().user?.id,
+      getBoardId: () => useAppStore.getState().activeBoardId
+    }),
     getContextInput: createContextInput,
     actionTimeoutMs: 8_000,
     now: () => new Date().toISOString()
