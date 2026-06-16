@@ -108,6 +108,9 @@ describe("widget state assistant actions", () => {
     expect(names).toContain("note.clear");
     expect(names).toContain("weather.set_city");
     expect(names).toContain("todo.complete_item");
+    expect(names).toContain("countdown.pause");
+    expect(names).toContain("countdown.resume");
+    expect(names).toContain("countdown.reset");
     expect(names).toContain("clipboard.clear");
     expect(names.some((name) => name.includes("gomoku") || name.includes("monopoly") || name.includes("guandan"))).toBe(false);
     expect(names.some((name) => name.includes("ai"))).toBe(false);
@@ -134,6 +137,12 @@ describe("widget state assistant actions", () => {
     expect(manager.getInitialTools()).toEqual([]);
     expect(manager.getWidgetDetailTools("weather").map((tool) => tool.name)).toEqual(["weather.set_city"]);
     expect(manager.getWidgetDetailTools("note").map((tool) => tool.name)).toEqual(["note.write", "note.clear"]);
+    expect(manager.getWidgetDetailTools("countdown").map((tool) => tool.name)).toEqual([
+      "countdown.set",
+      "countdown.pause",
+      "countdown.resume",
+      "countdown.reset"
+    ]);
   });
 
   it("writes and appends note content", async () => {
@@ -235,6 +244,50 @@ describe("widget state assistant actions", () => {
       remainingSeconds: 600,
       running: true,
       targetEndsAt: Date.parse(NOW) + 600_000
+    });
+  });
+
+  it("pauses, resumes, and resets a countdown without removing it", async () => {
+    const { store, getWidget } = createStore();
+    const registry = createRegistry(store);
+    await store.updateWidgetState("wi_countdown", {
+      inputHours: "0",
+      inputMinutes: "10",
+      inputSeconds: "0",
+      totalSeconds: 600,
+      remainingSeconds: 420,
+      running: true,
+      targetEndsAt: Date.parse(NOW) + 420_000
+    });
+
+    const pauseResult = await registry.execute(
+      { id: "call_1", name: "countdown.pause", arguments: {}, source: "test" },
+      { target: targetFor("countdown"), now: () => NOW }
+    );
+    expect(pauseResult).toMatchObject({ status: "success", message: "已暂停倒计时" });
+    expect(getWidget("countdown")?.state).toMatchObject({ remainingSeconds: 420, running: false, targetEndsAt: 0 });
+
+    const resumeResult = await registry.execute(
+      { id: "call_2", name: "countdown.resume", arguments: {}, source: "test" },
+      { target: targetFor("countdown"), now: () => NOW }
+    );
+    expect(resumeResult).toMatchObject({ status: "success", message: "已继续倒计时" });
+    expect(getWidget("countdown")?.state).toMatchObject({
+      remainingSeconds: 420,
+      running: true,
+      targetEndsAt: Date.parse(NOW) + 420_000
+    });
+
+    const resetResult = await registry.execute(
+      { id: "call_3", name: "countdown.reset", arguments: {}, source: "test" },
+      { target: targetFor("countdown"), now: () => NOW }
+    );
+    expect(resetResult).toMatchObject({ status: "success", message: "已重置倒计时" });
+    expect(getWidget("countdown")?.state).toMatchObject({
+      totalSeconds: 600,
+      remainingSeconds: 600,
+      running: false,
+      targetEndsAt: 0
     });
   });
 

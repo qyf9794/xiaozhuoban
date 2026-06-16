@@ -468,6 +468,41 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes countdown control commands without closing the widget", () => {
+    const router = createDefaultIntentShortcutRouter();
+
+    const pause = router.route("停止倒计时", context);
+    const resume = router.route("继续倒计时", context);
+    const reset = router.route("重置倒计时", context);
+
+    expect(pause.matched).toBe(true);
+    expect(resume.matched).toBe(true);
+    expect(reset.matched).toBe(true);
+    if (pause.matched) {
+      expect(pause.toolCall.name).toBe("countdown.pause");
+      expect(pause.toolCall.arguments).toEqual({ widgetId: "wi_countdown" });
+    }
+    if (resume.matched) {
+      expect(resume.toolCall.name).toBe("countdown.resume");
+      expect(resume.toolCall.arguments).toEqual({ widgetId: "wi_countdown" });
+    }
+    if (reset.matched) {
+      expect(reset.toolCall.name).toBe("countdown.reset");
+      expect(reset.toolCall.arguments).toEqual({ widgetId: "wi_countdown" });
+    }
+  });
+
+  it("keeps close countdown wording as widget removal", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("关闭倒计时", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("widget.remove");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_countdown" });
+    }
+  });
+
   it("routes note writing commands to the existing note widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("便签记下明早九点开会", context);

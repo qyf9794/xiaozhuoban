@@ -18,6 +18,7 @@ type NoteClearArgs = Record<string, never>;
 type TodoAddArgs = { text: string; dueAt?: string };
 type TodoCompleteArgs = { text: string };
 type CountdownSetArgs = { hours?: number; minutes?: number; seconds?: number; totalSeconds?: number; start?: boolean };
+type CountdownControlArgs = Record<string, never>;
 type WeatherCityArgs = { city?: string; cityCode?: string };
 type CalculatorSetArgs = { display: string | number };
 type HeadlineRefreshArgs = { requestedAt?: string };
@@ -136,6 +137,8 @@ const countdownSetSchema = parseWith<CountdownSetArgs>(
     (value.start === undefined || typeof value.start === "boolean")
 );
 
+const countdownControlSchema = parseWith<CountdownControlArgs>((value): value is CountdownControlArgs => isRecord(value));
+
 const weatherCitySchema = parseWith<WeatherCityArgs>(
   (value): value is WeatherCityArgs =>
     isRecord(value) && (hasOptionalString(value, "city") || hasOptionalString(value, "cityCode")) && Boolean(value.city || value.cityCode)
@@ -245,6 +248,28 @@ function normalizeCountdownTotal(args: CountdownSetArgs) {
     return Math.max(0, Math.floor(args.totalSeconds ?? 0));
   }
   return clampSegment(args.hours, 99) * 3600 + clampSegment(args.minutes, 59) * 60 + clampSegment(args.seconds, 59);
+}
+
+function parseCountdownStateSegment(value: unknown, max: number) {
+  const numeric = typeof value === "number" ? value : typeof value === "string" ? Number(value) : 0;
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.min(max, Math.max(0, Math.floor(numeric)));
+}
+
+function getCountdownTotalFromState(state: Record<string, unknown>) {
+  const storedTotal = Number(state.totalSeconds);
+  if (Number.isFinite(storedTotal) && storedTotal > 0) return Math.floor(storedTotal);
+  return (
+    parseCountdownStateSegment(state.inputHours, 99) * 3600 +
+    parseCountdownStateSegment(state.inputMinutes, 59) * 60 +
+    parseCountdownStateSegment(state.inputSeconds, 59)
+  );
+}
+
+function getCountdownRemainingFromState(state: Record<string, unknown>) {
+  const storedRemaining = Number(state.remainingSeconds);
+  if (Number.isFinite(storedRemaining) && storedRemaining > 0) return Math.floor(storedRemaining);
+  return getCountdownTotalFromState(state);
 }
 
 function createRecordId(prefix: string, now: string) {
@@ -434,6 +459,78 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
           targetEndsAt: start ? (Number.isFinite(nowMs) ? nowMs : Date.now()) + totalSeconds * 1000 : 0
         });
         return success(start ? "已设置并启动倒计时" : "已设置倒计时", { widgetId: target.widget.id, totalSeconds });
+      }
+    }),
+    defineAction<CountdownControlArgs>({
+      spec: {
+        name: "countdown.pause",
+        description: "Pause a running countdown widget without closing it.",
+        parameters: countdownControlSchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "countdown",
+        requiresTarget: true
+      },
+      async execute(_args, context) {
+        const target = getTarget(store, context, "countdown");
+        if (isToolResult(target)) return target;
+        await patchWidgetState(store, target.widget, {
+          running: false,
+          targetEndsAt: 0
+        });
+        return success("已暂停倒计时", { widgetId: target.widget.id });
+      }
+    }),
+    defineAction<CountdownControlArgs>({
+      spec: {
+        name: "countdown.resume",
+        description: "Resume a countdown widget from its remaining time.",
+        parameters: countdownControlSchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "countdown",
+        requiresTarget: true
+      },
+      async execute(_args, context) {
+        const target = getTarget(store, context, "countdown");
+        if (isToolResult(target)) return target;
+        const remainingSeconds = getCountdownRemainingFromState(target.widget.state);
+        if (remainingSeconds <= 0) {
+          return failed("倒计时还没有可继续的时间", "COUNTDOWN_NOT_READY");
+        }
+        const nowMs = Date.parse(context.now());
+        await patchWidgetState(store, target.widget, {
+          remainingSeconds,
+          running: true,
+          targetEndsAt: (Number.isFinite(nowMs) ? nowMs : Date.now()) + remainingSeconds * 1000
+        });
+        return success("已继续倒计时", { widgetId: target.widget.id, remainingSeconds });
+      }
+    }),
+    defineAction<CountdownControlArgs>({
+      spec: {
+        name: "countdown.reset",
+        description: "Reset a countdown widget to its configured duration without closing it.",
+        parameters: countdownControlSchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "countdown",
+        requiresTarget: true
+      },
+      async execute(_args, context) {
+        const target = getTarget(store, context, "countdown");
+        if (isToolResult(target)) return target;
+        const totalSeconds = getCountdownTotalFromState(target.widget.state);
+        if (totalSeconds <= 0) {
+          return failed("倒计时还没有设置时长", "COUNTDOWN_NOT_READY");
+        }
+        await patchWidgetState(store, target.widget, {
+          totalSeconds,
+          remainingSeconds: totalSeconds,
+          running: false,
+          targetEndsAt: 0
+        });
+        return success("已重置倒计时", { widgetId: target.widget.id, totalSeconds });
       }
     }),
     defineAction<WeatherCityArgs>({
