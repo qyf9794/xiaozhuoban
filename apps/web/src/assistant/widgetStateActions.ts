@@ -598,10 +598,9 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
 }
 
 export function createWidgetStateActions(store: WidgetStateActionStore): Array<AssistantAction<any>> {
-  const availableTypes = new Set(store.getWidgetDefinitions().filter((item) => item.kind === "system").map((item) => item.type));
   const allowedTypes = new Set<string>(STAGE_ONE_WIDGET_TYPES);
   return widgetStateActions(store).filter((action) => {
     const type = action.spec.widgetType;
-    return Boolean(type && allowedTypes.has(type) && availableTypes.has(type));
+    return Boolean(type && allowedTypes.has(type));
   });
 }

@@ -112,6 +112,19 @@ describe("widget state assistant actions", () => {
     expect(actions.every((action) => action.spec.scope === "widget-detail")).toBe(true);
   });
 
+  it("registers stage-one detail actions even before definitions are loaded", () => {
+    const store: WidgetStateActionStore = {
+      getWidgetDefinitions: () => [],
+      getWidgetInstances: () => [],
+      updateWidgetState() {}
+    };
+    const names = createWidgetStateActions(store).map((action) => action.spec.name);
+
+    expect(names).toContain("weather.set_city");
+    expect(names).toContain("note.write");
+    expect(names).toContain("todo.add_item");
+  });
+
   it("exposes widget detail actions only inside the matching scope", () => {
     const { store } = createStore();
     const manager = new ToolScopeManager(createWidgetStateActions(store).map((action) => action.spec));
