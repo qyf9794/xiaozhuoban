@@ -161,6 +161,19 @@ describe("AssistantHarness", () => {
     expect(toolUpdates[1]).toEqual(["board.auto_align", "widget.focus", "widget.remove", "tv.play"]);
   });
 
+  it("refreshes realtime context only after initialization", async () => {
+    const { harness, contextUpdates } = createHarness();
+
+    await harness.refreshRealtimeContext();
+    expect(contextUpdates).toEqual([]);
+
+    await harness.initialize();
+    await harness.refreshRealtimeContext();
+
+    expect(contextUpdates).toHaveLength(2);
+    expect(contextUpdates[1].focusedWidget?.widgetId).toBe("wi_tv");
+  });
+
   it("executes shortcut-routed commands without model fallback", async () => {
     const { harness, sentResults, auditEvents, executed } = createHarness();
     await harness.initialize();

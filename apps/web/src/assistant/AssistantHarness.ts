@@ -97,12 +97,19 @@ function removeTargetText(args: unknown) {
 export class AssistantHarness {
   private pendingConfirmation: ConfirmationRequest | null = null;
   private currentTools: AssistantToolSpec[] = [];
+  private initialized = false;
 
   constructor(private readonly options: AssistantHarnessOptions) {}
 
   async initialize(): Promise<void> {
     this.currentTools = this.options.toolScopeManager.getInitialTools();
+    this.initialized = true;
     await this.options.realtime.updateTools(this.currentTools);
+    await this.updateRealtimeContext();
+  }
+
+  async refreshRealtimeContext(): Promise<void> {
+    if (!this.initialized) return;
     await this.updateRealtimeContext();
   }
 

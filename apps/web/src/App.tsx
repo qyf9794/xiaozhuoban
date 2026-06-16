@@ -193,6 +193,10 @@ export function App() {
 
   useEffect(() => () => assistantRuntime.disconnect(), [assistantRuntime]);
 
+  useEffect(() => {
+    void assistantRuntime.harness.refreshRealtimeContext();
+  }, [assistantRuntime, activeBoardId, boards, widgetDefinitions, widgetInstances]);
+
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
