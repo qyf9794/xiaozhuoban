@@ -12,10 +12,12 @@ export const XIAOZHUOBAN_REALTIME_MODEL = "gpt-realtime-2";
 export const DEFAULT_REALTIME_CLIENT_SECRET_TTL_SECONDS = 600;
 
 export type RealtimeReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+export type RealtimeSemanticVadEagerness = "low" | "medium" | "high" | "auto";
 
 export interface RealtimeSessionOptions {
   ttlSeconds?: number;
   reasoningEffort?: RealtimeReasoningEffort;
+  turnDetectionEagerness?: RealtimeSemanticVadEagerness;
 }
 
 export interface RealtimeFunctionTool {
@@ -276,6 +278,15 @@ export function serializeAssistantToolForRealtime(
   };
 }
 
+export function createRealtimeTurnDetection(options: RealtimeSessionOptions = {}) {
+  return {
+    type: "semantic_vad",
+    eagerness: options.turnDetectionEagerness ?? "low",
+    create_response: true,
+    interrupt_response: true
+  };
+}
+
 export function createRealtimeClientSecretPayload(options: RealtimeSessionOptions = {}) {
   return {
     expires_after: {
@@ -292,9 +303,7 @@ export function createRealtimeClientSecretPayload(options: RealtimeSessionOption
       output_modalities: ["audio"],
       audio: {
         input: {
-          turn_detection: {
-            type: "semantic_vad"
-          }
+          turn_detection: createRealtimeTurnDetection(options)
         },
         output: {
           voice: "marin"

@@ -7,6 +7,7 @@ import {
   createInitialRealtimeTools,
   createRealtimeContextInstructions,
   createRealtimeClientSecretPayload,
+  createRealtimeTurnDetection,
   decodeRealtimeToolName,
   encodeRealtimeToolName
 } from "./realtimeSessionConfig";
@@ -56,9 +57,23 @@ describe("realtime session config", () => {
     expect(payload.session.reasoning.effort).toBe("minimal");
     expect(payload.session.output_modalities).toEqual(["audio"]);
     expect(payload.session.audio.output.voice).toBe("marin");
+    expect(payload.session.audio.input.turn_detection).toEqual({
+      type: "semantic_vad",
+      eagerness: "low",
+      create_response: true,
+      interrupt_response: true
+    });
     expect(payload.session.tool_choice).toBe("auto");
     expect(payload.session.parallel_tool_calls).toBe(false);
     expect(payload.session.tools.map((tool) => tool.name)).toContain("assistant__dot__out_of_scope");
+  });
+
+  it("allows semantic VAD eagerness to be tuned for cutoff testing", () => {
+    expect(createRealtimeTurnDetection()).toMatchObject({ type: "semantic_vad", eagerness: "low" });
+    expect(createRealtimeTurnDetection({ turnDetectionEagerness: "medium" })).toMatchObject({
+      type: "semantic_vad",
+      eagerness: "medium"
+    });
   });
 
   it("round trips internal tool names through Realtime-safe names", () => {
