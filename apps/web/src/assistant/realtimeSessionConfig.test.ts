@@ -6,7 +6,9 @@ import {
   createInitialRealtimeToolSpecs,
   createInitialRealtimeTools,
   createRealtimeContextInstructions,
-  createRealtimeClientSecretPayload
+  createRealtimeClientSecretPayload,
+  decodeRealtimeToolName,
+  encodeRealtimeToolName
 } from "./realtimeSessionConfig";
 
 describe("realtime session config", () => {
@@ -33,9 +35,11 @@ describe("realtime session config", () => {
 
   it("serializes initial Realtime tools as function tool schemas", () => {
     const tools = createInitialRealtimeTools();
-    const addWidget = tools.find((tool) => tool.name === "board.add_widget");
+    const addWidget = tools.find((tool) => decodeRealtimeToolName(tool.name) === "board.add_widget");
 
     expect(tools.every((tool) => tool.type === "function")).toBe(true);
+    expect(tools.every((tool) => /^[a-zA-Z0-9_-]+$/.test(tool.name))).toBe(true);
+    expect(tools.map((tool) => tool.name)).toContain("board__dot__add_widget");
     expect(addWidget?.parameters).toMatchObject({
       type: "object",
       required: ["definitionId"],
@@ -54,7 +58,12 @@ describe("realtime session config", () => {
     expect(payload.session.audio.output.voice).toBe("marin");
     expect(payload.session.tool_choice).toBe("auto");
     expect(payload.session.parallel_tool_calls).toBe(false);
-    expect(payload.session.tools.map((tool) => tool.name)).toContain("assistant.out_of_scope");
+    expect(payload.session.tools.map((tool) => tool.name)).toContain("assistant__dot__out_of_scope");
+  });
+
+  it("round trips internal tool names through Realtime-safe names", () => {
+    expect(encodeRealtimeToolName("weather.set_city")).toBe("weather__dot__set_city");
+    expect(decodeRealtimeToolName("weather__dot__set_city")).toBe("weather.set_city");
   });
 
   it("keeps instructions short-response and xiaozhuoban-only", () => {

@@ -102,6 +102,14 @@ export function createRealtimeContextInstructions(context?: CompactAssistantCont
   ].join("\n");
 }
 
+export function encodeRealtimeToolName(name: string): string {
+  return name.replace(/\./g, "__dot__");
+}
+
+export function decodeRealtimeToolName(name: string): string {
+  return name.replace(/__dot__/g, ".");
+}
+
 const anyObjectSchema = createPassthroughSchema<Record<string, unknown>>((value): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object"
 );
@@ -262,7 +270,7 @@ export function serializeAssistantToolForRealtime(
 ): RealtimeFunctionTool {
   return {
     type: "function",
-    name: tool.name,
+    name: encodeRealtimeToolName(tool.name),
     description: tool.description,
     parameters
   };

@@ -8,6 +8,7 @@ import type { AssistantRealtimeAdapter } from "./AssistantHarness";
 import {
   XIAOZHUOBAN_REALTIME_MODEL,
   createRealtimeContextInstructions,
+  decodeRealtimeToolName,
   serializeAssistantToolForRealtime
 } from "./realtimeSessionConfig";
 
@@ -53,7 +54,7 @@ export function parseRealtimeFunctionCallEvent(value: unknown): AssistantToolCal
     if (!name || !callId) return null;
     return {
       id: callId,
-      name,
+      name: decodeRealtimeToolName(name),
       arguments: parseArguments(event.arguments),
       source: "realtime"
     };
@@ -66,7 +67,7 @@ export function parseRealtimeFunctionCallEvent(value: unknown): AssistantToolCal
     if (!name || !callId) return null;
     return {
       id: callId,
-      name,
+      name: decodeRealtimeToolName(name),
       arguments: parseArguments(item.arguments),
       source: "realtime"
     };

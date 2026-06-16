@@ -13,7 +13,7 @@ describe("OpenAI realtime adapter helpers", () => {
     const call = parseRealtimeFunctionCallEvent({
       type: "response.function_call_arguments.done",
       call_id: "call_1",
-      name: "weather.set_city",
+      name: "weather__dot__set_city",
       arguments: "{\"city\":\"上海\"}"
     });
 
@@ -32,7 +32,7 @@ describe("OpenAI realtime adapter helpers", () => {
         item: {
           type: "function_call",
           call_id: "call_2",
-          name: "countdown.set",
+          name: "countdown__dot__set",
           arguments: "{\"totalSeconds\":600,\"start\":true}"
         }
       })
@@ -86,7 +86,10 @@ describe("OpenAI realtime adapter helpers", () => {
     ]);
 
     expect((adapter as unknown as { queuedEvents: unknown[] }).queuedEvents).toHaveLength(1);
-    expect((adapter as unknown as { queuedEvents: Array<{ type: string }> }).queuedEvents[0].type).toBe("session.update");
+    const event = (adapter as unknown as { queuedEvents: Array<{ type: string; session: { tools: Array<{ name: string }> } }> })
+      .queuedEvents[0];
+    expect(event.type).toBe("session.update");
+    expect(event.session.tools[0].name).toBe("board__dot__auto_align");
   });
 
   it("queues compact context instructions before the data channel opens", () => {

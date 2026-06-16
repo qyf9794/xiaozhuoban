@@ -59,10 +59,14 @@ function objectSchema(properties: Record<string, unknown>, required?: string[], 
 function realtimeTool(name: string, description: string, parameters: Record<string, unknown>) {
   return {
     type: "function",
-    name,
+    name: encodeRealtimeToolName(name),
     description,
     parameters
   };
+}
+
+function encodeRealtimeToolName(name: string): string {
+  return name.replace(/\./g, "__dot__");
 }
 
 function clampRealtimeClientSecretTtl(value: unknown): number {
