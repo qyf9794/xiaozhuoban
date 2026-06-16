@@ -66,6 +66,7 @@ describe("realtime session API", () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers.get("x-xiaozhuoban-realtime-turn-detection")).toBe("semantic_vad;eagerness=low");
     expect(response.headers.get("x-xiaozhuoban-realtime-parallel-tools")).toBe("true");
+    expect(response.headers.get("x-xiaozhuoban-realtime-tool-stage")).toBe("selector-only");
     const [, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
     expect(init?.headers).toMatchObject({
       authorization: "Bearer sk-test",

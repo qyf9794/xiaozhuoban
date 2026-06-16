@@ -18,6 +18,7 @@ const XIAOZHUOBAN_REALTIME_MODEL = "gpt-realtime-2";
 const DEFAULT_REALTIME_CLIENT_SECRET_TTL_SECONDS = 600;
 const REALTIME_TURN_DETECTION_HEADER = "semantic_vad;eagerness=low";
 const REALTIME_PARALLEL_TOOLS_HEADER = "true";
+const REALTIME_TOOL_STAGE_HEADER = "selector-only";
 const REALTIME_TOOL_SELECTION_TOOL_NAME = "assistant.select_tool";
 
 const XIAOZHUOBAN_REALTIME_INSTRUCTIONS = [
@@ -274,5 +275,6 @@ export default async function handler(request: IncomingMessage, response: Server
 
   response.setHeader("x-xiaozhuoban-realtime-turn-detection", REALTIME_TURN_DETECTION_HEADER);
   response.setHeader("x-xiaozhuoban-realtime-parallel-tools", REALTIME_PARALLEL_TOOLS_HEADER);
+  response.setHeader("x-xiaozhuoban-realtime-tool-stage", REALTIME_TOOL_STAGE_HEADER);
   sendJson(response, 200, payload);
 }
