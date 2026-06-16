@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { AssistantHarness } from "../assistant/AssistantHarness";
 import type { RealtimeConnectionStatus } from "../assistant/openaiRealtimeAdapter";
 
@@ -87,6 +87,24 @@ export function resolveVoiceAssistantSubmitText(stateText: string, inputValue: s
   const stateValue = stateText.trim();
   if (stateValue) return stateValue;
   return inputValue?.trim() ?? "";
+}
+
+export function shouldSubmitVoiceAssistantOnKeyDown(event: {
+  key: string;
+  shiftKey?: boolean;
+  altKey?: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  isComposing?: boolean;
+}): boolean {
+  return (
+    event.key === "Enter" &&
+    !event.shiftKey &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.isComposing
+  );
 }
 
 function getResultText(status: string, message: string) {
@@ -187,14 +205,24 @@ export function VoiceAssistantDock({
     }
   };
 
-  const onSubmit = (event: FormEvent) => {
-    event.preventDefault();
+  const submitCurrentCommand = () => {
     const input = resolveVoiceAssistantSubmitText(text, inputRef.current?.value);
     setText("");
     if (inputRef.current) {
       inputRef.current.value = "";
     }
     void runCommand(input);
+  };
+
+  const onSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    submitCurrentCommand();
+  };
+
+  const onCommandKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (!shouldSubmitVoiceAssistantOnKeyDown(event)) return;
+    event.preventDefault();
+    submitCurrentCommand();
   };
 
   const confirm = () => {
@@ -290,6 +318,7 @@ export function VoiceAssistantDock({
           value={text}
           onChange={(event) => setText(event.target.value)}
           onInput={(event) => setText(event.currentTarget.value)}
+          onKeyDown={onCommandKeyDown}
           placeholder="说一句指令"
           disabled={muted}
           aria-label="助手指令"

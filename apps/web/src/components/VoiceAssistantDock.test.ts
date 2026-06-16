@@ -7,6 +7,7 @@ import {
   getVoiceAssistantOperationText,
   prependVoiceAssistantHistory,
   resolveVoiceAssistantSubmitText,
+  shouldSubmitVoiceAssistantOnKeyDown,
   type VoiceAssistantDockState
 } from "./VoiceAssistantDock";
 
@@ -64,6 +65,15 @@ describe("VoiceAssistantDock", () => {
     expect(resolveVoiceAssistantSubmitText(" 添加便签 ", "整理桌板")).toBe("添加便签");
     expect(resolveVoiceAssistantSubmitText("", " 整理桌板 ")).toBe("整理桌板");
     expect(resolveVoiceAssistantSubmitText("   ", undefined)).toBe("");
+  });
+
+  it("submits only plain Enter from the command input", () => {
+    expect(shouldSubmitVoiceAssistantOnKeyDown({ key: "Enter" })).toBe(true);
+    expect(shouldSubmitVoiceAssistantOnKeyDown({ key: "Enter", shiftKey: true })).toBe(false);
+    expect(shouldSubmitVoiceAssistantOnKeyDown({ key: "Enter", ctrlKey: true })).toBe(false);
+    expect(shouldSubmitVoiceAssistantOnKeyDown({ key: "Enter", metaKey: true })).toBe(false);
+    expect(shouldSubmitVoiceAssistantOnKeyDown({ key: "Enter", isComposing: true })).toBe(false);
+    expect(shouldSubmitVoiceAssistantOnKeyDown({ key: "Escape" })).toBe(false);
   });
 
   it("maps realtime connection status to dock state and short messages", () => {
