@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  getVoiceAssistantConnectionMessage,
+  getVoiceAssistantDockStateForRealtimeStatus,
   getVoiceAssistantDockStatusText,
   prependVoiceAssistantHistory,
   type VoiceAssistantDockState
@@ -40,5 +42,16 @@ describe("VoiceAssistantDock", () => {
       { id: "3", text: "取消", result: "已取消", route: "shortcut" },
       { id: "1", text: "打开天气", result: "好了", route: "shortcut" }
     ]);
+  });
+
+  it("maps realtime connection status to dock state and short messages", () => {
+    expect(getVoiceAssistantDockStateForRealtimeStatus("disconnected")).toBe("disconnected");
+    expect(getVoiceAssistantDockStateForRealtimeStatus("connecting")).toBe("connecting");
+    expect(getVoiceAssistantDockStateForRealtimeStatus("connected")).toBe("listening");
+    expect(getVoiceAssistantDockStateForRealtimeStatus("failed")).toBe("error");
+    expect(getVoiceAssistantDockStateForRealtimeStatus("microphone_denied")).toBe("error");
+
+    expect(getVoiceAssistantConnectionMessage("connected")).toBe("语音已连接，可以直接说话。");
+    expect(getVoiceAssistantConnectionMessage("microphone_denied")).toBe("麦克风权限被拒绝。");
   });
 });

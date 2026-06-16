@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { AssistantHarness } from "../assistant/AssistantHarness";
+import type { RealtimeConnectionStatus } from "../assistant/openaiRealtimeAdapter";
 
 export type VoiceAssistantDockState =
   | "disconnected"
@@ -20,6 +21,21 @@ export function getVoiceAssistantDockStatusText(state: VoiceAssistantDockState):
   if (state === "error") return "有错误";
   if (state === "muted") return "已静音";
   return "未连接";
+}
+
+export function getVoiceAssistantDockStateForRealtimeStatus(status: RealtimeConnectionStatus): VoiceAssistantDockState {
+  if (status === "connecting") return "connecting";
+  if (status === "connected") return "listening";
+  if (status === "failed" || status === "microphone_denied") return "error";
+  return "disconnected";
+}
+
+export function getVoiceAssistantConnectionMessage(status: RealtimeConnectionStatus): string {
+  if (status === "connecting") return "正在连接 gpt-realtime-2。";
+  if (status === "connected") return "语音已连接，可以直接说话。";
+  if (status === "microphone_denied") return "麦克风权限被拒绝。";
+  if (status === "failed") return "语音连接失败，请稍后重试。";
+  return "语音未连接，文字指令可用。";
 }
 
 export interface VoiceAssistantHistoryItem {
@@ -48,11 +64,17 @@ function getResultText(status: string, message: string) {
 
 export function VoiceAssistantDock({
   harness,
+  voiceStatus = "disconnected",
+  onConnectVoice,
+  onDisconnectVoice,
   isMobileMode = false,
   mobileVisible = true,
   desktopBottomInset = 14
 }: {
   harness: AssistantHarness;
+  voiceStatus?: RealtimeConnectionStatus;
+  onConnectVoice?: () => Promise<void>;
+  onDisconnectVoice?: () => void;
   isMobileMode?: boolean;
   mobileVisible?: boolean;
   desktopBottomInset?: number;
@@ -63,19 +85,29 @@ export function VoiceAssistantDock({
   const [lastMessage, setLastMessage] = useState("好了，我在。");
   const [history, setHistory] = useState<VoiceAssistantHistoryItem[]>([]);
   const initializedRef = useRef(false);
+  const voiceEnabled = Boolean(onConnectVoice);
 
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
-    setState("connecting");
     void harness
       .initialize()
-      .then(() => setState("listening"))
+      .then(() => {
+        if (!voiceEnabled) {
+          setState("listening");
+        }
+      })
       .catch((error) => {
         setLastMessage(error instanceof Error ? error.message : "助手连接失败");
         setState("error");
       });
-  }, [harness]);
+  }, [harness, voiceEnabled]);
+
+  useEffect(() => {
+    if (!voiceEnabled) return;
+    setState(getVoiceAssistantDockStateForRealtimeStatus(voiceStatus));
+    setLastMessage(getVoiceAssistantConnectionMessage(voiceStatus));
+  }, [voiceEnabled, voiceStatus]);
 
   const pending = harness.getPendingConfirmation();
   const visualState = muted ? "muted" : pending ? "waiting_confirmation" : state;
@@ -123,6 +155,24 @@ export function VoiceAssistantDock({
     void runCommand("取消");
   };
 
+  const connectVoice = async () => {
+    if (!onConnectVoice || muted) return;
+    setState("connecting");
+    setLastMessage(getVoiceAssistantConnectionMessage("connecting"));
+    try {
+      await onConnectVoice();
+    } catch (error) {
+      setLastMessage(error instanceof Error ? error.message : "语音连接失败");
+      setState("error");
+    }
+  };
+
+  const disconnectVoice = () => {
+    onDisconnectVoice?.();
+    setState("disconnected");
+    setLastMessage(getVoiceAssistantConnectionMessage("disconnected"));
+  };
+
   return (
     <aside
       className={`voice-assistant-dock liquid-glass-preserve${isMobileMode ? " voice-assistant-dock-mobile" : ""}`}
@@ -150,6 +200,25 @@ export function VoiceAssistantDock({
           <span>{lastMessage}</span>
         </div>
       </div>
+
+      {voiceEnabled ? (
+        <div className="voice-assistant-dock__voice">
+          {voiceStatus === "connected" ? (
+            <button type="button" onClick={disconnectVoice} disabled={muted} aria-label="断开语音">
+              断开语音
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void connectVoice()}
+              disabled={muted || voiceStatus === "connecting"}
+              aria-label="连接语音"
+            >
+              连接语音
+            </button>
+          )}
+        </div>
+      ) : null}
 
       <form className="voice-assistant-dock__form" onSubmit={onSubmit}>
         <input

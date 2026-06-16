@@ -293,6 +293,7 @@ body {
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
 }
 
+.voice-assistant-dock__voice button,
 .voice-assistant-dock__form button,
 .voice-assistant-dock__confirm button {
   border: 1px solid rgba(148, 163, 184, 0.42);
@@ -304,6 +305,15 @@ body {
   font-size: 12px;
 }
 
+.voice-assistant-dock__voice {
+  display: grid;
+}
+
+.voice-assistant-dock__voice button {
+  min-height: 30px;
+}
+
+.voice-assistant-dock__voice button:disabled,
 .voice-assistant-dock__form button:disabled,
 .voice-assistant-dock__form input:disabled {
   opacity: 0.55;

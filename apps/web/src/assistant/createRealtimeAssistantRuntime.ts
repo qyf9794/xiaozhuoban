@@ -5,6 +5,7 @@ import {
   type OpenAIRealtimeWebRtcAdapterOptions,
   type RealtimeConnectionStatus
 } from "./openaiRealtimeAdapter";
+import type { WidgetCapabilityBridge } from "./widgetCapabilityBridge";
 
 export interface RealtimeAssistantRuntime {
   harness: AssistantHarness;
@@ -15,6 +16,7 @@ export interface RealtimeAssistantRuntime {
 
 export function createRealtimeAssistantRuntime(options: {
   onStatusChange?: (status: RealtimeConnectionStatus) => void;
+  capabilityBridge?: WidgetCapabilityBridge;
   adapterOptions?: Omit<OpenAIRealtimeWebRtcAdapterOptions, "onFunctionCall" | "onStatusChange">;
 } = {}): RealtimeAssistantRuntime {
   let harness: AssistantHarness;
@@ -25,7 +27,7 @@ export function createRealtimeAssistantRuntime(options: {
       await harness.handleFunctionCall(call, "function_call");
     }
   });
-  harness = createLocalAssistantHarness({ realtime: adapter });
+  harness = createLocalAssistantHarness({ capabilityBridge: options.capabilityBridge, realtime: adapter });
 
   return {
     harness,

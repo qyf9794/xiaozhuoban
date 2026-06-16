@@ -6,7 +6,8 @@ import { AIGeneratorDialog } from "./components/AIGeneratorDialog";
 import { CommandPalette } from "./components/CommandPalette";
 import { OnlineUsersDock } from "./components/OnlineUsersDock";
 import { VoiceAssistantDock } from "./components/VoiceAssistantDock";
-import { createLocalAssistantHarness } from "./assistant/createLocalAssistantHarness";
+import { createRealtimeAssistantRuntime } from "./assistant/createRealtimeAssistantRuntime";
+import type { RealtimeConnectionStatus } from "./assistant/openaiRealtimeAdapter";
 import { WidgetCapabilityBridge } from "./assistant/widgetCapabilityBridge";
 import { useAppStore } from "./store";
 import { useAuthStore } from "./auth/authStore";
@@ -138,6 +139,7 @@ export function App() {
   const [fullscreen, setFullscreen] = useState(false);
   const [desktopViewportBottomInset, setDesktopViewportBottomInset] = useState(14);
   const [mobileChromeVisible, setMobileChromeVisible] = useState(true);
+  const [realtimeStatus, setRealtimeStatus] = useState<RealtimeConnectionStatus>("disconnected");
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window === "undefined" ? MOBILE_FRAME_WIDTH : window.innerWidth
   );
@@ -159,8 +161,12 @@ export function App() {
   const assistantCapabilityBridgeRef = useRef(new WidgetCapabilityBridge());
   const isMobileUa = useMemo(() => isLikelyMobileUA(), []);
   const isMobileMode = isMobileUa || viewportWidth <= MOBILE_VIEWPORT_MAX;
-  const assistantHarness = useMemo(
-    () => createLocalAssistantHarness({ capabilityBridge: assistantCapabilityBridgeRef.current }),
+  const assistantRuntime = useMemo(
+    () =>
+      createRealtimeAssistantRuntime({
+        capabilityBridge: assistantCapabilityBridgeRef.current,
+        onStatusChange: setRealtimeStatus
+      }),
     []
   );
 
@@ -181,6 +187,8 @@ export function App() {
     if (!ready || !activeBoard) return;
     void showDesktopWindowWhenReady();
   }, [activeBoard, ready]);
+
+  useEffect(() => () => assistantRuntime.disconnect(), [assistantRuntime]);
 
 
   useEffect(() => {
@@ -576,7 +584,10 @@ export function App() {
       />
 
       <VoiceAssistantDock
-        harness={assistantHarness}
+        harness={assistantRuntime.harness}
+        voiceStatus={realtimeStatus}
+        onConnectVoice={assistantRuntime.connect}
+        onDisconnectVoice={assistantRuntime.disconnect}
         isMobileMode={isMobileMode}
         mobileVisible={mobileChromeVisible}
         desktopBottomInset={desktopViewportBottomInset}
