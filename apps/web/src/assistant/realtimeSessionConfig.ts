@@ -191,12 +191,19 @@ export function createInitialRealtimeTools(): RealtimeFunctionTool[] {
   const initialNames = new Set(createInitialRealtimeToolSpecs().map((tool) => tool.name));
   return initialToolMetadata
     .filter((metadata) => initialNames.has(metadata.name))
-    .map((metadata) => ({
-      type: "function",
-      name: metadata.name,
-      description: metadata.description,
-      parameters: metadata.parameters
-    }));
+    .map((metadata) => serializeAssistantToolForRealtime(toAssistantToolSpec(metadata), metadata.parameters));
+}
+
+export function serializeAssistantToolForRealtime(
+  tool: AssistantToolSpec,
+  parameters: Record<string, unknown> = objectSchema({}, undefined)
+): RealtimeFunctionTool {
+  return {
+    type: "function",
+    name: tool.name,
+    description: tool.description,
+    parameters
+  };
 }
 
 export function createRealtimeClientSecretPayload(options: RealtimeSessionOptions = {}) {
