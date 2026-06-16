@@ -3,9 +3,11 @@ import { createHash } from "node:crypto";
 
 type JsonValue = Record<string, unknown> | unknown[] | string | number | boolean | null;
 type RealtimeReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+type RealtimeSemanticVadEagerness = "low" | "medium" | "high" | "auto";
 type RealtimeSessionOptions = {
   ttlSeconds?: number;
   reasoningEffort?: RealtimeReasoningEffort;
+  turnDetectionEagerness?: RealtimeSemanticVadEagerness;
 };
 type RealtimeSessionRequestOptions = RealtimeSessionOptions & {
   safetyIdentifier?: string;
@@ -150,6 +152,15 @@ function createInitialRealtimeTools() {
   ];
 }
 
+function createRealtimeTurnDetection(options: RealtimeSessionOptions = {}) {
+  return {
+    type: "semantic_vad",
+    eagerness: options.turnDetectionEagerness ?? "low",
+    create_response: true,
+    interrupt_response: true
+  };
+}
+
 function createRealtimeClientSecretPayload(options: RealtimeSessionOptions = {}) {
   return {
     expires_after: {
@@ -166,9 +177,7 @@ function createRealtimeClientSecretPayload(options: RealtimeSessionOptions = {})
       output_modalities: ["audio"],
       audio: {
         input: {
-          turn_detection: {
-            type: "semantic_vad"
-          }
+          turn_detection: createRealtimeTurnDetection(options)
         },
         output: {
           voice: "marin"

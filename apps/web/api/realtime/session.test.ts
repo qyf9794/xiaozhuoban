@@ -74,6 +74,12 @@ describe("realtime session API", () => {
     expect(safetyIdentifier?.length).toBeLessThanOrEqual(64);
     const payload = JSON.parse(String(init?.body));
     expect(payload.session.model).toBe("gpt-realtime-2");
+    expect(payload.session.audio.input.turn_detection).toEqual({
+      type: "semantic_vad",
+      eagerness: "low",
+      create_response: true,
+      interrupt_response: true
+    });
     expect(payload.session.tools.every((tool: { name: string }) => /^[a-zA-Z0-9_-]+$/.test(tool.name))).toBe(true);
     expect(payload.session.tools.map((tool: { name: string }) => tool.name)).toContain("board__dot__add_widget");
   });
