@@ -38,6 +38,16 @@ export function getVoiceAssistantConnectionMessage(status: RealtimeConnectionSta
   return "语音未连接，文字指令可用。";
 }
 
+export function getVoiceAssistantErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  if (message === "OPENAI_API_KEY_MISSING") return "后端缺少 OPENAI_API_KEY，配置后再连接。";
+  if (message === "MICROPHONE_DENIED") return "麦克风权限被拒绝。";
+  if (message === "REALTIME_CLIENT_SECRET_MISSING") return "Realtime 临时密钥缺失。";
+  if (message === "REALTIME_SDP_FAILED") return "Realtime 语音通道连接失败。";
+  if (message === "REALTIME_SESSION_FAILED") return "Realtime 会话创建失败。";
+  return message || "语音连接失败";
+}
+
 export interface VoiceAssistantHistoryItem {
   id: string;
   text: string;
@@ -162,7 +172,7 @@ export function VoiceAssistantDock({
     try {
       await onConnectVoice();
     } catch (error) {
-      setLastMessage(error instanceof Error ? error.message : "语音连接失败");
+      setLastMessage(getVoiceAssistantErrorMessage(error));
       setState("error");
     }
   };

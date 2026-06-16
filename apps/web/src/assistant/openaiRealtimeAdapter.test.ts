@@ -4,6 +4,7 @@ import {
   OpenAIRealtimeWebRtcAdapter,
   createRealtimeSessionRequestBody,
   createRealtimeToolResultEvents,
+  extractRealtimeSessionErrorCode,
   parseRealtimeFunctionCallEvent
 } from "./openaiRealtimeAdapter";
 
@@ -64,6 +65,12 @@ describe("OpenAI realtime adapter helpers", () => {
     });
     expect(JSON.parse(createRealtimeSessionRequestBody("   "))).toEqual({});
     expect(JSON.parse(createRealtimeSessionRequestBody(undefined))).toEqual({});
+  });
+
+  it("extracts server-side realtime session error codes", () => {
+    expect(extractRealtimeSessionErrorCode({ error: "OPENAI_API_KEY_MISSING" })).toBe("OPENAI_API_KEY_MISSING");
+    expect(extractRealtimeSessionErrorCode({ error: 500 })).toBe("");
+    expect(extractRealtimeSessionErrorCode(null)).toBe("");
   });
 
   it("queues session tool updates before the data channel opens", () => {

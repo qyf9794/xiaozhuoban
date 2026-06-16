@@ -91,6 +91,11 @@ function extractClientSecret(payload: unknown): string {
   return "";
 }
 
+export function extractRealtimeSessionErrorCode(payload: unknown): string {
+  if (!isRecord(payload)) return "";
+  return typeof payload.error === "string" ? payload.error : "";
+}
+
 export function createRealtimeSessionRequestBody(safetyIdentifier: string | undefined): string {
   const trimmed = safetyIdentifier?.trim();
   return JSON.stringify(trimmed ? { safetyIdentifier: trimmed } : {});
@@ -124,7 +129,13 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     });
     if (!sessionResponse.ok) {
       this.options.onStatusChange?.("failed");
-      throw new Error("REALTIME_SESSION_FAILED");
+      let errorCode = "";
+      try {
+        errorCode = extractRealtimeSessionErrorCode(await sessionResponse.json());
+      } catch {
+        // Keep the generic session failure if the endpoint returns a non-JSON error.
+      }
+      throw new Error(errorCode || "REALTIME_SESSION_FAILED");
     }
     const secret = extractClientSecret(await sessionResponse.json());
     if (!secret) {

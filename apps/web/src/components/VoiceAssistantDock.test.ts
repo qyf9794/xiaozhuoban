@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getVoiceAssistantConnectionMessage,
   getVoiceAssistantDockStateForRealtimeStatus,
+  getVoiceAssistantErrorMessage,
   getVoiceAssistantDockStatusText,
   prependVoiceAssistantHistory,
   type VoiceAssistantDockState
@@ -53,5 +54,13 @@ describe("VoiceAssistantDock", () => {
 
     expect(getVoiceAssistantConnectionMessage("connected")).toBe("语音已连接，可以直接说话。");
     expect(getVoiceAssistantConnectionMessage("microphone_denied")).toBe("麦克风权限被拒绝。");
+  });
+
+  it("shows actionable messages for realtime connection failures", () => {
+    expect(getVoiceAssistantErrorMessage(new Error("OPENAI_API_KEY_MISSING"))).toBe(
+      "后端缺少 OPENAI_API_KEY，配置后再连接。"
+    );
+    expect(getVoiceAssistantErrorMessage(new Error("REALTIME_SDP_FAILED"))).toBe("Realtime 语音通道连接失败。");
+    expect(getVoiceAssistantErrorMessage(new Error("custom"))).toBe("custom");
   });
 });
