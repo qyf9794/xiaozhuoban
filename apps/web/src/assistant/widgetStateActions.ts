@@ -1,0 +1,607 @@
+import {
+  createPassthroughSchema,
+  type AssistantAction,
+  type AssistantActionContext,
+  type AssistantToolResult
+} from "@xiaozhuoban/assistant-core";
+import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
+import { normalizeWorldClockZones, WORLD_CLOCK_ZONE_OPTIONS } from "../widgets/worldClockShared";
+
+export interface WidgetStateActionStore {
+  getWidgetInstances: () => WidgetInstance[];
+  getWidgetDefinitions: () => WidgetDefinition[];
+  updateWidgetState: (widgetId: string, state: Record<string, unknown>) => Promise<void> | void;
+}
+
+type NoteWriteArgs = { content: string; mode?: "replace" | "append" };
+type TodoAddArgs = { text: string; dueAt?: string };
+type CountdownSetArgs = { hours?: number; minutes?: number; seconds?: number; totalSeconds?: number; start?: boolean };
+type WeatherCityArgs = { city?: string; cityCode?: string };
+type CalculatorSetArgs = { display: string | number };
+type HeadlineRefreshArgs = { requestedAt?: string };
+type MarketSetArgs = { indexCode?: string; indexCodes?: string[] };
+type WorldClockSetArgs = { zones: string[] };
+type ConverterSetArgs = { category?: string; value: string | number; fromUnit?: string; toUnit?: string };
+type TranslateDraftArgs = { sourceText: string; sourceLang?: string; targetLang?: string };
+type ClipboardAddArgs = { text: string; pinned?: boolean };
+type ClipboardClearArgs = { includePinned?: boolean };
+type TodoStateItem = { id: string; text: string; dueAt?: string };
+type ClipboardStateItem = { id: string; text: string; pinned?: boolean; createdAt: string };
+
+const STAGE_ONE_WIDGET_TYPES = [
+  "note",
+  "todo",
+  "calculator",
+  "countdown",
+  "weather",
+  "headline",
+  "market",
+  "worldClock",
+  "converter",
+  "translate",
+  "clipboard"
+] as const;
+
+const WEATHER_CITY_ALIASES: Record<string, string> = {
+  beijing: "beijing",
+  北京: "beijing",
+  shanghai: "shanghai",
+  上海: "shanghai",
+  dalian: "dalian",
+  大连: "dalian",
+  guangzhou: "guangzhou",
+  广州: "guangzhou",
+  shenzhen: "shenzhen",
+  深圳: "shenzhen",
+  hangzhou: "hangzhou",
+  杭州: "hangzhou",
+  chengdu: "chengdu",
+  成都: "chengdu",
+  wuhan: "wuhan",
+  武汉: "wuhan",
+  jingzhou: "jingzhou",
+  荆州: "jingzhou",
+  chongqing: "chongqing",
+  重庆: "chongqing",
+  nanjing: "nanjing",
+  南京: "nanjing",
+  xian: "xian",
+  西安: "xian",
+  "los-angeles": "los-angeles",
+  洛杉矶: "los-angeles",
+  boston: "boston",
+  波士顿: "boston"
+};
+
+const MARKET_CODES = new Set(["usINX", "usNDX", "usDJI", "hkHSI", "sh000001", "sz399001"]);
+const CONVERTER_UNITS: Record<string, string[]> = {
+  length: ["m", "km", "cm", "inch", "ft"],
+  weight: ["kg", "g", "lb", "oz"],
+  temperature: ["c", "f", "k"]
+};
+const TRANSLATE_LANGS = new Set(["auto", "zh-CN", "en"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
+}
+
+function hasString(value: Record<string, unknown>, key: string) {
+  return typeof value[key] === "string" && value[key].trim().length > 0;
+}
+
+function hasOptionalString(value: Record<string, unknown>, key: string) {
+  return value[key] === undefined || typeof value[key] === "string";
+}
+
+function hasOptionalNumber(value: Record<string, unknown>, key: string) {
+  return value[key] === undefined || (typeof value[key] === "number" && Number.isFinite(value[key]));
+}
+
+function hasStringOrNumber(value: Record<string, unknown>, key: string) {
+  return (
+    (typeof value[key] === "string" && value[key].trim().length > 0) ||
+    (typeof value[key] === "number" && Number.isFinite(value[key]))
+  );
+}
+
+function parseWith<T>(guard: (value: unknown) => value is T) {
+  return createPassthroughSchema<T>(guard);
+}
+
+const noteWriteSchema = parseWith<NoteWriteArgs>(
+  (value): value is NoteWriteArgs =>
+    isRecord(value) &&
+    hasString(value, "content") &&
+    (value.mode === undefined || value.mode === "replace" || value.mode === "append")
+);
+
+const todoAddSchema = parseWith<TodoAddArgs>(
+  (value): value is TodoAddArgs =>
+    isRecord(value) && hasString(value, "text") && (value.dueAt === undefined || typeof value.dueAt === "string")
+);
+
+const countdownSetSchema = parseWith<CountdownSetArgs>(
+  (value): value is CountdownSetArgs =>
+    isRecord(value) &&
+    hasOptionalNumber(value, "hours") &&
+    hasOptionalNumber(value, "minutes") &&
+    hasOptionalNumber(value, "seconds") &&
+    hasOptionalNumber(value, "totalSeconds") &&
+    (value.start === undefined || typeof value.start === "boolean")
+);
+
+const weatherCitySchema = parseWith<WeatherCityArgs>(
+  (value): value is WeatherCityArgs =>
+    isRecord(value) && (hasOptionalString(value, "city") || hasOptionalString(value, "cityCode")) && Boolean(value.city || value.cityCode)
+);
+
+const calculatorSetSchema = parseWith<CalculatorSetArgs>(
+  (value): value is CalculatorSetArgs => isRecord(value) && hasStringOrNumber(value, "display")
+);
+
+const headlineRefreshSchema = parseWith<HeadlineRefreshArgs>(
+  (value): value is HeadlineRefreshArgs => isRecord(value) && hasOptionalString(value, "requestedAt")
+);
+
+const marketSetSchema = parseWith<MarketSetArgs>(
+  (value): value is MarketSetArgs =>
+    isRecord(value) &&
+    (typeof value.indexCode === "string" || (Array.isArray(value.indexCodes) && value.indexCodes.every((item) => typeof item === "string")))
+);
+
+const worldClockSetSchema = parseWith<WorldClockSetArgs>(
+  (value): value is WorldClockSetArgs =>
+    isRecord(value) && Array.isArray(value.zones) && value.zones.every((item) => typeof item === "string")
+);
+
+const converterSetSchema = parseWith<ConverterSetArgs>(
+  (value): value is ConverterSetArgs =>
+    isRecord(value) &&
+    hasStringOrNumber(value, "value") &&
+    hasOptionalString(value, "category") &&
+    hasOptionalString(value, "fromUnit") &&
+    hasOptionalString(value, "toUnit")
+);
+
+const translateDraftSchema = parseWith<TranslateDraftArgs>(
+  (value): value is TranslateDraftArgs =>
+    isRecord(value) &&
+    hasString(value, "sourceText") &&
+    hasOptionalString(value, "sourceLang") &&
+    hasOptionalString(value, "targetLang")
+);
+
+const clipboardAddSchema = parseWith<ClipboardAddArgs>(
+  (value): value is ClipboardAddArgs =>
+    isRecord(value) && hasString(value, "text") && (value.pinned === undefined || typeof value.pinned === "boolean")
+);
+
+const clipboardClearSchema = parseWith<ClipboardClearArgs>(
+  (value): value is ClipboardClearArgs => isRecord(value) && (value.includePinned === undefined || typeof value.includePinned === "boolean")
+);
+
+function success(message: string, data?: unknown): AssistantToolResult {
+  return { status: "success", message, data };
+}
+
+function failed(message: string, errorCode: string): AssistantToolResult {
+  return { status: "failed", message, errorCode };
+}
+
+function defineAction<TArgs>(action: AssistantAction<TArgs>): AssistantAction<TArgs> {
+  return action;
+}
+
+function getDefinition(store: WidgetStateActionStore, widget: WidgetInstance) {
+  return store.getWidgetDefinitions().find((item) => item.id === widget.definitionId);
+}
+
+function getTarget(
+  store: WidgetStateActionStore,
+  context: AssistantActionContext,
+  expectedType: string
+): { widget: WidgetInstance; definition: WidgetDefinition } | AssistantToolResult {
+  const targetId = context.target?.widgetId;
+  if (!targetId) {
+    return failed("需要先指定一个小工具", "TARGET_REQUIRED");
+  }
+  const widget = store.getWidgetInstances().find((item) => item.id === targetId);
+  if (!widget) {
+    return failed("没有找到这个小工具", "WIDGET_NOT_FOUND");
+  }
+  const definition = getDefinition(store, widget);
+  if (!definition) {
+    return failed("没有找到这个小工具定义", "WIDGET_DEFINITION_NOT_FOUND");
+  }
+  if (definition.type !== expectedType) {
+    return failed(`这个操作只能用于${expectedType}小工具`, "WIDGET_TYPE_MISMATCH");
+  }
+  return { widget, definition };
+}
+
+function isToolResult(value: { widget: WidgetInstance; definition: WidgetDefinition } | AssistantToolResult): value is AssistantToolResult {
+  return "status" in value;
+}
+
+async function patchWidgetState(store: WidgetStateActionStore, widget: WidgetInstance, patch: Record<string, unknown>) {
+  const nextState = { ...widget.state, ...patch };
+  await store.updateWidgetState(widget.id, nextState);
+  return nextState;
+}
+
+function clampSegment(value: number | undefined, max: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(max, Math.max(0, Math.floor(value ?? 0)));
+}
+
+function normalizeCountdownTotal(args: CountdownSetArgs) {
+  if (Number.isFinite(args.totalSeconds)) {
+    return Math.max(0, Math.floor(args.totalSeconds ?? 0));
+  }
+  return clampSegment(args.hours, 99) * 3600 + clampSegment(args.minutes, 59) * 60 + clampSegment(args.seconds, 59);
+}
+
+function createRecordId(prefix: string, now: string) {
+  const parsed = Date.parse(now);
+  const stamp = Number.isFinite(parsed) ? parsed : Date.now();
+  return `${prefix}_${stamp}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function normalizeTodoItems(raw: unknown): TodoStateItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item): TodoStateItem | null => {
+      if (!isRecord(item) || typeof item.text !== "string" || !item.text.trim()) return null;
+      return {
+        id: typeof item.id === "string" && item.id.trim() ? item.id : createRecordId("todo", new Date().toISOString()),
+        text: item.text,
+        dueAt: typeof item.dueAt === "string" ? item.dueAt : undefined
+      };
+    })
+    .filter((item): item is TodoStateItem => item !== null);
+}
+
+function normalizeClipboardRecords(raw: unknown): ClipboardStateItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item): ClipboardStateItem | null => {
+      if (!isRecord(item) || typeof item.text !== "string" || !item.text.trim()) return null;
+      return {
+        id: typeof item.id === "string" && item.id.trim() ? item.id : createRecordId("clip", new Date().toISOString()),
+        text: item.text,
+        pinned: item.pinned === true,
+        createdAt: typeof item.createdAt === "string" ? item.createdAt : new Date().toISOString()
+      };
+    })
+    .filter((item): item is ClipboardStateItem => item !== null);
+}
+
+function resolveWeatherCity(args: WeatherCityArgs) {
+  const raw = (args.cityCode || args.city || "").trim();
+  return WEATHER_CITY_ALIASES[raw] ?? WEATHER_CITY_ALIASES[raw.toLowerCase()] ?? "";
+}
+
+function normalizeMarketCodes(args: MarketSetArgs) {
+  const rawCodes = args.indexCodes?.length ? args.indexCodes : args.indexCode ? [args.indexCode] : [];
+  const cleaned = rawCodes.filter((code, index, list) => MARKET_CODES.has(code) && list.indexOf(code) === index);
+  return cleaned.slice(0, 4);
+}
+
+function normalizeConverterArgs(args: ConverterSetArgs) {
+  const category = args.category && CONVERTER_UNITS[args.category] ? args.category : "length";
+  const units = CONVERTER_UNITS[category];
+  const fromUnit = args.fromUnit && units.includes(args.fromUnit) ? args.fromUnit : units[0];
+  const toUnit = args.toUnit && units.includes(args.toUnit) ? args.toUnit : units[1] ?? units[0];
+  return { category, fromUnit, toUnit, inputValue: String(args.value) };
+}
+
+function normalizeTranslateLang(value: string | undefined, fallback: string) {
+  return value && TRANSLATE_LANGS.has(value) ? value : fallback;
+}
+
+function widgetStateActions(store: WidgetStateActionStore): Array<AssistantAction<any>> {
+  return [
+    defineAction<NoteWriteArgs>({
+      spec: {
+        name: "note.write",
+        description: "Write or append text in a note widget.",
+        parameters: noteWriteSchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "note",
+        requiresTarget: true
+      },
+      async execute(args, context) {
+        const target = getTarget(store, context, "note");
+        if (isToolResult(target)) return target;
+        const current = typeof target.widget.state.content === "string" ? target.widget.state.content : "";
+        const nextContent = args.mode === "append" && current ? `${current}\n${args.content}` : args.content;
+        await patchWidgetState(store, target.widget, { content: nextContent });
+        return success("已写入便签", { widgetId: target.widget.id, characters: nextContent.length });
+      }
+    }),
+    defineAction<TodoAddArgs>({
+      spec: {
+        name: "todo.add_item",
+        description: "Add a todo item to a todo widget.",
+        parameters: todoAddSchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "todo",
+        requiresTarget: true
+      },
+      async execute(args, context) {
+        const target = getTarget(store, context, "todo");
+        if (isToolResult(target)) return target;
+        const items = normalizeTodoItems(target.widget.state.items);
+        const nextItem = {
+          id: createRecordId("todo", context.now()),
+          text: args.text.trim(),
+          dueAt: args.dueAt
+        };
+        await patchWidgetState(store, target.widget, {
+          items: [...items, nextItem],
+          input: "",
+          inputDate: "",
+          inputTime: ""
+        });
+        return success("已新增待办", { widgetId: target.widget.id, item: nextItem });
+      }
+    }),
+    defineAction<CountdownSetArgs>({
+      spec: {
+        name: "countdown.set",
+        description: "Set a countdown duration and optionally start it.",
+        parameters: countdownSetSchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "countdown",
+        requiresTarget: true
+      },
+      async execute(args, context) {
+        const target = getTarget(store, context, "countdown");
+        if (isToolResult(target)) return target;
+        const totalSeconds = normalizeCountdownTotal(args);
+        if (totalSeconds <= 0) {
+          return failed("倒计时时长需要大于 0 秒", "INVALID_COUNTDOWN_DURATION");
+        }
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        const start = args.start === true;
+        const nowMs = Date.parse(context.now());
+        await patchWidgetState(store, target.widget, {
+          inputHours: String(hours),
+          inputMinutes: String(minutes),
+          inputSeconds: String(seconds),
+          totalSeconds,
+          remainingSeconds: totalSeconds,
+          running: start,
+          targetEndsAt: start ? (Number.isFinite(nowMs) ? nowMs : Date.now()) + totalSeconds * 1000 : 0
+        });
+        return success(start ? "已设置并启动倒计时" : "已设置倒计时", { widgetId: target.widget.id, totalSeconds });
+      }
+    }),
+    defineAction<WeatherCityArgs>({
+      spec: {
+        name: "weather.set_city",
+        description: "Set the city for a weather widget.",
+        parameters: weatherCitySchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "weather",
+        requiresTarget: true
+      },
+      async execute(args, context) {
+        const target = getTarget(store, context, "weather");
+        if (isToolResult(target)) return target;
+        const cityCode = resolveWeatherCity(args);
+        if (!cityCode) {
+          return failed("暂不支持这个城市", "UNSUPPORTED_CITY");
+        }
+        await patchWidgetState(store, target.widget, {
+          cityCode,
+          weatherError: "",
+          weatherLoading: false
+        });
+        return success("已切换天气城市", { widgetId: target.widget.id, cityCode });
+      }
+    }),
+    defineAction<CalculatorSetArgs>({
+      spec: {
+        name: "calculator.set_display",
+        description: "Set the calculator display value.",
+        parameters: calculatorSetSchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "calculator",
+        requiresTarget: true
+      },
+      async execute(args, context) {
+        const target = getTarget(store, context, "calculator");
+        if (isToolResult(target)) return target;
+        await patchWidgetState(store, target.widget, {
+          calcDisplay: String(args.display),
+          calcAcc: null,
+          calcOp: null,
+          calcResetOnInput: true
+        });
+        return success("已更新计算器", { widgetId: target.widget.id, display: String(args.display) });
+      }
+    }),
+    defineAction<HeadlineRefreshArgs>({
+      spec: {
+        name: "headline.request_refresh",
+        description: "Request a headline widget refresh marker.",
+        parameters: headlineRefreshSchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "headline",
+        requiresTarget: true
+      },
+      async execute(args, context) {
+        const target = getTarget(store, context, "headline");
+        if (isToolResult(target)) return target;
+        const requestedAt = args.requestedAt?.trim() || context.now();
+        await patchWidgetState(store, target.widget, {
+          headlineRefreshRequestedAt: requestedAt,
+          headlineError: ""
+        });
+        return success("已请求刷新新闻", { widgetId: target.widget.id, requestedAt });
+      }
+    }),
+    defineAction<MarketSetArgs>({
+      spec: {
+        name: "market.set_indices",
+        description: "Set selected market indices.",
+        parameters: marketSetSchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "market",
+        requiresTarget: true
+      },
+      async execute(args, context) {
+        const target = getTarget(store, context, "market");
+        if (isToolResult(target)) return target;
+        const indexCodes = normalizeMarketCodes(args);
+        if (indexCodes.length === 0) {
+          return failed("没有可用的指数代码", "UNSUPPORTED_MARKET_INDEX");
+        }
+        await patchWidgetState(store, target.widget, {
+          indexCode: indexCodes[0],
+          indexCodes,
+          marketError: "",
+          marketLoading: false
+        });
+        return success("已更新指数选择", { widgetId: target.widget.id, indexCodes });
+      }
+    }),
+    defineAction<WorldClockSetArgs>({
+      spec: {
+        name: "worldClock.set_zones",
+        description: "Set world clock zones.",
+        parameters: worldClockSetSchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "worldClock",
+        requiresTarget: true
+      },
+      async execute(args, context) {
+        const target = getTarget(store, context, "worldClock");
+        if (isToolResult(target)) return target;
+        const aliases = new Map(WORLD_CLOCK_ZONE_OPTIONS.flatMap((item) => [[item.value, item.value], [item.label, item.value], [item.shortLabel, item.value]]));
+        const zones = normalizeWorldClockZones(args.zones.map((zone) => aliases.get(zone) ?? zone));
+        await patchWidgetState(store, target.widget, { zones });
+        return success("已更新世界时钟", { widgetId: target.widget.id, zones });
+      }
+    }),
+    defineAction<ConverterSetArgs>({
+      spec: {
+        name: "converter.set",
+        description: "Set converter input and units.",
+        parameters: converterSetSchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "converter",
+        requiresTarget: true
+      },
+      async execute(args, context) {
+        const target = getTarget(store, context, "converter");
+        if (isToolResult(target)) return target;
+        const next = normalizeConverterArgs(args);
+        await patchWidgetState(store, target.widget, next);
+        return success("已更新换算器", { widgetId: target.widget.id, ...next });
+      }
+    }),
+    defineAction<TranslateDraftArgs>({
+      spec: {
+        name: "translate.set_draft",
+        description: "Set source text and languages for the translate widget without running long-form rewriting.",
+        parameters: translateDraftSchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "translate",
+        requiresTarget: true
+      },
+      async execute(args, context) {
+        const target = getTarget(store, context, "translate");
+        if (isToolResult(target)) return target;
+        const sourceLang = normalizeTranslateLang(args.sourceLang, "auto");
+        const targetLang = normalizeTranslateLang(args.targetLang, "zh-CN") === "auto" ? "zh-CN" : normalizeTranslateLang(args.targetLang, "zh-CN");
+        await patchWidgetState(store, target.widget, {
+          sourceText: args.sourceText,
+          sourceLang,
+          targetLang,
+          translatedText: "",
+          translateError: "",
+          translating: false
+        });
+        return success("已填入翻译内容", { widgetId: target.widget.id, targetLang });
+      }
+    }),
+    defineAction<ClipboardAddArgs>({
+      spec: {
+        name: "clipboard.add_text",
+        description: "Add a text record to clipboard history state.",
+        parameters: clipboardAddSchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "clipboard",
+        requiresTarget: true
+      },
+      async execute(args, context) {
+        const target = getTarget(store, context, "clipboard");
+        if (isToolResult(target)) return target;
+        const records = normalizeClipboardRecords(target.widget.state.items);
+        const existing = records.find((item) => item.text === args.text.trim());
+        const nextRecord = existing
+          ? { ...existing, pinned: args.pinned ?? existing.pinned, createdAt: context.now() }
+          : {
+              id: createRecordId("clip", context.now()),
+              text: args.text.trim(),
+              pinned: args.pinned === true,
+              createdAt: context.now()
+            };
+        const merged = [nextRecord, ...records.filter((item) => item.id !== nextRecord.id)];
+        const pinned = merged.filter((item) => item.pinned);
+        const unpinned = merged.filter((item) => !item.pinned).slice(0, 30);
+        await patchWidgetState(store, target.widget, {
+          items: [...pinned, ...unpinned],
+          clipboardError: ""
+        });
+        return success("已加入剪贴板历史", { widgetId: target.widget.id, text: nextRecord.text });
+      }
+    }),
+    defineAction<ClipboardClearArgs>({
+      spec: {
+        name: "clipboard.clear",
+        description: "Clear clipboard history, preserving pinned records unless requested.",
+        parameters: clipboardClearSchema,
+        risk: "destructive",
+        scope: "widget-detail",
+        widgetType: "clipboard",
+        requiresTarget: true
+      },
+      async execute(args, context) {
+        const target = getTarget(store, context, "clipboard");
+        if (isToolResult(target)) return target;
+        const records = normalizeClipboardRecords(target.widget.state.items);
+        const nextRecords = args.includePinned ? [] : records.filter((item) => item.pinned);
+        await patchWidgetState(store, target.widget, {
+          items: nextRecords,
+          clipboardError: ""
+        });
+        return success("已清理剪贴板历史", { widgetId: target.widget.id, remaining: nextRecords.length });
+      }
+    })
+  ];
+}
+
+export function createWidgetStateActions(store: WidgetStateActionStore): Array<AssistantAction<any>> {
+  const availableTypes = new Set(store.getWidgetDefinitions().filter((item) => item.kind === "system").map((item) => item.type));
+  const allowedTypes = new Set<string>(STAGE_ONE_WIDGET_TYPES);
+  return widgetStateActions(store).filter((action) => {
+    const type = action.spec.widgetType;
+    return Boolean(type && allowedTypes.has(type) && availableTypes.has(type));
+  });
+}
