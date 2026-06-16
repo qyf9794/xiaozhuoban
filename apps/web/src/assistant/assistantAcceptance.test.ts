@@ -106,6 +106,11 @@ function createAcceptanceHarness(options?: { modelCall?: AssistantToolCall | nul
   const getContextInput = (): ContextSummarizerInput => ({
     boardId: activeBoardId,
     boardName: boards.find((board) => board.id === activeBoardId)?.name,
+    availableBoards: boards.map((board) => ({
+      boardId: board.id,
+      name: board.name,
+      active: board.id === activeBoardId || undefined
+    })),
     focusedWidgetId: "wi_weather",
     availableDefinitions: definitions.map((item) => ({
       definitionId: item.id,
@@ -208,6 +213,19 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(getActiveBoard()?.name).toBe("工作台");
+    expect(modelInputs).toEqual([]);
+  });
+
+  it("switches boards by name through shortcut-first Harness without model fallback", async () => {
+    const { harness, modelInputs, getActiveBoard } = createAcceptanceHarness();
+    await harness.initialize();
+    await harness.handleUserInput("新建桌板叫测试桌板");
+
+    const response = await harness.handleUserInput("切换到我的桌板");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(getActiveBoard()?.name).toBe("我的桌板");
     expect(modelInputs).toEqual([]);
   });
 

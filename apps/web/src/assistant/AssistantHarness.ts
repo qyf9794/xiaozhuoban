@@ -194,6 +194,7 @@ export class AssistantHarness {
       pendingConfirmation: this.pendingConfirmation ?? undefined,
       boardId: context.boardId,
       boardName: context.boardName,
+      availableBoards: context.availableBoards,
       availableWidgets: context.widgets,
       availableDefinitions: input.availableDefinitions ?? context.widgets.map((widget) => ({
         definitionId: widget.definitionId,

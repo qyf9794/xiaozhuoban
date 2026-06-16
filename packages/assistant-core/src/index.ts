@@ -105,6 +105,7 @@ export interface IntentShortcutContext {
   source?: AssistantToolSource;
   boardId?: string;
   boardName?: string;
+  availableBoards?: CompactBoardSummary[];
   availableWidgets?: CompactWidgetSummary[];
   availableDefinitions?: Array<{
     definitionId: string;
@@ -131,9 +132,16 @@ export interface CompactWidgetSummary {
   focused?: boolean;
 }
 
+export interface CompactBoardSummary {
+  boardId: string;
+  name: string;
+  active?: boolean;
+}
+
 export interface CompactAssistantContext {
   boardId?: string;
   boardName?: string;
+  availableBoards?: CompactBoardSummary[];
   availableDefinitions?: Array<{
     definitionId: string;
     type: string;
@@ -158,6 +166,7 @@ export interface WidgetContextSnapshot {
 export interface ContextSummarizerInput {
   boardId?: string;
   boardName?: string;
+  availableBoards?: CompactBoardSummary[];
   availableDefinitions?: Array<{
     definitionId: string;
     type: string;
@@ -409,6 +418,7 @@ export class ContextSummarizer {
     return {
       boardId: input.boardId,
       boardName: input.boardName,
+      availableBoards: input.availableBoards,
       availableDefinitions: input.availableDefinitions,
       widgetCountsByType,
       widgets,
@@ -549,6 +559,25 @@ function inferNamedBoard(raw: string) {
   return "";
 }
 
+function inferBoardSwitchName(raw: string) {
+  const named = inferNamedBoard(raw);
+  if (named) return named;
+  const switchTarget = raw.match(/(?:切换到|切到|打开|进入|回到)\s*([^，。,.]+)/);
+  if (switchTarget?.[1]?.trim()) return cleanBoardName(switchTarget[1]);
+  return "";
+}
+
+function findBoardByName(context: IntentShortcutContext, rawName: string) {
+  const name = cleanBoardName(rawName);
+  if (!name) return null;
+  return (
+    context.availableBoards?.find((board) => board.name === name) ??
+    context.availableBoards?.find((board) => cleanBoardName(board.name) === name) ??
+    context.availableBoards?.find((board) => board.name.includes(name) || name.includes(cleanBoardName(board.name))) ??
+    null
+  );
+}
+
 function inferOutOfScopeRequest(input: string):
   | {
       category: "deferred_widget" | "ai_form" | "dynamic_widget_generation" | "complex_planning" | "long_text_rewrite";
@@ -687,6 +716,19 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
           return { matched: false, reason: "board_name_missing" };
         }
         return shortcutMatch("board.rename", { boardId: context.boardId, name }, 0.88, context.source ?? "shortcut", raw);
+      }
+    },
+    {
+      name: "switch_board",
+      match(normalized, raw, context) {
+        if (!/(切换到|切到|打开|进入|回到).*(桌板|桌面|面板)/.test(normalized)) {
+          return { matched: false, reason: "not_switch_board" };
+        }
+        const board = findBoardByName(context, inferBoardSwitchName(raw));
+        if (!board) {
+          return { matched: false, reason: "board_target_missing" };
+        }
+        return shortcutMatch("board.switch", { boardId: board.boardId }, 0.88, context.source ?? "shortcut", raw);
       }
     },
     {

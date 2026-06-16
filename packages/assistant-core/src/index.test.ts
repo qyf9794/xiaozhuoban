@@ -169,6 +169,12 @@ describe("createPassthroughSchema", () => {
 describe("IntentShortcutRouter", () => {
   const context: IntentShortcutContext = {
     source: "shortcut",
+    boardId: "board_1",
+    boardName: "默认桌板",
+    availableBoards: [
+      { boardId: "board_1", name: "默认桌板", active: true },
+      { boardId: "board_2", name: "工作台测试" }
+    ],
     availableDefinitions: [
       { definitionId: "wd_weather", type: "weather", name: "天气" },
       { definitionId: "wd_countdown", type: "countdown", name: "倒计时" },
@@ -286,6 +292,17 @@ describe("IntentShortcutRouter", () => {
     if (result.matched) {
       expect(result.toolCall.name).toBe("board.rename");
       expect(result.toolCall.arguments).toEqual({ boardId: "board_1", name: "工作台" });
+    }
+  });
+
+  it("routes board switching by board name", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("切换到工作台测试桌板", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("board.switch");
+      expect(result.toolCall.arguments).toEqual({ boardId: "board_2" });
     }
   });
 
