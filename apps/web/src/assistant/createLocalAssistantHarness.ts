@@ -32,6 +32,7 @@ function createContextInput(): ContextSummarizerInput {
   return {
     boardId: activeBoard?.id,
     boardName: activeBoard?.name,
+    focusedWidgetId: state.focusedWidgetId,
     availableDefinitions: state.widgetDefinitions.map((definition) => ({
       definitionId: definition.id,
       type: definition.type,
@@ -64,7 +65,8 @@ export function createLocalAssistantHarness(options?: {
     addWidgetInstance: (definitionId: string, widgetOptions?: { mobileMode?: boolean }) =>
       useAppStore.getState().addWidgetInstance(definitionId, widgetOptions),
     removeWidgetInstance: (widgetId: string) => useAppStore.getState().removeWidgetInstance(widgetId),
-    focusWidget: (widgetId: string) => {
+    focusWidget: async (widgetId: string) => {
+      await useAppStore.getState().focusWidget(widgetId);
       if (typeof document === "undefined") return;
       const element = document.querySelector<HTMLElement>(`[data-widget-id="${CSS.escape(widgetId)}"]`);
       element?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
@@ -78,10 +80,12 @@ export function createLocalAssistantHarness(options?: {
       );
     },
     fullscreenWidget: async (widgetId: string) => {
+      await useAppStore.getState().fullscreenWidget(widgetId);
       if (typeof document === "undefined") return;
       const element = document.querySelector<HTMLElement>(`[data-widget-id="${CSS.escape(widgetId)}"]`);
       await element?.requestFullscreen?.();
     },
+    bringWidgetToFront: (widgetId: string) => useAppStore.getState().bringWidgetToFront(widgetId),
     updateWidgetPosition: (widgetId: string, x: number, y: number) =>
       useAppStore.getState().updateWidgetPosition(widgetId, x, y),
     updateWidgetSize: (widgetId: string, w: number, h: number) => useAppStore.getState().updateWidgetSize(widgetId, w, h),

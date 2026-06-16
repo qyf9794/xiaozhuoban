@@ -280,6 +280,7 @@ interface AppState {
   widgetDefinitions: WidgetDefinition[];
   widgetInstances: WidgetInstance[];
   activeBoardId?: string;
+  focusedWidgetId?: string;
   commandPaletteOpen: boolean;
   aiDialogOpen: boolean;
   setRepository: (repository: AppRepository) => void;
@@ -292,6 +293,9 @@ interface AppState {
   setActiveBoard: (boardId: string) => Promise<void>;
   addWidgetInstance: (definitionId: string, options?: { mobileMode?: boolean }) => Promise<WidgetInstance | undefined>;
   removeWidgetInstance: (widgetId: string) => Promise<void>;
+  focusWidget: (widgetId: string) => Promise<void>;
+  fullscreenWidget: (widgetId: string) => Promise<void>;
+  bringWidgetToFront: (widgetId: string) => Promise<void>;
   updateWidgetPosition: (widgetId: string, x: number, y: number) => Promise<void>;
   updateWidgetSize: (widgetId: string, w: number, h: number) => Promise<void>;
   updateWidgetState: (widgetId: string, state: Record<string, unknown>) => Promise<void>;
@@ -657,6 +661,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       widgetDefinitions: [],
       widgetInstances: [],
       activeBoardId: undefined,
+      focusedWidgetId: undefined,
       commandPaletteOpen: false,
       aiDialogOpen: false
     });
@@ -737,7 +742,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         boards,
         widgetDefinitions: definitions,
         widgetInstances,
-        activeBoardId: boardId
+        activeBoardId: boardId,
+        focusedWidgetId: undefined
       });
 
       backgroundTasks.forEach(({ task, label }) => {
@@ -771,7 +777,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!workspaceId) return;
     const board = makeBoard(workspaceId, name);
     const defaultWidgets = createDefaultBoardWidgets(board.id, widgetDefinitions);
-    set({ boards: [...boards, board], activeBoardId: board.id, widgetInstances: defaultWidgets });
+    set({ boards: [...boards, board], activeBoardId: board.id, widgetInstances: defaultWidgets, focusedWidgetId: undefined });
     persistInBackground(persistBoardWithWidgets(repository, board, defaultWidgets), "add board");
   },
   async renameBoard(boardId, name) {
@@ -798,12 +804,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (nextBoards.length === 0) {
       const workspaceId = target.workspaceId;
       if (!workspaceId) {
-        set({ boards: [], activeBoardId: undefined, widgetInstances: [] });
+        set({ boards: [], activeBoardId: undefined, widgetInstances: [], focusedWidgetId: undefined });
         return;
       }
       const fallback = makeBoard(workspaceId, "默认桌板");
       const defaultWidgets = createDefaultBoardWidgets(fallback.id, widgetDefinitions);
-      set({ boards: [fallback], activeBoardId: fallback.id, widgetInstances: defaultWidgets });
+      set({ boards: [fallback], activeBoardId: fallback.id, widgetInstances: defaultWidgets, focusedWidgetId: undefined });
       persistInBackground(
         (async () => {
           await repository.deleteBoard(boardId);
@@ -819,7 +825,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       boards: nextBoards,
       activeBoardId: nextActiveBoardId,
-      widgetInstances: deletingActiveBoard ? [] : widgetInstances
+      widgetInstances: deletingActiveBoard ? [] : widgetInstances,
+      focusedWidgetId: deletingActiveBoard ? undefined : get().focusedWidgetId
     });
     persistInBackground(
       (async () => {
@@ -865,7 +872,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (normalizedWidgets.changed.length > 0) {
       await repository.upsertInstances(normalizedWidgets.changed);
     }
-    set({ activeBoardId: boardId, widgetInstances: normalizedWidgets.items });
+    set({ activeBoardId: boardId, widgetInstances: normalizedWidgets.items, focusedWidgetId: undefined });
   },
   async addWidgetInstance(definitionId, options) {
     const { repository, activeBoardId, widgetInstances, widgetDefinitions } = get();
@@ -898,9 +905,39 @@ export const useAppStore = create<AppState>((set, get) => ({
     return instance;
   },
   async removeWidgetInstance(widgetId) {
-    const { repository, widgetInstances } = get();
-    set({ widgetInstances: widgetInstances.filter((item) => item.id !== widgetId) });
+    const { repository, widgetInstances, focusedWidgetId } = get();
+    set({
+      widgetInstances: widgetInstances.filter((item) => item.id !== widgetId),
+      focusedWidgetId: focusedWidgetId === widgetId ? undefined : focusedWidgetId
+    });
     persistInBackground(repository.deleteInstance(widgetId), "remove widget");
+  },
+  async focusWidget(widgetId) {
+    await get().bringWidgetToFront(widgetId);
+    if (get().widgetInstances.some((item) => item.id === widgetId)) {
+      set({ focusedWidgetId: widgetId });
+    }
+  },
+  async fullscreenWidget(widgetId) {
+    await get().focusWidget(widgetId);
+  },
+  async bringWidgetToFront(widgetId) {
+    const { repository, widgetInstances } = get();
+    const target = widgetInstances.find((item) => item.id === widgetId);
+    if (!target) {
+      return;
+    }
+    const maxZIndex = widgetInstances.reduce((max, item) => Math.max(max, item.zIndex), 0);
+    if (target.zIndex >= maxZIndex) {
+      return;
+    }
+    const next = {
+      ...target,
+      zIndex: maxZIndex + 1,
+      updatedAt: nowIso()
+    };
+    set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)) });
+    persistInBackground(repository.upsertInstance(next), "bring widget to front");
   },
   async updateWidgetPosition(widgetId, x, y) {
     const { repository, widgetInstances } = get();

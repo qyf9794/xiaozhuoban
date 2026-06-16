@@ -108,6 +108,7 @@ export function App() {
     widgetDefinitions,
     widgetInstances,
     activeBoardId,
+    focusedWidgetId,
     commandPaletteOpen,
     aiDialogOpen,
     addBoard,
@@ -505,6 +506,7 @@ export function App() {
             widgets={widgetInstances}
             fullscreen={fullscreen}
             isMobileMode={isMobileMode}
+            focusedWidgetId={focusedWidgetId}
             assistantCapabilityBridge={assistantCapabilityBridgeRef.current}
             onMove={(widgetId, x, y) => void updateWidgetPosition(widgetId, x, y)}
             onResize={(widgetId, w, h) => void updateWidgetSize(widgetId, w, h)}

@@ -17,8 +17,8 @@ Stage one now has a shortcut-first assistant foundation:
 ## Known Limitations
 
 - Live Realtime voice has a transport adapter and endpoint, but still needs a credentialed manual test with microphone permission.
-- Media capabilities require widget components to register mounted capabilities before real TV/music/recorder voice control works.
-- `widget.focus` and fullscreen shell behavior are not yet backed by a full board focus state.
+- Media capabilities now register from mounted TV, music, recorder, and dial clock widgets, but browser autoplay and permission rules can still require a user gesture.
+- `widget.focus` and `widget.fullscreen_focus` now update board focus state; fullscreen still depends on browser fullscreen permission behavior.
 - Full repository build currently depends on local Tauri/Cargo tooling for the desktop app.
 - Playwright scenarios are documented but not wired as executable browser E2E tests in this scaffold.
 
@@ -38,8 +38,8 @@ Stage one now has a shortcut-first assistant foundation:
 
 ## Next-Stage Recommendations
 
-- Wire real widget capability registration inside TV, music, recorder, and dial clock components.
-- Add board focus/fullscreen shell actions as first-class state.
+- Continue broadening widget detail capabilities beyond the stage-one media and clock controls.
+- Add a browser-level Realtime smoke test once a mock authenticated desktop fixture and microphone-permission path exist.
 - Add executable Playwright E2E once a mock authenticated desktop fixture exists.
 - Run live Realtime validation with `OPENAI_API_KEY` and Supabase credentials.
 - Keep Codex-powered dynamic widget generation in a separate stage-two design, with a tighter sandbox and review flow.

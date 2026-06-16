@@ -38,6 +38,7 @@ export function BoardCanvas({
   widgets,
   fullscreen = false,
   isMobileMode = false,
+  focusedWidgetId,
   onMove,
   onResize,
   onStateChange,
@@ -49,6 +50,7 @@ export function BoardCanvas({
   widgets: WidgetInstance[];
   fullscreen?: boolean;
   isMobileMode?: boolean;
+  focusedWidgetId?: string;
   assistantCapabilityBridge?: WidgetCapabilityBridge;
   onMove: (widgetId: string, x: number, y: number) => void;
   onResize: (widgetId: string, w: number, h: number) => void;
@@ -318,6 +320,7 @@ export function BoardCanvas({
         }
 
         const position = drag?.id === widget.id && dragPosition ? dragPosition : widget.position;
+        const isFocusedWidget = widget.id === focusedWidgetId;
         const isTvWidget = definition.type === "tv";
         const isFixedHeightDesktopWidget =
           definition.type === "tv" ||
@@ -348,7 +351,13 @@ export function BoardCanvas({
               cursor: isMobileMode ? "default" : board.locked ? "default" : drag?.id === widget.id ? "grabbing" : "grab",
               margin: isMobileMode ? "0 auto" : undefined
             }}
-            className={isMobileMode ? "widget-box widget-box-mobile" : "widget-box"}
+            className={[
+              "widget-box",
+              isMobileMode ? "widget-box-mobile" : "",
+              isFocusedWidget ? "is-focused" : ""
+            ]
+              .filter(Boolean)
+              .join(" ")}
             onPointerDown={(event) => {
               if (isMobileMode || resize || board.locked || widget.locked) {
                 return;

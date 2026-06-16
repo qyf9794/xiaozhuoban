@@ -527,6 +527,20 @@ body {
   position: absolute;
 }
 
+.widget-box.is-focused {
+  outline: 2px solid rgba(14, 165, 233, 0.72);
+  outline-offset: 4px;
+}
+
+.widget-box.is-focused::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: 18px;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(14, 165, 233, 0.18), 0 18px 46px rgba(14, 165, 233, 0.2);
+}
+
 .board-canvas-mobile .widget-box-mobile {
   min-width: 0;
 }
