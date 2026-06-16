@@ -3668,6 +3668,7 @@ export function BuiltinWidgetView({
     const nightTransitionTimerRef = useRef<number | null>(null);
     const nightAudioTimerRef = useRef<number | null>(null);
     const nightSparksRef = useRef<DialClockNightSpark[]>([]);
+    const latestDialClockStateRef = useRef(instance.state);
     const clockStateRef = useRef(clockState);
     const hasNightModeMountedRef = useRef(false);
     const animationSweepDurationMs = useMemo(
@@ -3679,6 +3680,29 @@ export function BuiltinWidgetView({
     useEffect(() => {
       ensureSharedAudioUnlock();
     }, []);
+
+    useEffect(() => {
+      latestDialClockStateRef.current = instance.state;
+    }, [instance.state]);
+
+    useEffect(() => {
+      if (!assistantCapabilityBridge) return undefined;
+
+      return assistantCapabilityBridge.register(instance.id, {
+        setNightMode(args) {
+          const enabled = args.enabled !== false;
+          onStateChange({
+            ...latestDialClockStateRef.current,
+            nightMode: enabled
+          });
+          return {
+            status: "success",
+            message: enabled ? "已进入夜间模式" : "已退出夜间模式",
+            data: { enabled }
+          };
+        }
+      });
+    }, [assistantCapabilityBridge, instance.id, onStateChange]);
 
     useEffect(() => {
       nightSparksRef.current = nightSparks;
