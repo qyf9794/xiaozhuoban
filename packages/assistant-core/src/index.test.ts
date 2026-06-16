@@ -775,6 +775,133 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes recorder controls to existing recorder capability tools", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const recorderContext: IntentShortcutContext = {
+      ...context,
+      availableWidgets: [
+        ...(context.availableWidgets ?? []),
+        {
+          widgetId: "wi_recorder",
+          definitionId: "wd_recorder",
+          type: "recorder",
+          name: "录音机",
+          order: 12,
+          summary: "没有录音",
+          recent: true
+        }
+      ]
+    };
+
+    const cases = [
+      ["开始录音", "recorder.start"],
+      ["停止录音", "recorder.stop"],
+      ["播放录音", "recorder.play"],
+      ["暂停录音", "recorder.pause"]
+    ] as const;
+
+    for (const [input, toolName] of cases) {
+      const result = router.route(input, recorderContext);
+      expect(result.matched).toBe(true);
+      if (result.matched) {
+        expect(result.toolCall.name).toBe(toolName);
+        expect(result.toolCall.arguments).toEqual({ widgetId: "wi_recorder" });
+      }
+    }
+  });
+
+  it("adds the recorder widget before starting recording when recorder is absent", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("开始录音", {
+      ...context,
+      availableDefinitions: [
+        ...(context.availableDefinitions ?? []),
+        { definitionId: "wd_recorder", type: "recorder", name: "录音机" }
+      ]
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("board.add_widget");
+      expect(result.toolCall.arguments).toEqual({
+        definitionId: "wd_recorder",
+        followUp: {
+          name: "recorder.start",
+          arguments: {}
+        }
+      });
+    }
+  });
+
+  it("does not add an empty recorder for playback-only commands", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("播放录音", {
+      ...context,
+      availableDefinitions: [
+        ...(context.availableDefinitions ?? []),
+        { definitionId: "wd_recorder", type: "recorder", name: "录音机" }
+      ]
+    });
+
+    expect(result).toEqual({ matched: false, reason: "no_shortcut_match" });
+  });
+
+  it("routes dial clock night mode without removing the widget", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const dialClockContext: IntentShortcutContext = {
+      ...context,
+      availableWidgets: [
+        ...(context.availableWidgets ?? []),
+        {
+          widgetId: "wi_dialClock",
+          definitionId: "wd_dialClock",
+          type: "dialClock",
+          name: "表盘时钟",
+          order: 12,
+          summary: "日间模式",
+          recent: true
+        }
+      ]
+    };
+
+    const on = router.route("进入时钟夜间模式", dialClockContext);
+    const off = router.route("关闭时钟夜间模式", dialClockContext);
+
+    expect(on.matched).toBe(true);
+    if (on.matched) {
+      expect(on.toolCall.name).toBe("dialClock.set_night_mode");
+      expect(on.toolCall.arguments).toEqual({ widgetId: "wi_dialClock", enabled: true });
+    }
+    expect(off.matched).toBe(true);
+    if (off.matched) {
+      expect(off.toolCall.name).toBe("dialClock.set_night_mode");
+      expect(off.toolCall.arguments).toEqual({ widgetId: "wi_dialClock", enabled: false });
+    }
+  });
+
+  it("adds the dial clock before entering night mode when absent", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("进入夜间模式", {
+      ...context,
+      availableDefinitions: [
+        ...(context.availableDefinitions ?? []),
+        { definitionId: "wd_dialClock", type: "dialClock", name: "表盘时钟" }
+      ]
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("board.add_widget");
+      expect(result.toolCall.arguments).toEqual({
+        definitionId: "wd_dialClock",
+        followUp: {
+          name: "dialClock.set_night_mode",
+          arguments: { enabled: true }
+        }
+      });
+    }
+  });
+
   it("routes fullscreen to the focused widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("全屏", context);

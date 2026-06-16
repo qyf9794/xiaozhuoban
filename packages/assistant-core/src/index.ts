@@ -1091,6 +1091,59 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
       }
     },
     {
+      name: "recorder_control",
+      match(normalized, raw, context) {
+        if (!/(录音|录音机)/.test(normalized)) return { matched: false, reason: "not_recorder" };
+        const wantsStop = /(停止|结束|完成|停下|停掉).*(录音|录制)|^(停止|结束|完成|停下|停掉)录音/.test(normalized);
+        const wantsPlay = /(播放|回放|听一下|听).*(录音|录音机)/.test(normalized);
+        const wantsPause = /(暂停).*(录音|录音机)/.test(normalized);
+        const wantsStart =
+          !wantsStop &&
+          !wantsPlay &&
+          !wantsPause &&
+          (/(开始|启动|录一段|录一下|录制)/.test(normalized) || /^录音$/.test(normalized) || /^(开始|启动)?录音/.test(normalized));
+        if (!wantsStart && !wantsStop && !wantsPlay && !wantsPause) {
+          return { matched: false, reason: "recorder_action_missing" };
+        }
+        if (wantsStart) {
+          return (
+            routeWidgetDetailOrAdd(context, raw, "recorder", "recorder.start", {}, 0.9) ?? {
+              matched: false,
+              reason: "recorder_target_missing"
+            }
+          );
+        }
+        const widget = findWidgetByType(context, "recorder");
+        if (!widget) return { matched: false, reason: "recorder_target_missing" };
+        const action = wantsStop ? "stop" : wantsPause ? "pause" : "play";
+        return shortcutMatch(
+          `recorder.${action}`,
+          { widgetId: widget.widgetId },
+          0.88,
+          context.source ?? "shortcut",
+          raw
+        );
+      }
+    },
+    {
+      name: "dial_clock_night_mode",
+      match(normalized, raw, context) {
+        const mentionsNightMode = /(夜间模式|夜晚模式|黑夜模式|睡眠模式|夜灯)/.test(normalized);
+        const mentionsDialClock = /(时钟|表盘|钟表)/.test(normalized);
+        if (!mentionsNightMode && !(mentionsDialClock && /(夜间|夜晚|黑夜|睡眠|夜灯)/.test(normalized))) {
+          return { matched: false, reason: "not_dial_clock_night_mode" };
+        }
+        const wantsOff = /(关闭|关掉|退出|取消|停用|关上|关了)/.test(normalized);
+        const wantsOn = /(打开|开启|进入|启用|切到|切换到|启动)/.test(normalized) || !wantsOff;
+        return (
+          routeWidgetDetailOrAdd(context, raw, "dialClock", "dialClock.set_night_mode", { enabled: wantsOn }, 0.88) ?? {
+            matched: false,
+            reason: "dial_clock_target_missing"
+          }
+        );
+      }
+    },
+    {
       name: "open_widget",
       match(normalized, raw, context) {
         const openIntent = /(打开|添加|新增|叫出|显示|启动|来个|放上|放一个|加一个)/.test(normalized);
@@ -1132,7 +1185,14 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         const isNext = /(下一首|下首|切歌|换一首|跳过)/.test(normalized);
         if (!isPlay && !isPause && !isNext) return { matched: false, reason: "not_media_control" };
         const channelName = inferTvChannelName(raw);
-        let targetType = raw.includes("电视") || channelName ? "tv" : raw.includes("音乐") || raw.includes("歌") ? "music" : "";
+        let targetType =
+          raw.includes("录音") || raw.includes("录音机")
+            ? "recorder"
+            : raw.includes("电视") || channelName
+              ? "tv"
+              : raw.includes("音乐") || raw.includes("歌")
+                ? "music"
+                : "";
         const musicQuery = isPlay ? inferMusicQuery(raw) : "";
         if (!targetType && isPlay && musicQuery && findWidgetByType(context, "music")) {
           targetType = "music";
