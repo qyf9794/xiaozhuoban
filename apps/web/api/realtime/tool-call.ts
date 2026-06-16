@@ -1,14 +1,77 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import {
-  createScopedToolCallPayload,
-  createToolSelectionPayload,
-  extractAssistantToolCallFromResponsesPayload,
-  extractToolSelectionFromResponsesPayload,
-  type RealtimeTextToolCallRequest
-} from "../../src/assistant/realtimeTextToolCall.js";
-import { XIAOZHUOBAN_REALTIME_MODEL } from "../../src/assistant/realtimeSessionConfig.js";
+
+type AssistantToolSpecLike = {
+  name: string;
+  description?: string;
+  scope?: string;
+  risk?: string;
+  widgetType?: string;
+  requiresTarget?: boolean;
+};
+
+type CompactWidget = {
+  widgetId: string;
+  definitionId: string;
+  type: string;
+  name: string;
+  order: number;
+  summary?: string;
+  focused?: boolean;
+  recent?: boolean;
+};
+
+type CompactDefinition = {
+  definitionId: string;
+  type: string;
+  name: string;
+};
+
+type CompactContext = {
+  boardId?: string;
+  boardName?: string;
+  availableBoards?: Array<{ boardId: string; name: string; active?: boolean }>;
+  focusedWidget?: CompactWidget;
+  pendingConfirmation?: unknown;
+  widgetCountsByType: Record<string, number>;
+  availableDefinitions?: CompactDefinition[];
+  widgets: CompactWidget[];
+};
+
+type TextToolCallRequest = {
+  input: string;
+  context: CompactContext;
+  tools: AssistantToolSpecLike[];
+};
+
+type TextToolSelection = {
+  name: string;
+  targetHint?: string;
+  confidence?: number;
+};
 
 type JsonBody = Record<string, unknown>;
+
+const XIAOZHUOBAN_REALTIME_MODEL = "gpt-realtime-2";
+const SELECT_TOOL_NAME = "assistant.select_tool";
+
+const widgetAliases: Record<string, string[]> = {
+  note: ["便签", "笔记"],
+  todo: ["待办", "任务", "清单"],
+  tv: ["电视", "直播"],
+  music: ["音乐", "歌曲", "歌", "播放器"],
+  worldClock: ["世界时钟", "时区"],
+  dialClock: ["时钟", "表盘"],
+  translate: ["翻译"],
+  converter: ["换算", "单位"],
+  clipboard: ["剪贴板"],
+  recorder: ["录音"],
+  messageBoard: ["留言板", "留言"],
+  weather: ["天气"],
+  countdown: ["倒计时", "计时器"],
+  headline: ["新闻", "头条"],
+  market: ["行情", "股票", "指数"],
+  calculator: ["计算器"]
+};
 
 function sendJson(response: ServerResponse, statusCode: number, body: JsonBody) {
   response.statusCode = statusCode;
@@ -29,14 +92,277 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function parseRequestBody(value: unknown): RealtimeTextToolCallRequest | null {
+function parseRequestBody(value: unknown): TextToolCallRequest | null {
   if (!isRecord(value)) return null;
   if (typeof value.input !== "string" || !isRecord(value.context) || !Array.isArray(value.tools)) return null;
+  const context = value.context;
+  if (!Array.isArray(context.widgets) || !isRecord(context.widgetCountsByType)) return null;
   return {
     input: value.input,
-    context: value.context as unknown as RealtimeTextToolCallRequest["context"],
-    tools: value.tools as RealtimeTextToolCallRequest["tools"]
+    context: context as unknown as CompactContext,
+    tools: value.tools.filter(isRecord).filter((tool) => typeof tool.name === "string") as AssistantToolSpecLike[]
   };
+}
+
+function encodeToolName(name: string) {
+  return name.replace(/\./g, "__dot__");
+}
+
+function decodeToolName(name: string) {
+  return name.replace(/__dot__/g, ".");
+}
+
+function objectSchema(properties: Record<string, unknown>, required?: string[], additionalProperties = false) {
+  return {
+    type: "object",
+    properties,
+    ...(required?.length ? { required } : {}),
+    additionalProperties
+  };
+}
+
+function serializeTool(tool: AssistantToolSpecLike) {
+  return {
+    type: "function",
+    name: encodeToolName(tool.name),
+    description: tool.description || tool.name,
+    parameters: objectSchema({}, undefined, true)
+  };
+}
+
+function toolCatalog(tools: AssistantToolSpecLike[]) {
+  return tools
+    .map((tool) =>
+      [
+        `- ${tool.name}`,
+        `description=${tool.description || tool.name}`,
+        tool.scope ? `scope=${tool.scope}` : "",
+        tool.widgetType ? `widgetType=${tool.widgetType}` : "",
+        tool.risk ? `risk=${tool.risk}` : ""
+      ]
+        .filter(Boolean)
+        .join(" ")
+    )
+    .join("\n");
+}
+
+function createToolSelectionPayload(request: TextToolCallRequest, model: string) {
+  return {
+    model,
+    input: [
+      {
+        role: "user",
+        content: [
+          "你是小桌板命令路由器。先只判断用户想使用哪个已注册工具，不要生成工具参数。",
+          "你只能基于工具目录和用户命令选择工具；此阶段不会提供桌面上下文。",
+          "如果用户说“打开 + 小工具名”，优先添加或聚焦这个小工具。",
+          "如果用户说“关闭/关掉 + 小工具名”，优先调用 widget.remove 关闭这个小工具窗口。",
+          "如果用户说“暂停/继续/播放/下一首”等播放控制，优先调用对应媒体工具。",
+          "没有足够把握时不要调用工具。",
+          "",
+          "# 工具目录",
+          toolCatalog(request.tools),
+          "",
+          `用户命令：${request.input}`
+        ].join("\n")
+      }
+    ],
+    tools: [
+      {
+        type: "function",
+        name: encodeToolName(SELECT_TOOL_NAME),
+        description: "Select the single best registered Xiaozhuoban tool for the user's command.",
+        parameters: objectSchema(
+          {
+            name: { type: "string", description: "Selected registered tool name." },
+            targetHint: { type: "string", description: "Short widget or board target words from the user command." },
+            confidence: { type: "number" }
+          },
+          ["name"]
+        )
+      }
+    ],
+    tool_choice: "required",
+    parallel_tool_calls: false,
+    max_output_tokens: 80
+  };
+}
+
+function inputMentionsWidgetType(input: string, type: string) {
+  return (widgetAliases[type] ?? []).some((alias) => input.includes(alias));
+}
+
+function targetHintMentionsWidget(targetHint: string | undefined, widget: CompactWidget) {
+  const hint = targetHint ?? "";
+  return Boolean(hint) && (hint.includes(widget.name) || hint.includes(widget.type) || inputMentionsWidgetType(hint, widget.type));
+}
+
+function createScopedContext(context: CompactContext, tool: AssistantToolSpecLike, selection: TextToolSelection, input: string): CompactContext {
+  const selectedWidgetType = tool.widgetType || Object.keys(widgetAliases).find((type) => inputMentionsWidgetType(input, type));
+  const includeBoards = tool.name.startsWith("board.") || tool.name === "assistant.confirm" || tool.name === "assistant.cancel";
+  const includeDefinitions = tool.name === "board.add_widget";
+  const needsWidgetContext = Boolean(tool.requiresTarget || tool.name.startsWith("widget."));
+  const widgets = needsWidgetContext
+    ? context.widgets.filter(
+        (widget) =>
+          widget.type === selectedWidgetType ||
+          (!selectedWidgetType && widget.focused) ||
+          targetHintMentionsWidget(selection.targetHint, widget)
+      )
+    : [];
+
+  return {
+    boardId: context.boardId,
+    boardName: context.boardName,
+    pendingConfirmation: context.pendingConfirmation,
+    availableBoards: includeBoards ? context.availableBoards : undefined,
+    focusedWidget:
+      context.focusedWidget && needsWidgetContext && (!selectedWidgetType || context.focusedWidget.type === selectedWidgetType)
+        ? context.focusedWidget
+        : undefined,
+    widgetCountsByType: context.widgetCountsByType,
+    availableDefinitions: includeDefinitions
+      ? context.availableDefinitions?.filter(
+          (definition) =>
+            definition.type === selectedWidgetType ||
+            inputMentionsWidgetType(input, definition.type) ||
+            selection.targetHint?.includes(definition.name)
+        )
+      : undefined,
+    widgets
+  };
+}
+
+function formatList(items: string[], fallback: string) {
+  return items.length > 0 ? items.join("\n") : fallback;
+}
+
+function createContextInstructions(context: CompactContext) {
+  const focused = context.focusedWidget
+    ? `${context.focusedWidget.name}(${context.focusedWidget.type}, widgetId=${context.focusedWidget.widgetId})`
+    : "无";
+  const widgets = formatList(
+    context.widgets.map((widget) => {
+      const flags = [widget.focused ? "focused" : "", widget.recent ? "recent" : ""].filter(Boolean).join(",");
+      return `- ${widget.name}(${widget.type}) widgetId=${widget.widgetId} definitionId=${widget.definitionId} summary=${widget.summary ?? ""}${flags ? ` flags=${flags}` : ""}`;
+    }),
+    "- 未提供相关已加载小工具"
+  );
+  const definitions = formatList(
+    (context.availableDefinitions ?? []).map(
+      (definition) => `- ${definition.name}(${definition.type}) definitionId=${definition.definitionId}`
+    ),
+    "- 未提供相关可添加组件定义"
+  );
+  return [
+    "你是小桌板里的语音助手，负责控制小桌板 Web 桌面、已加载小工具和已注册工具。",
+    "只使用当前提供的最小上下文，不要假设未提供的桌面状态。",
+    `- board: ${context.boardName ?? context.boardId ?? "当前桌板"}`,
+    `- focusedWidget: ${focused}`,
+    `- pendingConfirmation: ${context.pendingConfirmation ? "有" : "无"}`,
+    "- loadedWidgets:",
+    widgets,
+    "- availableDefinitions:",
+    definitions
+  ].join("\n");
+}
+
+function createScopedToolCallPayload(request: TextToolCallRequest, selection: TextToolSelection, model: string) {
+  const tool = request.tools.find((candidate) => candidate.name === selection.name);
+  const scopedContext = tool ? createScopedContext(request.context, tool, selection, request.input) : request.context;
+  return {
+    model,
+    input: [
+      {
+        role: "user",
+        content: [
+          createContextInstructions(scopedContext),
+          "",
+          "# Text Command Fallback",
+          "现在只根据上一步选中的工具和最小必要上下文，返回可执行工具调用。",
+          "不要访问未提供的桌面上下文；如果缺少目标或信息不足，不要调用工具。",
+          "",
+          `已选工具：${selection.name}`,
+          selection.targetHint ? `目标提示：${selection.targetHint}` : "",
+          `用户命令：${request.input}`
+        ]
+          .filter(Boolean)
+          .join("\n")
+      }
+    ],
+    tools: tool ? [serializeTool(tool)] : [],
+    tool_choice: tool ? "auto" : "none",
+    parallel_tool_calls: false,
+    max_output_tokens: 120
+  };
+}
+
+function parseArguments(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+  if (isRecord(value)) return value;
+  if (typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value);
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function findFunctionCall(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value)) return null;
+  if (value.type === "function_call" && typeof value.name === "string") return value;
+  for (const key of ["output", "items", "content"]) {
+    const items = value[key];
+    if (!Array.isArray(items)) continue;
+    for (const item of items) {
+      const found = findFunctionCall(item);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function extractSelection(payload: unknown, allowedToolNames: Set<string>): TextToolSelection | null {
+  const functionCall = findFunctionCall(payload);
+  if (!functionCall || decodeToolName(String(functionCall.name)) !== SELECT_TOOL_NAME) return null;
+  const args = parseArguments(functionCall.arguments);
+  const name = typeof args.name === "string" ? args.name : "";
+  if (!allowedToolNames.has(name)) return null;
+  return {
+    name,
+    targetHint: typeof args.targetHint === "string" ? args.targetHint : undefined,
+    confidence: typeof args.confidence === "number" ? args.confidence : undefined
+  };
+}
+
+function extractToolCall(payload: unknown, allowedToolNames: Set<string>) {
+  const functionCall = findFunctionCall(payload);
+  if (!functionCall || typeof functionCall.name !== "string") return null;
+  const name = decodeToolName(functionCall.name);
+  if (!allowedToolNames.has(name)) return null;
+  return {
+    id:
+      typeof functionCall.call_id === "string"
+        ? functionCall.call_id
+        : typeof functionCall.id === "string"
+          ? functionCall.id
+          : `model_${Date.now()}`,
+    name,
+    arguments: parseArguments(functionCall.arguments),
+    source: "text"
+  };
+}
+
+async function requestOpenAI(apiKey: string, payload: unknown) {
+  return fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
 }
 
 export default async function handler(request: IncomingMessage, response: ServerResponse) {
@@ -53,7 +379,7 @@ export default async function handler(request: IncomingMessage, response: Server
       return;
     }
 
-    let body: RealtimeTextToolCallRequest | null;
+    let body: TextToolCallRequest | null;
     try {
       body = parseRequestBody(await readJson(request));
     } catch {
@@ -67,15 +393,7 @@ export default async function handler(request: IncomingMessage, response: Server
 
     const allowedToolNames = new Set(body.tools.map((tool) => tool.name));
     const model = process.env.XIAOZHUOBAN_TEXT_TOOL_MODEL || XIAOZHUOBAN_REALTIME_MODEL;
-    const selectionResponse = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify(createToolSelectionPayload(body, { model }))
-    });
-
+    const selectionResponse = await requestOpenAI(apiKey, createToolSelectionPayload(body, model));
     if (!selectionResponse.ok) {
       let upstream: unknown = null;
       try {
@@ -92,22 +410,13 @@ export default async function handler(request: IncomingMessage, response: Server
       return;
     }
 
-    const selectionPayload = await selectionResponse.json();
-    const selection = extractToolSelectionFromResponsesPayload(selectionPayload, allowedToolNames);
+    const selection = extractSelection(await selectionResponse.json(), allowedToolNames);
     if (!selection) {
       sendJson(response, 200, { call: null, selection: null });
       return;
     }
 
-    const toolCallResponse = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify(createScopedToolCallPayload(body, selection, { model }))
-    });
-
+    const toolCallResponse = await requestOpenAI(apiKey, createScopedToolCallPayload(body, selection, model));
     if (!toolCallResponse.ok) {
       let upstream: unknown = null;
       try {
@@ -124,10 +433,9 @@ export default async function handler(request: IncomingMessage, response: Server
       return;
     }
 
-    const payload = await toolCallResponse.json();
     sendJson(response, 200, {
       selection,
-      call: extractAssistantToolCallFromResponsesPayload(payload, allowedToolNames)
+      call: extractToolCall(await toolCallResponse.json(), allowedToolNames)
     });
   } catch (error) {
     sendJson(response, 500, {
