@@ -5,7 +5,8 @@ import {
   createRealtimeSessionRequestBody,
   createRealtimeToolResultEvents,
   extractRealtimeSessionErrorCode,
-  parseRealtimeFunctionCallEvent
+  parseRealtimeFunctionCallEvent,
+  shouldHandleRealtimeFunctionCall
 } from "./openaiRealtimeAdapter";
 
 describe("OpenAI realtime adapter helpers", () => {
@@ -43,6 +44,35 @@ describe("OpenAI realtime adapter helpers", () => {
       name: "countdown.set",
       arguments: { totalSeconds: 600, start: true }
     });
+  });
+
+  it("deduplicates repeated realtime function call events by call id", () => {
+    const handled = new Set<string>();
+    const first = parseRealtimeFunctionCallEvent({
+      type: "response.function_call_arguments.done",
+      call_id: "call_1",
+      name: "widget__dot__focus",
+      arguments: "{\"widgetId\":\"wi_tv\"}"
+    });
+    const duplicate = parseRealtimeFunctionCallEvent({
+      type: "response.output_item.done",
+      item: {
+        type: "function_call",
+        call_id: "call_1",
+        name: "widget__dot__focus",
+        arguments: "{\"widgetId\":\"wi_tv\"}"
+      }
+    });
+    const next = parseRealtimeFunctionCallEvent({
+      type: "response.function_call_arguments.done",
+      call_id: "call_2",
+      name: "widget__dot__focus",
+      arguments: "{\"widgetId\":\"wi_music\"}"
+    });
+
+    expect(shouldHandleRealtimeFunctionCall(first, handled)).toBe(true);
+    expect(shouldHandleRealtimeFunctionCall(duplicate, handled)).toBe(false);
+    expect(shouldHandleRealtimeFunctionCall(next, handled)).toBe(true);
   });
 
   it("creates function call output and response events", () => {

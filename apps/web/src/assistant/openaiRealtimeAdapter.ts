@@ -76,6 +76,16 @@ export function parseRealtimeFunctionCallEvent(value: unknown): AssistantToolCal
   return null;
 }
 
+export function shouldHandleRealtimeFunctionCall(
+  call: AssistantToolCall | null,
+  handledCallIds: Set<string>
+): call is AssistantToolCall {
+  if (!call) return false;
+  if (handledCallIds.has(call.id)) return false;
+  handledCallIds.add(call.id);
+  return true;
+}
+
 export function createRealtimeToolResultEvents(call: AssistantToolCall, result: AssistantToolResult): RealtimeEvent[] {
   return [
     {
@@ -118,12 +128,14 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private queuedEvents: RealtimeEvent[] = [];
   private currentTools: AssistantToolSpec[] = [];
   private currentContext: CompactAssistantContext | null = null;
+  private handledFunctionCallIds = new Set<string>();
 
   constructor(private readonly options: OpenAIRealtimeWebRtcAdapterOptions = {}) {}
 
   async connect(): Promise<void> {
     const fetchImpl = this.options.fetchImpl ?? fetch;
     this.options.onStatusChange?.("connecting");
+    this.handledFunctionCallIds.clear();
 
     let stream: MediaStream;
     try {
@@ -182,7 +194,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     dataChannel.onmessage = (event) => {
       try {
         const call = parseRealtimeFunctionCallEvent(event.data);
-        if (call) {
+        if (shouldHandleRealtimeFunctionCall(call, this.handledFunctionCallIds)) {
           void this.options.onFunctionCall?.(call);
         }
       } catch {
@@ -218,6 +230,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.dataChannel = null;
     this.peerConnection = null;
     this.mediaStream = null;
+    this.handledFunctionCallIds.clear();
     this.options.onStatusChange?.("disconnected");
   }
 
