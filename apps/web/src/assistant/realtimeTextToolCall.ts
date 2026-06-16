@@ -13,13 +13,15 @@ import {
 
 export type RealtimeTextToolCallRequest = {
   input: string;
-  context: CompactAssistantContext;
+  context?: CompactAssistantContext;
   tools: AssistantToolSpec[];
+  phase?: "select" | "execute" | "auto";
   selection?: RealtimeTextToolSelection;
 };
 
 export type RealtimeTextToolCallResponse = {
   call: AssistantToolCall | null;
+  selection?: RealtimeTextToolSelection | null;
 };
 
 export type RealtimeTextToolSelection = {
@@ -57,7 +59,20 @@ export function createRealtimeTextToolCallRequestBody(
   tools: AssistantToolSpec[],
   selection?: RealtimeTextToolSelection
 ) {
-  return JSON.stringify({ input, context, tools, selection } satisfies RealtimeTextToolCallRequest);
+  return JSON.stringify({ input, context, tools, selection, phase: "auto" } satisfies RealtimeTextToolCallRequest);
+}
+
+export function createRealtimeToolSelectionRequestBody(input: string, tools: AssistantToolSpec[]) {
+  return JSON.stringify({ input, tools, phase: "select" } satisfies RealtimeTextToolCallRequest);
+}
+
+export function createRealtimeScopedToolCallRequestBody(
+  input: string,
+  context: CompactAssistantContext,
+  tools: AssistantToolSpec[],
+  selection: RealtimeTextToolSelection
+) {
+  return JSON.stringify({ input, context, tools, selection, phase: "execute" } satisfies RealtimeTextToolCallRequest);
 }
 
 function toolCatalog(tools: AssistantToolSpec[]) {
@@ -229,7 +244,27 @@ export function createScopedToolCallPayload(
   options: { model?: string } = {}
 ) {
   const tool = request.tools.find((candidate) => candidate.name === selection.name);
-  const scopedContext = tool ? createScopedRealtimeContext(request.context, tool, selection, request.input) : request.context;
+  if (!tool || !request.context) {
+    return {
+      model: options.model ?? XIAOZHUOBAN_REALTIME_MODEL,
+      input: [
+        {
+          role: "user",
+          content: [
+            "# Text Command Fallback",
+            "缺少已选工具或局部上下文，因此不能生成可执行工具调用。",
+            `已选工具：${selection.name}`,
+            `用户命令：${request.input}`
+          ].join("\n")
+        }
+      ],
+      tools: [],
+      tool_choice: "none",
+      parallel_tool_calls: false,
+      max_output_tokens: 80
+    };
+  }
+  const scopedContext = createScopedRealtimeContext(request.context, tool, selection, request.input);
   return {
     model: options.model ?? XIAOZHUOBAN_REALTIME_MODEL,
     input: [
@@ -283,7 +318,7 @@ export function createScopedRealtimeToolUpdate(
   selection: RealtimeTextToolSelection
 ) {
   const tool = request.tools.find((candidate) => candidate.name === selection.name);
-  if (!tool) return null;
+  if (!tool || !request.context) return null;
   const scopedContext = createScopedRealtimeContext(request.context, tool, selection, request.input);
   return {
     type: "session.update",
@@ -371,5 +406,18 @@ export function parseRealtimeTextToolCallResponse(value: unknown): AssistantTool
     name: record.name,
     arguments: parseArguments(record.arguments),
     source: "text"
+  };
+}
+
+export function parseRealtimeTextToolSelectionResponse(value: unknown): RealtimeTextToolSelection | null {
+  if (!value || typeof value !== "object") return null;
+  const selection = (value as Record<string, unknown>).selection;
+  if (!selection || typeof selection !== "object") return null;
+  const record = selection as Record<string, unknown>;
+  if (typeof record.name !== "string") return null;
+  return {
+    name: record.name,
+    targetHint: typeof record.targetHint === "string" ? record.targetHint : undefined,
+    confidence: typeof record.confidence === "number" ? record.confidence : undefined
   };
 }

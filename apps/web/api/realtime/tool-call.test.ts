@@ -127,6 +127,59 @@ describe("realtime text tool-call API", () => {
     expect(JSON.stringify(secondBody)).not.toContain("music__dot__pause");
   });
 
+  it("accepts select phase without desktop context", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "sk-test");
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          output: [
+            {
+              type: "function_call",
+              name: "assistant__dot__select_tool",
+              call_id: "select_1",
+              arguments: JSON.stringify({ name: "widget.remove", targetHint: "音乐", confidence: 0.9 })
+            }
+          ]
+        }),
+        { status: 200 }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await callHandler({
+      input: "关音乐",
+      phase: "select",
+      tools: [
+        {
+          name: "widget.remove",
+          description: "删除小工具",
+          scope: "desktop",
+          requiresTarget: true,
+          risk: "destructive"
+        },
+        {
+          name: "music.pause",
+          description: "暂停音乐",
+          scope: "widget-detail",
+          widgetType: "music",
+          requiresTarget: true
+        }
+      ]
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      call: null,
+      selection: { name: "widget.remove", targetHint: "音乐", confidence: 0.9 }
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    const serialized = JSON.stringify(body);
+    expect(serialized).toContain("widget.remove");
+    expect(serialized).not.toContain("wi_music");
+    expect(serialized).not.toContain("private note");
+  });
+
   it("skips first-pass selection when realtime already selected a tool", async () => {
     vi.stubEnv("OPENAI_API_KEY", "sk-test");
     const fetchMock = vi.fn().mockResolvedValueOnce(
@@ -148,6 +201,7 @@ describe("realtime text tool-call API", () => {
 
     const response = await callHandler({
       input: "关音乐",
+      phase: "execute",
       selection: { name: "widget.remove", targetHint: "音乐", confidence: 0.9 },
       tools: [
         {

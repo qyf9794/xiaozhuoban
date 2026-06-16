@@ -350,6 +350,15 @@ describe("OpenAI realtime adapter helpers", () => {
       textToolCallEndpoint: "/api/realtime/tool-call",
       fetchImpl: (async (url, init) => {
         requests.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+        if (requests.length === 1) {
+          return new Response(
+            JSON.stringify({
+              call: null,
+              selection: { name: "widget.remove", targetHint: "音乐", confidence: 0.9 }
+            }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          );
+        }
         return new Response(
           JSON.stringify({
             call: {
@@ -378,6 +387,14 @@ describe("OpenAI realtime adapter helpers", () => {
             name: "音乐播放器",
             order: 1,
             summary: "正在播放"
+          },
+          {
+            widgetId: "wi_note",
+            definitionId: "wd_note",
+            type: "note",
+            name: "便签",
+            order: 2,
+            summary: "private note"
           }
         ]
       },
@@ -393,9 +410,21 @@ describe("OpenAI realtime adapter helpers", () => {
       ]
     );
 
-    expect(requests).toHaveLength(1);
+    expect(requests).toHaveLength(2);
     expect(requests[0]?.url).toBe("/api/realtime/tool-call");
-    expect(requests[0]?.body).toMatchObject({ input: "关音乐" });
+    expect(requests[0]?.body).toMatchObject({ input: "关音乐", phase: "select" });
+    expect(JSON.stringify(requests[0]?.body)).not.toContain("context");
+    expect(JSON.stringify(requests[0]?.body)).not.toContain("wi_music");
+    expect(JSON.stringify(requests[0]?.body)).not.toContain("private note");
+    expect(requests[1]?.url).toBe("/api/realtime/tool-call");
+    expect(requests[1]?.body).toMatchObject({
+      input: "关音乐",
+      phase: "execute",
+      selection: { name: "widget.remove", targetHint: "音乐", confidence: 0.9 }
+    });
+    expect(JSON.stringify(requests[1]?.body)).toContain("wi_music");
+    expect(JSON.stringify(requests[1]?.body)).not.toContain("wi_note");
+    expect(JSON.stringify(requests[1]?.body)).not.toContain("private note");
     expect(call).toEqual({
       id: "model_1",
       name: "widget.remove",

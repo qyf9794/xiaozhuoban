@@ -11,11 +11,14 @@ import {
 } from "./realtimeSessionConfig";
 import {
   REALTIME_TOOL_SELECTION_TOOL_NAME,
+  createRealtimeScopedToolCallRequestBody,
   createRealtimeToolSelectionInstructions,
+  createRealtimeToolSelectionRequestBody,
   createRealtimeToolSelectionTool,
-  createRealtimeTextToolCallRequestBody,
+  createScopedRealtimeContext,
   createScopedRealtimeToolUpdate,
-  parseRealtimeTextToolCallResponse
+  parseRealtimeTextToolCallResponse,
+  parseRealtimeTextToolSelectionResponse
 } from "./realtimeTextToolCall";
 
 export type RealtimeConnectionStatus =
@@ -433,13 +436,25 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     tools: AssistantToolSpec[]
   ): Promise<AssistantToolCall | null> {
     const fetchImpl = this.options.fetchImpl ?? fetch;
-    const response = await fetchImpl(this.options.textToolCallEndpoint ?? "/api/realtime/tool-call", {
+    const endpoint = this.options.textToolCallEndpoint ?? "/api/realtime/tool-call";
+    const selectionResponse = await fetchImpl(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: createRealtimeTextToolCallRequestBody(input, context, tools)
+      body: createRealtimeToolSelectionRequestBody(input, tools)
     });
-    if (!response.ok) return null;
-    return parseRealtimeTextToolCallResponse(await response.json());
+    if (!selectionResponse.ok) return null;
+    const selection = parseRealtimeTextToolSelectionResponse(await selectionResponse.json());
+    const selectedTool = selection ? tools.find((tool) => tool.name === selection.name) : undefined;
+    if (!selection || !selectedTool) return null;
+
+    const scopedContext = createScopedRealtimeContext(context, selectedTool, selection, input);
+    const toolCallResponse = await fetchImpl(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: createRealtimeScopedToolCallRequestBody(input, scopedContext, tools, selection)
+    });
+    if (!toolCallResponse.ok) return null;
+    return parseRealtimeTextToolCallResponse(await toolCallResponse.json());
   }
 
   private handleFunctionCall(call: AssistantToolCall): void {

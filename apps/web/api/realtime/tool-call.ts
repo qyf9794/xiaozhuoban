@@ -39,8 +39,9 @@ type CompactContext = {
 
 type TextToolCallRequest = {
   input: string;
-  context: CompactContext;
+  context?: CompactContext;
   tools: AssistantToolSpecLike[];
+  phase: "select" | "execute" | "auto";
   selection?: TextToolSelection;
 };
 
@@ -95,9 +96,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function parseRequestBody(value: unknown): TextToolCallRequest | null {
   if (!isRecord(value)) return null;
-  if (typeof value.input !== "string" || !isRecord(value.context) || !Array.isArray(value.tools)) return null;
-  const context = value.context;
-  if (!Array.isArray(context.widgets) || !isRecord(context.widgetCountsByType)) return null;
+  if (typeof value.input !== "string" || !Array.isArray(value.tools)) return null;
+  const phase =
+    value.phase === "select" || value.phase === "execute" || value.phase === "auto" ? value.phase : "auto";
+  const context = isRecord(value.context) ? value.context : undefined;
+  if (phase !== "select" && !context) return null;
+  if (context && (!Array.isArray(context.widgets) || !isRecord(context.widgetCountsByType))) return null;
   const selection = isRecord(value.selection) && typeof value.selection.name === "string"
     ? {
         name: value.selection.name,
@@ -107,8 +111,9 @@ function parseRequestBody(value: unknown): TextToolCallRequest | null {
     : undefined;
   return {
     input: value.input,
-    context: context as unknown as CompactContext,
+    context: context as CompactContext | undefined,
     tools: value.tools.filter(isRecord).filter((tool) => typeof tool.name === "string") as AssistantToolSpecLike[],
+    phase,
     selection
   };
 }
@@ -278,7 +283,27 @@ function createContextInstructions(context: CompactContext) {
 
 function createScopedToolCallPayload(request: TextToolCallRequest, selection: TextToolSelection, model: string) {
   const tool = request.tools.find((candidate) => candidate.name === selection.name);
-  const scopedContext = tool ? createScopedContext(request.context, tool, selection, request.input) : request.context;
+  if (!tool || !request.context) {
+    return {
+      model,
+      input: [
+        {
+          role: "user",
+          content: [
+            "# Text Command Fallback",
+            "缺少已选工具或局部上下文，因此不能生成可执行工具调用。",
+            `已选工具：${selection.name}`,
+            `用户命令：${request.input}`
+          ].join("\n")
+        }
+      ],
+      tools: [],
+      tool_choice: "none",
+      parallel_tool_calls: false,
+      max_output_tokens: 80
+    };
+  }
+  const scopedContext = createScopedContext(request.context, tool, selection, request.input);
   return {
     model,
     input: [
@@ -410,6 +435,16 @@ export default async function handler(request: IncomingMessage, response: Server
     const allowedToolNames = new Set(body.tools.map((tool) => tool.name));
     const model = process.env.XIAOZHUOBAN_TEXT_TOOL_MODEL || XIAOZHUOBAN_REALTIME_MODEL;
     let selection: TextToolSelection | null = body.selection && allowedToolNames.has(body.selection.name) ? body.selection : null;
+
+    if (body.phase === "execute" && !selection) {
+      sendJson(response, 200, { call: null, selection: null, error: "TEXT_TOOL_SELECTION_MISSING" });
+      return;
+    }
+    if (body.phase === "execute" && !body.context) {
+      sendJson(response, 200, { call: null, selection, error: "TEXT_TOOL_CONTEXT_MISSING" });
+      return;
+    }
+
     if (!selection) {
       const selectionResponse = await requestOpenAI(apiKey, createToolSelectionPayload(body, model));
       if (!selectionResponse.ok) {
@@ -434,6 +469,14 @@ export default async function handler(request: IncomingMessage, response: Server
     }
     if (!selection) {
       sendJson(response, 200, { call: null, selection: null });
+      return;
+    }
+    if (body.phase === "select") {
+      sendJson(response, 200, { call: null, selection });
+      return;
+    }
+    if (!body.context) {
+      sendJson(response, 200, { call: null, selection, error: "TEXT_TOOL_CONTEXT_MISSING" });
       return;
     }
 

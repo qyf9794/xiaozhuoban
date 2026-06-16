@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import { createPassthroughSchema, type AssistantToolSpec, type CompactAssistantContext } from "@xiaozhuoban/assistant-core";
 import {
   createRealtimeToolSelectionInstructions,
+  createRealtimeToolSelectionRequestBody,
   createRealtimeToolSelectionTool,
+  createRealtimeScopedToolCallRequestBody,
   createScopedRealtimeContext,
   createScopedRealtimeToolUpdate,
   createScopedToolCallPayload,
   createToolSelectionPayload,
-  extractToolSelectionFromResponsesPayload
+  extractToolSelectionFromResponsesPayload,
+  parseRealtimeTextToolSelectionResponse
 } from "./realtimeTextToolCall";
 
 const tools: AssistantToolSpec[] = [
@@ -79,6 +82,17 @@ describe("Realtime text tool call fallback", () => {
     expect(serialized).not.toContain("private note");
   });
 
+  it("creates a selector request body without desktop context", () => {
+    const body = JSON.parse(createRealtimeToolSelectionRequestBody("关闭音乐", tools));
+    const serialized = JSON.stringify(body);
+
+    expect(body).toMatchObject({ input: "关闭音乐", phase: "select" });
+    expect(serialized).toContain("widget.remove");
+    expect(serialized).not.toContain("context");
+    expect(serialized).not.toContain("wi_music");
+    expect(serialized).not.toContain("private note");
+  });
+
   it("creates realtime selection instructions and a selector tool without board widget context", () => {
     const instructions = createRealtimeToolSelectionInstructions(tools);
     const selector = createRealtimeToolSelectionTool(tools);
@@ -109,6 +123,16 @@ describe("Realtime text tool call fallback", () => {
     expect(selection).toEqual({ name: "widget.remove", targetHint: "音乐", confidence: 0.9 });
   });
 
+  it("parses selection responses from the backend", () => {
+    expect(
+      parseRealtimeTextToolSelectionResponse({
+        call: null,
+        selection: { name: "widget.remove", targetHint: "音乐", confidence: 0.9 }
+      })
+    ).toEqual({ name: "widget.remove", targetHint: "音乐", confidence: 0.9 });
+    expect(parseRealtimeTextToolSelectionResponse({ call: null, selection: null })).toBeNull();
+  });
+
   it("scopes second-pass context to the selected target family", () => {
     const scoped = createScopedRealtimeContext(context, tools[0]!, { name: "widget.remove", targetHint: "音乐" }, "关闭音乐");
 
@@ -127,6 +151,24 @@ describe("Realtime text tool call fallback", () => {
     expect(serialized).not.toContain("music__dot__pause");
     expect(serialized).toContain("wi_music");
     expect(serialized).not.toContain("wd_note");
+  });
+
+  it("creates an execute request body with scoped context only", () => {
+    const scopedContext = createScopedRealtimeContext(context, tools[0]!, { name: "widget.remove", targetHint: "音乐" }, "关闭音乐");
+    const body = JSON.parse(
+      createRealtimeScopedToolCallRequestBody(
+        "关闭音乐",
+        scopedContext,
+        tools,
+        { name: "widget.remove", targetHint: "音乐" }
+      )
+    );
+    const serialized = JSON.stringify(body);
+
+    expect(body).toMatchObject({ input: "关闭音乐", phase: "execute", selection: { name: "widget.remove" } });
+    expect(serialized).toContain("wi_music");
+    expect(serialized).not.toContain("wi_note");
+    expect(serialized).not.toContain("private note");
   });
 
   it("creates a scoped realtime session update after tool selection", () => {
