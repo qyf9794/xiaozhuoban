@@ -4,6 +4,7 @@ import {
   getVoiceAssistantDockStateForRealtimeStatus,
   getVoiceAssistantErrorMessage,
   getVoiceAssistantDockStatusText,
+  getVoiceAssistantOperationText,
   prependVoiceAssistantHistory,
   type VoiceAssistantDockState
 } from "./VoiceAssistantDock";
@@ -43,6 +44,19 @@ describe("VoiceAssistantDock", () => {
       { id: "3", text: "取消", result: "已取消", route: "shortcut" },
       { id: "1", text: "打开天气", result: "好了", route: "shortcut" }
     ]);
+  });
+
+  it("formats current operation status for the visible bubble", () => {
+    expect(getVoiceAssistantOperationText({ phase: "idle" })).toBe("待命");
+    expect(getVoiceAssistantOperationText({ phase: "thinking", command: "添加便签" })).toBe("理解中：添加便签");
+    expect(getVoiceAssistantOperationText({ phase: "executing", command: "整理桌板" })).toBe("执行中：整理桌板");
+    expect(getVoiceAssistantOperationText({ phase: "waiting_confirmation", command: "整理桌板" })).toBe("待确认：整理桌板");
+    expect(getVoiceAssistantOperationText({ phase: "success", command: "添加便签", message: "已添加小工具" })).toBe(
+      "完成：已添加小工具"
+    );
+    expect(getVoiceAssistantOperationText({ phase: "error", command: "添加便签", message: "未知工具" })).toBe(
+      "失败：未知工具"
+    );
   });
 
   it("maps realtime connection status to dock state and short messages", () => {

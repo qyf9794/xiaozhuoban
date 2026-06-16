@@ -57,12 +57,30 @@ export interface VoiceAssistantHistoryItem {
   route: string;
 }
 
+export type VoiceAssistantOperationPhase = "idle" | "thinking" | "executing" | "waiting_confirmation" | "success" | "error";
+
+export interface VoiceAssistantOperationStatus {
+  phase: VoiceAssistantOperationPhase;
+  command?: string;
+  message?: string;
+}
+
 export function prependVoiceAssistantHistory(
   history: VoiceAssistantHistoryItem[],
   item: VoiceAssistantHistoryItem,
   maxItems = 4
 ): VoiceAssistantHistoryItem[] {
   return [item, ...history].slice(0, Math.max(1, maxItems));
+}
+
+export function getVoiceAssistantOperationText(operation: VoiceAssistantOperationStatus): string {
+  if (operation.phase === "idle") return "待命";
+  const command = operation.command ? `：${operation.command}` : "";
+  if (operation.phase === "thinking") return `理解中${command}`;
+  if (operation.phase === "executing") return `执行中${command}`;
+  if (operation.phase === "waiting_confirmation") return `待确认${command}`;
+  if (operation.phase === "success") return operation.message ? `完成：${operation.message}` : `已完成${command}`;
+  return operation.message ? `失败：${operation.message}` : `失败${command}`;
 }
 
 function getResultText(status: string, message: string) {
@@ -96,6 +114,7 @@ export function VoiceAssistantDock({
   const [text, setText] = useState("");
   const [lastMessage, setLastMessage] = useState("好了，我在。");
   const [history, setHistory] = useState<VoiceAssistantHistoryItem[]>([]);
+  const [operation, setOperation] = useState<VoiceAssistantOperationStatus>({ phase: "idle" });
   const initializedRef = useRef(false);
   const voiceEnabled = Boolean(onConnectVoice);
 
@@ -128,10 +147,17 @@ export function VoiceAssistantDock({
     const input = command.trim();
     if (!input || muted) return;
     setState("thinking");
+    setOperation({ phase: "thinking", command: input });
     try {
       const response = await harness.handleUserInput(input);
-      setState(response.result.status === "needs_confirmation" ? "waiting_confirmation" : "executing");
+      const nextPhase = response.result.status === "needs_confirmation" ? "waiting_confirmation" : "executing";
+      setState(nextPhase);
       const resultText = getResultText(response.result.status, response.result.message);
+      setOperation({
+        phase: response.result.status === "needs_confirmation" ? "waiting_confirmation" : "success",
+        command: input,
+        message: resultText
+      });
       setLastMessage(resultText);
       setHistory((prev) =>
         prependVoiceAssistantHistory(prev, {
@@ -147,7 +173,9 @@ export function VoiceAssistantDock({
         }
       }, 320);
     } catch (error) {
-      setLastMessage(error instanceof Error ? error.message : "助手执行失败");
+      const message = error instanceof Error ? error.message : "助手执行失败";
+      setLastMessage(message);
+      setOperation({ phase: "error", command: input, message });
       setState("error");
     }
   };
@@ -171,10 +199,14 @@ export function VoiceAssistantDock({
     if (!onConnectVoice || muted) return;
     setState("connecting");
     setLastMessage(getVoiceAssistantConnectionMessage("connecting"));
+    setOperation({ phase: "thinking", command: "连接语音" });
     try {
       await onConnectVoice();
+      setOperation({ phase: "success", command: "连接语音", message: "语音已连接" });
     } catch (error) {
-      setLastMessage(getVoiceAssistantErrorMessage(error));
+      const message = getVoiceAssistantErrorMessage(error);
+      setLastMessage(message);
+      setOperation({ phase: "error", command: "连接语音", message });
       setState("error");
     }
   };
@@ -183,6 +215,7 @@ export function VoiceAssistantDock({
     onDisconnectVoice?.();
     setState("disconnected");
     setLastMessage(getVoiceAssistantConnectionMessage("disconnected"));
+    setOperation({ phase: "idle" });
   };
 
   return (
@@ -197,6 +230,7 @@ export function VoiceAssistantDock({
           ? `translateX(-50%) translateY(${mobileVisible ? "0" : "calc(100% + 18px)"})`
           : undefined
       }}
+      data-testid="voice-assistant-dock"
     >
       <div className="voice-assistant-dock__top">
         <button
@@ -211,6 +245,14 @@ export function VoiceAssistantDock({
           <strong>{getVoiceAssistantDockStatusText(visualState)}</strong>
           <span>{lastMessage}</span>
         </div>
+      </div>
+
+      <div
+        className={`voice-assistant-dock__operation is-${operation.phase}`}
+        aria-live="polite"
+        data-testid="voice-assistant-operation"
+      >
+        <span>{getVoiceAssistantOperationText(operation)}</span>
       </div>
 
       {voiceEnabled ? (
@@ -239,8 +281,9 @@ export function VoiceAssistantDock({
           placeholder="说一句指令"
           disabled={muted}
           aria-label="助手指令"
+          data-testid="voice-assistant-command-input"
         />
-        <button type="submit" disabled={muted || !text.trim()} aria-label="发送指令">
+        <button type="submit" disabled={muted || !text.trim()} aria-label="发送指令" data-testid="voice-assistant-send">
           ↵
         </button>
       </form>

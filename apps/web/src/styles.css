@@ -269,6 +269,45 @@ body {
   white-space: nowrap;
 }
 
+.voice-assistant-dock__operation {
+  min-width: 0;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.66);
+  color: #334155;
+  padding: 5px 7px;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.voice-assistant-dock__operation span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-assistant-dock__operation.is-thinking,
+.voice-assistant-dock__operation.is-executing {
+  border-color: rgba(37, 99, 235, 0.28);
+  color: #1d4ed8;
+}
+
+.voice-assistant-dock__operation.is-waiting_confirmation {
+  border-color: rgba(217, 119, 6, 0.32);
+  color: #92400e;
+}
+
+.voice-assistant-dock__operation.is-success {
+  border-color: rgba(13, 148, 136, 0.28);
+  color: #0f766e;
+}
+
+.voice-assistant-dock__operation.is-error {
+  border-color: rgba(220, 38, 38, 0.32);
+  color: #b91c1c;
+}
+
 .voice-assistant-dock__form {
   display: grid;
   grid-template-columns: 1fr 28px;
