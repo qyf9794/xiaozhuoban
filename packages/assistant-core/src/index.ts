@@ -142,6 +142,27 @@ export interface IntentShortcutRule {
   match: (normalizedInput: string, rawInput: string, context: IntentShortcutContext) => IntentShortcutResult;
 }
 
+export interface WidgetTargetResolverContext {
+  widgets: CompactWidgetSummary[];
+  focusedWidget?: CompactWidgetSummary;
+  recentWidgetIds?: string[];
+}
+
+export type WidgetTargetResolution =
+  | {
+      status: "resolved";
+      target: ResolvedWidgetTarget;
+    }
+  | {
+      status: "needs_clarification";
+      message: string;
+      candidates: ResolvedWidgetTarget[];
+    }
+  | {
+      status: "not_found";
+      message: string;
+    };
+
 export class AssistantRegistryError extends Error {
   constructor(
     message: string,
@@ -514,4 +535,154 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
   ];
 
   return new IntentShortcutRouter(rules);
+}
+
+const WIDGET_TYPE_ALIASES: Array<{ type: string; aliases: string[] }> = [
+  { type: "note", aliases: ["便签", "笔记"] },
+  { type: "todo", aliases: ["待办", "任务", "清单"] },
+  { type: "calculator", aliases: ["计算器", "计算"] },
+  { type: "countdown", aliases: ["倒计时", "计时器"] },
+  { type: "weather", aliases: ["天气"] },
+  { type: "headline", aliases: ["新闻", "头条"] },
+  { type: "market", aliases: ["指数", "行情", "市场"] },
+  { type: "music", aliases: ["音乐", "歌曲"] },
+  { type: "tv", aliases: ["电视", "直播", "频道"] },
+  { type: "dialClock", aliases: ["时钟", "表盘"] },
+  { type: "worldClock", aliases: ["世界时钟", "时区"] },
+  { type: "clipboard", aliases: ["剪贴板"] },
+  { type: "converter", aliases: ["换算", "单位"] },
+  { type: "translate", aliases: ["翻译"] },
+  { type: "messageBoard", aliases: ["留言板", "留言"] },
+  { type: "recorder", aliases: ["录音", "录音机"] }
+];
+
+const ORDINALS: Array<{ pattern: RegExp; index: number }> = [
+  { pattern: /(第\s*1\s*个|第一个|第一)/, index: 0 },
+  { pattern: /(第\s*2\s*个|第二个|第二)/, index: 1 },
+  { pattern: /(第\s*3\s*个|第三个|第三)/, index: 2 },
+  { pattern: /(第\s*4\s*个|第四个|第四)/, index: 3 },
+  { pattern: /(最后一个|最后)/, index: -1 }
+];
+
+function toResolvedTarget(widget: CompactWidgetSummary, confidence: number, reason: string): ResolvedWidgetTarget {
+  return {
+    widgetId: widget.widgetId,
+    definitionId: widget.definitionId,
+    type: widget.type,
+    name: widget.name,
+    confidence,
+    reason
+  };
+}
+
+function inferWidgetType(input: string) {
+  return WIDGET_TYPE_ALIASES.find((entry) => entry.aliases.some((alias) => input.includes(alias)))?.type ?? "";
+}
+
+function inferOrdinalIndex(input: string) {
+  return ORDINALS.find((entry) => entry.pattern.test(input))?.index ?? null;
+}
+
+function sortByBoardOrder(widgets: CompactWidgetSummary[]) {
+  return [...widgets].sort((a, b) => {
+    if (a.order !== b.order) return a.order - b.order;
+    return a.widgetId.localeCompare(b.widgetId);
+  });
+}
+
+function sortByRecent(context: WidgetTargetResolverContext, widgets: CompactWidgetSummary[]) {
+  const recentIds = context.recentWidgetIds ?? [];
+  return [...widgets].sort((a, b) => {
+    const aFocused = context.focusedWidget?.widgetId === a.widgetId ? 0 : 1;
+    const bFocused = context.focusedWidget?.widgetId === b.widgetId ? 0 : 1;
+    if (aFocused !== bFocused) return aFocused - bFocused;
+
+    const aRecentFlag = a.recent ? 0 : 1;
+    const bRecentFlag = b.recent ? 0 : 1;
+    if (aRecentFlag !== bRecentFlag) return aRecentFlag - bRecentFlag;
+
+    const aRecentIndex = recentIds.includes(a.widgetId) ? recentIds.indexOf(a.widgetId) : Number.POSITIVE_INFINITY;
+    const bRecentIndex = recentIds.includes(b.widgetId) ? recentIds.indexOf(b.widgetId) : Number.POSITIVE_INFINITY;
+    if (aRecentIndex !== bRecentIndex) return aRecentIndex - bRecentIndex;
+
+    return a.order - b.order;
+  });
+}
+
+export class WidgetTargetResolver {
+  resolve(input: string, context: WidgetTargetResolverContext): WidgetTargetResolution {
+    const normalized = normalizeShortcutInput(input);
+    const widgets = context.widgets;
+    if (widgets.length === 0) {
+      return { status: "not_found", message: "当前桌板没有可匹配的小工具" };
+    }
+
+    const inferredType = inferWidgetType(input);
+    const ordinalIndex = inferOrdinalIndex(normalized);
+    const candidatesByType = inferredType ? widgets.filter((widget) => widget.type === inferredType) : widgets;
+
+    if (candidatesByType.length === 0 && inferredType) {
+      return { status: "not_found", message: `当前桌板没有${input}对应的小工具` };
+    }
+
+    if (ordinalIndex !== null) {
+      const ordered = sortByBoardOrder(candidatesByType);
+      const widget = ordinalIndex === -1 ? ordered[ordered.length - 1] : ordered[ordinalIndex];
+      if (!widget) {
+        return { status: "not_found", message: "没有找到对应顺序的小工具" };
+      }
+      return { status: "resolved", target: toResolvedTarget(widget, 0.92, "matched_by_order") };
+    }
+
+    if (/(那个|这个|当前|正在|最近)/.test(normalized)) {
+      const recent = sortByRecent(context, candidatesByType);
+      const top = recent[0];
+      if (!top) {
+        return { status: "not_found", message: "没有找到最近的小工具" };
+      }
+      if (!inferredType && recent.length > 1 && context.focusedWidget?.widgetId !== top.widgetId && !top.recent) {
+        return {
+          status: "needs_clarification",
+          message: "你指的是哪一个小工具？",
+          candidates: recent.slice(0, 4).map((widget) => toResolvedTarget(widget, 0.45, "ambiguous_recent_reference"))
+        };
+      }
+      return { status: "resolved", target: toResolvedTarget(top, inferredType ? 0.88 : 0.76, "matched_by_recent") };
+    }
+
+    const textMatches = widgets.filter((widget) => {
+      const text = `${widget.name} ${widget.type} ${widget.summary}`.toLowerCase();
+      return normalized
+        .split(" ")
+        .filter((part) => part.length >= 2)
+        .some((part) => text.includes(part));
+    });
+
+    if (textMatches.length === 1) {
+      return { status: "resolved", target: toResolvedTarget(textMatches[0], 0.72, "matched_by_text") };
+    }
+    if (textMatches.length > 1) {
+      return {
+        status: "needs_clarification",
+        message: "匹配到多个小工具，请说得更具体一点",
+        candidates: textMatches.slice(0, 4).map((widget) => toResolvedTarget(widget, 0.5, "ambiguous_text_match"))
+      };
+    }
+
+    if (inferredType && candidatesByType.length === 1) {
+      return { status: "resolved", target: toResolvedTarget(candidatesByType[0], 0.82, "matched_by_type") };
+    }
+
+    if (inferredType && candidatesByType.length > 1) {
+      return {
+        status: "needs_clarification",
+        message: "匹配到多个同类小工具，请指定第几个或最近的那个",
+        candidates: sortByRecent(context, candidatesByType)
+          .slice(0, 4)
+          .map((widget) => toResolvedTarget(widget, 0.55, "ambiguous_type_match"))
+      };
+    }
+
+    return { status: "not_found", message: "没有找到匹配的小工具" };
+  }
 }

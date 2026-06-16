@@ -4,7 +4,9 @@ import {
   AssistantRegistryError,
   createDefaultIntentShortcutRouter,
   createPassthroughSchema,
+  WidgetTargetResolver,
   type AssistantParameterSchema,
+  type CompactWidgetSummary,
   type IntentShortcutContext
 } from "./index";
 
@@ -329,5 +331,128 @@ describe("IntentShortcutRouter", () => {
     const result = router.route("帮我分析一下今天应该做什么", context);
 
     expect(result).toEqual({ matched: false, reason: "no_shortcut_match" });
+  });
+});
+
+describe("WidgetTargetResolver", () => {
+  const widgets: CompactWidgetSummary[] = [
+    {
+      widgetId: "wi_note_old",
+      definitionId: "wd_note",
+      type: "note",
+      name: "便签",
+      order: 1,
+      summary: "旧便签"
+    },
+    {
+      widgetId: "wi_tv",
+      definitionId: "wd_tv",
+      type: "tv",
+      name: "电视",
+      order: 2,
+      summary: "CCTV1",
+      recent: true
+    },
+    {
+      widgetId: "wi_countdown_first",
+      definitionId: "wd_countdown",
+      type: "countdown",
+      name: "倒计时",
+      order: 3,
+      summary: "10 分钟"
+    },
+    {
+      widgetId: "wi_countdown_second",
+      definitionId: "wd_countdown",
+      type: "countdown",
+      name: "倒计时",
+      order: 4,
+      summary: "25 分钟"
+    },
+    {
+      widgetId: "wi_note_recent",
+      definitionId: "wd_note",
+      type: "note",
+      name: "便签",
+      order: 5,
+      summary: "明早九点开会",
+      recent: true
+    }
+  ];
+
+  it("resolves that tv by type and recent reference", () => {
+    const resolver = new WidgetTargetResolver();
+    const result = resolver.resolve("那个电视", { widgets, recentWidgetIds: ["wi_tv", "wi_note_recent"] });
+
+    expect(result.status).toBe("resolved");
+    if (result.status === "resolved") {
+      expect(result.target.widgetId).toBe("wi_tv");
+      expect(result.target.reason).toBe("matched_by_recent");
+    }
+  });
+
+  it("resolves the recent note", () => {
+    const resolver = new WidgetTargetResolver();
+    const result = resolver.resolve("最近的便签", { widgets, recentWidgetIds: ["wi_note_recent"] });
+
+    expect(result.status).toBe("resolved");
+    if (result.status === "resolved") {
+      expect(result.target.widgetId).toBe("wi_note_recent");
+    }
+  });
+
+  it("resolves the first countdown by board order", () => {
+    const resolver = new WidgetTargetResolver();
+    const result = resolver.resolve("第一个倒计时", { widgets });
+
+    expect(result.status).toBe("resolved");
+    if (result.status === "resolved") {
+      expect(result.target.widgetId).toBe("wi_countdown_first");
+      expect(result.target.reason).toBe("matched_by_order");
+    }
+  });
+
+  it("resolves by content summary text", () => {
+    const resolver = new WidgetTargetResolver();
+    const result = resolver.resolve("明早九点开会", { widgets });
+
+    expect(result.status).toBe("resolved");
+    if (result.status === "resolved") {
+      expect(result.target.widgetId).toBe("wi_note_recent");
+      expect(result.target.reason).toBe("matched_by_text");
+    }
+  });
+
+  it("asks for clarification for ambiguous bare references", () => {
+    const resolver = new WidgetTargetResolver();
+    const result = resolver.resolve("那个", { widgets: widgets.map((widget) => ({ ...widget, recent: false })) });
+
+    expect(result.status).toBe("needs_clarification");
+    if (result.status === "needs_clarification") {
+      expect(result.candidates.length).toBeGreaterThan(1);
+      expect(result.message).toContain("哪一个");
+    }
+  });
+
+  it("asks for clarification when multiple widgets of a type match", () => {
+    const resolver = new WidgetTargetResolver();
+    const result = resolver.resolve("倒计时", { widgets });
+
+    expect(result.status).toBe("needs_clarification");
+    if (result.status === "needs_clarification") {
+      expect(result.candidates.map((candidate) => candidate.widgetId)).toEqual([
+        "wi_countdown_first",
+        "wi_countdown_second"
+      ]);
+    }
+  });
+
+  it("returns not_found when the board has no widgets", () => {
+    const resolver = new WidgetTargetResolver();
+    const result = resolver.resolve("那个电视", { widgets: [] });
+
+    expect(result).toMatchObject({
+      status: "not_found"
+    });
   });
 });
