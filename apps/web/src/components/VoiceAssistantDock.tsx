@@ -83,6 +83,12 @@ export function getVoiceAssistantOperationText(operation: VoiceAssistantOperatio
   return operation.message ? `失败：${operation.message}` : `失败${command}`;
 }
 
+export function resolveVoiceAssistantSubmitText(stateText: string, inputValue: string | undefined): string {
+  const stateValue = stateText.trim();
+  if (stateValue) return stateValue;
+  return inputValue?.trim() ?? "";
+}
+
 function getResultText(status: string, message: string) {
   if (status === "success") return message || "好了";
   if (status === "needs_confirmation") return message || "请确认";
@@ -116,6 +122,7 @@ export function VoiceAssistantDock({
   const [history, setHistory] = useState<VoiceAssistantHistoryItem[]>([]);
   const [operation, setOperation] = useState<VoiceAssistantOperationStatus>({ phase: "idle" });
   const initializedRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const voiceEnabled = Boolean(onConnectVoice);
 
   useEffect(() => {
@@ -182,8 +189,11 @@ export function VoiceAssistantDock({
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
-    const input = text;
+    const input = resolveVoiceAssistantSubmitText(text, inputRef.current?.value);
     setText("");
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
     void runCommand(input);
   };
 
@@ -276,8 +286,10 @@ export function VoiceAssistantDock({
 
       <form className="voice-assistant-dock__form" onSubmit={onSubmit}>
         <input
+          ref={inputRef}
           value={text}
           onChange={(event) => setText(event.target.value)}
+          onInput={(event) => setText(event.currentTarget.value)}
           placeholder="说一句指令"
           disabled={muted}
           aria-label="助手指令"

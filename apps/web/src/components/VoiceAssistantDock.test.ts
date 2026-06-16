@@ -6,6 +6,7 @@ import {
   getVoiceAssistantDockStatusText,
   getVoiceAssistantOperationText,
   prependVoiceAssistantHistory,
+  resolveVoiceAssistantSubmitText,
   type VoiceAssistantDockState
 } from "./VoiceAssistantDock";
 
@@ -57,6 +58,12 @@ describe("VoiceAssistantDock", () => {
     expect(getVoiceAssistantOperationText({ phase: "error", command: "添加便签", message: "未知工具" })).toBe(
       "失败：未知工具"
     );
+  });
+
+  it("falls back to the real input value when submitting commands", () => {
+    expect(resolveVoiceAssistantSubmitText(" 添加便签 ", "整理桌板")).toBe("添加便签");
+    expect(resolveVoiceAssistantSubmitText("", " 整理桌板 ")).toBe("整理桌板");
+    expect(resolveVoiceAssistantSubmitText("   ", undefined)).toBe("");
   });
 
   it("maps realtime connection status to dock state and short messages", () => {
