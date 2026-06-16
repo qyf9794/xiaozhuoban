@@ -12,6 +12,8 @@ export type VoiceAssistantDockState =
   | "error"
   | "muted";
 
+const MICROPHONE_PERMISSION_MESSAGE = "麦克风权限被拒绝，请在浏览器地址栏允许麦克风后重试。";
+
 export function getVoiceAssistantDockStatusText(state: VoiceAssistantDockState): string {
   if (state === "connecting") return "连接中";
   if (state === "listening") return "聆听中";
@@ -33,7 +35,7 @@ export function getVoiceAssistantDockStateForRealtimeStatus(status: RealtimeConn
 export function getVoiceAssistantConnectionMessage(status: RealtimeConnectionStatus): string {
   if (status === "connecting") return "正在连接 gpt-realtime-2。";
   if (status === "connected") return "语音已连接，可以直接说话。";
-  if (status === "microphone_denied") return "麦克风权限被拒绝。";
+  if (status === "microphone_denied") return MICROPHONE_PERMISSION_MESSAGE;
   if (status === "failed") return "语音连接失败，请稍后重试。";
   return "语音未连接，文字指令可用。";
 }
@@ -41,7 +43,7 @@ export function getVoiceAssistantConnectionMessage(status: RealtimeConnectionSta
 export function getVoiceAssistantErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : "";
   if (message === "OPENAI_API_KEY_MISSING") return "后端缺少 OPENAI_API_KEY，配置后再连接。";
-  if (message === "MICROPHONE_DENIED") return "麦克风权限被拒绝。";
+  if (message === "MICROPHONE_DENIED") return MICROPHONE_PERMISSION_MESSAGE;
   if (message === "REALTIME_CLIENT_SECRET_MISSING") return "Realtime 临时密钥缺失。";
   if (message === "REALTIME_SDP_FAILED") return "Realtime 语音通道连接失败。";
   if (message === "REALTIME_SESSION_FAILED") return "Realtime 会话创建失败。";
