@@ -181,7 +181,13 @@ describe("IntentShortcutRouter", () => {
       { definitionId: "wd_note", type: "note", name: "便签" },
       { definitionId: "wd_todo", type: "todo", name: "待办" },
       { definitionId: "wd_clipboard", type: "clipboard", name: "剪贴板" },
-      { definitionId: "wd_music", type: "music", name: "音乐" }
+      { definitionId: "wd_music", type: "music", name: "音乐" },
+      { definitionId: "wd_translate", type: "translate", name: "翻译" },
+      { definitionId: "wd_converter", type: "converter", name: "换算" },
+      { definitionId: "wd_calculator", type: "calculator", name: "计算器" },
+      { definitionId: "wd_market", type: "market", name: "行情" },
+      { definitionId: "wd_worldClock", type: "worldClock", name: "世界时钟" },
+      { definitionId: "wd_headline", type: "headline", name: "新闻" }
     ],
     availableWidgets: [
       {
@@ -227,6 +233,60 @@ describe("IntentShortcutRouter", () => {
         name: "待办",
         order: 5,
         summary: "2 项待办",
+        recent: false
+      },
+      {
+        widgetId: "wi_translate",
+        definitionId: "wd_translate",
+        type: "translate",
+        name: "翻译",
+        order: 6,
+        summary: "",
+        recent: false
+      },
+      {
+        widgetId: "wi_converter",
+        definitionId: "wd_converter",
+        type: "converter",
+        name: "换算",
+        order: 7,
+        summary: "",
+        recent: false
+      },
+      {
+        widgetId: "wi_calculator",
+        definitionId: "wd_calculator",
+        type: "calculator",
+        name: "计算器",
+        order: 8,
+        summary: "0",
+        recent: false
+      },
+      {
+        widgetId: "wi_market",
+        definitionId: "wd_market",
+        type: "market",
+        name: "行情",
+        order: 9,
+        summary: "",
+        recent: false
+      },
+      {
+        widgetId: "wi_worldClock",
+        definitionId: "wd_worldClock",
+        type: "worldClock",
+        name: "世界时钟",
+        order: 10,
+        summary: "",
+        recent: false
+      },
+      {
+        widgetId: "wi_headline",
+        definitionId: "wd_headline",
+        type: "headline",
+        name: "新闻",
+        order: 11,
+        summary: "",
         recent: false
       }
     ],
@@ -428,6 +488,78 @@ describe("IntentShortcutRouter", () => {
           arguments: { text: "账号是 demo" }
         }
       });
+    }
+  });
+
+  it("routes translate draft commands to the translate widget", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("把你好翻译成英文", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("translate.set_draft");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_translate", sourceText: "你好", targetLang: "en" });
+    }
+  });
+
+  it("routes converter commands to the converter widget", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("12米换算成公里", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("converter.set");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_converter",
+        category: "length",
+        value: "12",
+        fromUnit: "m",
+        toUnit: "km"
+      });
+    }
+  });
+
+  it("routes arithmetic commands to the calculator widget", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("计算 12+30", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("calculator.set_display");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_calculator", display: "42" });
+    }
+  });
+
+  it("routes market index commands to the market widget", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("看标普和恒生行情", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("market.set_indices");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_market", indexCodes: ["usINX", "hkHSI"] });
+    }
+  });
+
+  it("routes world clock zone commands to the world clock widget", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("世界时钟显示北京伦敦纽约", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("worldClock.set_zones");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_worldClock", zones: ["北京", "伦敦", "纽约"] });
+    }
+  });
+
+  it("routes headline refresh commands to the headline widget", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("刷新新闻", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("headline.request_refresh");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_headline" });
     }
   });
 

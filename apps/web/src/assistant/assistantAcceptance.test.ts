@@ -55,9 +55,29 @@ function createAcceptanceHarness(options?: { modelCall?: AssistantToolCall | nul
     definition("countdown", "倒计时"),
     definition("note", "便签"),
     definition("todo", "待办"),
-    definition("clipboard", "剪贴板")
+    definition("clipboard", "剪贴板"),
+    definition("translate", "翻译"),
+    definition("converter", "换算"),
+    definition("calculator", "计算器"),
+    definition("market", "行情"),
+    definition("worldClock", "世界时钟"),
+    definition("headline", "新闻")
   ];
-  let widgets = (options?.initialWidgetTypes ?? ["weather", "countdown", "note", "todo", "clipboard"]).map(widget);
+  let widgets = (
+    options?.initialWidgetTypes ?? [
+      "weather",
+      "countdown",
+      "note",
+      "todo",
+      "clipboard",
+      "translate",
+      "converter",
+      "calculator",
+      "market",
+      "worldClock",
+      "headline"
+    ]
+  ).map(widget);
   let boards = [{ id: "board_1", name: "我的桌板" }];
   let activeBoardId = "board_1";
   const sentResults: AssistantToolResult[] = [];
@@ -281,6 +301,44 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(getWidget("clipboard")?.state.items).toMatchObject([{ text: "账号是 demo" }]);
+    expect(modelInputs).toEqual([]);
+  });
+
+  it("sets translate, converter, calculator, market, clock, and headline widgets without model fallback", async () => {
+    const { harness, modelInputs, getWidget } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const translate = await harness.handleUserInput("把你好翻译成英文");
+    const converter = await harness.handleUserInput("12米换算成公里");
+    const calculator = await harness.handleUserInput("计算 12+30");
+    const market = await harness.handleUserInput("看标普和恒生行情");
+    const clock = await harness.handleUserInput("世界时钟显示北京伦敦纽约");
+    const headline = await harness.handleUserInput("刷新新闻");
+
+    expect([translate, converter, calculator, market, clock, headline].map((response) => response.result)).toMatchObject([
+      { status: "success" },
+      { status: "success" },
+      { status: "success" },
+      { status: "success" },
+      { status: "success" },
+      { status: "success" }
+    ]);
+    expect([translate, converter, calculator, market, clock, headline].map((response) => response.route)).toEqual([
+      "shortcut",
+      "shortcut",
+      "shortcut",
+      "shortcut",
+      "shortcut",
+      "shortcut"
+    ]);
+    expect(getWidget("translate")?.state).toMatchObject({ sourceText: "你好", targetLang: "en" });
+    expect(getWidget("converter")?.state).toMatchObject({ inputValue: "12", fromUnit: "m", toUnit: "km" });
+    expect(getWidget("calculator")?.state.calcDisplay).toBe("42");
+    expect(getWidget("market")?.state.indexCodes).toEqual(["usINX", "hkHSI"]);
+    expect(getWidget("worldClock")?.state.zones).toEqual(
+      expect.arrayContaining(["Asia/Shanghai", "Europe/London", "America/New_York"])
+    );
+    expect(getWidget("headline")?.state.headlineRefreshRequestedAt).toBe(NOW);
     expect(modelInputs).toEqual([]);
   });
 

@@ -189,19 +189,30 @@ export class AssistantHarness {
   private buildShortcutContext(): IntentShortcutContext {
     const input = this.options.getContextInput();
     const context = this.getCurrentContext();
+    const fullWidgets =
+      input.widgets?.map((widget) => ({
+        widgetId: widget.widgetId,
+        definitionId: widget.definitionId,
+        type: widget.type,
+        name: widget.name,
+        order: widget.order,
+        summary: context.widgets.find((item) => item.widgetId === widget.widgetId)?.summary ?? "",
+        recent: input.recentWidgetIds?.includes(widget.widgetId),
+        focused: widget.widgetId === input.focusedWidgetId
+      })) ?? context.widgets;
     return {
       source: "shortcut",
       pendingConfirmation: this.pendingConfirmation ?? undefined,
       boardId: context.boardId,
       boardName: context.boardName,
       availableBoards: context.availableBoards,
-      availableWidgets: context.widgets,
+      availableWidgets: fullWidgets,
       availableDefinitions: input.availableDefinitions ?? context.widgets.map((widget) => ({
         definitionId: widget.definitionId,
         type: widget.type,
         name: widget.name
       })),
-      focusedWidget: context.focusedWidget
+      focusedWidget: fullWidgets.find((widget) => widget.widgetId === input.focusedWidgetId) ?? context.focusedWidget
     };
   }
 
@@ -261,7 +272,10 @@ export class AssistantHarness {
     if (!targetText && isRecord(call.arguments) && typeof call.arguments.widgetId === "string") {
       const widgetId = call.arguments.widgetId;
       const context = this.getCurrentContext();
-      const widget = context.widgets.find((item) => item.widgetId === widgetId);
+      const input = this.options.getContextInput();
+      const widget =
+        context.widgets.find((item) => item.widgetId === widgetId) ??
+        input.widgets?.find((item) => item.widgetId === widgetId);
       return widget
         ? {
             status: "ready",

@@ -627,6 +627,110 @@ function inferClipboardText(raw: string) {
   return "";
 }
 
+function normalizeTranslateTarget(raw: string) {
+  if (/(英文|英语|en)/i.test(raw)) return "en";
+  if (/(中文|汉语|zh)/i.test(raw)) return "zh-CN";
+  return "zh-CN";
+}
+
+function inferTranslateDraft(raw: string) {
+  const patterns = [
+    /(?:把)?(.+?)(?:翻译)(?:成|为|到)?(英文|英语|中文|汉语|en|zh-CN)?$/,
+    /翻译(?:一下)?[：:\s]*(.+?)(?:成|为|到)(英文|英语|中文|汉语|en|zh-CN)$/,
+    /(?:把)(.+?)(?:翻译)?(?:成|为|到)(英文|英语|中文|汉语|en|zh-CN)$/
+  ];
+  for (const pattern of patterns) {
+    const match = raw.match(pattern);
+    const sourceText = cleanCommandContent(match?.[1] ?? "");
+    if (!sourceText || /^(一下|翻译)$/.test(sourceText)) continue;
+    return { sourceText, targetLang: normalizeTranslateTarget(match?.[2] ?? raw) };
+  }
+  return null;
+}
+
+const UNIT_ALIASES: Record<string, { category: string; unit: string }> = {
+  米: { category: "length", unit: "m" },
+  m: { category: "length", unit: "m" },
+  公里: { category: "length", unit: "km" },
+  千米: { category: "length", unit: "km" },
+  km: { category: "length", unit: "km" },
+  厘米: { category: "length", unit: "cm" },
+  cm: { category: "length", unit: "cm" },
+  英寸: { category: "length", unit: "inch" },
+  inch: { category: "length", unit: "inch" },
+  英尺: { category: "length", unit: "ft" },
+  ft: { category: "length", unit: "ft" },
+  公斤: { category: "weight", unit: "kg" },
+  千克: { category: "weight", unit: "kg" },
+  kg: { category: "weight", unit: "kg" },
+  克: { category: "weight", unit: "g" },
+  g: { category: "weight", unit: "g" },
+  磅: { category: "weight", unit: "lb" },
+  lb: { category: "weight", unit: "lb" },
+  盎司: { category: "weight", unit: "oz" },
+  oz: { category: "weight", unit: "oz" },
+  摄氏度: { category: "temperature", unit: "c" },
+  摄氏: { category: "temperature", unit: "c" },
+  华氏度: { category: "temperature", unit: "f" },
+  华氏: { category: "temperature", unit: "f" },
+  开尔文: { category: "temperature", unit: "k" }
+};
+
+function inferConverterArgs(raw: string) {
+  const unitPattern = "(摄氏度|华氏度|开尔文|摄氏|华氏|公里|千米|厘米|英寸|英尺|公斤|千克|盎司|米|克|磅|km|cm|inch|ft|kg|lb|oz|m|g)";
+  const patterns = [
+    new RegExp(`([+-]?\\d+(?:\\.\\d+)?)\\s*${unitPattern}.*(?:换算|转换|转|到|成)\\s*${unitPattern}`, "i"),
+    new RegExp(`(?:换算|转换)\\s*([+-]?\\d+(?:\\.\\d+)?)\\s*${unitPattern}\\s*(?:到|成|为)\\s*${unitPattern}`, "i")
+  ];
+  for (const pattern of patterns) {
+    const match = raw.match(pattern);
+    if (!match) continue;
+    const value = match[1];
+    const from = UNIT_ALIASES[match[2]] ?? UNIT_ALIASES[match[2]?.toLowerCase() ?? ""];
+    const to = UNIT_ALIASES[match[3]] ?? UNIT_ALIASES[match[3]?.toLowerCase() ?? ""];
+    if (value && from && to && from.category === to.category) {
+      return { category: from.category, value, fromUnit: from.unit, toUnit: to.unit };
+    }
+  }
+  return null;
+}
+
+function evaluateArithmeticExpression(expression: string) {
+  const normalized = expression.replace(/×/g, "*").replace(/÷/g, "/").replace(/，/g, "").trim();
+  if (!/^[\d+\-*/().\s]+$/.test(normalized) || !/[+\-*/]/.test(normalized)) return null;
+  try {
+    const value = Function(`"use strict"; return (${normalized});`)();
+    return typeof value === "number" && Number.isFinite(value) ? String(Number(value.toFixed(8))) : null;
+  } catch {
+    return null;
+  }
+}
+
+function inferCalculatorDisplay(raw: string) {
+  const expression = raw.match(/([0-9][0-9+\-*/×÷().\s]+[0-9])/);
+  const evaluated = expression ? evaluateArithmeticExpression(expression[1]) : null;
+  if (evaluated) return evaluated;
+  const display = raw.match(/(?:计算器)(?:显示|设为|输入)?[：:\s]*([+-]?\d+(?:\.\d+)?)/);
+  return display?.[1] ?? "";
+}
+
+function inferMarketIndexCodes(raw: string) {
+  const pairs: Array<[RegExp, string]> = [
+    [/(标普|S&P|sp500|SPX)/i, "usINX"],
+    [/(纳指|纳斯达克|NDX|nasdaq)/i, "usNDX"],
+    [/(道指|道琼斯|DJI)/i, "usDJI"],
+    [/(恒生|港股|HSI)/i, "hkHSI"],
+    [/(上证|沪指|A股|sh000001)/i, "sh000001"],
+    [/(深成|深证|sz399001)/i, "sz399001"]
+  ];
+  return pairs.filter(([pattern]) => pattern.test(raw)).map(([, code]) => code);
+}
+
+function inferWorldClockZones(raw: string) {
+  const zones = ["北京", "伦敦", "纽约", "东京", "洛杉矶", "波士顿"].filter((city) => raw.includes(city));
+  return zones.length > 0 ? zones : [];
+}
+
 function routeWidgetDetailOrAdd(
   context: IntentShortcutContext,
   raw: string,
@@ -896,6 +1000,90 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
       }
     },
     {
+      name: "translate_set_draft",
+      match(normalized, raw, context) {
+        if (!/翻译/.test(normalized)) return { matched: false, reason: "not_translate" };
+        const draft = inferTranslateDraft(raw);
+        if (!draft) return { matched: false, reason: "translate_text_missing" };
+        return (
+          routeWidgetDetailOrAdd(context, raw, "translate", "translate.set_draft", draft, 0.88) ?? {
+            matched: false,
+            reason: "translate_target_missing"
+          }
+        );
+      }
+    },
+    {
+      name: "converter_set",
+      match(normalized, raw, context) {
+        if (!/(换算|转换|转成|转为)/.test(normalized)) return { matched: false, reason: "not_converter" };
+        const args = inferConverterArgs(raw);
+        if (!args) return { matched: false, reason: "converter_args_missing" };
+        return (
+          routeWidgetDetailOrAdd(context, raw, "converter", "converter.set", args, 0.88) ?? {
+            matched: false,
+            reason: "converter_target_missing"
+          }
+        );
+      }
+    },
+    {
+      name: "calculator_set_display",
+      match(normalized, raw, context) {
+        if (!/(计算器|计算|算一下|等于多少)/.test(normalized)) return { matched: false, reason: "not_calculator" };
+        const display = inferCalculatorDisplay(raw);
+        if (!display) return { matched: false, reason: "calculator_display_missing" };
+        return (
+          routeWidgetDetailOrAdd(context, raw, "calculator", "calculator.set_display", { display }, 0.86) ?? {
+            matched: false,
+            reason: "calculator_target_missing"
+          }
+        );
+      }
+    },
+    {
+      name: "market_set_indices",
+      match(normalized, raw, context) {
+        if (!/(行情|指数|市场|股票)/.test(normalized)) return { matched: false, reason: "not_market" };
+        const indexCodes = inferMarketIndexCodes(raw);
+        if (indexCodes.length === 0) return { matched: false, reason: "market_indices_missing" };
+        return (
+          routeWidgetDetailOrAdd(context, raw, "market", "market.set_indices", { indexCodes }, 0.86) ?? {
+            matched: false,
+            reason: "market_target_missing"
+          }
+        );
+      }
+    },
+    {
+      name: "world_clock_set_zones",
+      match(normalized, raw, context) {
+        if (!/(世界时钟|时区|几点)/.test(normalized)) return { matched: false, reason: "not_world_clock" };
+        const zones = inferWorldClockZones(raw);
+        if (zones.length === 0) return { matched: false, reason: "world_clock_zones_missing" };
+        return (
+          routeWidgetDetailOrAdd(context, raw, "worldClock", "worldClock.set_zones", { zones }, 0.86) ?? {
+            matched: false,
+            reason: "world_clock_target_missing"
+          }
+        );
+      }
+    },
+    {
+      name: "headline_refresh",
+      match(normalized, raw, context) {
+        if (!/(刷新|更新|重新加载|换一批)/.test(normalized) || !/(新闻|头条)/.test(normalized)) {
+          return { matched: false, reason: "not_headline_refresh" };
+        }
+        return (
+          routeWidgetDetailOrAdd(context, raw, "headline", "headline.request_refresh", {}, 0.84) ?? {
+            matched: false,
+            reason: "headline_target_missing"
+          }
+        );
+      }
+    },
+    {
       name: "open_widget",
       match(normalized, raw, context) {
         const openIntent = /(打开|添加|新增|叫出|显示|启动|来个|放上|放一个|加一个)/.test(normalized);
@@ -903,6 +1091,11 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         const knownTypes: Array<{ type: string; aliases: string[] }> = [
           { type: "note", aliases: ["便签", "笔记"] },
           { type: "todo", aliases: ["待办", "任务"] },
+          { type: "calculator", aliases: ["计算器", "计算"] },
+          { type: "countdown", aliases: ["倒计时", "计时器"] },
+          { type: "weather", aliases: ["天气"] },
+          { type: "headline", aliases: ["新闻", "头条"] },
+          { type: "market", aliases: ["指数", "行情", "市场"] },
           { type: "tv", aliases: ["电视", "直播"] },
           { type: "music", aliases: ["音乐", "歌曲", "歌", "播放器"] },
           { type: "worldClock", aliases: ["世界时钟", "时区"] },
@@ -964,6 +1157,11 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         const knownTypes: Array<{ type: string; aliases: string[] }> = [
           { type: "note", aliases: ["便签", "笔记"] },
           { type: "todo", aliases: ["待办", "任务"] },
+          { type: "calculator", aliases: ["计算器", "计算"] },
+          { type: "countdown", aliases: ["倒计时", "计时器"] },
+          { type: "weather", aliases: ["天气"] },
+          { type: "headline", aliases: ["新闻", "头条"] },
+          { type: "market", aliases: ["指数", "行情", "市场"] },
           { type: "tv", aliases: ["电视", "直播"] },
           { type: "music", aliases: ["音乐", "歌曲", "歌", "播放器"] },
           { type: "worldClock", aliases: ["世界时钟", "时区"] },
