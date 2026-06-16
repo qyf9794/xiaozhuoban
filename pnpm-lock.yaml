@@ -121,6 +121,8 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
 
+  packages/assistant-core: {}
+
   packages/contracts: {}
 
   packages/data:

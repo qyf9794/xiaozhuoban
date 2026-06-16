@@ -17,6 +17,7 @@
       "@xiaozhuoban/ai-builder": ["packages/ai-builder/src"],
       "@xiaozhuoban/data": ["packages/data/src"],
       "@xiaozhuoban/contracts": ["packages/contracts/src"],
+      "@xiaozhuoban/assistant-core": ["packages/assistant-core/src"],
       "@xiaozhuoban/ui": ["packages/ui/src"]
     }
   }
