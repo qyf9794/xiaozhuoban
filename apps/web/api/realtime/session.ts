@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createHash } from "node:crypto";
 import {
   OPENAI_REALTIME_CLIENT_SECRET_URL,
   createRealtimeClientSecretPayload,
@@ -6,6 +7,9 @@ import {
 } from "../../src/assistant/realtimeSessionConfig";
 
 type JsonValue = Record<string, unknown> | unknown[] | string | number | boolean | null;
+type RealtimeSessionRequestOptions = RealtimeSessionOptions & {
+  safetyIdentifier?: string;
+};
 
 function sendJson(response: ServerResponse, statusCode: number, payload: JsonValue): void {
   response.statusCode = statusCode;
@@ -24,13 +28,21 @@ function readBody(request: IncomingMessage): Promise<string> {
   });
 }
 
-function parseOptions(value: unknown): RealtimeSessionOptions {
+export function createOpenAISafetyIdentifier(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return `xz:${createHash("sha256").update(trimmed).digest("hex")}`;
+}
+
+function parseOptions(value: unknown): RealtimeSessionRequestOptions {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
   }
   const record = value as Record<string, unknown>;
   return {
     ttlSeconds: typeof record.ttlSeconds === "number" ? record.ttlSeconds : undefined,
+    safetyIdentifier: typeof record.safetyIdentifier === "string" ? record.safetyIdentifier : undefined,
     reasoningEffort:
       record.reasoningEffort === "minimal" ||
       record.reasoningEffort === "low" ||
@@ -42,7 +54,7 @@ function parseOptions(value: unknown): RealtimeSessionOptions {
   };
 }
 
-async function readJsonOptions(request: IncomingMessage): Promise<RealtimeSessionOptions> {
+async function readJsonOptions(request: IncomingMessage): Promise<RealtimeSessionRequestOptions> {
   const raw = await readBody(request);
   if (!raw.trim()) {
     return {};
@@ -67,7 +79,7 @@ export default async function handler(request: IncomingMessage, response: Server
     return;
   }
 
-  let options: RealtimeSessionOptions;
+  let options: RealtimeSessionRequestOptions;
   try {
     options = await readJsonOptions(request);
   } catch (error) {
@@ -78,12 +90,18 @@ export default async function handler(request: IncomingMessage, response: Server
     throw error;
   }
 
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${apiKey}`,
+    "content-type": "application/json"
+  };
+  const safetyIdentifier = createOpenAISafetyIdentifier(options.safetyIdentifier);
+  if (safetyIdentifier) {
+    headers["OpenAI-Safety-Identifier"] = safetyIdentifier;
+  }
+
   const upstream = await fetch(OPENAI_REALTIME_CLIENT_SECRET_URL, {
     method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json"
-    },
+    headers,
     body: JSON.stringify(createRealtimeClientSecretPayload(options))
   });
 

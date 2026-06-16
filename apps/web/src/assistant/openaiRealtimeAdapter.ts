@@ -12,6 +12,7 @@ export type RealtimeConnectionStatus =
 export interface OpenAIRealtimeWebRtcAdapterOptions {
   sessionEndpoint?: string;
   model?: string;
+  getSafetyIdentifier?: () => string | undefined;
   onFunctionCall?: (call: AssistantToolCall) => void | Promise<void>;
   onStatusChange?: (status: RealtimeConnectionStatus) => void;
   fetchImpl?: typeof fetch;
@@ -90,6 +91,11 @@ function extractClientSecret(payload: unknown): string {
   return "";
 }
 
+export function createRealtimeSessionRequestBody(safetyIdentifier: string | undefined): string {
+  const trimmed = safetyIdentifier?.trim();
+  return JSON.stringify(trimmed ? { safetyIdentifier: trimmed } : {});
+}
+
 export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private peerConnection: RTCPeerConnection | null = null;
   private dataChannel: RTCDataChannel | null = null;
@@ -114,7 +120,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const sessionResponse = await fetchImpl(this.options.sessionEndpoint ?? "/api/realtime/session", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({})
+      body: createRealtimeSessionRequestBody(this.options.getSafetyIdentifier?.())
     });
     if (!sessionResponse.ok) {
       this.options.onStatusChange?.("failed");

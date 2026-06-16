@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createPassthroughSchema } from "@xiaozhuoban/assistant-core";
 import {
   OpenAIRealtimeWebRtcAdapter,
+  createRealtimeSessionRequestBody,
   createRealtimeToolResultEvents,
   parseRealtimeFunctionCallEvent
 } from "./openaiRealtimeAdapter";
@@ -55,6 +56,14 @@ describe("OpenAI realtime adapter helpers", () => {
       item: { type: "function_call_output", call_id: "call_1" }
     });
     expect(events[1]).toEqual({ type: "response.create" });
+  });
+
+  it("adds a trimmed safety identifier to session requests when available", () => {
+    expect(JSON.parse(createRealtimeSessionRequestBody(" user_123 "))).toEqual({
+      safetyIdentifier: "user_123"
+    });
+    expect(JSON.parse(createRealtimeSessionRequestBody("   "))).toEqual({});
+    expect(JSON.parse(createRealtimeSessionRequestBody(undefined))).toEqual({});
   });
 
   it("queues session tool updates before the data channel opens", () => {

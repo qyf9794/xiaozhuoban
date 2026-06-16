@@ -165,6 +165,9 @@ export function App() {
     () =>
       createRealtimeAssistantRuntime({
         capabilityBridge: assistantCapabilityBridgeRef.current,
+        adapterOptions: {
+          getSafetyIdentifier: () => useAuthStore.getState().user?.id
+        },
         onStatusChange: setRealtimeStatus
       }),
     []
