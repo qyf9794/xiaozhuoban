@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getVoiceAssistantDockStatusText, type VoiceAssistantDockState } from "./VoiceAssistantDock";
+import {
+  getVoiceAssistantDockStatusText,
+  prependVoiceAssistantHistory,
+  type VoiceAssistantDockState
+} from "./VoiceAssistantDock";
 
 describe("VoiceAssistantDock", () => {
   it("maps runtime states to short status labels", () => {
@@ -17,5 +21,24 @@ describe("VoiceAssistantDock", () => {
     cases.forEach(([state, label]) => {
       expect(getVoiceAssistantDockStatusText(state)).toBe(label);
     });
+  });
+
+  it("keeps newest text command history bounded", () => {
+    const history = [
+      { id: "1", text: "打开天气", result: "好了", route: "shortcut" },
+      { id: "2", text: "整理桌面", result: "请确认", route: "shortcut" }
+    ];
+
+    const next = prependVoiceAssistantHistory(history, {
+      id: "3",
+      text: "取消",
+      result: "已取消",
+      route: "shortcut"
+    }, 2);
+
+    expect(next).toEqual([
+      { id: "3", text: "取消", result: "已取消", route: "shortcut" },
+      { id: "1", text: "打开天气", result: "好了", route: "shortcut" }
+    ]);
   });
 });

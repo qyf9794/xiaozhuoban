@@ -22,6 +22,21 @@ export function getVoiceAssistantDockStatusText(state: VoiceAssistantDockState):
   return "未连接";
 }
 
+export interface VoiceAssistantHistoryItem {
+  id: string;
+  text: string;
+  result: string;
+  route: string;
+}
+
+export function prependVoiceAssistantHistory(
+  history: VoiceAssistantHistoryItem[],
+  item: VoiceAssistantHistoryItem,
+  maxItems = 4
+): VoiceAssistantHistoryItem[] {
+  return [item, ...history].slice(0, Math.max(1, maxItems));
+}
+
 function getResultText(status: string, message: string) {
   if (status === "success") return message || "好了";
   if (status === "needs_confirmation") return message || "请确认";
@@ -46,6 +61,7 @@ export function VoiceAssistantDock({
   const [muted, setMuted] = useState(false);
   const [text, setText] = useState("");
   const [lastMessage, setLastMessage] = useState("好了，我在。");
+  const [history, setHistory] = useState<VoiceAssistantHistoryItem[]>([]);
   const initializedRef = useRef(false);
 
   useEffect(() => {
@@ -71,7 +87,16 @@ export function VoiceAssistantDock({
     try {
       const response = await harness.handleUserInput(input);
       setState(response.result.status === "needs_confirmation" ? "waiting_confirmation" : "executing");
-      setLastMessage(getResultText(response.result.status, response.result.message));
+      const resultText = getResultText(response.result.status, response.result.message);
+      setLastMessage(resultText);
+      setHistory((prev) =>
+        prependVoiceAssistantHistory(prev, {
+          id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          text: input,
+          result: resultText,
+          route: response.route
+        })
+      );
       window.setTimeout(() => {
         if (!harness.getPendingConfirmation()) {
           setState("listening");
@@ -147,6 +172,17 @@ export function VoiceAssistantDock({
           <button type="button" onClick={cancel}>
             取消
           </button>
+        </div>
+      ) : null}
+
+      {history.length > 0 ? (
+        <div className="voice-assistant-dock__history" aria-label="助手命令记录">
+          {history.map((item) => (
+            <div key={item.id} className="voice-assistant-dock__history-row">
+              <span>{item.text}</span>
+              <small>{item.result}</small>
+            </div>
+          ))}
         </div>
       ) : null}
     </aside>
