@@ -203,7 +203,7 @@ export function createOpenAISafetyIdentifier(value: unknown): string | undefined
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   if (!trimmed) return undefined;
-  return `xz:${createHash("sha256").update(trimmed).digest("hex")}`;
+  return `xz_${createHash("sha256").update(trimmed).digest("base64url")}`;
 }
 
 function parseOptions(value: unknown): RealtimeSessionRequestOptions {

@@ -69,6 +69,9 @@ describe("realtime session API", () => {
       authorization: "Bearer sk-test",
       "OpenAI-Safety-Identifier": createOpenAISafetyIdentifier("user_123")
     });
+    const safetyIdentifier = createOpenAISafetyIdentifier("user_123");
+    expect(safetyIdentifier).not.toContain("user_123");
+    expect(safetyIdentifier?.length).toBeLessThanOrEqual(64);
     const payload = JSON.parse(String(init?.body));
     expect(payload.session.model).toBe("gpt-realtime-2");
     expect(payload.session.tools.every((tool: { name: string }) => /^[a-zA-Z0-9_-]+$/.test(tool.name))).toBe(true);
