@@ -5366,9 +5366,14 @@ export function BuiltinWidgetView({
       };
     }, [userId, retrySeed]);
 
-    const sendMessage = () => {
-      const text = draft.trim();
-      if (!text) return;
+    const sendMessage = async (rawText?: string) => {
+      const text = (rawText ?? draft).trim();
+      if (!text) {
+        return { status: "failed" as const, message: "留言内容为空", errorCode: "MESSAGE_EMPTY" };
+      }
+      if (!userId) {
+        return { status: "failed" as const, message: "请先登录后再留言", errorCode: "MESSAGE_AUTH_REQUIRED" };
+      }
       const message: MessageBoardItem = {
         id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         senderId: userId,
@@ -5379,39 +5384,57 @@ export function BuiltinWidgetView({
       setSending(true);
       setMessageError("");
       setMessages((prev) => normalizeMessageList([message, ...prev]));
-      setDraft("");
-      void (async () => {
-        try {
-          const { error } = await supabase.from("message_board_messages").insert({
-            id: message.id,
-            sender_id: message.senderId,
-            sender_name: message.senderName,
-            message: message.text,
-            created_at: message.createdAt
-          });
-          if (error) {
-            throw error;
-          }
-          const channel = channelRef.current;
-          if (channel) {
-            const result = await channel.send({
-              type: "broadcast",
-              event: "message",
-              payload: message
-            });
-            if (result !== "ok" && channelReady) {
-              console.warn("[messageBoard] broadcast send failed", result);
-            }
-          }
-        } catch (error) {
-          setMessages((prev) => prev.filter((item) => item.id !== message.id));
-          setDraft(text);
-          setMessageError(error instanceof Error ? `发送失败：${error.message}` : "发送失败，请重试");
-        } finally {
-          setSending(false);
+      if (rawText === undefined) {
+        setDraft("");
+      }
+      try {
+        const { error } = await supabase.from("message_board_messages").insert({
+          id: message.id,
+          sender_id: message.senderId,
+          sender_name: message.senderName,
+          message: message.text,
+          created_at: message.createdAt
+        });
+        if (error) {
+          throw error;
         }
-      })();
+        const channel = channelRef.current;
+        if (channel) {
+          const result = await channel.send({
+            type: "broadcast",
+            event: "message",
+            payload: message
+          });
+          if (result !== "ok" && channelReady) {
+            console.warn("[messageBoard] broadcast send failed", result);
+          }
+        }
+        return { status: "success" as const, message: "已发送留言", data: { messageId: message.id, text: message.text } };
+      } catch (error) {
+        setMessages((prev) => prev.filter((item) => item.id !== message.id));
+        if (rawText === undefined) {
+          setDraft(text);
+        }
+        const messageText = error instanceof Error ? `发送失败：${error.message}` : "发送失败，请重试";
+        setMessageError(messageText);
+        return { status: "failed" as const, message: messageText, errorCode: "MESSAGE_SEND_FAILED" };
+      } finally {
+        setSending(false);
+      }
     };
+
+    useEffect(() => {
+      if (!assistantCapabilityBridge) return undefined;
+
+      return assistantCapabilityBridge.register(instance.id, {
+        send(args) {
+          const text = typeof args.text === "string" ? args.text : "";
+          return sendMessage(text);
+        }
+      });
+      // sendMessage intentionally closes over the latest channel/user state.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [assistantCapabilityBridge, instance.id, userId, userName, channelReady]);
 
     return (
       <WidgetShell
@@ -5487,7 +5510,7 @@ export function BuiltinWidgetView({
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                   event.preventDefault();
-                  sendMessage();
+                  void sendMessage();
                 }
               }}
               placeholder="输入留言，按 Enter 发送"
@@ -5502,7 +5525,7 @@ export function BuiltinWidgetView({
                 fontSize: 12
               }}
             />
-            <Button onClick={sendMessage}>{sending ? "发送中..." : "发送"}</Button>
+            <Button onClick={() => void sendMessage()}>{sending ? "发送中..." : "发送"}</Button>
           </div>
         </div>
       </WidgetShell>

@@ -43,7 +43,7 @@ function createWidget(type: string, state: Record<string, unknown> = {}): Widget
 }
 
 function createStore(options?: { includeGames?: boolean; includeAiDefinition?: boolean }) {
-  const definitions = ["music", "tv", "recorder", "dialClock"].map((type) => createDefinition(type));
+  const definitions = ["music", "tv", "recorder", "dialClock", "messageBoard"].map((type) => createDefinition(type));
   if (options?.includeGames) {
     definitions.push(createDefinition("gomoku"), createDefinition("monopoly"), createDefinition("guandan"));
   }
@@ -136,7 +136,8 @@ describe("WidgetCapabilityBridge", () => {
       "recorder.stop",
       "recorder.play",
       "recorder.pause",
-      "dialClock.set_night_mode"
+      "dialClock.set_night_mode",
+      "messageBoard.send"
     ]);
     expect(names.some((name) => name.includes("gomoku") || name.includes("monopoly") || name.includes("guandan"))).toBe(false);
     expect(names.some((name) => name.includes("ai"))).toBe(false);
@@ -282,6 +283,27 @@ describe("WidgetCapabilityBridge", () => {
     expect(result.status).toBe("success");
     expect(calls).toEqual([true]);
     expect(getWidget("dialClock")?.state.nightMode).toBe(true);
+  });
+
+  it("sends message board text through mounted capability", async () => {
+    const { store } = createStore();
+    const bridge = new WidgetCapabilityBridge();
+    const calls: string[] = [];
+    bridge.register("wi_messageBoard", {
+      send(args) {
+        calls.push(String(args.text ?? ""));
+        return { status: "success", message: "已发送留言" };
+      }
+    });
+    const registry = createRegistry(store, bridge);
+
+    const result = await registry.execute(
+      { id: "call_1", name: "messageBoard.send", arguments: { text: "M9 测试留言" }, source: "test" },
+      { target: targetFor("messageBoard"), now: () => NOW }
+    );
+
+    expect(result.status).toBe("success");
+    expect(calls).toEqual(["M9 测试留言"]);
   });
 
   it("refuses a capability action for a mismatched widget target", async () => {

@@ -24,6 +24,7 @@ type WidgetCapabilityArgs = {
   channelName?: string;
   channelUrl?: string;
   recordingId?: string;
+  text?: string;
   enabled?: boolean;
   followUp?: {
     name: string;
@@ -31,7 +32,7 @@ type WidgetCapabilityArgs = {
   };
 };
 
-const CAPABILITY_WIDGET_TYPES = ["music", "tv", "recorder", "dialClock"] as const;
+const CAPABILITY_WIDGET_TYPES = ["music", "tv", "recorder", "dialClock", "messageBoard"] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
@@ -52,6 +53,7 @@ const genericCapabilitySchema = parseWith<WidgetCapabilityArgs>(
     hasOptionalString(value, "channelName") &&
     hasOptionalString(value, "channelUrl") &&
     hasOptionalString(value, "recordingId") &&
+    hasOptionalString(value, "text") &&
     (value.enabled === undefined || typeof value.enabled === "boolean") &&
     (value.followUp === undefined ||
       (isRecord(value.followUp) &&
@@ -381,6 +383,25 @@ function createDialClockActions(store: WidgetCapabilityStore, bridge: WidgetCapa
   ];
 }
 
+function createMessageBoardActions(store: WidgetCapabilityStore, bridge: WidgetCapabilityBridge): Array<AssistantAction<WidgetCapabilityArgs>> {
+  return [
+    defineAction<WidgetCapabilityArgs>({
+      spec: {
+        name: "messageBoard.send",
+        description: "Send a message to the message board widget.",
+        parameters: genericCapabilitySchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "messageBoard",
+        requiresTarget: true
+      },
+      execute(args, context) {
+        return invokeCapability(store, bridge, context, "messageBoard", "send", args, "已发送留言");
+      }
+    })
+  ];
+}
+
 export function createWidgetCapabilityActions(
   store: WidgetCapabilityStore,
   bridge: WidgetCapabilityBridge
@@ -390,7 +411,8 @@ export function createWidgetCapabilityActions(
     ...createMusicActions(store, bridge),
     ...createTvActions(store, bridge),
     ...createRecorderActions(store, bridge),
-    ...createDialClockActions(store, bridge)
+    ...createDialClockActions(store, bridge),
+    ...createMessageBoardActions(store, bridge)
   ].filter((action) => {
     const type = action.spec.widgetType;
     return Boolean(type && allowedTypes.has(type));

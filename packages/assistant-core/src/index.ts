@@ -546,6 +546,31 @@ function inferMusicQuery(input: string) {
     .trim();
 }
 
+function inferMessageBoardText(input: string) {
+  const quoted = input.match(/[「“"']([^」”"']+)[」”"']/);
+  if (quoted?.[1]?.trim()) return quoted[1].trim();
+
+  const afterColon = input.match(/[：:]\s*(.+)$/);
+  if (afterColon?.[1]?.trim()) return afterColon[1].trim();
+
+  const explicit = input.match(
+    /(?:留言板|留言区|消息板).*?(?:发一下|发一条|发一句|发送|发|说一下|说一句|说|写一条|写一句|写|发布|留言)(?:一条|一句|一下|消息|内容)?\s*(.+)$/
+  );
+  if (explicit?.[1]?.trim()) return explicit[1].replace(/[，。,.]+$/g, "").trim();
+
+  const broad = input.match(/(?:给大家留言|留言)(?:一条|一句|一下|消息|内容)?\s*(.+)$/);
+  if (broad?.[1]?.trim()) return broad[1].replace(/[，。,.]+$/g, "").trim();
+
+  return input
+    .replace(/^(请|帮我|麻烦|麻烦你|可以)?\s*/, "")
+    .replace(/(在|到|往|给)?\s*(留言板|留言区|消息板|留言)\s*(里|上|中|给大家)?/g, " ")
+    .replace(/(发一下|发一条|发一句|发送|发|说一下|说一句|说|写一条|写一句|写|发布|留一条言|留个言)/g, " ")
+    .replace(/(一条|一句|一下|消息|内容)/g, " ")
+    .replace(/[，。,.]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function cleanBoardName(value: string) {
   return value
     .replace(/^(一个|一张|新的|新|空白|的)+/, "")
@@ -1002,6 +1027,22 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
           routeWidgetDetailOrAdd(context, raw, "clipboard", "clipboard.add_text", { text }, 0.88) ?? {
             matched: false,
             reason: "clipboard_target_missing"
+          }
+        );
+      }
+    },
+    {
+      name: "message_board_send",
+      match(normalized, raw, context) {
+        if (!/(留言板|留言区|消息板|留言)/.test(normalized) || !/(发|发送|说|写|发布|留言)/.test(normalized)) {
+          return { matched: false, reason: "not_message_board_send" };
+        }
+        const text = inferMessageBoardText(raw);
+        if (!text) return { matched: false, reason: "message_board_text_missing" };
+        return (
+          routeWidgetDetailOrAdd(context, raw, "messageBoard", "messageBoard.send", { text }, 0.88) ?? {
+            matched: false,
+            reason: "message_board_target_missing"
           }
         );
       }

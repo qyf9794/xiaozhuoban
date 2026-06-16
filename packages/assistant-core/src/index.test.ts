@@ -187,7 +187,8 @@ describe("IntentShortcutRouter", () => {
       { definitionId: "wd_calculator", type: "calculator", name: "计算器" },
       { definitionId: "wd_market", type: "market", name: "行情" },
       { definitionId: "wd_worldClock", type: "worldClock", name: "世界时钟" },
-      { definitionId: "wd_headline", type: "headline", name: "新闻" }
+      { definitionId: "wd_headline", type: "headline", name: "新闻" },
+      { definitionId: "wd_messageBoard", type: "messageBoard", name: "留言板" }
     ],
     availableWidgets: [
       {
@@ -287,6 +288,15 @@ describe("IntentShortcutRouter", () => {
         name: "新闻",
         order: 11,
         summary: "",
+        recent: false
+      },
+      {
+        widgetId: "wi_messageBoard",
+        definitionId: "wd_messageBoard",
+        type: "messageBoard",
+        name: "留言板",
+        order: 12,
+        summary: "已连接",
         recent: false
       }
     ],
@@ -486,6 +496,37 @@ describe("IntentShortcutRouter", () => {
         followUp: {
           name: "clipboard.add_text",
           arguments: { text: "账号是 demo" }
+        }
+      });
+    }
+  });
+
+  it("routes message board send commands to the existing message board", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("留言板发一句 M9 测试留言", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("messageBoard.send");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_messageBoard", text: "M9 测试留言" });
+    }
+  });
+
+  it("routes message board send commands to add-and-send when message board is absent", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("给大家留言：今天继续测试小桌板", {
+      ...context,
+      availableWidgets: context.availableWidgets?.filter((widget) => widget.type !== "messageBoard")
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("board.add_widget");
+      expect(result.toolCall.arguments).toEqual({
+        definitionId: "wd_messageBoard",
+        followUp: {
+          name: "messageBoard.send",
+          arguments: { text: "今天继续测试小桌板" }
         }
       });
     }
