@@ -928,7 +928,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
       name: "media_play_pause",
       match(normalized, raw, context) {
         const isPlay = /(播放|继续)/.test(normalized);
-        const isPause = /(暂停|停一下)/.test(normalized);
+        const isPause = /(暂停|停一下|停止|停掉)/.test(normalized);
         if (!isPlay && !isPause) return { matched: false, reason: "not_media_control" };
         const targetType = raw.includes("电视") ? "tv" : raw.includes("音乐") || raw.includes("歌") ? "music" : "";
         const widget = targetType ? findWidgetByType(context, targetType) : context.focusedWidget;
@@ -955,6 +955,29 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
           context.source ?? "shortcut",
           raw
         );
+      }
+    },
+    {
+      name: "close_widget",
+      match(normalized, raw, context) {
+        if (!/(关闭|关掉)/.test(normalized)) return { matched: false, reason: "not_close_widget" };
+        const knownTypes: Array<{ type: string; aliases: string[] }> = [
+          { type: "note", aliases: ["便签", "笔记"] },
+          { type: "todo", aliases: ["待办", "任务"] },
+          { type: "tv", aliases: ["电视", "直播"] },
+          { type: "music", aliases: ["音乐", "歌曲", "歌"] },
+          { type: "worldClock", aliases: ["世界时钟", "时区"] },
+          { type: "dialClock", aliases: ["时钟", "表盘"] },
+          { type: "translate", aliases: ["翻译"] },
+          { type: "converter", aliases: ["换算", "单位"] },
+          { type: "clipboard", aliases: ["剪贴板"] },
+          { type: "recorder", aliases: ["录音"] },
+          { type: "messageBoard", aliases: ["留言板", "留言"] }
+        ];
+        const matchedType = knownTypes.find((entry) => entry.aliases.some((alias) => raw.includes(alias)))?.type;
+        const widget = matchedType ? findWidgetByType(context, matchedType) : context.focusedWidget;
+        if (!widget) return { matched: false, reason: "close_widget_target_missing" };
+        return shortcutMatch("widget.remove", { widgetId: widget.widgetId }, 0.88, context.source ?? "shortcut", raw);
       }
     },
     {

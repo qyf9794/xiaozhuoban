@@ -500,6 +500,56 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes close music commands to the existing music widget removal action", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("关闭音乐", {
+      ...context,
+      availableWidgets: [
+        ...(context.availableWidgets ?? []),
+        {
+          widgetId: "wi_music",
+          definitionId: "wd_music",
+          type: "music",
+          name: "音乐",
+          order: 6,
+          summary: "正在播放",
+          recent: true
+        }
+      ]
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("widget.remove");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_music" });
+    }
+  });
+
+  it("routes pause music commands to the existing music widget pause action", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("暂停音乐", {
+      ...context,
+      availableWidgets: [
+        ...(context.availableWidgets ?? []),
+        {
+          widgetId: "wi_music",
+          definitionId: "wd_music",
+          type: "music",
+          name: "音乐",
+          order: 6,
+          summary: "正在播放",
+          recent: true
+        }
+      ]
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("music.pause");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_music" });
+    }
+  });
+
   it("routes fullscreen to the focused widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("全屏", context);
