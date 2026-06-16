@@ -11,6 +11,10 @@ import {
   decodeRealtimeToolName,
   serializeAssistantToolForRealtime
 } from "./realtimeSessionConfig";
+import {
+  createRealtimeTextToolCallRequestBody,
+  parseRealtimeTextToolCallResponse
+} from "./realtimeTextToolCall";
 
 export type RealtimeConnectionStatus =
   | "disconnected"
@@ -22,6 +26,7 @@ export type RealtimeConnectionStatus =
 
 export interface OpenAIRealtimeWebRtcAdapterOptions {
   sessionEndpoint?: string;
+  textToolCallEndpoint?: string;
   model?: string;
   getSafetyIdentifier?: () => string | undefined;
   onFunctionCall?: (call: AssistantToolCall) => void | Promise<void>;
@@ -325,7 +330,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         this.options.onStatusChange?.("connected");
       };
       dataChannel.onmessage = (event) =>
-        handleRealtimeFunctionCallEvent(event.data, this.handledFunctionCallIds, this.options.onFunctionCall);
+        handleRealtimeFunctionCallEvent(event.data, this.handledFunctionCallIds, (call) => this.handleFunctionCall(call));
       dataChannel.onclose = () => this.options.onStatusChange?.("disconnected");
 
       const offer = await peerConnection.createOffer();
@@ -409,6 +414,25 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
 
   sendToolResult(call: AssistantToolCall, result: AssistantToolResult): void {
     createRealtimeToolResultEvents(call, result).forEach((event) => this.sendEvent(event, { queueWhenClosed: false }));
+  }
+
+  async requestToolCall(
+    input: string,
+    context: CompactAssistantContext,
+    tools: AssistantToolSpec[]
+  ): Promise<AssistantToolCall | null> {
+    const fetchImpl = this.options.fetchImpl ?? fetch;
+    const response = await fetchImpl(this.options.textToolCallEndpoint ?? "/api/realtime/tool-call", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: createRealtimeTextToolCallRequestBody(input, context, tools)
+    });
+    if (!response.ok) return null;
+    return parseRealtimeTextToolCallResponse(await response.json());
+  }
+
+  private handleFunctionCall(call: AssistantToolCall): void {
+    void this.options.onFunctionCall?.(call);
   }
 
   private sendEvent(event: RealtimeEvent, options: { queueWhenClosed?: boolean } = {}): void {

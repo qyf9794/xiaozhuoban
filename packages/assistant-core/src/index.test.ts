@@ -489,6 +489,17 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes broader open widget aliases", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("启动音乐播放器", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("board.add_widget");
+      expect(result.toolCall.arguments).toEqual({ definitionId: "wd_music" });
+    }
+  });
+
   it("routes media controls to focused media widgets", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("暂停", context);
@@ -498,6 +509,38 @@ describe("IntentShortcutRouter", () => {
       expect(result.toolCall.name).toBe("tv.pause");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_tv" });
     }
+  });
+
+  it("routes compact close music wording to widget removal", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("关音乐", {
+      ...context,
+      availableWidgets: [
+        ...(context.availableWidgets ?? []),
+        {
+          widgetId: "wi_music",
+          definitionId: "wd_music",
+          type: "music",
+          name: "音乐",
+          order: 6,
+          summary: "正在播放",
+          recent: true
+        }
+      ]
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("widget.remove");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_music" });
+    }
+  });
+
+  it("does not remove the focused widget for ambiguous close wording", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("关一下", context);
+
+    expect(result).toEqual({ matched: false, reason: "no_shortcut_match" });
   });
 
   it("routes close music commands to the existing music widget removal action", () => {

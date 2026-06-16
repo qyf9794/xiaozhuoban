@@ -283,4 +283,64 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(event.session.instructions).toContain("board: 我的桌板");
     expect(event.session.instructions).toContain("音乐(music) definitionId=wd_music");
   });
+
+  it("requests text fallback tool calls from the scoped backend endpoint", async () => {
+    const requests: Array<{ url: string; body: unknown }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      textToolCallEndpoint: "/api/realtime/tool-call",
+      fetchImpl: (async (url, init) => {
+        requests.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+        return new Response(
+          JSON.stringify({
+            call: {
+              id: "model_1",
+              name: "widget.remove",
+              arguments: { widgetId: "wi_music" },
+              source: "text"
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }) as typeof fetch
+    });
+
+    const call = await adapter.requestToolCall(
+      "关音乐",
+      {
+        boardId: "board_1",
+        boardName: "默认桌板",
+        widgetCountsByType: { music: 1 },
+        widgets: [
+          {
+            widgetId: "wi_music",
+            definitionId: "wd_music",
+            type: "music",
+            name: "音乐播放器",
+            order: 1,
+            summary: "正在播放"
+          }
+        ]
+      },
+      [
+        {
+          name: "widget.remove",
+          description: "删除小工具",
+          parameters: createPassthroughSchema<Record<string, unknown>>(),
+          scope: "desktop",
+          risk: "destructive",
+          requiresTarget: true
+        }
+      ]
+    );
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe("/api/realtime/tool-call");
+    expect(requests[0]?.body).toMatchObject({ input: "关音乐" });
+    expect(call).toEqual({
+      id: "model_1",
+      name: "widget.remove",
+      arguments: { widgetId: "wi_music" },
+      source: "text"
+    });
+  });
 });

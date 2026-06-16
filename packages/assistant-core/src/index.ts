@@ -898,13 +898,13 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "open_widget",
       match(normalized, raw, context) {
-        const openIntent = /(打开|添加|新增|叫出|显示)/.test(normalized);
+        const openIntent = /(打开|添加|新增|叫出|显示|启动|来个|放上|放一个|加一个)/.test(normalized);
         if (!openIntent) return { matched: false, reason: "not_open_widget" };
         const knownTypes: Array<{ type: string; aliases: string[] }> = [
           { type: "note", aliases: ["便签", "笔记"] },
           { type: "todo", aliases: ["待办", "任务"] },
           { type: "tv", aliases: ["电视", "直播"] },
-          { type: "music", aliases: ["音乐", "歌曲"] },
+          { type: "music", aliases: ["音乐", "歌曲", "歌", "播放器"] },
           { type: "worldClock", aliases: ["世界时钟", "时区"] },
           { type: "dialClock", aliases: ["时钟", "表盘"] },
           { type: "translate", aliases: ["翻译"] },
@@ -960,12 +960,12 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "close_widget",
       match(normalized, raw, context) {
-        if (!/(关闭|关掉)/.test(normalized)) return { matched: false, reason: "not_close_widget" };
+        if (!/(关|关闭|关掉|关上|关了|收起|删掉|删除|移除|去掉)/.test(normalized)) return { matched: false, reason: "not_close_widget" };
         const knownTypes: Array<{ type: string; aliases: string[] }> = [
           { type: "note", aliases: ["便签", "笔记"] },
           { type: "todo", aliases: ["待办", "任务"] },
           { type: "tv", aliases: ["电视", "直播"] },
-          { type: "music", aliases: ["音乐", "歌曲", "歌"] },
+          { type: "music", aliases: ["音乐", "歌曲", "歌", "播放器"] },
           { type: "worldClock", aliases: ["世界时钟", "时区"] },
           { type: "dialClock", aliases: ["时钟", "表盘"] },
           { type: "translate", aliases: ["翻译"] },
@@ -975,6 +975,9 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
           { type: "messageBoard", aliases: ["留言板", "留言"] }
         ];
         const matchedType = knownTypes.find((entry) => entry.aliases.some((alias) => raw.includes(alias)))?.type;
+        if (!matchedType && !/(窗口|小工具|组件|面板)/.test(normalized)) {
+          return { matched: false, reason: "close_widget_target_missing" };
+        }
         const widget = matchedType ? findWidgetByType(context, matchedType) : context.focusedWidget;
         if (!widget) return { matched: false, reason: "close_widget_target_missing" };
         return shortcutMatch("widget.remove", { widgetId: widget.widgetId }, 0.88, context.source ?? "shortcut", raw);
