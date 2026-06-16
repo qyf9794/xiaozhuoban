@@ -4,8 +4,11 @@ import {
   AssistantRegistryError,
   createDefaultIntentShortcutRouter,
   createPassthroughSchema,
+  ContextSummarizer,
+  ToolScopeManager,
   WidgetTargetResolver,
   type AssistantParameterSchema,
+  type AssistantToolSpec,
   type CompactWidgetSummary,
   type IntentShortcutContext
 } from "./index";
@@ -454,5 +457,154 @@ describe("WidgetTargetResolver", () => {
     expect(result).toMatchObject({
       status: "not_found"
     });
+  });
+});
+
+describe("ToolScopeManager", () => {
+  const noopSchema = createPassthroughSchema<Record<string, never>>();
+  const tools: AssistantToolSpec[] = [
+    {
+      name: "board.add_widget",
+      description: "Add widget",
+      parameters: noopSchema,
+      scope: "desktop"
+    },
+    {
+      name: "widget.resolve_target",
+      description: "Resolve target",
+      parameters: noopSchema,
+      scope: "widget-selection"
+    },
+    {
+      name: "tv.play",
+      description: "Play TV",
+      parameters: noopSchema,
+      scope: "widget-detail",
+      widgetType: "tv"
+    },
+    {
+      name: "note.append",
+      description: "Append note",
+      parameters: noopSchema,
+      scope: "widget-detail",
+      widgetType: "note"
+    },
+    {
+      name: "gomoku.play",
+      description: "Deferred game action",
+      parameters: noopSchema,
+      scope: "deferred",
+      widgetType: "gomoku"
+    },
+    {
+      name: "widget.generate",
+      description: "Deferred dynamic generation",
+      parameters: noopSchema,
+      scope: "deferred"
+    }
+  ];
+
+  it("exposes only desktop and selection tools initially", () => {
+    const manager = new ToolScopeManager(tools);
+
+    expect(manager.getInitialTools().map((tool) => tool.name)).toEqual(["board.add_widget", "widget.resolve_target"]);
+  });
+
+  it("loads only the selected widget type detail tools", () => {
+    const manager = new ToolScopeManager(tools);
+
+    expect(manager.getWidgetDetailTools("tv").map((tool) => tool.name)).toEqual([
+      "board.add_widget",
+      "widget.resolve_target",
+      "tv.play"
+    ]);
+  });
+
+  it("does not expose deferred tools through active scopes", () => {
+    const manager = new ToolScopeManager(tools);
+
+    expect(manager.getWidgetDetailTools("gomoku").map((tool) => tool.name)).toEqual([
+      "board.add_widget",
+      "widget.resolve_target"
+    ]);
+    expect(manager.getDeferredTools().map((tool) => tool.name)).toEqual(["gomoku.play", "widget.generate"]);
+  });
+});
+
+describe("ContextSummarizer", () => {
+  it("summarizes board state without full widget payloads", () => {
+    const summarizer = new ContextSummarizer();
+    const longNote = "这是一段很长很长的便签内容，用来确认摘要不会把完整正文塞进 Realtime 上下文里面。";
+    const clipboardItems = Array.from({ length: 20 }, (_, index) => ({
+      id: `clip_${index}`,
+      text: `secret-full-clipboard-payload-${index}`
+    }));
+    const result = summarizer.summarize({
+      boardId: "board_1",
+      boardName: "我的桌板",
+      focusedWidgetId: "wi_note",
+      recentWidgetIds: ["wi_clipboard"],
+      pendingConfirmation: {
+        id: "confirm_1",
+        actionName: "widget.remove",
+        arguments: { widgetId: "wi_note" },
+        message: "删除便签？",
+        createdAt: "2026-06-16T00:00:00.000Z"
+      },
+      widgets: [
+        {
+          widgetId: "wi_note",
+          definitionId: "wd_note",
+          type: "note",
+          name: "便签",
+          order: 2,
+          state: {
+            content: longNote,
+            privateDraft: "this should not leak"
+          }
+        },
+        {
+          widgetId: "wi_clipboard",
+          definitionId: "wd_clipboard",
+          type: "clipboard",
+          name: "剪贴板",
+          order: 1,
+          state: {
+            items: clipboardItems
+          }
+        }
+      ]
+    });
+
+    const serialized = JSON.stringify(result);
+    expect(result.widgetCountsByType).toEqual({ note: 1, clipboard: 1 });
+    expect(result.focusedWidget?.widgetId).toBe("wi_note");
+    expect(result.pendingConfirmation).toEqual({
+      id: "confirm_1",
+      actionName: "widget.remove",
+      message: "删除便签？"
+    });
+    expect(serialized).not.toContain(longNote);
+    expect(serialized).not.toContain("this should not leak");
+    expect(serialized).not.toContain("secret-full-clipboard-payload");
+    expect(result.widgets.find((widget) => widget.widgetId === "wi_clipboard")?.summary).toBe("20 条剪贴板记录");
+  });
+
+  it("limits the number of summarized widgets and orders focused/recent first", () => {
+    const summarizer = new ContextSummarizer();
+    const result = summarizer.summarize({
+      focusedWidgetId: "wi_3",
+      recentWidgetIds: ["wi_2"],
+      maxWidgets: 2,
+      widgets: [
+        { widgetId: "wi_1", definitionId: "wd_note", type: "note", name: "便签", order: 1, summary: "one" },
+        { widgetId: "wi_2", definitionId: "wd_tv", type: "tv", name: "电视", order: 2, summary: "two" },
+        { widgetId: "wi_3", definitionId: "wd_weather", type: "weather", name: "天气", order: 3, summary: "three" }
+      ]
+    });
+
+    expect(result.widgets.map((widget) => widget.widgetId)).toEqual(["wi_3", "wi_2"]);
+    expect(result.focusedWidget?.focused).toBe(true);
+    expect(result.widgets[1].recent).toBe(true);
   });
 });

@@ -30,6 +30,7 @@ export interface AssistantToolSpec<TArgs = unknown> {
   parameters: AssistantParameterSchema<TArgs>;
   risk?: AssistantActionRisk;
   scope?: AssistantToolScopeKind;
+  widgetType?: string;
   requiresTarget?: boolean;
 }
 
@@ -135,6 +136,26 @@ export interface CompactAssistantContext {
   widgets: CompactWidgetSummary[];
   focusedWidget?: CompactWidgetSummary;
   pendingConfirmation?: Pick<ConfirmationRequest, "id" | "actionName" | "message">;
+}
+
+export interface WidgetContextSnapshot {
+  widgetId: string;
+  definitionId: string;
+  type: string;
+  name: string;
+  order: number;
+  state?: Record<string, unknown>;
+  summary?: string;
+}
+
+export interface ContextSummarizerInput {
+  boardId?: string;
+  boardName?: string;
+  widgets: WidgetContextSnapshot[];
+  focusedWidgetId?: string;
+  recentWidgetIds?: string[];
+  pendingConfirmation?: ConfirmationRequest;
+  maxWidgets?: number;
 }
 
 export interface IntentShortcutRule {
@@ -249,6 +270,144 @@ export class ActionRegistry {
         errorCode: "EXECUTION_FAILED"
       };
     }
+  }
+}
+
+export class ToolScopeManager {
+  constructor(private readonly tools: AssistantToolSpec[]) {}
+
+  getInitialTools(): AssistantToolSpec[] {
+    return this.filterTools((tool) => tool.scope === "desktop" || tool.scope === "widget-selection");
+  }
+
+  getWidgetDetailTools(widgetType: string): AssistantToolSpec[] {
+    return this.filterTools(
+      (tool) =>
+        tool.scope === "desktop" ||
+        tool.scope === "widget-selection" ||
+        (tool.scope === "widget-detail" && tool.widgetType === widgetType)
+    );
+  }
+
+  getDeferredTools(): AssistantToolSpec[] {
+    return this.tools.filter((tool) => tool.scope === "deferred");
+  }
+
+  private filterTools(predicate: (tool: AssistantToolSpec) => boolean): AssistantToolSpec[] {
+    const seen = new Set<string>();
+    return this.tools.filter((tool) => {
+      if (tool.scope === "deferred" || seen.has(tool.name) || !predicate(tool)) {
+        return false;
+      }
+      seen.add(tool.name);
+      return true;
+    });
+  }
+}
+
+function truncateSummary(value: string, maxLength = 24) {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (compact.length <= maxLength) return compact;
+  return `${compact.slice(0, maxLength)}...`;
+}
+
+function summarizeStateValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return `${value.length} 项`;
+  if (value && typeof value === "object") return "有状态";
+  return "";
+}
+
+function summarizeWidgetState(type: string, state: Record<string, unknown> | undefined) {
+  if (!state || Object.keys(state).length === 0) return "";
+
+  if (type === "note") {
+    return truncateSummary(summarizeStateValue(state.content));
+  }
+  if (type === "todo") {
+    return Array.isArray(state.items) ? `${state.items.length} 个待办` : truncateSummary(summarizeStateValue(state.input));
+  }
+  if (type === "weather") {
+    return truncateSummary(summarizeStateValue(state.cityCode) || summarizeStateValue(state.city));
+  }
+  if (type === "countdown") {
+    const remaining = summarizeStateValue(state.remainingSeconds);
+    const total = summarizeStateValue(state.totalSeconds);
+    return remaining || total ? `倒计时 ${remaining || total} 秒` : "";
+  }
+  if (type === "tv") {
+    return truncateSummary(summarizeStateValue(state.selectedChannelName) || summarizeStateValue(state.playlistUrl));
+  }
+  if (type === "music") {
+    return truncateSummary(summarizeStateValue(state.query));
+  }
+  if (type === "translate") {
+    return truncateSummary(summarizeStateValue(state.sourceText));
+  }
+  if (type === "worldClock") {
+    return Array.isArray(state.zones) ? `${state.zones.length} 个时区` : "";
+  }
+  if (type === "clipboard") {
+    return Array.isArray(state.items) ? `${state.items.length} 条剪贴板记录` : "";
+  }
+
+  const firstUseful = Object.entries(state).find(([, value]) => {
+    if (typeof value === "string") return value.trim().length > 0;
+    return typeof value === "number" || typeof value === "boolean";
+  });
+  return firstUseful ? truncateSummary(summarizeStateValue(firstUseful[1])) : "有状态";
+}
+
+export class ContextSummarizer {
+  summarize(input: ContextSummarizerInput): CompactAssistantContext {
+    const recentSet = new Set(input.recentWidgetIds ?? []);
+    const widgetCountsByType = input.widgets.reduce<Record<string, number>>((counts, widget) => {
+      counts[widget.type] = (counts[widget.type] ?? 0) + 1;
+      return counts;
+    }, {});
+
+    const orderedWidgets = [...input.widgets].sort((a, b) => {
+      const aFocused = a.widgetId === input.focusedWidgetId ? 0 : 1;
+      const bFocused = b.widgetId === input.focusedWidgetId ? 0 : 1;
+      if (aFocused !== bFocused) return aFocused - bFocused;
+      const aRecent = recentSet.has(a.widgetId) ? 0 : 1;
+      const bRecent = recentSet.has(b.widgetId) ? 0 : 1;
+      if (aRecent !== bRecent) return aRecent - bRecent;
+      return a.order - b.order;
+    });
+
+    const maxWidgets = Math.max(1, input.maxWidgets ?? 8);
+    const widgets = orderedWidgets.slice(0, maxWidgets).map((widget): CompactWidgetSummary => {
+      const summary = widget.summary ?? summarizeWidgetState(widget.type, widget.state);
+      return {
+        widgetId: widget.widgetId,
+        definitionId: widget.definitionId,
+        type: widget.type,
+        name: widget.name,
+        order: widget.order,
+        summary: truncateSummary(summary || "无摘要"),
+        recent: recentSet.has(widget.widgetId) || undefined,
+        focused: widget.widgetId === input.focusedWidgetId || undefined
+      };
+    });
+
+    const focusedWidget = widgets.find((widget) => widget.widgetId === input.focusedWidgetId);
+
+    return {
+      boardId: input.boardId,
+      boardName: input.boardName,
+      widgetCountsByType,
+      widgets,
+      focusedWidget,
+      pendingConfirmation: input.pendingConfirmation
+        ? {
+            id: input.pendingConfirmation.id,
+            actionName: input.pendingConfirmation.actionName,
+            message: input.pendingConfirmation.message
+          }
+        : undefined
+    };
   }
 }
 
