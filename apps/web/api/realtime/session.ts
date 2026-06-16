@@ -16,6 +16,7 @@ type RealtimeSessionRequestOptions = RealtimeSessionOptions & {
 const OPENAI_REALTIME_CLIENT_SECRET_URL = "https://api.openai.com/v1/realtime/client_secrets";
 const XIAOZHUOBAN_REALTIME_MODEL = "gpt-realtime-2";
 const DEFAULT_REALTIME_CLIENT_SECRET_TTL_SECONDS = 600;
+const REALTIME_TURN_DETECTION_HEADER = "semantic_vad;eagerness=low";
 
 const XIAOZHUOBAN_REALTIME_INSTRUCTIONS = [
   "# Role and Objective",
@@ -311,5 +312,6 @@ export default async function handler(request: IncomingMessage, response: Server
     return;
   }
 
+  response.setHeader("x-xiaozhuoban-realtime-turn-detection", REALTIME_TURN_DETECTION_HEADER);
   sendJson(response, 200, payload);
 }

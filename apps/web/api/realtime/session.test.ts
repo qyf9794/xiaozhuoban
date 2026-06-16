@@ -64,6 +64,7 @@ describe("realtime session API", () => {
     const response = await callHandler(JSON.stringify({ safetyIdentifier: " user_123 ", ttlSeconds: 120 }));
 
     expect(response.statusCode).toBe(200);
+    expect(response.headers.get("x-xiaozhuoban-realtime-turn-detection")).toBe("semantic_vad;eagerness=low");
     const [, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
     expect(init?.headers).toMatchObject({
       authorization: "Bearer sk-test",
