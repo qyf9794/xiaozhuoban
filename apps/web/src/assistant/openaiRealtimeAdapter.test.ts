@@ -8,7 +8,8 @@ import {
   extractRealtimeSessionErrorCode,
   parseRealtimeFunctionCallEvent,
   resolveRealtimePeerStatus,
-  shouldHandleRealtimeFunctionCall
+  shouldHandleRealtimeFunctionCall,
+  shouldReuseRealtimeConnect
 } from "./openaiRealtimeAdapter";
 
 describe("OpenAI realtime adapter helpers", () => {
@@ -130,6 +131,15 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(resolveRealtimePeerStatus("failed")).toBe("failed");
     expect(resolveRealtimePeerStatus("disconnected")).toBe("disconnected");
     expect(resolveRealtimePeerStatus("closed")).toBe("disconnected");
+  });
+
+  it("reuses active realtime connect attempts", () => {
+    expect(shouldReuseRealtimeConnect(true)).toBe(true);
+    expect(shouldReuseRealtimeConnect(false, "connecting")).toBe(true);
+    expect(shouldReuseRealtimeConnect(false, "open")).toBe(true);
+    expect(shouldReuseRealtimeConnect(false, "closing")).toBe(false);
+    expect(shouldReuseRealtimeConnect(false, "closed")).toBe(false);
+    expect(shouldReuseRealtimeConnect(false)).toBe(false);
   });
 
   it("extracts server-side realtime session error codes", () => {

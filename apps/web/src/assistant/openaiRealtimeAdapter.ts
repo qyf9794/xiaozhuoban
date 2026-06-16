@@ -141,6 +141,10 @@ export function resolveRealtimePeerStatus(state: string): RealtimeConnectionStat
   return null;
 }
 
+export function shouldReuseRealtimeConnect(connecting: boolean, dataChannelState?: string): boolean {
+  return connecting || dataChannelState === "connecting" || dataChannelState === "open";
+}
+
 export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private peerConnection: RTCPeerConnection | null = null;
   private dataChannel: RTCDataChannel | null = null;
@@ -149,10 +153,25 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private currentTools: AssistantToolSpec[] = [];
   private currentContext: CompactAssistantContext | null = null;
   private handledFunctionCallIds = new Set<string>();
+  private connectPromise: Promise<void> | null = null;
 
   constructor(private readonly options: OpenAIRealtimeWebRtcAdapterOptions = {}) {}
 
-  async connect(): Promise<void> {
+  connect(): Promise<void> {
+    if (shouldReuseRealtimeConnect(Boolean(this.connectPromise), this.dataChannel?.readyState)) {
+      return this.connectPromise ?? Promise.resolve();
+    }
+    if (this.dataChannel || this.peerConnection || this.mediaStream) {
+      this.closeResources();
+    }
+
+    this.connectPromise = this.connectInternal().finally(() => {
+      this.connectPromise = null;
+    });
+    return this.connectPromise;
+  }
+
+  private async connectInternal(): Promise<void> {
     const fetchImpl = this.options.fetchImpl ?? fetch;
     this.options.onStatusChange?.("connecting");
     this.handledFunctionCallIds.clear();
