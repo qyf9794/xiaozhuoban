@@ -219,7 +219,7 @@ export class AssistantHarness {
     }
 
     const result = await this.executeRegistryCall(call, target.target);
-    const followUpResult = await this.executeAddWidgetFollowUp(call, result);
+    const followUpResult = await this.executeSafeFollowUp(call, result, target.target);
     if (followUpResult) {
       return followUpResult;
     }
@@ -340,11 +340,12 @@ export class AssistantHarness {
     await this.options.realtime.updateTools(this.currentTools);
   }
 
-  private async executeAddWidgetFollowUp(
+  private async executeSafeFollowUp(
     call: AssistantToolCall,
-    result: AssistantToolResult
+    result: AssistantToolResult,
+    target: ResolvedWidgetTarget | undefined
   ): Promise<AssistantToolResult | null> {
-    if (call.name !== ADD_WIDGET_TOOL || result.status !== "success" || !isRecord(call.arguments)) {
+    if (result.status !== "success" || !isRecord(call.arguments)) {
       return null;
     }
 
@@ -359,8 +360,8 @@ export class AssistantHarness {
     }
 
     const data = isRecord(result.data) ? result.data : null;
-    const widgetId = typeof data?.widgetId === "string" ? data.widgetId : "";
-    const widgetType = typeof data?.widgetType === "string" ? data.widgetType : "";
+    const widgetId = call.name === ADD_WIDGET_TOOL && typeof data?.widgetId === "string" ? data.widgetId : target?.widgetId ?? "";
+    const widgetType = call.name === ADD_WIDGET_TOOL && typeof data?.widgetType === "string" ? data.widgetType : target?.type ?? "";
     if (!widgetId || (spec.widgetType && spec.widgetType !== widgetType)) {
       return null;
     }

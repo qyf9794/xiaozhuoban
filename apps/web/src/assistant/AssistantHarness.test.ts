@@ -28,7 +28,15 @@ function createTools(): AssistantToolSpec[] {
       widgetType: "note",
       requiresTarget: true
     },
-    { name: "tv.play", description: "播放电视", parameters: schema, scope: "widget-detail", widgetType: "tv" }
+    { name: "tv.play", description: "播放电视", parameters: schema, scope: "widget-detail", widgetType: "tv", requiresTarget: true },
+    {
+      name: "tv.fullscreen",
+      description: "电视全屏",
+      parameters: schema,
+      scope: "widget-detail",
+      widgetType: "tv",
+      requiresTarget: true
+    }
   ];
 }
 
@@ -60,6 +68,7 @@ function createRegistry() {
   register("widget.remove");
   register("note.append");
   register("tv.play");
+  register("tv.fullscreen");
 
   return { registry, executed };
 }
@@ -158,7 +167,7 @@ describe("AssistantHarness", () => {
     await harness.initialize();
     await harness.enterWidgetContext("tv");
 
-    expect(toolUpdates[1]).toEqual(["board.auto_align", "widget.focus", "widget.remove", "tv.play"]);
+    expect(toolUpdates[1]).toEqual(["board.auto_align", "widget.focus", "widget.remove", "tv.play", "tv.fullscreen"]);
   });
 
   it("refreshes realtime context only after initialization", async () => {
@@ -265,8 +274,20 @@ describe("AssistantHarness", () => {
 
     expect(toolUpdates).toEqual([
       ["board.auto_align", "widget.focus", "widget.remove"],
-      ["board.auto_align", "widget.focus", "widget.remove", "tv.play"]
+      ["board.auto_align", "widget.focus", "widget.remove", "tv.play", "tv.fullscreen"]
     ]);
+  });
+
+  it("executes safe widget follow-up actions on the same target", async () => {
+    const { harness, executed } = createHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("播放 CCTV1，并全屏");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("tv.play done，tv.fullscreen done");
+    expect(executed).toEqual(["tv.play:wi_tv", "tv.fullscreen:wi_tv"]);
   });
 
   it("syncs realtime tools to the target widget type after detail action success", async () => {

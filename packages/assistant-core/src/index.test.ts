@@ -325,6 +325,24 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes TV channel playback with fullscreen follow-up", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("播放 CCTV1，并全屏", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("tv.play");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_tv",
+        channelName: "CCTV1",
+        followUp: {
+          name: "tv.fullscreen",
+          arguments: {}
+        }
+      });
+    }
+  });
+
   it("routes deferred game commands to a local out-of-scope result", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("大富翁掷骰", context);

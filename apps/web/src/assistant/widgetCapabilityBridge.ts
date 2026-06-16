@@ -25,6 +25,10 @@ type WidgetCapabilityArgs = {
   channelUrl?: string;
   recordingId?: string;
   enabled?: boolean;
+  followUp?: {
+    name: string;
+    arguments?: Record<string, unknown>;
+  };
 };
 
 const CAPABILITY_WIDGET_TYPES = ["music", "tv", "recorder", "dialClock"] as const;
@@ -48,7 +52,11 @@ const genericCapabilitySchema = parseWith<WidgetCapabilityArgs>(
     hasOptionalString(value, "channelName") &&
     hasOptionalString(value, "channelUrl") &&
     hasOptionalString(value, "recordingId") &&
-    (value.enabled === undefined || typeof value.enabled === "boolean")
+    (value.enabled === undefined || typeof value.enabled === "boolean") &&
+    (value.followUp === undefined ||
+      (isRecord(value.followUp) &&
+        typeof value.followUp.name === "string" &&
+        (value.followUp.arguments === undefined || isRecord(value.followUp.arguments))))
 );
 
 function success(message: string, data?: unknown): AssistantToolResult {

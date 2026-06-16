@@ -519,6 +519,14 @@ function inferCityName(input: string) {
   return beforeWeather?.[1] ?? "";
 }
 
+function inferTvChannelName(input: string) {
+  const cctv = input.match(/CCTV\s*[\w+-]+/i);
+  if (cctv) return cctv[0].replace(/\s+/g, "").toUpperCase();
+  const cctvCn = input.match(/央视\s*[\d一二三四五六七八九十]+/);
+  if (cctvCn) return cctvCn[0].replace(/\s+/g, "");
+  return "";
+}
+
 function inferOutOfScopeRequest(input: string):
   | {
       category: "deferred_widget" | "ai_form" | "dynamic_widget_generation" | "complex_planning" | "long_text_rewrite";
@@ -745,9 +753,22 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         if (!widget || !["tv", "music", "recorder"].includes(widget.type)) {
           return { matched: false, reason: "media_target_missing" };
         }
+        const channelName = widget.type === "tv" && isPlay ? inferTvChannelName(raw) : "";
+        const args = {
+          widgetId: widget.widgetId,
+          ...(channelName ? { channelName } : {}),
+          ...(widget.type === "tv" && isPlay && /(全屏|放大)/.test(normalized)
+            ? {
+                followUp: {
+                  name: "tv.fullscreen",
+                  arguments: {}
+                }
+              }
+            : {})
+        };
         return shortcutMatch(
           `${widget.type}.${isPause ? "pause" : "play"}`,
-          { widgetId: widget.widgetId },
+          args,
           0.86,
           context.source ?? "shortcut",
           raw
