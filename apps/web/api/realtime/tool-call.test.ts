@@ -125,6 +125,10 @@ describe("realtime text tool-call API", () => {
     expect(JSON.stringify(secondBody)).toContain("wi_music");
     expect(JSON.stringify(secondBody)).not.toContain("private note");
     expect(JSON.stringify(secondBody)).not.toContain("music__dot__pause");
+    expect(secondBody.tools[0].parameters).toMatchObject({
+      properties: { widgetId: { type: "string" } },
+      required: ["widgetId"]
+    });
   });
 
   it("accepts select phase without desktop context", async () => {
@@ -255,5 +259,9 @@ describe("realtime text tool-call API", () => {
     expect(JSON.stringify(body)).toContain("wi_music");
     expect(JSON.stringify(body)).not.toContain("music__dot__pause");
     expect(JSON.stringify(body)).not.toContain("private note");
+    expect(body.tools[0].parameters).toMatchObject({
+      properties: { widgetId: { type: "string" } },
+      required: ["widgetId"]
+    });
   });
 });

@@ -283,14 +283,47 @@ export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[]): Rea
 
 export function serializeAssistantToolForRealtime(
   tool: AssistantToolSpec,
-  parameters: Record<string, unknown> = objectSchema({}, undefined)
+  parameters?: Record<string, unknown>
 ): RealtimeFunctionTool {
   return {
     type: "function",
     name: encodeRealtimeToolName(tool.name),
     description: tool.description,
-    parameters
+    parameters: parameters ?? inferAssistantToolParameters(tool)
   };
+}
+
+function inferAssistantToolParameters(tool: AssistantToolSpec): Record<string, unknown> {
+  switch (tool.name) {
+    case "board.add_widget":
+      return objectSchema(
+        {
+          definitionId: stringSchema(),
+          mobileMode: booleanSchema(),
+          followUp: objectSchema({ name: stringSchema(), arguments: objectSchema({}, undefined, true) }, ["name"])
+        },
+        ["definitionId"]
+      );
+    case "widget.focus":
+    case "widget.fullscreen_focus":
+    case "widget.remove":
+    case "widget.bring_to_front":
+      return objectSchema({ widgetId: stringSchema() }, ["widgetId"]);
+    case "widget.move":
+      return objectSchema({ widgetId: stringSchema(), x: numberSchema(), y: numberSchema() }, ["widgetId", "x", "y"]);
+    case "widget.resize":
+      return objectSchema({ widgetId: stringSchema(), w: numberSchema(), h: numberSchema() }, ["widgetId", "w", "h"]);
+    case "board.switch":
+      return objectSchema({ boardId: stringSchema() }, ["boardId"]);
+    case "board.rename":
+      return objectSchema({ boardId: stringSchema(), name: stringSchema() }, ["boardId", "name"]);
+    case "board.create":
+      return objectSchema({ name: stringSchema() });
+    default:
+      return tool.requiresTarget
+        ? objectSchema({ widgetId: stringSchema() }, ["widgetId"], true)
+        : objectSchema({}, undefined, true);
+  }
 }
 
 export function createRealtimeTurnDetection(options: RealtimeSessionOptions = {}) {

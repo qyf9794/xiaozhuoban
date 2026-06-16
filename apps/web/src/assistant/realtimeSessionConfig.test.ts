@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createPassthroughSchema } from "@xiaozhuoban/assistant-core";
 import {
   XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
   XIAOZHUOBAN_REALTIME_MODEL,
@@ -10,7 +11,8 @@ import {
   createRealtimeClientSecretPayload,
   createRealtimeTurnDetection,
   decodeRealtimeToolName,
-  encodeRealtimeToolName
+  encodeRealtimeToolName,
+  serializeAssistantToolForRealtime
 } from "./realtimeSessionConfig";
 
 describe("realtime session config", () => {
@@ -45,6 +47,23 @@ describe("realtime session config", () => {
     expect(addWidget?.parameters).toMatchObject({
       type: "object",
       required: ["definitionId"],
+      additionalProperties: false
+    });
+  });
+
+  it("infers target parameters for scoped Realtime tool updates", () => {
+    const removeWidget = serializeAssistantToolForRealtime({
+      name: "widget.remove",
+      description: "关闭小工具",
+      parameters: createPassthroughSchema<Record<string, unknown>>(),
+      scope: "desktop",
+      requiresTarget: true
+    });
+
+    expect(removeWidget.parameters).toMatchObject({
+      type: "object",
+      properties: { widgetId: { type: "string" } },
+      required: ["widgetId"],
       additionalProperties: false
     });
   });
