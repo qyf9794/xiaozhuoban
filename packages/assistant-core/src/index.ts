@@ -1014,6 +1014,17 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
       }
     },
     {
+      name: "note_clear",
+      match(normalized, raw, context) {
+        if (!/(便签|笔记)/.test(normalized) || !/(清空|清理|清除|擦掉|删除内容|移除内容)/.test(normalized)) {
+          return { matched: false, reason: "not_note_clear" };
+        }
+        const widget = findWidgetByType(context, "note");
+        if (!widget) return { matched: false, reason: "note_target_missing" };
+        return shortcutMatch("note.clear", { widgetId: widget.widgetId }, 0.88, context.source ?? "shortcut", raw);
+      }
+    },
+    {
       name: "todo_add",
       match(normalized, raw, context) {
         if (!/(待办|任务|清单)/.test(normalized) || !/(添加|新增|记下|记录|加入)/.test(normalized)) {

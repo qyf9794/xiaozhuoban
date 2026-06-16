@@ -14,6 +14,7 @@ export interface WidgetStateActionStore {
 }
 
 type NoteWriteArgs = { content: string; mode?: "replace" | "append" };
+type NoteClearArgs = Record<string, never>;
 type TodoAddArgs = { text: string; dueAt?: string };
 type TodoCompleteArgs = { text: string };
 type CountdownSetArgs = { hours?: number; minutes?: number; seconds?: number; totalSeconds?: number; start?: boolean };
@@ -115,6 +116,8 @@ const noteWriteSchema = parseWith<NoteWriteArgs>(
     hasString(value, "content") &&
     (value.mode === undefined || value.mode === "replace" || value.mode === "append")
 );
+
+const noteClearSchema = parseWith<NoteClearArgs>((value): value is NoteClearArgs => isRecord(value));
 
 const todoAddSchema = parseWith<TodoAddArgs>(
   (value): value is TodoAddArgs =>
@@ -331,6 +334,23 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
         const nextContent = args.mode === "append" && current ? `${current}\n${args.content}` : args.content;
         await patchWidgetState(store, target.widget, { content: nextContent });
         return success("已写入便签", { widgetId: target.widget.id, characters: nextContent.length });
+      }
+    }),
+    defineAction<NoteClearArgs>({
+      spec: {
+        name: "note.clear",
+        description: "Clear the content of a note widget.",
+        parameters: noteClearSchema,
+        risk: "destructive",
+        scope: "widget-detail",
+        widgetType: "note",
+        requiresTarget: true
+      },
+      async execute(_args, context) {
+        const target = getTarget(store, context, "note");
+        if (isToolResult(target)) return target;
+        await patchWidgetState(store, target.widget, { content: "" });
+        return success("已清空便签", { widgetId: target.widget.id });
       }
     }),
     defineAction<TodoAddArgs>({

@@ -105,6 +105,7 @@ describe("widget state assistant actions", () => {
     const names = actions.map((action) => action.spec.name);
 
     expect(names).toContain("note.write");
+    expect(names).toContain("note.clear");
     expect(names).toContain("weather.set_city");
     expect(names).toContain("todo.complete_item");
     expect(names).toContain("clipboard.clear");
@@ -132,7 +133,7 @@ describe("widget state assistant actions", () => {
 
     expect(manager.getInitialTools()).toEqual([]);
     expect(manager.getWidgetDetailTools("weather").map((tool) => tool.name)).toEqual(["weather.set_city"]);
-    expect(manager.getWidgetDetailTools("note").map((tool) => tool.name)).toEqual(["note.write"]);
+    expect(manager.getWidgetDetailTools("note").map((tool) => tool.name)).toEqual(["note.write", "note.clear"]);
   });
 
   it("writes and appends note content", async () => {
@@ -146,6 +147,22 @@ describe("widget state assistant actions", () => {
 
     expect(result.status).toBe("success");
     expect(getWidget("note")?.state.content).toBe("已有内容\n明早九点开会");
+  });
+
+  it("clears note content and marks the action destructive", async () => {
+    const { store, getWidget } = createStore();
+    const actions = createWidgetStateActions(store);
+    const registry = createRegistry(store);
+    const clearAction = actions.find((action) => action.spec.name === "note.clear");
+
+    const result = await registry.execute(
+      { id: "call_1", name: "note.clear", arguments: {}, source: "test" },
+      { target: targetFor("note"), now: () => NOW }
+    );
+
+    expect(clearAction?.spec.risk).toBe("destructive");
+    expect(result).toMatchObject({ status: "success", message: "已清空便签" });
+    expect(getWidget("note")?.state.content).toBe("");
   });
 
   it("adds a todo item with a due time", async () => {

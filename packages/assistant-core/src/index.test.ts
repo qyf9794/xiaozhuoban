@@ -479,6 +479,17 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes note clear commands to clear content instead of closing the widget", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("清空便签内容", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("note.clear");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_note" });
+    }
+  });
+
   it("routes todo add commands before generic widget opening", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("添加待办买牛奶", context);
