@@ -64,7 +64,7 @@ describe("realtime session config", () => {
       interrupt_response: true
     });
     expect(payload.session.tool_choice).toBe("auto");
-    expect(payload.session.parallel_tool_calls).toBe(false);
+    expect(payload.session.parallel_tool_calls).toBe(true);
     expect(payload.session.tools.map((tool) => tool.name)).toContain("assistant__dot__out_of_scope");
   });
 

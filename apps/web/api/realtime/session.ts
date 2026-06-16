@@ -17,6 +17,7 @@ const OPENAI_REALTIME_CLIENT_SECRET_URL = "https://api.openai.com/v1/realtime/cl
 const XIAOZHUOBAN_REALTIME_MODEL = "gpt-realtime-2";
 const DEFAULT_REALTIME_CLIENT_SECRET_TTL_SECONDS = 600;
 const REALTIME_TURN_DETECTION_HEADER = "semantic_vad;eagerness=low";
+const REALTIME_PARALLEL_TOOLS_HEADER = "true";
 
 const XIAOZHUOBAN_REALTIME_INSTRUCTIONS = [
   "# Role and Objective",
@@ -186,7 +187,7 @@ function createRealtimeClientSecretPayload(options: RealtimeSessionOptions = {})
       },
       max_output_tokens: 120,
       tool_choice: "auto",
-      parallel_tool_calls: false,
+      parallel_tool_calls: true,
       tools: createInitialRealtimeTools()
     }
   };
@@ -313,5 +314,6 @@ export default async function handler(request: IncomingMessage, response: Server
   }
 
   response.setHeader("x-xiaozhuoban-realtime-turn-detection", REALTIME_TURN_DETECTION_HEADER);
+  response.setHeader("x-xiaozhuoban-realtime-parallel-tools", REALTIME_PARALLEL_TOOLS_HEADER);
   sendJson(response, 200, payload);
 }

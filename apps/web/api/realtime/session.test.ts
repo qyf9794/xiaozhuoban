@@ -65,6 +65,7 @@ describe("realtime session API", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.headers.get("x-xiaozhuoban-realtime-turn-detection")).toBe("semantic_vad;eagerness=low");
+    expect(response.headers.get("x-xiaozhuoban-realtime-parallel-tools")).toBe("true");
     const [, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
     expect(init?.headers).toMatchObject({
       authorization: "Bearer sk-test",
@@ -75,6 +76,7 @@ describe("realtime session API", () => {
     expect(safetyIdentifier?.length).toBeLessThanOrEqual(64);
     const payload = JSON.parse(String(init?.body));
     expect(payload.session.model).toBe("gpt-realtime-2");
+    expect(payload.session.parallel_tool_calls).toBe(true);
     expect(payload.session.audio.input.turn_detection).toEqual({
       type: "semantic_vad",
       eagerness: "low",

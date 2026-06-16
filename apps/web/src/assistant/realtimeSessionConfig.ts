@@ -311,7 +311,7 @@ export function createRealtimeClientSecretPayload(options: RealtimeSessionOption
       },
       max_output_tokens: 120,
       tool_choice: "auto",
-      parallel_tool_calls: false,
+      parallel_tool_calls: true,
       tools: createInitialRealtimeTools()
     }
   };
