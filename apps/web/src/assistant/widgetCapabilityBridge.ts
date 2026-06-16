@@ -385,7 +385,6 @@ export function createWidgetCapabilityActions(
   store: WidgetCapabilityStore,
   bridge: WidgetCapabilityBridge
 ): Array<AssistantAction<any>> {
-  const availableTypes = new Set(store.getWidgetDefinitions().filter((item) => item.kind === "system").map((item) => item.type));
   const allowedTypes = new Set<string>(CAPABILITY_WIDGET_TYPES);
   return [
     ...createMusicActions(store, bridge),
@@ -394,6 +393,6 @@ export function createWidgetCapabilityActions(
     ...createDialClockActions(store, bridge)
   ].filter((action) => {
     const type = action.spec.widgetType;
-    return Boolean(type && allowedTypes.has(type) && availableTypes.has(type));
+    return Boolean(type && allowedTypes.has(type));
   });
 }

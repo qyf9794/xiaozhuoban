@@ -149,6 +149,20 @@ describe("WidgetCapabilityBridge", () => {
     ]);
   });
 
+  it("registers capability actions even before widget definitions are loaded", () => {
+    const bridge = new WidgetCapabilityBridge();
+    const actions = createWidgetCapabilityActions(
+      {
+        getWidgetInstances: () => [],
+        getWidgetDefinitions: () => []
+      },
+      bridge
+    );
+
+    expect(actions.map((action) => action.spec.name)).toContain("music.play");
+    expect(actions.map((action) => action.spec.name)).toContain("music.next");
+  });
+
   it("runs TV channel selection and fullscreen through mounted capabilities", async () => {
     const { store, getWidget } = createStore();
     const bridge = new WidgetCapabilityBridge();
