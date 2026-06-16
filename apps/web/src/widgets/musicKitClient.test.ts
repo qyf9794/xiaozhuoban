@@ -3,9 +3,11 @@ import {
   configureMusicKit,
   createMusicKitQueueDescriptor,
   formatMusicArtworkUrl,
+  inferAppleMusicStorefront,
   isMusicKitAuthorized,
   normalizeITunesTracks,
   normalizeMusicKitSearchResults,
+  searchAppleMusicCatalogApi,
   searchAppleMusicCatalog
 } from "./musicKitClient";
 
@@ -63,6 +65,38 @@ describe("musicKitClient", () => {
       }
     ]);
   });
+
+  it("normalizes wrapped Apple Music catalog search results", () => {
+    expect(
+      normalizeMusicKitSearchResults({
+        results: {
+          songs: {
+            data: [
+              {
+                id: "song_2",
+                type: "songs",
+                attributes: {
+                  name: "Wrapped Song",
+                  artistName: "Artist"
+                }
+              }
+            ]
+          }
+        }
+      })
+    ).toEqual([
+      {
+        id: "song_2",
+        source: "apple",
+        kind: "song",
+        title: "Wrapped Song",
+        subtitle: "Artist",
+        artworkUrl: undefined,
+        url: undefined
+      }
+    ]);
+  });
+
 
   it("creates MusicKit queue descriptors by result kind", () => {
     expect(createMusicKitQueueDescriptor({ id: "s1", source: "apple", kind: "song", title: "Song", subtitle: "Artist" })).toEqual({
@@ -180,6 +214,35 @@ describe("musicKitClient", () => {
       {
         path: "/v1/catalog/{{storefrontId}}/search",
         params: { term: "周杰伦", types: "songs,albums,playlists", limit: 18 }
+      }
+    ]);
+  });
+
+  it("infers storefront from the browser locale", () => {
+    expect(inferAppleMusicStorefront("zh-CN")).toBe("cn");
+    expect(inferAppleMusicStorefront("en-US")).toBe("us");
+    expect(inferAppleMusicStorefront("zh")).toBe("us");
+  });
+
+  it("searches Apple Music catalog directly with the developer token", async () => {
+    const calls: unknown[] = [];
+    const payload = { results: { songs: { data: [] } } };
+    const fakeFetch = async (input: string | URL, init?: { headers?: Record<string, string> }) => {
+      calls.push({ url: String(input), headers: init?.headers });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => payload
+      };
+    };
+
+    await expect(searchAppleMusicCatalogApi("dev-token", "周杰伦", { types: "songs,albums,playlists", limit: 18 }, "cn", fakeFetch)).resolves.toBe(
+      payload
+    );
+    expect(calls).toEqual([
+      {
+        url: "https://api.music.apple.com/v1/catalog/cn/search?term=%E5%91%A8%E6%9D%B0%E4%BC%A6&types=songs%2Calbums%2Cplaylists&limit=18",
+        headers: { Authorization: "Bearer dev-token" }
       }
     ]);
   });

@@ -18,9 +18,11 @@ import {
   configureMusicKit,
   createMusicKitQueueDescriptor,
   getMusicKitDeveloperToken,
+  inferAppleMusicStorefront,
   isMusicKitAuthorized,
   normalizeITunesTracks,
   normalizeMusicKitSearchResults,
+  searchAppleMusicCatalogApi,
   searchAppleMusicCatalog,
   type ITunesTrack,
   type MusicKitInstanceLike,
@@ -3157,6 +3159,28 @@ export function BuiltinWidgetView({
       }
     };
 
+    const searchAppleMusic = async (keyword: string): Promise<MusicSearchItem[]> => {
+      const fallbackStorefront = typeof navigator === "undefined" ? "us" : inferAppleMusicStorefront(navigator.language);
+      let sdkStorefront = "";
+      try {
+        const music = await ensureMusicKit();
+        sdkStorefront = music.storefrontId?.trim() || "";
+        const sdkItems = normalizeMusicKitSearchResults(await searchAppleMusicCatalog(music, keyword, { types: "songs,albums,playlists", limit: 18 }));
+        if (sdkItems.length) return sdkItems;
+      } catch {
+        // The direct catalog API below covers SDK versions without a search helper.
+      }
+
+      const primaryStorefront = sdkStorefront || fallbackStorefront;
+      const apiItems = normalizeMusicKitSearchResults(
+        await searchAppleMusicCatalogApi(musicKitDeveloperToken, keyword, { types: "songs,albums,playlists", limit: 18 }, primaryStorefront)
+      );
+      if (apiItems.length || primaryStorefront === "us") return apiItems;
+      return normalizeMusicKitSearchResults(
+        await searchAppleMusicCatalogApi(musicKitDeveloperToken, keyword, { types: "songs,albums,playlists", limit: 18 }, "us")
+      );
+    };
+
     const runSearch = async (rawKeyword?: string): Promise<MusicSearchItem[]> => {
       const keyword = (rawKeyword ?? query).trim();
       if (!keyword) {
@@ -3169,9 +3193,7 @@ export function BuiltinWidgetView({
       setLoading(true);
       setError("");
       try {
-        const items = musicKitAvailable
-          ? normalizeMusicKitSearchResults(await searchAppleMusicCatalog(await ensureMusicKit(), keyword, { types: "songs,albums,playlists", limit: 18 }))
-          : normalizeITunesTracks(await searchITunesTracks(keyword));
+        const items = musicKitAvailable ? await searchAppleMusic(keyword) : normalizeITunesTracks(await searchITunesTracks(keyword));
         if (seq !== searchSeqRef.current) return [];
         setResults(items);
         if (!items.length) {

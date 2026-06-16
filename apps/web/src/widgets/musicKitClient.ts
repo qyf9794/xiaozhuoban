@@ -39,6 +39,7 @@ type MusicKitApiLike = {
   search?: (term: string, options: MusicKitSearchOptions) => Promise<unknown>;
   music?: (path: string, params?: Record<string, string | number>) => Promise<unknown>;
 };
+type FetchLike = (input: string | URL, init?: { headers?: Record<string, string> }) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
 
 export type MusicKitInstanceLike = {
   authorize: () => Promise<string>;
@@ -103,7 +104,11 @@ function normalizeResource(resource: MusicKitResource): MusicSearchItem | null {
 }
 
 export function normalizeMusicKitSearchResults(payload: unknown): MusicSearchItem[] {
-  const results = payload && typeof payload === "object" ? (payload as { songs?: unknown; albums?: unknown; playlists?: unknown }) : {};
+  const root = payload && typeof payload === "object" ? (payload as { results?: unknown; songs?: unknown; albums?: unknown; playlists?: unknown }) : {};
+  const results =
+    root.results && typeof root.results === "object"
+      ? (root.results as { songs?: unknown; albums?: unknown; playlists?: unknown })
+      : root;
   return [results.songs, results.albums, results.playlists]
     .flatMap((group) => {
       const data = group && typeof group === "object" ? (group as { data?: unknown }).data : undefined;
@@ -135,6 +140,11 @@ export function isMusicKitAuthorized(music: MusicKitInstanceLike | null | undefi
   return music?.isAuthorized === true;
 }
 
+export function inferAppleMusicStorefront(locale: string | undefined, fallback = "us"): string {
+  const region = locale?.split("-")[1]?.trim().toLowerCase();
+  return region && /^[a-z]{2}$/.test(region) ? region : fallback;
+}
+
 export async function searchAppleMusicCatalog(music: MusicKitInstanceLike, term: string, options: MusicKitSearchOptions): Promise<unknown> {
   const keyword = term.trim();
   if (!keyword) return {};
@@ -155,6 +165,30 @@ export async function searchAppleMusicCatalog(music: MusicKitInstanceLike, term:
     }
   }
   throw new Error("MusicKit SDK 不支持目录搜索");
+}
+
+export async function searchAppleMusicCatalogApi(
+  developerToken: string,
+  term: string,
+  options: MusicKitSearchOptions,
+  storefront = "us",
+  fetchLike: FetchLike = fetch
+): Promise<unknown> {
+  const token = developerToken.trim();
+  const keyword = term.trim();
+  if (!token) {
+    throw new Error("未配置 Apple Music Developer Token");
+  }
+  if (!keyword) return {};
+  const url = new URL(`https://api.music.apple.com/v1/catalog/${storefront}/search`);
+  url.searchParams.set("term", keyword);
+  url.searchParams.set("types", options.types);
+  url.searchParams.set("limit", String(options.limit));
+  const response = await fetchLike(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!response.ok) {
+    throw new Error(`Apple Music 搜索失败 (${response.status})`);
+  }
+  return response.json();
 }
 
 export function loadMusicKitScript(windowLike: Window = window): Promise<MusicKitGlobal> {
