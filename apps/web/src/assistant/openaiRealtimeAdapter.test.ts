@@ -7,6 +7,7 @@ import {
   createRealtimeToolResultEvents,
   extractRealtimeSessionErrorCode,
   parseRealtimeFunctionCallEvent,
+  resolveRealtimePeerStatus,
   shouldHandleRealtimeFunctionCall
 } from "./openaiRealtimeAdapter";
 
@@ -121,6 +122,14 @@ describe("OpenAI realtime adapter helpers", () => {
 
     expect(calls).toEqual(["dataChannel.close", "peerConnection.close", "track.one.stop", "track.two.stop"]);
     expect(dataChannel.onclose).toBeNull();
+  });
+
+  it("maps peer connection terminal states to realtime statuses", () => {
+    expect(resolveRealtimePeerStatus("connected")).toBeNull();
+    expect(resolveRealtimePeerStatus("connecting")).toBeNull();
+    expect(resolveRealtimePeerStatus("failed")).toBe("failed");
+    expect(resolveRealtimePeerStatus("disconnected")).toBe("disconnected");
+    expect(resolveRealtimePeerStatus("closed")).toBe("disconnected");
   });
 
   it("extracts server-side realtime session error codes", () => {

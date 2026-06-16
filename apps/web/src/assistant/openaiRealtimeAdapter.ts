@@ -135,6 +135,12 @@ export function closeRealtimeConnectionResources(resources: RealtimeClosableReso
   resources.mediaStream?.getTracks().forEach((track) => track.stop());
 }
 
+export function resolveRealtimePeerStatus(state: string): RealtimeConnectionStatus | null {
+  if (state === "failed") return "failed";
+  if (state === "closed" || state === "disconnected") return "disconnected";
+  return null;
+}
+
 export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private peerConnection: RTCPeerConnection | null = null;
   private dataChannel: RTCDataChannel | null = null;
@@ -186,6 +192,16 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.dataChannel = dataChannel;
 
       stream.getAudioTracks().forEach((track) => peerConnection.addTrack(track, stream));
+      const handlePeerStateChange = (state: string) => {
+        const status = resolveRealtimePeerStatus(state);
+        if (!status) return;
+        if (status === "failed") {
+          this.closeResources();
+        }
+        this.options.onStatusChange?.(status);
+      };
+      peerConnection.onconnectionstatechange = () => handlePeerStateChange(peerConnection.connectionState);
+      peerConnection.oniceconnectionstatechange = () => handlePeerStateChange(peerConnection.iceConnectionState);
       peerConnection.ontrack = (event) => {
         const [remoteStream] = event.streams;
         if (!remoteStream || typeof Audio === "undefined") return;
