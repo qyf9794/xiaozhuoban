@@ -107,6 +107,10 @@ export function shouldSubmitVoiceAssistantOnKeyDown(event: {
   );
 }
 
+export function shouldDisableVoiceAssistantSend(muted: boolean): boolean {
+  return muted;
+}
+
 function getResultText(status: string, message: string) {
   if (status === "success") return message || "好了";
   if (status === "needs_confirmation") return message || "请确认";
@@ -324,7 +328,7 @@ export function VoiceAssistantDock({
           aria-label="助手指令"
           data-testid="voice-assistant-command-input"
         />
-        <button type="submit" disabled={muted || !text.trim()} aria-label="发送指令" data-testid="voice-assistant-send">
+        <button type="submit" disabled={shouldDisableVoiceAssistantSend(muted)} aria-label="发送指令" data-testid="voice-assistant-send">
           ↵
         </button>
       </form>

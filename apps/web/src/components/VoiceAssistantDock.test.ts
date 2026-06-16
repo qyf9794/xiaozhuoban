@@ -7,6 +7,7 @@ import {
   getVoiceAssistantOperationText,
   prependVoiceAssistantHistory,
   resolveVoiceAssistantSubmitText,
+  shouldDisableVoiceAssistantSend,
   shouldSubmitVoiceAssistantOnKeyDown,
   type VoiceAssistantDockState
 } from "./VoiceAssistantDock";
@@ -74,6 +75,11 @@ describe("VoiceAssistantDock", () => {
     expect(shouldSubmitVoiceAssistantOnKeyDown({ key: "Enter", metaKey: true })).toBe(false);
     expect(shouldSubmitVoiceAssistantOnKeyDown({ key: "Enter", isComposing: true })).toBe(false);
     expect(shouldSubmitVoiceAssistantOnKeyDown({ key: "Escape" })).toBe(false);
+  });
+
+  it("keeps send available for DOM-backed command fallback", () => {
+    expect(shouldDisableVoiceAssistantSend(false)).toBe(false);
+    expect(shouldDisableVoiceAssistantSend(true)).toBe(true);
   });
 
   it("maps realtime connection status to dock state and short messages", () => {
