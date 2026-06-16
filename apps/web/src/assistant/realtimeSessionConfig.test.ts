@@ -3,6 +3,7 @@ import {
   XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
   XIAOZHUOBAN_REALTIME_MODEL,
   clampRealtimeClientSecretTtl,
+  createInitialRegisteredRealtimeTools,
   createInitialRealtimeToolSpecs,
   createInitialRealtimeTools,
   createRealtimeContextInstructions,
@@ -34,8 +35,8 @@ describe("realtime session config", () => {
     expect(specs.every((tool) => tool.scope === "desktop")).toBe(true);
   });
 
-  it("serializes initial Realtime tools as function tool schemas", () => {
-    const tools = createInitialRealtimeTools();
+  it("serializes registered Realtime tools as function tool schemas", () => {
+    const tools = createInitialRegisteredRealtimeTools();
     const addWidget = tools.find((tool) => decodeRealtimeToolName(tool.name) === "board.add_widget");
 
     expect(tools.every((tool) => tool.type === "function")).toBe(true);
@@ -46,6 +47,15 @@ describe("realtime session config", () => {
       required: ["definitionId"],
       additionalProperties: false
     });
+  });
+
+  it("starts Realtime sessions with only the tool-selection function", () => {
+    const tools = createInitialRealtimeTools();
+
+    expect(tools).toHaveLength(1);
+    expect(tools[0]?.name).toBe("assistant__dot__select_tool");
+    expect(JSON.stringify(tools[0]?.parameters)).toContain("board.add_widget");
+    expect(JSON.stringify(tools[0]?.parameters)).not.toContain("widgetId");
   });
 
   it("builds an official-doc-aligned Realtime client secret payload", () => {
@@ -65,7 +75,7 @@ describe("realtime session config", () => {
     });
     expect(payload.session.tool_choice).toBe("auto");
     expect(payload.session.parallel_tool_calls).toBe(true);
-    expect(payload.session.tools.map((tool) => tool.name)).not.toContain("assistant__dot__out_of_scope");
+    expect(payload.session.tools.map((tool) => tool.name)).toEqual(["assistant__dot__select_tool"]);
   });
 
   it("allows semantic VAD eagerness to be tuned for cutoff testing", () => {

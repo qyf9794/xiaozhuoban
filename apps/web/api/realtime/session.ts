@@ -18,37 +18,26 @@ const XIAOZHUOBAN_REALTIME_MODEL = "gpt-realtime-2";
 const DEFAULT_REALTIME_CLIENT_SECRET_TTL_SECONDS = 600;
 const REALTIME_TURN_DETECTION_HEADER = "semantic_vad;eagerness=low";
 const REALTIME_PARALLEL_TOOLS_HEADER = "true";
+const REALTIME_TOOL_SELECTION_TOOL_NAME = "assistant.select_tool";
 
 const XIAOZHUOBAN_REALTIME_INSTRUCTIONS = [
   "# Role and Objective",
   "你是小桌板里的语音助手，负责控制小桌板 Web 桌面、已加载小工具和已注册工具。",
   "",
   "# Tool Policy",
-  "- 优先等待本地 AssistantHarness 的 shortcut 结果；你只在工具已注册时调用工具。",
-  "- 可以调用当前工具列表里的桌板、小工具状态、媒体、游戏和表单工具；工具缺失时再简短说明缺少对应能力。",
-  "- 调用小工具细节前，先选择或确认目标小工具上下文。",
+  "- 常驻阶段只选择工具，不直接生成真实工具参数。",
+  "- 需要控制桌面时，先调用 assistant.select_tool，让前端按所选工具提供最小必要上下文。",
+  "- 前端提供局部上下文后，只调用已选工具；工具缺失时再简短说明缺少对应能力。",
   "- 删除、覆盖、批量操作必须请求确认。",
   "- 不控制 macOS、Windows、浏览器外部桌面或用户本地系统。",
   "- 不调用 Codex 或浏览器外部系统；动态生成、复杂规划和长文本改写需要对应工具注册后才执行。",
   "",
   "# Context",
-  "你只会收到摘要状态。不要要求完整桌面状态，也不要输出完整 widget payload。",
+  "默认不会收到完整桌面状态。不要要求完整桌面状态，也不要输出完整 widget payload。",
   "",
   "# Voice Style",
   "回复要短，通常一句话。成功时说“好了”或简短结果；不支持时说明缺少哪个工具或目标。"
 ].join("\n");
-
-function stringSchema() {
-  return { type: "string" };
-}
-
-function numberSchema() {
-  return { type: "number" };
-}
-
-function booleanSchema() {
-  return { type: "boolean" };
-}
 
 function objectSchema(properties: Record<string, unknown>, required?: string[], additionalProperties = false) {
   return {
@@ -80,61 +69,47 @@ function clampRealtimeClientSecretTtl(value: unknown): number {
 }
 
 function createInitialRealtimeTools() {
+  const names = createRegisteredRealtimeToolNames();
   return [
     realtimeTool(
-      "board.add_widget",
-      "Add an existing widget definition to the current Xiaozhuoban board.",
+      REALTIME_TOOL_SELECTION_TOOL_NAME,
+      "Select the single best registered Xiaozhuoban tool before any desktop context is provided.",
       objectSchema(
         {
-          definitionId: stringSchema(),
-          mobileMode: booleanSchema(),
-          followUp: objectSchema({ name: stringSchema(), arguments: objectSchema({}, undefined, true) }, ["name"])
+          name: {
+            type: "string",
+            enum: names,
+            description: "Selected registered tool name."
+          },
+          targetHint: {
+            type: "string",
+            description: "Short target words copied from the user's command."
+          },
+          userCommand: {
+            type: "string",
+            description: "A short normalized version of the user's command."
+          },
+          confidence: { type: "number" }
         },
-        ["definitionId"]
+        ["name"]
       )
-    ),
-    realtimeTool(
-      "widget.focus",
-      "Focus an existing widget on the current Xiaozhuoban board.",
-      objectSchema({ widgetId: stringSchema() }, ["widgetId"])
-    ),
-    realtimeTool(
-      "widget.fullscreen_focus",
-      "Enter fullscreen focus for an existing widget when supported.",
-      objectSchema({ widgetId: stringSchema() }, ["widgetId"])
-    ),
-    realtimeTool(
-      "widget.remove",
-      "Remove a widget from the current board after confirmation.",
-      objectSchema({ widgetId: stringSchema() }, ["widgetId"])
-    ),
-    realtimeTool(
-      "widget.move",
-      "Move a widget to a new board position.",
-      objectSchema({ widgetId: stringSchema(), x: numberSchema(), y: numberSchema() }, ["widgetId", "x", "y"])
-    ),
-    realtimeTool(
-      "widget.resize",
-      "Resize a widget only when its existing panel supports resizing.",
-      objectSchema({ widgetId: stringSchema(), w: numberSchema(), h: numberSchema() }, ["widgetId", "w", "h"])
-    ),
-    realtimeTool(
-      "widget.bring_to_front",
-      "Bring a widget to the front when layer changes are available.",
-      objectSchema({ widgetId: stringSchema() }, ["widgetId"])
-    ),
-    realtimeTool(
-      "board.auto_align",
-      "Auto-align widgets on the current board. Requires confirmation.",
-      objectSchema({ viewportWidth: numberSchema(), mobileMode: booleanSchema() })
-    ),
-    realtimeTool("board.switch", "Switch to another Xiaozhuoban board.", objectSchema({ boardId: stringSchema() }, ["boardId"])),
-    realtimeTool("board.create", "Create a new Xiaozhuoban board.", objectSchema({ name: stringSchema() })),
-    realtimeTool(
-      "board.rename",
-      "Rename an existing Xiaozhuoban board.",
-      objectSchema({ boardId: stringSchema(), name: stringSchema() }, ["boardId", "name"])
-    ),
+    )
+  ];
+}
+
+function createRegisteredRealtimeToolNames() {
+  return [
+    "board.add_widget",
+    "widget.focus",
+    "widget.fullscreen_focus",
+    "widget.remove",
+    "widget.move",
+    "widget.resize",
+    "widget.bring_to_front",
+    "board.auto_align",
+    "board.switch",
+    "board.create",
+    "board.rename"
   ];
 }
 

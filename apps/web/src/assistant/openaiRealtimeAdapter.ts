@@ -7,12 +7,14 @@ import type {
 import type { AssistantRealtimeAdapter } from "./AssistantHarness";
 import {
   XIAOZHUOBAN_REALTIME_MODEL,
-  createRealtimeContextInstructions,
-  decodeRealtimeToolName,
-  serializeAssistantToolForRealtime
+  decodeRealtimeToolName
 } from "./realtimeSessionConfig";
 import {
+  REALTIME_TOOL_SELECTION_TOOL_NAME,
+  createRealtimeToolSelectionInstructions,
+  createRealtimeToolSelectionTool,
   createRealtimeTextToolCallRequestBody,
+  createScopedRealtimeToolUpdate,
   parseRealtimeTextToolCallResponse
 } from "./realtimeTextToolCall";
 
@@ -62,6 +64,22 @@ function parseArguments(value: unknown): unknown {
   } catch {
     return { raw: value };
   }
+}
+
+function parseToolSelectionArguments(value: unknown): {
+  name: string;
+  targetHint?: string;
+  userCommand?: string;
+  confidence?: number;
+} | null {
+  const parsed = parseArguments(value);
+  if (!isRecord(parsed) || typeof parsed.name !== "string") return null;
+  return {
+    name: parsed.name,
+    targetHint: typeof parsed.targetHint === "string" ? parsed.targetHint : undefined,
+    userCommand: typeof parsed.userCommand === "string" ? parsed.userCommand : undefined,
+    confidence: typeof parsed.confidence === "number" ? parsed.confidence : undefined
+  };
 }
 
 export function parseRealtimeFunctionCallEvent(value: unknown): AssistantToolCall | null {
@@ -324,9 +342,6 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         if (this.currentTools.length > 0) {
           void this.updateTools(this.currentTools);
         }
-        if (this.currentContext) {
-          void this.updateContext(this.currentContext);
-        }
         this.options.onStatusChange?.("connected");
       };
       dataChannel.onmessage = (event) =>
@@ -396,20 +411,16 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.sendEvent({
       type: "session.update",
       session: {
-        tools: tools.map((tool) => serializeAssistantToolForRealtime(tool)),
-        tool_choice: "auto"
+        instructions: createRealtimeToolSelectionInstructions(tools),
+        tools: [createRealtimeToolSelectionTool(tools)],
+        tool_choice: "auto",
+        parallel_tool_calls: false
       }
     });
   }
 
   updateContext(context: CompactAssistantContext): void {
     this.currentContext = context;
-    this.sendEvent({
-      type: "session.update",
-      session: {
-        instructions: createRealtimeContextInstructions(context)
-      }
-    });
   }
 
   sendToolResult(call: AssistantToolCall, result: AssistantToolResult): void {
@@ -432,7 +443,51 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   }
 
   private handleFunctionCall(call: AssistantToolCall): void {
+    if (call.name === REALTIME_TOOL_SELECTION_TOOL_NAME) {
+      this.handleToolSelection(call);
+      return;
+    }
     void this.options.onFunctionCall?.(call);
+  }
+
+  private handleToolSelection(call: AssistantToolCall): void {
+    const selection = parseToolSelectionArguments(call.arguments);
+    const selectedTool = selection ? this.currentTools.find((tool) => tool.name === selection.name) : undefined;
+    if (!selection || !selectedTool || !this.currentContext) {
+      this.sendToolResult(call, {
+        status: "needs_clarification",
+        message: "我需要再确认要操作哪个工具或小工具。",
+        errorCode: "TOOL_SELECTION_CONTEXT_MISSING"
+      });
+      return;
+    }
+
+    const update = createScopedRealtimeToolUpdate(
+      {
+        input: selection.userCommand || selection.targetHint || selection.name,
+        context: this.currentContext,
+        tools: this.currentTools
+      },
+      selection
+    );
+    if (!update) {
+      this.sendToolResult(call, {
+        status: "failed",
+        message: `未知工具：${selection.name}`,
+        errorCode: "UNKNOWN_SELECTED_TOOL"
+      });
+      return;
+    }
+
+    this.sendEvent(update);
+    this.sendToolResult(call, {
+      status: "success",
+      message: "已选择工具，正在读取所需上下文。",
+      data: {
+        selectedTool: selectedTool.name,
+        targetHint: selection.targetHint
+      }
+    });
   }
 
   private sendEvent(event: RealtimeEvent, options: { queueWhenClosed?: boolean } = {}): void {

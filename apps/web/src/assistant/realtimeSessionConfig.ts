@@ -10,6 +10,7 @@ import {
 export const OPENAI_REALTIME_CLIENT_SECRET_URL = "https://api.openai.com/v1/realtime/client_secrets";
 export const XIAOZHUOBAN_REALTIME_MODEL = "gpt-realtime-2";
 export const DEFAULT_REALTIME_CLIENT_SECRET_TTL_SECONDS = 600;
+export const REALTIME_TOOL_SELECTION_TOOL_NAME = "assistant.select_tool";
 
 export type RealtimeReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 export type RealtimeSemanticVadEagerness = "low" | "medium" | "high" | "auto";
@@ -47,15 +48,15 @@ export const XIAOZHUOBAN_REALTIME_INSTRUCTIONS = [
   "你是小桌板里的语音助手，负责控制小桌板 Web 桌面、已加载小工具和已注册工具。",
   "",
   "# Tool Policy",
-  "- 优先等待本地 AssistantHarness 的 shortcut 结果；你只在工具已注册时调用工具。",
-  "- 可以调用当前工具列表里的桌板、小工具状态、媒体、游戏和表单工具；工具缺失时再简短说明缺少对应能力。",
-  "- 调用小工具细节前，先选择或确认目标小工具上下文。",
+  "- 常驻阶段只选择工具，不直接生成真实工具参数。",
+  "- 需要控制桌面时，先调用 assistant.select_tool，让前端按所选工具提供最小必要上下文。",
+  "- 前端提供局部上下文后，只调用已选工具；工具缺失时再简短说明缺少对应能力。",
   "- 删除、覆盖、批量操作必须请求确认。",
   "- 不控制 macOS、Windows、浏览器外部桌面或用户本地系统。",
   "- 不调用 Codex 或浏览器外部系统；动态生成、复杂规划和长文本改写需要对应工具注册后才执行。",
   "",
   "# Context",
-  "你只会收到摘要状态。不要要求完整桌面状态，也不要输出完整 widget payload。",
+  "默认不会收到完整桌面状态。不要要求完整桌面状态，也不要输出完整 widget payload。",
   "",
   "# Voice Style",
   "回复要短，通常一句话。成功时说“好了”或简短结果；不支持时说明缺少哪个工具或目标。"
@@ -243,10 +244,41 @@ export function createInitialRealtimeToolSpecs(): AssistantToolSpec[] {
 }
 
 export function createInitialRealtimeTools(): RealtimeFunctionTool[] {
+  return [createRealtimeToolSelectionTool(createInitialRealtimeToolSpecs())];
+}
+
+export function createInitialRegisteredRealtimeTools(): RealtimeFunctionTool[] {
   const initialNames = new Set(createInitialRealtimeToolSpecs().map((tool) => tool.name));
   return initialToolMetadata
     .filter((metadata) => initialNames.has(metadata.name))
     .map((metadata) => serializeAssistantToolForRealtime(toAssistantToolSpec(metadata), metadata.parameters));
+}
+
+export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[]): RealtimeFunctionTool {
+  return {
+    type: "function",
+    name: encodeRealtimeToolName(REALTIME_TOOL_SELECTION_TOOL_NAME),
+    description: "Select the single best registered Xiaozhuoban tool before any desktop context is provided.",
+    parameters: objectSchema(
+      {
+        name: {
+          type: "string",
+          enum: tools.map((tool) => tool.name),
+          description: "Selected registered tool name."
+        },
+        targetHint: {
+          type: "string",
+          description: "Short target words copied from the user's command."
+        },
+        userCommand: {
+          type: "string",
+          description: "A short normalized version of the user's command."
+        },
+        confidence: { type: "number" }
+      },
+      ["name"]
+    )
+  };
 }
 
 export function serializeAssistantToolForRealtime(

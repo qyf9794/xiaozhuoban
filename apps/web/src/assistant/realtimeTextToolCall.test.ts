@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createPassthroughSchema, type AssistantToolSpec, type CompactAssistantContext } from "@xiaozhuoban/assistant-core";
 import {
+  createRealtimeToolSelectionInstructions,
+  createRealtimeToolSelectionTool,
   createScopedRealtimeContext,
+  createScopedRealtimeToolUpdate,
   createScopedToolCallPayload,
   createToolSelectionPayload,
   extractToolSelectionFromResponsesPayload
@@ -76,6 +79,18 @@ describe("Realtime text tool call fallback", () => {
     expect(serialized).not.toContain("private note");
   });
 
+  it("creates realtime selection instructions and a selector tool without board widget context", () => {
+    const instructions = createRealtimeToolSelectionInstructions(tools);
+    const selector = createRealtimeToolSelectionTool(tools);
+    const serialized = JSON.stringify({ instructions, selector });
+
+    expect(serialized).toContain("widget.remove");
+    expect(serialized).toContain("music.pause");
+    expect(serialized).toContain("assistant__dot__select_tool");
+    expect(serialized).not.toContain("wi_music");
+    expect(serialized).not.toContain("private note");
+  });
+
   it("extracts allowed tool selections", () => {
     const selection = extractToolSelectionFromResponsesPayload(
       {
@@ -112,5 +127,19 @@ describe("Realtime text tool call fallback", () => {
     expect(serialized).not.toContain("music__dot__pause");
     expect(serialized).toContain("wi_music");
     expect(serialized).not.toContain("wd_note");
+  });
+
+  it("creates a scoped realtime session update after tool selection", () => {
+    const update = createScopedRealtimeToolUpdate(
+      { input: "关闭音乐", context, tools },
+      { name: "widget.remove", targetHint: "音乐" }
+    );
+    const serialized = JSON.stringify(update);
+
+    expect(update?.type).toBe("session.update");
+    expect(serialized).toContain("widget__dot__remove");
+    expect(serialized).not.toContain("music__dot__pause");
+    expect(serialized).toContain("wi_music");
+    expect(serialized).not.toContain("private note");
   });
 });

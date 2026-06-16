@@ -126,4 +126,80 @@ describe("realtime text tool-call API", () => {
     expect(JSON.stringify(secondBody)).not.toContain("private note");
     expect(JSON.stringify(secondBody)).not.toContain("music__dot__pause");
   });
+
+  it("skips first-pass selection when realtime already selected a tool", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "sk-test");
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          output: [
+            {
+              type: "function_call",
+              name: "widget__dot__remove",
+              call_id: "call_1",
+              arguments: JSON.stringify({ widgetId: "wi_music" })
+            }
+          ]
+        }),
+        { status: 200 }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await callHandler({
+      input: "关音乐",
+      selection: { name: "widget.remove", targetHint: "音乐", confidence: 0.9 },
+      tools: [
+        {
+          name: "widget.remove",
+          description: "删除小工具",
+          scope: "desktop",
+          requiresTarget: true,
+          risk: "destructive"
+        },
+        {
+          name: "music.pause",
+          description: "暂停音乐",
+          scope: "widget-detail",
+          widgetType: "music",
+          requiresTarget: true
+        }
+      ],
+      context: {
+        boardId: "board_1",
+        boardName: "默认桌板",
+        widgetCountsByType: { music: 1, note: 1 },
+        widgets: [
+          {
+            widgetId: "wi_music",
+            definitionId: "wd_music",
+            type: "music",
+            name: "音乐播放器",
+            order: 1,
+            summary: "正在播放"
+          },
+          {
+            widgetId: "wi_note",
+            definitionId: "wd_note",
+            type: "note",
+            name: "便签",
+            order: 2,
+            summary: "private note"
+          }
+        ]
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      selection: { name: "widget.remove", targetHint: "音乐", confidence: 0.9 },
+      call: { name: "widget.remove", arguments: { widgetId: "wi_music" } }
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(JSON.stringify(body)).toContain("widget__dot__remove");
+    expect(JSON.stringify(body)).toContain("wi_music");
+    expect(JSON.stringify(body)).not.toContain("music__dot__pause");
+    expect(JSON.stringify(body)).not.toContain("private note");
+  });
 });

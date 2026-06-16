@@ -242,10 +242,11 @@ describe("OpenAI realtime adapter helpers", () => {
     ]);
 
     expect((adapter as unknown as { queuedEvents: unknown[] }).queuedEvents).toHaveLength(1);
-    const event = (adapter as unknown as { queuedEvents: Array<{ type: string; session: { tools: Array<{ name: string }> } }> })
+    const event = (adapter as unknown as { queuedEvents: Array<{ type: string; session: { instructions: string; tools: Array<{ name: string }> } }> })
       .queuedEvents[0];
     expect(event.type).toBe("session.update");
-    expect(event.session.tools[0].name).toBe("board__dot__auto_align");
+    expect(event.session.instructions).toContain("board.auto_align");
+    expect(event.session.tools[0].name).toBe("assistant__dot__select_tool");
   });
 
   it("does not queue stale tool results before the data channel opens", () => {
@@ -259,10 +260,9 @@ describe("OpenAI realtime adapter helpers", () => {
     expect((adapter as unknown as { queuedEvents: unknown[] }).queuedEvents).toHaveLength(0);
   });
 
-  it("queues compact context instructions before the data channel opens", () => {
+  it("stores compact context locally without sending it to realtime", () => {
     const adapter = new OpenAIRealtimeWebRtcAdapter();
-
-    adapter.updateContext({
+    const context = {
       boardId: "board_1",
       boardName: "我的桌板",
       availableDefinitions: [{ definitionId: "wd_music", type: "music", name: "音乐" }],
@@ -277,11 +277,71 @@ describe("OpenAI realtime adapter helpers", () => {
           summary: "CCTV1"
         }
       ]
+    };
+
+    adapter.updateContext(context);
+
+    expect((adapter as unknown as { queuedEvents: unknown[] }).queuedEvents).toEqual([]);
+    expect((adapter as unknown as { currentContext: unknown }).currentContext).toMatchObject({ boardName: "我的桌板" });
+  });
+
+  it("turns a realtime tool selection into a scoped session update", () => {
+    const adapter = new OpenAIRealtimeWebRtcAdapter();
+    adapter.updateTools([
+      {
+        name: "widget.remove",
+        description: "删除小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop",
+        risk: "destructive",
+        requiresTarget: true
+      },
+      {
+        name: "music.pause",
+        description: "暂停音乐",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: { music: 1, note: 1 },
+      widgets: [
+        {
+          widgetId: "wi_music",
+          definitionId: "wd_music",
+          type: "music",
+          name: "音乐播放器",
+          order: 1,
+          summary: "正在播放"
+        },
+        {
+          widgetId: "wi_note",
+          definitionId: "wd_note",
+          type: "note",
+          name: "便签",
+          order: 2,
+          summary: "private note"
+        }
+      ]
     });
 
-    const event = (adapter as unknown as { queuedEvents: Array<{ session: { instructions: string } }> }).queuedEvents[0];
-    expect(event.session.instructions).toContain("board: 我的桌板");
-    expect(event.session.instructions).toContain("音乐(music) definitionId=wd_music");
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_1",
+      name: "assistant.select_tool",
+      arguments: { name: "widget.remove", targetHint: "音乐", userCommand: "关闭音乐", confidence: 0.9 },
+      source: "realtime"
+    });
+
+    const serialized = JSON.stringify((adapter as unknown as { queuedEvents: unknown[] }).queuedEvents);
+    expect(serialized).toContain("assistant__dot__select_tool");
+    expect(serialized).toContain("widget__dot__remove");
+    expect(serialized).toContain("wi_music");
+    expect(serialized).not.toContain("music__dot__pause");
+    expect(serialized).not.toContain("private note");
   });
 
   it("requests text fallback tool calls from the scoped backend endpoint", async () => {

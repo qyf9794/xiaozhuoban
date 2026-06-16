@@ -84,7 +84,9 @@ describe("realtime session API", () => {
       interrupt_response: true
     });
     expect(payload.session.tools.every((tool: { name: string }) => /^[a-zA-Z0-9_-]+$/.test(tool.name))).toBe(true);
-    expect(payload.session.tools.map((tool: { name: string }) => tool.name)).toContain("board__dot__add_widget");
+    expect(payload.session.tools.map((tool: { name: string }) => tool.name)).toEqual(["assistant__dot__select_tool"]);
+    expect(JSON.stringify(payload.session.tools[0].parameters)).toContain("board.add_widget");
+    expect(JSON.stringify(payload.session.tools[0].parameters)).not.toContain("widgetId");
   });
 
   it("does not send an OpenAI safety identifier when the request has none", async () => {

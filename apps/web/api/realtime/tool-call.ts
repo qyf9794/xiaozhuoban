@@ -41,6 +41,7 @@ type TextToolCallRequest = {
   input: string;
   context: CompactContext;
   tools: AssistantToolSpecLike[];
+  selection?: TextToolSelection;
 };
 
 type TextToolSelection = {
@@ -97,10 +98,18 @@ function parseRequestBody(value: unknown): TextToolCallRequest | null {
   if (typeof value.input !== "string" || !isRecord(value.context) || !Array.isArray(value.tools)) return null;
   const context = value.context;
   if (!Array.isArray(context.widgets) || !isRecord(context.widgetCountsByType)) return null;
+  const selection = isRecord(value.selection) && typeof value.selection.name === "string"
+    ? {
+        name: value.selection.name,
+        targetHint: typeof value.selection.targetHint === "string" ? value.selection.targetHint : undefined,
+        confidence: typeof value.selection.confidence === "number" ? value.selection.confidence : undefined
+      }
+    : undefined;
   return {
     input: value.input,
     context: context as unknown as CompactContext,
-    tools: value.tools.filter(isRecord).filter((tool) => typeof tool.name === "string") as AssistantToolSpecLike[]
+    tools: value.tools.filter(isRecord).filter((tool) => typeof tool.name === "string") as AssistantToolSpecLike[],
+    selection
   };
 }
 
@@ -400,26 +409,29 @@ export default async function handler(request: IncomingMessage, response: Server
 
     const allowedToolNames = new Set(body.tools.map((tool) => tool.name));
     const model = process.env.XIAOZHUOBAN_TEXT_TOOL_MODEL || XIAOZHUOBAN_REALTIME_MODEL;
-    const selectionResponse = await requestOpenAI(apiKey, createToolSelectionPayload(body, model));
-    if (!selectionResponse.ok) {
-      let upstream: unknown = null;
-      try {
-        upstream = await selectionResponse.json();
-      } catch {
-        // Keep the structured status without leaking raw text.
+    let selection: TextToolSelection | null = body.selection && allowedToolNames.has(body.selection.name) ? body.selection : null;
+    if (!selection) {
+      const selectionResponse = await requestOpenAI(apiKey, createToolSelectionPayload(body, model));
+      if (!selectionResponse.ok) {
+        let upstream: unknown = null;
+        try {
+          upstream = await selectionResponse.json();
+        } catch {
+          // Keep the structured status without leaking raw text.
+        }
+        sendJson(response, 200, {
+          call: null,
+          selection: null,
+          error: "TEXT_TOOL_SELECTION_FAILED",
+          model,
+          status: selectionResponse.status,
+          upstream
+        });
+        return;
       }
-      sendJson(response, 200, {
-        call: null,
-        selection: null,
-        error: "TEXT_TOOL_SELECTION_FAILED",
-        model,
-        status: selectionResponse.status,
-        upstream
-      });
-      return;
-    }
 
-    const selection = extractSelection(await selectionResponse.json(), allowedToolNames);
+      selection = extractSelection(await selectionResponse.json(), allowedToolNames);
+    }
     if (!selection) {
       sendJson(response, 200, { call: null, selection: null });
       return;

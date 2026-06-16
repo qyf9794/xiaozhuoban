@@ -7,13 +7,15 @@ import {
   XIAOZHUOBAN_REALTIME_MODEL,
   createRealtimeContextInstructions,
   decodeRealtimeToolName,
-  serializeAssistantToolForRealtime
+  serializeAssistantToolForRealtime,
+  type RealtimeFunctionTool
 } from "./realtimeSessionConfig";
 
 export type RealtimeTextToolCallRequest = {
   input: string;
   context: CompactAssistantContext;
   tools: AssistantToolSpec[];
+  selection?: RealtimeTextToolSelection;
 };
 
 export type RealtimeTextToolCallResponse = {
@@ -27,6 +29,8 @@ export type RealtimeTextToolSelection = {
 };
 
 const SELECT_TOOL_NAME = "assistant.select_tool";
+
+export const REALTIME_TOOL_SELECTION_TOOL_NAME = SELECT_TOOL_NAME;
 
 const widgetAliases: Record<string, string[]> = {
   note: ["便签", "笔记"],
@@ -50,9 +54,10 @@ const widgetAliases: Record<string, string[]> = {
 export function createRealtimeTextToolCallRequestBody(
   input: string,
   context: CompactAssistantContext,
-  tools: AssistantToolSpec[]
+  tools: AssistantToolSpec[],
+  selection?: RealtimeTextToolSelection
 ) {
-  return JSON.stringify({ input, context, tools } satisfies RealtimeTextToolCallRequest);
+  return JSON.stringify({ input, context, tools, selection } satisfies RealtimeTextToolCallRequest);
 }
 
 function toolCatalog(tools: AssistantToolSpec[]) {
@@ -85,6 +90,50 @@ export function createRealtimeToolSelectionPrompt(input: string, tools: Assistan
     "",
     `用户命令：${input}`
   ].join("\n");
+}
+
+export function createRealtimeToolSelectionInstructions(tools: AssistantToolSpec[]) {
+  return [
+    "你是小桌板命令路由器。当前阶段只判断用户想使用哪个已注册工具。",
+    "不要生成任何真实工具参数，不要猜 widgetId、definitionId、boardId。",
+    "不要要求完整桌面上下文；如果需要目标，只把用户说出的目标词放到 targetHint。",
+    "用户要控制桌面时，先调用 assistant.select_tool；前端随后会按所选工具提供最小必要上下文。",
+    "如果用户说“打开 + 小工具名”，优先选择 board.add_widget 或 widget.focus。",
+    "如果用户说“关闭/关掉 + 小工具名”，优先选择 widget.remove 关闭这个小工具窗口。",
+    "如果用户说“暂停/继续/播放/下一首”等播放控制，优先选择对应媒体工具。",
+    "",
+    "# 工具目录",
+    toolCatalog(tools)
+  ].join("\n");
+}
+
+export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[]): RealtimeFunctionTool {
+  return {
+    type: "function",
+    name: SELECT_TOOL_NAME.replace(/\./g, "__dot__"),
+    description: "Select the single best registered Xiaozhuoban tool before any desktop context is provided.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          enum: tools.map((tool) => tool.name),
+          description: "Selected registered tool name."
+        },
+        targetHint: {
+          type: "string",
+          description: "Short target words copied from the user's command, such as 音乐, 天气, 默认桌板."
+        },
+        userCommand: {
+          type: "string",
+          description: "A short normalized version of the user's command."
+        },
+        confidence: { type: "number" }
+      },
+      required: ["name"],
+      additionalProperties: false
+    }
+  };
 }
 
 export function createToolSelectionPayload(
@@ -205,6 +254,45 @@ export function createScopedToolCallPayload(
     tool_choice: tool ? "auto" : "none",
     parallel_tool_calls: false,
     max_output_tokens: 120
+  };
+}
+
+export function createScopedRealtimeToolInstructions(
+  context: CompactAssistantContext,
+  selection: RealtimeTextToolSelection,
+  input: string
+) {
+  return [
+    createRealtimeContextInstructions(context),
+    "",
+    "# Selected Tool Stage",
+    "现在只根据上一步选中的工具和此处提供的最小上下文，返回可执行工具调用。",
+    "只调用已选工具；不要调用未提供的工具，不要访问未提供的桌面上下文。",
+    "如果缺少目标或信息不足，不要猜测参数，直接简短说明需要澄清。",
+    "",
+    `已选工具：${selection.name}`,
+    selection.targetHint ? `目标提示：${selection.targetHint}` : "",
+    `用户命令：${input}`
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function createScopedRealtimeToolUpdate(
+  request: RealtimeTextToolCallRequest,
+  selection: RealtimeTextToolSelection
+) {
+  const tool = request.tools.find((candidate) => candidate.name === selection.name);
+  if (!tool) return null;
+  const scopedContext = createScopedRealtimeContext(request.context, tool, selection, request.input);
+  return {
+    type: "session.update",
+    session: {
+      instructions: createScopedRealtimeToolInstructions(scopedContext, selection, request.input),
+      tools: [serializeAssistantToolForRealtime(tool)],
+      tool_choice: "auto",
+      parallel_tool_calls: false
+    }
   };
 }
 
