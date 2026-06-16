@@ -58,6 +58,12 @@ function createStore(seed?: { definitions?: WidgetDefinition[]; widgets?: Widget
     updateWidgetSize: (...args) => {
       calls.push({ name: "updateWidgetSize", args });
     },
+    focusWidget: (...args) => {
+      calls.push({ name: "focusWidget", args });
+    },
+    fullscreenWidget: (...args) => {
+      calls.push({ name: "fullscreenWidget", args });
+    },
     bringWidgetToFront: (...args) => {
       calls.push({ name: "bringWidgetToFront", args });
     },
@@ -106,6 +112,8 @@ describe("registerBoardActions", () => {
 
     expect(registry.list("desktop").map((spec) => spec.name)).toEqual([
       "board.add_widget",
+      "widget.focus",
+      "widget.fullscreen_focus",
       "widget.remove",
       "widget.move",
       "widget.resize",
@@ -145,6 +153,36 @@ describe("registerBoardActions", () => {
 
     expect(result.status).toBe("success");
     expect(calls).toEqual([{ name: "updateWidgetPosition", args: ["wi_note", 12, 46] }]);
+  });
+
+  it("focuses and fullscreen-focuses existing widgets", async () => {
+    const { store, calls } = createStore();
+    const registry = createRegistry(store);
+
+    await registry.execute({ id: "1", name: "widget.focus", arguments: { widgetId: "wi_tv" }, source: "test" });
+    await registry.execute({ id: "2", name: "widget.fullscreen_focus", arguments: { widgetId: "wi_tv" }, source: "test" });
+
+    expect(calls).toEqual([
+      { name: "focusWidget", args: ["wi_tv"] },
+      { name: "fullscreenWidget", args: ["wi_tv"] }
+    ]);
+  });
+
+  it("returns a failure when fullscreen focus is not supported", async () => {
+    const { store } = createStore();
+    const registry = createRegistry({ ...store, fullscreenWidget: undefined });
+
+    const result = await registry.execute({
+      id: "call_1",
+      name: "widget.fullscreen_focus",
+      arguments: { widgetId: "wi_tv" },
+      source: "test"
+    });
+
+    expect(result).toMatchObject({
+      status: "failed",
+      errorCode: "FULLSCREEN_UNAVAILABLE"
+    });
   });
 
   it("refuses to resize fixed-size widgets without mutating", async () => {

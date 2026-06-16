@@ -23,6 +23,8 @@ export interface BoardActionStore {
   removeWidgetInstance: (widgetId: string) => Promise<void> | void;
   updateWidgetPosition: (widgetId: string, x: number, y: number) => Promise<void> | void;
   updateWidgetSize: (widgetId: string, w: number, h: number) => Promise<void> | void;
+  focusWidget?: (widgetId: string) => Promise<void> | void;
+  fullscreenWidget?: (widgetId: string) => Promise<void> | void;
   bringWidgetToFront?: (widgetId: string) => Promise<void> | void;
   autoAlignWidgets: (viewportWidth: number, options?: { mobileMode?: boolean }) => Promise<void> | void;
   setActiveBoard: (boardId: string) => Promise<void> | void;
@@ -140,6 +142,43 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
       async execute(args) {
         await store.addWidgetInstance(args.definitionId, { mobileMode: args.mobileMode });
         return success("已添加小工具", { definitionId: args.definitionId });
+      }
+    }),
+    defineAction<WidgetIdArgs>({
+      spec: {
+        name: "widget.focus",
+        description: "Focus an existing widget on the current board.",
+        parameters: widgetIdSchema,
+        risk: "safe",
+        scope: "desktop"
+      },
+      async execute(args) {
+        const target = findWidget(store, args.widgetId);
+        if (!target) {
+          return failed("没有找到这个小工具", "WIDGET_NOT_FOUND");
+        }
+        await store.focusWidget?.(args.widgetId);
+        return success("已聚焦小工具", { widgetId: args.widgetId, widgetType: target.definition?.type });
+      }
+    }),
+    defineAction<WidgetIdArgs>({
+      spec: {
+        name: "widget.fullscreen_focus",
+        description: "Enter fullscreen focus for an existing widget when supported.",
+        parameters: widgetIdSchema,
+        risk: "safe",
+        scope: "desktop"
+      },
+      async execute(args) {
+        const target = findWidget(store, args.widgetId);
+        if (!target) {
+          return failed("没有找到这个小工具", "WIDGET_NOT_FOUND");
+        }
+        if (!store.fullscreenWidget) {
+          return failed("当前环境还不能全屏聚焦小工具", "FULLSCREEN_UNAVAILABLE");
+        }
+        await store.fullscreenWidget(args.widgetId);
+        return success("已全屏聚焦小工具", { widgetId: args.widgetId, widgetType: target.definition?.type });
       }
     }),
     defineAction<WidgetIdArgs>({

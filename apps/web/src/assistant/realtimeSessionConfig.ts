@@ -71,6 +71,18 @@ const initialToolMetadata: InitialToolMetadata[] = [
     parameters: objectSchema({ definitionId: stringSchema(), mobileMode: booleanSchema() }, ["definitionId"])
   },
   {
+    name: "widget.focus",
+    description: "Focus an existing widget on the current Xiaozhuoban board.",
+    scope: "desktop",
+    parameters: objectSchema({ widgetId: stringSchema() }, ["widgetId"])
+  },
+  {
+    name: "widget.fullscreen_focus",
+    description: "Enter fullscreen focus for an existing widget when supported.",
+    scope: "desktop",
+    parameters: objectSchema({ widgetId: stringSchema() }, ["widgetId"])
+  },
+  {
     name: "widget.remove",
     description: "Remove a widget from the current board after confirmation.",
     scope: "desktop",

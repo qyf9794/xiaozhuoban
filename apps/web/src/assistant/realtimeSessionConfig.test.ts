@@ -21,6 +21,8 @@ describe("realtime session config", () => {
     const names = specs.map((tool) => tool.name);
 
     expect(names).toContain("board.add_widget");
+    expect(names).toContain("widget.focus");
+    expect(names).toContain("widget.fullscreen_focus");
     expect(names).toContain("board.auto_align");
     expect(names).toContain("assistant.out_of_scope");
     expect(names).not.toContain("gomoku.play");

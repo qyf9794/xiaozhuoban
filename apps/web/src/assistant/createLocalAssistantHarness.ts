@@ -58,6 +58,24 @@ export function createLocalAssistantHarness(options?: {
     addWidgetInstance: (definitionId: string, widgetOptions?: { mobileMode?: boolean }) =>
       useAppStore.getState().addWidgetInstance(definitionId, widgetOptions),
     removeWidgetInstance: (widgetId: string) => useAppStore.getState().removeWidgetInstance(widgetId),
+    focusWidget: (widgetId: string) => {
+      if (typeof document === "undefined") return;
+      const element = document.querySelector<HTMLElement>(`[data-widget-id="${CSS.escape(widgetId)}"]`);
+      element?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+      element?.animate?.(
+        [
+          { boxShadow: "0 0 0 0 rgba(14, 165, 233, 0)" },
+          { boxShadow: "0 0 0 4px rgba(14, 165, 233, 0.35)" },
+          { boxShadow: "0 0 0 0 rgba(14, 165, 233, 0)" }
+        ],
+        { duration: 900, easing: "ease-out" }
+      );
+    },
+    fullscreenWidget: async (widgetId: string) => {
+      if (typeof document === "undefined") return;
+      const element = document.querySelector<HTMLElement>(`[data-widget-id="${CSS.escape(widgetId)}"]`);
+      await element?.requestFullscreen?.();
+    },
     updateWidgetPosition: (widgetId: string, x: number, y: number) =>
       useAppStore.getState().updateWidgetPosition(widgetId, x, y),
     updateWidgetSize: (widgetId: string, w: number, h: number) => useAppStore.getState().updateWidgetSize(widgetId, w, h),
