@@ -101,6 +101,21 @@ export function shouldHandleRealtimeFunctionCall(
   return true;
 }
 
+export function handleRealtimeFunctionCallEvent(
+  eventData: unknown,
+  handledCallIds: Set<string>,
+  onFunctionCall: ((call: AssistantToolCall) => void | Promise<void>) | undefined
+): void {
+  try {
+    const call = parseRealtimeFunctionCallEvent(eventData);
+    if (shouldHandleRealtimeFunctionCall(call, handledCallIds)) {
+      void onFunctionCall?.(call);
+    }
+  } catch {
+    // Ignore malformed Realtime data-channel messages.
+  }
+}
+
 export function createRealtimeToolResultEvents(call: AssistantToolCall, result: AssistantToolResult): RealtimeEvent[] {
   return [
     {
@@ -309,16 +324,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         }
         this.options.onStatusChange?.("connected");
       };
-      dataChannel.onmessage = (event) => {
-        try {
-          const call = parseRealtimeFunctionCallEvent(event.data);
-          if (shouldHandleRealtimeFunctionCall(call, this.handledFunctionCallIds)) {
-            void this.options.onFunctionCall?.(call);
-          }
-        } catch {
-          // Ignore malformed Realtime data-channel messages.
-        }
-      };
+      dataChannel.onmessage = (event) =>
+        handleRealtimeFunctionCallEvent(event.data, this.handledFunctionCallIds, this.options.onFunctionCall);
       dataChannel.onclose = () => this.options.onStatusChange?.("disconnected");
 
       const offer = await peerConnection.createOffer();

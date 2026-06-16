@@ -7,6 +7,7 @@ import {
   createRealtimeToolResultEvents,
   extractRealtimeSessionErrorCode,
   getMicrophonePermissionState,
+  handleRealtimeFunctionCallEvent,
   isCurrentRealtimeConnectAttempt,
   parseRealtimeFunctionCallEvent,
   resolveMicrophoneAccessErrorCode,
@@ -80,6 +81,43 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(shouldHandleRealtimeFunctionCall(first, handled)).toBe(true);
     expect(shouldHandleRealtimeFunctionCall(duplicate, handled)).toBe(false);
     expect(shouldHandleRealtimeFunctionCall(next, handled)).toBe(true);
+  });
+
+  it("dispatches back-to-back realtime function calls without dropping distinct call ids", () => {
+    const handled = new Set<string>();
+    const calls: string[] = [];
+    const first = {
+      type: "response.function_call_arguments.done",
+      call_id: "call_1",
+      name: "board__dot__add_widget",
+      arguments: "{\"definitionId\":\"wd_note\"}"
+    };
+    const duplicate = {
+      type: "response.output_item.done",
+      item: {
+        type: "function_call",
+        call_id: "call_1",
+        name: "board__dot__add_widget",
+        arguments: "{\"definitionId\":\"wd_note\"}"
+      }
+    };
+    const next = {
+      type: "response.function_call_arguments.done",
+      call_id: "call_2",
+      name: "weather__dot__set_city",
+      arguments: "{\"city\":\"北京\"}"
+    };
+
+    const recordCall = (call: { id: string; name: string }) => {
+      calls.push(`${call.id}:${call.name}`);
+    };
+
+    handleRealtimeFunctionCallEvent(first, handled, recordCall);
+    handleRealtimeFunctionCallEvent(duplicate, handled, recordCall);
+    handleRealtimeFunctionCallEvent("not-json", handled, recordCall);
+    handleRealtimeFunctionCallEvent(next, handled, recordCall);
+
+    expect(calls).toEqual(["call_1:board.add_widget", "call_2:weather.set_city"]);
   });
 
   it("creates function call output and response events", () => {
