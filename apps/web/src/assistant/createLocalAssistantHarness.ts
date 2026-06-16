@@ -31,6 +31,11 @@ function createContextInput(): ContextSummarizerInput {
   return {
     boardId: activeBoard?.id,
     boardName: activeBoard?.name,
+    availableDefinitions: state.widgetDefinitions.map((definition) => ({
+      definitionId: definition.id,
+      type: definition.type,
+      name: definition.name
+    })),
     recentWidgetIds: state.widgetInstances.slice(-3).map((widget) => widget.id),
     widgets: state.widgetInstances.map((widget, index) => {
       const definition = definitionById.get(widget.definitionId);

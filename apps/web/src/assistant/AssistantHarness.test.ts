@@ -54,6 +54,7 @@ function createRegistry() {
   };
 
   register("board.auto_align");
+  register("board.add_widget");
   register("widget.focus");
   register("widget.remove");
   register("note.append");
@@ -67,6 +68,11 @@ function createContextInput(): ContextSummarizerInput {
     boardId: "board_1",
     boardName: "我的桌板",
     focusedWidgetId: "wi_tv",
+    availableDefinitions: [
+      { definitionId: "wd_tv", type: "tv", name: "电视" },
+      { definitionId: "wd_note", type: "note", name: "便签" },
+      { definitionId: "wd_music", type: "music", name: "音乐" }
+    ],
     recentWidgetIds: ["wi_note"],
     widgets: [
       {
@@ -158,6 +164,21 @@ describe("AssistantHarness", () => {
     expect(executed).toEqual([]);
     expect(sentResults[0].status).toBe("needs_confirmation");
     expect(auditEvents[0].route).toBe("shortcut");
+  });
+
+  it("uses full available definitions when opening an absent widget", async () => {
+    const { harness, executed } = createHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("打开音乐");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.call).toMatchObject({
+      name: "board.add_widget",
+      arguments: { definitionId: "wd_music" }
+    });
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["board.add_widget:none"]);
   });
 
   it("confirms and executes a pending action", async () => {

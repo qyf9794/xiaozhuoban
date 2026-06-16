@@ -114,9 +114,10 @@ export class AssistantHarness {
   }
 
   getCurrentContext(): CompactAssistantContext {
+    const input = this.options.getContextInput();
     return this.options.contextSummarizer.summarize({
-      ...this.options.getContextInput(),
-      pendingConfirmation: this.pendingConfirmation ?? this.options.getContextInput().pendingConfirmation
+      ...input,
+      pendingConfirmation: this.pendingConfirmation ?? input.pendingConfirmation
     });
   }
 
@@ -155,12 +156,13 @@ export class AssistantHarness {
   }
 
   private buildShortcutContext(): IntentShortcutContext {
+    const input = this.options.getContextInput();
     const context = this.getCurrentContext();
     return {
       source: "shortcut",
       pendingConfirmation: this.pendingConfirmation ?? undefined,
       availableWidgets: context.widgets,
-      availableDefinitions: context.widgets.map((widget) => ({
+      availableDefinitions: input.availableDefinitions ?? context.widgets.map((widget) => ({
         definitionId: widget.definitionId,
         type: widget.type,
         name: widget.name

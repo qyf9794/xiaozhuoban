@@ -151,6 +151,11 @@ export interface WidgetContextSnapshot {
 export interface ContextSummarizerInput {
   boardId?: string;
   boardName?: string;
+  availableDefinitions?: Array<{
+    definitionId: string;
+    type: string;
+    name: string;
+  }>;
   widgets: WidgetContextSnapshot[];
   focusedWidgetId?: string;
   recentWidgetIds?: string[];
