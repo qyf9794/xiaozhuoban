@@ -1032,6 +1032,24 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
       }
     },
     {
+      name: "clipboard_clear",
+      match(normalized, raw, context) {
+        if (!/(剪贴板|剪贴板历史)/.test(normalized) || !/(清空|清理|清除|删除|移除)/.test(normalized)) {
+          return { matched: false, reason: "not_clipboard_clear" };
+        }
+        const includePinned = /(全部|所有|固定|置顶|包含固定|连固定|一起)/.test(normalized);
+        const widget = findWidgetByType(context, "clipboard");
+        if (!widget) return { matched: false, reason: "clipboard_target_missing" };
+        return shortcutMatch(
+          "clipboard.clear",
+          { widgetId: widget.widgetId, includePinned },
+          0.88,
+          context.source ?? "shortcut",
+          raw
+        );
+      }
+    },
+    {
       name: "message_board_send",
       match(normalized, raw, context) {
         if (!/(留言板|留言区|消息板|留言)/.test(normalized) || !/(发|发送|说|写|发布|留言)/.test(normalized)) {

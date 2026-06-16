@@ -264,11 +264,20 @@ describe("IntentShortcutRouter", () => {
         recent: false
       },
       {
+        widgetId: "wi_clipboard",
+        definitionId: "wd_clipboard",
+        type: "clipboard",
+        name: "剪贴板",
+        order: 9,
+        summary: "3 条剪贴板记录",
+        recent: false
+      },
+      {
         widgetId: "wi_market",
         definitionId: "wd_market",
         type: "market",
         name: "行情",
-        order: 9,
+        order: 10,
         summary: "",
         recent: false
       },
@@ -277,7 +286,7 @@ describe("IntentShortcutRouter", () => {
         definitionId: "wd_worldClock",
         type: "worldClock",
         name: "世界时钟",
-        order: 10,
+        order: 11,
         summary: "",
         recent: false
       },
@@ -286,7 +295,7 @@ describe("IntentShortcutRouter", () => {
         definitionId: "wd_headline",
         type: "headline",
         name: "新闻",
-        order: 11,
+        order: 12,
         summary: "",
         recent: false
       },
@@ -295,7 +304,7 @@ describe("IntentShortcutRouter", () => {
         definitionId: "wd_messageBoard",
         type: "messageBoard",
         name: "留言板",
-        order: 12,
+        order: 13,
         summary: "已连接",
         recent: false
       }
@@ -498,6 +507,28 @@ describe("IntentShortcutRouter", () => {
           arguments: { text: "账号是 demo" }
         }
       });
+    }
+  });
+
+  it("routes clipboard clear commands to clear history instead of closing the widget", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("清空剪贴板历史", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("clipboard.clear");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_clipboard", includePinned: false });
+    }
+  });
+
+  it("routes clipboard clear-all commands with pinned records included", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("把剪贴板全部清空，包含固定项", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("clipboard.clear");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_clipboard", includePinned: true });
     }
   });
 

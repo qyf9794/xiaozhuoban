@@ -266,6 +266,44 @@ describe("widget state assistant actions", () => {
     expect(clearAction?.spec.risk).toBe("destructive");
   });
 
+  it("clears clipboard history while preserving pinned records by default", async () => {
+    const { store, getWidget } = createStore();
+    const registry = createRegistry(store);
+    await registry.execute(
+      { id: "call_1", name: "clipboard.add_text", arguments: { text: "普通记录" }, source: "test" },
+      { target: targetFor("clipboard"), now: () => NOW }
+    );
+    await registry.execute(
+      { id: "call_2", name: "clipboard.add_text", arguments: { text: "固定记录", pinned: true }, source: "test" },
+      { target: targetFor("clipboard"), now: () => NOW }
+    );
+
+    const result = await registry.execute(
+      { id: "call_3", name: "clipboard.clear", arguments: {}, source: "test" },
+      { target: targetFor("clipboard"), now: () => NOW }
+    );
+
+    expect(result).toMatchObject({ status: "success", message: "已清理剪贴板历史" });
+    expect(getWidget("clipboard")?.state.items).toMatchObject([{ text: "固定记录", pinned: true }]);
+  });
+
+  it("clears pinned clipboard records when explicitly requested", async () => {
+    const { store, getWidget } = createStore();
+    const registry = createRegistry(store);
+    await registry.execute(
+      { id: "call_1", name: "clipboard.add_text", arguments: { text: "固定记录", pinned: true }, source: "test" },
+      { target: targetFor("clipboard"), now: () => NOW }
+    );
+
+    const result = await registry.execute(
+      { id: "call_2", name: "clipboard.clear", arguments: { includePinned: true }, source: "test" },
+      { target: targetFor("clipboard"), now: () => NOW }
+    );
+
+    expect(result).toMatchObject({ status: "success", message: "已清理剪贴板历史" });
+    expect(getWidget("clipboard")?.state.items).toEqual([]);
+  });
+
   it("refuses to patch a mismatched widget type", async () => {
     const { store, getWidget } = createStore();
     const registry = createRegistry(store);
