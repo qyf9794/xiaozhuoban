@@ -145,6 +145,10 @@ export function shouldReuseRealtimeConnect(connecting: boolean, dataChannelState
   return connecting || dataChannelState === "connecting" || dataChannelState === "open";
 }
 
+export function isCurrentRealtimeConnectAttempt(activeAttemptId: number, attemptId: number): boolean {
+  return activeAttemptId === attemptId;
+}
+
 export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private peerConnection: RTCPeerConnection | null = null;
   private dataChannel: RTCDataChannel | null = null;
@@ -154,6 +158,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private currentContext: CompactAssistantContext | null = null;
   private handledFunctionCallIds = new Set<string>();
   private connectPromise: Promise<void> | null = null;
+  private connectionAttemptId = 0;
 
   constructor(private readonly options: OpenAIRealtimeWebRtcAdapterOptions = {}) {}
 
@@ -165,13 +170,17 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.closeResources();
     }
 
-    this.connectPromise = this.connectInternal().finally(() => {
-      this.connectPromise = null;
+    const attemptId = this.nextConnectionAttempt();
+    const connectPromise = this.connectInternal(attemptId).finally(() => {
+      if (this.connectPromise === connectPromise) {
+        this.connectPromise = null;
+      }
     });
-    return this.connectPromise;
+    this.connectPromise = connectPromise;
+    return connectPromise;
   }
 
-  private async connectInternal(): Promise<void> {
+  private async connectInternal(attemptId: number): Promise<void> {
     const fetchImpl = this.options.fetchImpl ?? fetch;
     this.options.onStatusChange?.("connecting");
     this.handledFunctionCallIds.clear();
@@ -180,8 +189,15 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
+      if (!this.isCurrentAttempt(attemptId)) {
+        return;
+      }
       this.options.onStatusChange?.("microphone_denied");
       throw new Error("MICROPHONE_DENIED");
+    }
+    if (!this.isCurrentAttempt(attemptId)) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
     }
     this.mediaStream = stream;
 
@@ -203,6 +219,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       const secret = extractClientSecret(await sessionResponse.json());
       if (!secret) {
         throw new Error("REALTIME_CLIENT_SECRET_MISSING");
+      }
+      if (!this.isCurrentAttempt(attemptId)) {
+        return;
       }
 
       const peerConnection = new RTCPeerConnection();
@@ -267,18 +286,35 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       if (!sdpResponse.ok) {
         throw new Error("REALTIME_SDP_FAILED");
       }
+      if (!this.isCurrentAttempt(attemptId)) {
+        peerConnection.close();
+        return;
+      }
       await peerConnection.setRemoteDescription({ type: "answer", sdp: await sdpResponse.text() });
     } catch (error) {
-      this.closeResources();
-      this.options.onStatusChange?.("failed");
-      throw error;
+      if (this.isCurrentAttempt(attemptId)) {
+        this.closeResources();
+        this.options.onStatusChange?.("failed");
+        throw error;
+      }
     }
   }
 
   disconnect(): void {
+    this.nextConnectionAttempt();
+    this.connectPromise = null;
     this.closeResources();
     this.handledFunctionCallIds.clear();
     this.options.onStatusChange?.("disconnected");
+  }
+
+  private nextConnectionAttempt(): number {
+    this.connectionAttemptId += 1;
+    return this.connectionAttemptId;
+  }
+
+  private isCurrentAttempt(attemptId: number): boolean {
+    return isCurrentRealtimeConnectAttempt(this.connectionAttemptId, attemptId);
   }
 
   private closeResources(): void {
