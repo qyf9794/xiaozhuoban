@@ -100,9 +100,16 @@ describe("OpenAI realtime adapter helpers", () => {
 
   it("closes realtime resources and stops local media tracks", () => {
     const calls: string[] = [];
+    const dataChannel = {
+      onclose: () => calls.push("dataChannel.onclose"),
+      close() {
+        calls.push("dataChannel.close");
+        this.onclose?.();
+      }
+    };
 
     closeRealtimeConnectionResources({
-      dataChannel: { close: () => calls.push("dataChannel.close") },
+      dataChannel,
       peerConnection: { close: () => calls.push("peerConnection.close") },
       mediaStream: {
         getTracks: () => [
@@ -113,6 +120,7 @@ describe("OpenAI realtime adapter helpers", () => {
     });
 
     expect(calls).toEqual(["dataChannel.close", "peerConnection.close", "track.one.stop", "track.two.stop"]);
+    expect(dataChannel.onclose).toBeNull();
   });
 
   it("extracts server-side realtime session error codes", () => {

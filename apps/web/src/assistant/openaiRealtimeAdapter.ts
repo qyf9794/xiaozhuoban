@@ -30,7 +30,7 @@ export interface OpenAIRealtimeWebRtcAdapterOptions {
 
 type RealtimeEvent = Record<string, unknown>;
 type RealtimeClosableResources = {
-  dataChannel?: { close: () => void } | null;
+  dataChannel?: { close: () => void; onclose?: unknown } | null;
   peerConnection?: { close: () => void } | null;
   mediaStream?: { getTracks: () => Array<{ stop: () => void }> } | null;
 };
@@ -127,7 +127,10 @@ export function createRealtimeSessionRequestBody(safetyIdentifier: string | unde
 }
 
 export function closeRealtimeConnectionResources(resources: RealtimeClosableResources): void {
-  resources.dataChannel?.close();
+  if (resources.dataChannel) {
+    resources.dataChannel.onclose = null;
+    resources.dataChannel.close();
+  }
   resources.peerConnection?.close();
   resources.mediaStream?.getTracks().forEach((track) => track.stop());
 }
