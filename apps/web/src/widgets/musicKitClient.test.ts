@@ -5,7 +5,8 @@ import {
   formatMusicArtworkUrl,
   isMusicKitAuthorized,
   normalizeITunesTracks,
-  normalizeMusicKitSearchResults
+  normalizeMusicKitSearchResults,
+  searchAppleMusicCatalog
 } from "./musicKitClient";
 
 describe("musicKitClient", () => {
@@ -136,5 +137,50 @@ describe("musicKitClient", () => {
     expect(isMusicKitAuthorized(undefined)).toBe(false);
     expect(isMusicKitAuthorized({ isAuthorized: false } as never)).toBe(false);
     expect(isMusicKitAuthorized({ isAuthorized: true } as never)).toBe(true);
+  });
+
+  it("searches through the legacy MusicKit search method when available", async () => {
+    const calls: unknown[] = [];
+    const payload = { songs: { data: [] } };
+    const music = {
+      authorize: async () => "user-token",
+      setQueue: async () => undefined,
+      play: async () => undefined,
+      pause: () => undefined,
+      api: {
+        search: async (term: string, options: { types: string; limit: number }) => {
+          calls.push({ term, options });
+          return payload;
+        }
+      }
+    };
+
+    await expect(searchAppleMusicCatalog(music, " 周杰伦 ", { types: "songs,albums,playlists", limit: 18 })).resolves.toBe(payload);
+    expect(calls).toEqual([{ term: "周杰伦", options: { types: "songs,albums,playlists", limit: 18 } }]);
+  });
+
+  it("searches through the MusicKit v3 passthrough API when search is absent", async () => {
+    const calls: unknown[] = [];
+    const payload = { songs: { data: [] } };
+    const music = {
+      authorize: async () => "user-token",
+      setQueue: async () => undefined,
+      play: async () => undefined,
+      pause: () => undefined,
+      api: {
+        music: async (path: string, params?: Record<string, string | number>) => {
+          calls.push({ path, params });
+          return payload;
+        }
+      }
+    };
+
+    await expect(searchAppleMusicCatalog(music, "周杰伦", { types: "songs,albums,playlists", limit: 18 })).resolves.toBe(payload);
+    expect(calls).toEqual([
+      {
+        path: "/v1/catalog/{{storefrontId}}/search",
+        params: { term: "周杰伦", types: "songs,albums,playlists", limit: 18 }
+      }
+    ]);
   });
 });

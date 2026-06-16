@@ -34,6 +34,12 @@ type MusicKitResource = {
   };
 };
 
+type MusicKitSearchOptions = { types: string; limit: number };
+type MusicKitApiLike = {
+  search?: (term: string, options: MusicKitSearchOptions) => Promise<unknown>;
+  music?: (path: string, params?: Record<string, string | number>) => Promise<unknown>;
+};
+
 export type MusicKitInstanceLike = {
   authorize: () => Promise<string>;
   unauthorize?: () => Promise<void>;
@@ -42,9 +48,8 @@ export type MusicKitInstanceLike = {
   pause: () => Promise<unknown> | void;
   skipToNextItem?: () => Promise<unknown>;
   isAuthorized?: boolean;
-  api?: {
-    search: (term: string, options: { types: string; limit: number }) => Promise<unknown>;
-  };
+  storefrontId?: string;
+  api?: MusicKitApiLike;
 };
 
 type MusicKitGlobal = {
@@ -128,6 +133,28 @@ export function createMusicKitQueueDescriptor(item: MusicSearchItem): Record<str
 
 export function isMusicKitAuthorized(music: MusicKitInstanceLike | null | undefined): boolean {
   return music?.isAuthorized === true;
+}
+
+export async function searchAppleMusicCatalog(music: MusicKitInstanceLike, term: string, options: MusicKitSearchOptions): Promise<unknown> {
+  const keyword = term.trim();
+  if (!keyword) return {};
+  const api = music.api;
+  if (typeof api?.search === "function") {
+    return api.search(keyword, options);
+  }
+  if (typeof api?.music === "function") {
+    const params = { term: keyword, types: options.types, limit: options.limit };
+    try {
+      return await api.music("/v1/catalog/{{storefrontId}}/search", params);
+    } catch (error) {
+      const storefront = music.storefrontId?.trim() || "us";
+      if (String(error instanceof Error ? error.message : error).includes("{{storefrontId}}")) {
+        return api.music(`/v1/catalog/${storefront}/search`, params);
+      }
+      throw error;
+    }
+  }
+  throw new Error("MusicKit SDK 不支持目录搜索");
 }
 
 export function loadMusicKitScript(windowLike: Window = window): Promise<MusicKitGlobal> {

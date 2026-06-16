@@ -21,6 +21,7 @@ import {
   isMusicKitAuthorized,
   normalizeITunesTracks,
   normalizeMusicKitSearchResults,
+  searchAppleMusicCatalog,
   type ITunesTrack,
   type MusicKitInstanceLike,
   type MusicSearchItem
@@ -3169,7 +3170,7 @@ export function BuiltinWidgetView({
       setError("");
       try {
         const items = musicKitAvailable
-          ? normalizeMusicKitSearchResults(await (await ensureMusicKit()).api?.search(keyword, { types: "songs,albums,playlists", limit: 18 }))
+          ? normalizeMusicKitSearchResults(await searchAppleMusicCatalog(await ensureMusicKit(), keyword, { types: "songs,albums,playlists", limit: 18 }))
           : normalizeITunesTracks(await searchITunesTracks(keyword));
         if (seq !== searchSeqRef.current) return [];
         setResults(items);
