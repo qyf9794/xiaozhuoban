@@ -354,15 +354,22 @@ function extractToolCall(payload: unknown, allowedToolNames: Set<string>) {
   };
 }
 
-async function requestOpenAI(apiKey: string, payload: unknown) {
-  return fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
+async function requestOpenAI(apiKey: string, payload: unknown, timeoutMs = 6_000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export default async function handler(request: IncomingMessage, response: ServerResponse) {
