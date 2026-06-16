@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createLayoutEngine, fromWidgetInstances } from "@xiaozhuoban/layout-engine";
 import type { Board, WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { AIFormWidgetView, BuiltinWidgetView } from "../widgets/BuiltinWidgets";
+import type { WidgetCapabilityBridge } from "../assistant/widgetCapabilityBridge";
 import { clampTvWidgetSize } from "../widgets/tvShared";
 
 interface DragState {
@@ -40,13 +41,15 @@ export function BoardCanvas({
   onMove,
   onResize,
   onStateChange,
-  onRemoveWidget
+  onRemoveWidget,
+  assistantCapabilityBridge
 }: {
   board: Board;
   definitions: WidgetDefinition[];
   widgets: WidgetInstance[];
   fullscreen?: boolean;
   isMobileMode?: boolean;
+  assistantCapabilityBridge?: WidgetCapabilityBridge;
   onMove: (widgetId: string, x: number, y: number) => void;
   onResize: (widgetId: string, w: number, h: number) => void;
   onStateChange: (widgetId: string, state: Record<string, unknown>) => void;
@@ -413,6 +416,7 @@ export function BoardCanvas({
                 definition={definition}
                 instance={widget}
                 isMobileMode={isMobileMode}
+                assistantCapabilityBridge={assistantCapabilityBridge}
                 onStateChange={(nextState) => onStateChange(widget.id, nextState)}
               />
             )}

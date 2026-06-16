@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEv
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { Button, Card } from "@xiaozhuoban/ui";
+import type { WidgetCapabilityBridge } from "../assistant/widgetCapabilityBridge";
 import { WidgetShell } from "./WidgetShell";
 import {
   buildDialClockMarkStates,
@@ -1919,11 +1920,13 @@ export function BuiltinWidgetView({
   definition,
   instance,
   isMobileMode = false,
+  assistantCapabilityBridge,
   onStateChange
 }: {
   definition: WidgetDefinition;
   instance: WidgetInstance;
   isMobileMode?: boolean;
+  assistantCapabilityBridge?: WidgetCapabilityBridge;
   onStateChange: (nextState: Record<string, unknown>) => void;
 }) {
   if (definition.type === "note") {
@@ -3401,6 +3404,65 @@ export function BuiltinWidgetView({
       // cleanup only on unmount
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    useEffect(() => {
+      if (!assistantCapabilityBridge) return undefined;
+
+      const selectChannel = (args: Record<string, unknown>) => {
+        const channelName = typeof args.channelName === "string" ? args.channelName.trim() : "";
+        const channelUrl = typeof args.channelUrl === "string" ? args.channelUrl.trim() : "";
+        const selected =
+          (channelUrl ? channels.find((channel) => channel.url === channelUrl) : null) ??
+          (channelName ? channels.find((channel) => channel.name.includes(channelName) || channelName.includes(channel.name)) : null) ??
+          (channelUrl || channelName ? null : channels[0]);
+
+        if (!selected && !channelUrl) {
+          return { status: "failed" as const, message: "没有找到这个电视频道", errorCode: "TV_CHANNEL_NOT_FOUND" };
+        }
+
+        const nextUrl = selected?.url ?? channelUrl;
+        const nextName = selected?.name ?? channelName;
+        setPlaybackError("");
+        onStateChange({
+          ...latestStateRef.current,
+          selectedChannelUrl: nextUrl,
+          selectedChannelName: nextName
+        });
+        return { status: "success" as const, message: "已切换电视频道", data: { channelName: nextName, channelUrl: nextUrl } };
+      };
+
+      return assistantCapabilityBridge.register(instance.id, {
+        async play(args) {
+          const selected = selectChannel(args);
+          if (selected.status !== "success") return selected;
+          const video = videoRef.current;
+          if (!video) {
+            return { status: "failed", message: "电视播放器还没有准备好", errorCode: "TV_PLAYER_NOT_READY" };
+          }
+          try {
+            await video.play();
+          } catch {
+            return { status: "success", message: "已选择频道，请手动点击播放", data: selected.data };
+          }
+          return { status: "success", message: "已播放电视", data: selected.data };
+        },
+        pause() {
+          videoRef.current?.pause();
+          return { status: "success", message: "已暂停电视" };
+        },
+        selectChannel(args) {
+          return selectChannel(args);
+        },
+        async fullscreen() {
+          const video = videoRef.current;
+          if (!video?.requestFullscreen) {
+            return { status: "failed", message: "当前浏览器不支持电视全屏", errorCode: "TV_FULLSCREEN_UNAVAILABLE" };
+          }
+          await video.requestFullscreen();
+          return { status: "success", message: "已全屏电视" };
+        }
+      });
+    }, [assistantCapabilityBridge, channels, instance.id, onStateChange]);
 
     useEffect(() => {
       const video = videoRef.current;
