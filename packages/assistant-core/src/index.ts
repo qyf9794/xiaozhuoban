@@ -259,7 +259,7 @@ export class ActionRegistry {
     }
 
     const parsed = action.spec.parameters.safeParse(call.arguments);
-    if (!parsed.success) {
+    if (parsed.success === false) {
       return {
         status: "failed",
         message: formatSchemaError(parsed.error),
@@ -648,9 +648,18 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         }
         const definition = findDefinitionByType(context, "weather");
         if (definition) {
+          const args = cityName
+            ? {
+                definitionId: definition.definitionId,
+                followUp: {
+                  name: "weather.set_city",
+                  arguments: { city: cityName }
+                }
+              }
+            : { definitionId: definition.definitionId };
           return shortcutMatch(
             "board.add_widget",
-            { definitionId: definition.definitionId },
+            args,
             cityName ? 0.82 : 0.78,
             context.source ?? "shortcut",
             raw
@@ -681,7 +690,13 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         if (definition) {
           return shortcutMatch(
             "board.add_widget",
-            { definitionId: definition.definitionId },
+            {
+              definitionId: definition.definitionId,
+              followUp: {
+                name: "countdown.set",
+                arguments: { totalSeconds: minutes * 60, start: true }
+              }
+            },
             0.75,
             context.source ?? "shortcut",
             raw

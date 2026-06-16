@@ -48,6 +48,7 @@ function createStore(seed?: { definitions?: WidgetDefinition[]; widgets?: Widget
     getWidgetInstances: () => widgets,
     addWidgetInstance: (...args) => {
       calls.push({ name: "addWidgetInstance", args });
+      return makeWidget("weather", { id: "wi_weather_added", definitionId: String(args[0]) });
     },
     removeWidgetInstance: (...args) => {
       calls.push({ name: "removeWidgetInstance", args });
@@ -137,6 +138,7 @@ describe("registerBoardActions", () => {
     });
 
     expect(result.status).toBe("success");
+    expect(result.data).toMatchObject({ definitionId: "wd_weather", widgetId: "wi_weather_added" });
     expect(calls).toEqual([{ name: "addWidgetInstance", args: ["wd_weather", { mobileMode: true }] }]);
   });
 

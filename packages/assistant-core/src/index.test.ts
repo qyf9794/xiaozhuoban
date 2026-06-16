@@ -274,6 +274,26 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes weather city commands to add-and-set when the widget is absent", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("上海天气", {
+      ...context,
+      availableWidgets: context.availableWidgets?.filter((widget) => widget.type !== "weather")
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("board.add_widget");
+      expect(result.toolCall.arguments).toEqual({
+        definitionId: "wd_weather",
+        followUp: {
+          name: "weather.set_city",
+          arguments: { city: "上海" }
+        }
+      });
+    }
+  });
+
   it("routes countdown duration commands", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("十分钟倒计时", context);
@@ -282,6 +302,26 @@ describe("IntentShortcutRouter", () => {
     if (result.matched) {
       expect(result.toolCall.name).toBe("countdown.set");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_countdown", totalSeconds: 600, start: true });
+    }
+  });
+
+  it("routes countdown duration commands to add-and-start when the widget is absent", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("十分钟倒计时", {
+      ...context,
+      availableWidgets: context.availableWidgets?.filter((widget) => widget.type !== "countdown")
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("board.add_widget");
+      expect(result.toolCall.arguments).toEqual({
+        definitionId: "wd_countdown",
+        followUp: {
+          name: "countdown.set",
+          arguments: { totalSeconds: 600, start: true }
+        }
+      });
     }
   });
 

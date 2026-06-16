@@ -60,6 +60,7 @@ export interface AssistantHarnessResponse {
 
 const CONFIRM_TOOL = "assistant.confirm";
 const CANCEL_TOOL = "assistant.cancel";
+const ADD_WIDGET_TOOL = "board.add_widget";
 
 function createId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -218,6 +219,10 @@ export class AssistantHarness {
     }
 
     const result = await this.executeRegistryCall(call, target.target);
+    const followUpResult = await this.executeAddWidgetFollowUp(call, result);
+    if (followUpResult) {
+      return followUpResult;
+    }
     await this.syncWidgetDetailToolsAfterSuccess(call, spec, target.target, result);
     return result;
   }
@@ -333,6 +338,53 @@ export class AssistantHarness {
     }
     this.currentTools = nextTools;
     await this.options.realtime.updateTools(this.currentTools);
+  }
+
+  private async executeAddWidgetFollowUp(
+    call: AssistantToolCall,
+    result: AssistantToolResult
+  ): Promise<AssistantToolResult | null> {
+    if (call.name !== ADD_WIDGET_TOOL || result.status !== "success" || !isRecord(call.arguments)) {
+      return null;
+    }
+
+    const followUp = isRecord(call.arguments.followUp) ? call.arguments.followUp : null;
+    if (!followUp || typeof followUp.name !== "string") {
+      return null;
+    }
+
+    const spec = this.options.registry.get(followUp.name);
+    if (!spec || spec.scope !== "widget-detail" || spec.risk === "confirm" || spec.risk === "destructive") {
+      return null;
+    }
+
+    const data = isRecord(result.data) ? result.data : null;
+    const widgetId = typeof data?.widgetId === "string" ? data.widgetId : "";
+    const widgetType = typeof data?.widgetType === "string" ? data.widgetType : "";
+    if (!widgetId || (spec.widgetType && spec.widgetType !== widgetType)) {
+      return null;
+    }
+
+    const followUpArgs = isRecord(followUp.arguments) ? followUp.arguments : {};
+    const followUpCall: AssistantToolCall = {
+      id: `${call.id}_followup`,
+      name: followUp.name,
+      arguments: { ...followUpArgs, widgetId },
+      source: call.source,
+      transcript: call.transcript
+    };
+    const followUpResult = await this.executeCall(followUpCall);
+    return {
+      ...followUpResult,
+      message:
+        followUpResult.status === "success"
+          ? `${result.message}，${followUpResult.message}`
+          : followUpResult.message,
+      data: {
+        addWidget: result.data,
+        followUp: followUpResult.data
+      }
+    };
   }
 
   private getWidgetTypeFromCallArguments(args: unknown): string | undefined {

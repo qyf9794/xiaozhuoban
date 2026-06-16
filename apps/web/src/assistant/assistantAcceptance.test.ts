@@ -50,9 +50,9 @@ function widget(type: string): WidgetInstance {
   };
 }
 
-function createAcceptanceHarness(modelCall?: AssistantToolCall | null) {
+function createAcceptanceHarness(options?: { modelCall?: AssistantToolCall | null; initialWidgetTypes?: string[] }) {
   const definitions = [definition("weather", "天气"), definition("countdown", "倒计时"), definition("note", "便签")];
-  let widgets = [widget("weather"), widget("countdown"), widget("note")];
+  let widgets = (options?.initialWidgetTypes ?? ["weather", "countdown", "note"]).map(widget);
   const sentResults: AssistantToolResult[] = [];
   const modelInputs: string[] = [];
   const registry = new ActionRegistry();
@@ -61,7 +61,10 @@ function createAcceptanceHarness(modelCall?: AssistantToolCall | null) {
     getWidgetDefinitions: () => definitions,
     addWidgetInstance(definitionId: string) {
       const target = definitions.find((item) => item.id === definitionId);
-      if (target) widgets = [...widgets, widget(target.type)];
+      if (!target) return undefined;
+      const instance = widget(target.type);
+      widgets = [...widgets, instance];
+      return instance;
     },
     removeWidgetInstance(widgetId: string) {
       widgets = widgets.filter((item) => item.id !== widgetId);
@@ -87,13 +90,18 @@ function createAcceptanceHarness(modelCall?: AssistantToolCall | null) {
     },
     requestToolCall(input) {
       modelInputs.push(input);
-      return modelCall ?? null;
+      return options?.modelCall ?? null;
     }
   };
   const getContextInput = (): ContextSummarizerInput => ({
     boardId: "board_1",
     boardName: "我的桌板",
     focusedWidgetId: "wi_weather",
+    availableDefinitions: definitions.map((item) => ({
+      definitionId: item.id,
+      type: item.type,
+      name: item.name
+    })),
     widgets: widgets.map((item, index) => {
       const def = definitions.find((candidate) => candidate.id === item.definitionId)!;
       return {
@@ -139,8 +147,35 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(modelInputs).toEqual([]);
   });
 
+  it("adds a weather widget and sets Shanghai when weather is absent", async () => {
+    const { harness, modelInputs, getWidget } = createAcceptanceHarness({ initialWidgetTypes: ["countdown", "note"] });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("打开上海天气");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(getWidget("weather")?.state.cityCode).toBe("shanghai");
+    expect(modelInputs).toEqual([]);
+  });
+
   it("sets the countdown to ten minutes and starts it", async () => {
     const { harness, getWidget } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("十分钟倒计时");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(getWidget("countdown")?.state).toMatchObject({
+      totalSeconds: 600,
+      remainingSeconds: 600,
+      running: true
+    });
+  });
+
+  it("adds a countdown widget and starts ten minutes when countdown is absent", async () => {
+    const { harness, getWidget } = createAcceptanceHarness({ initialWidgetTypes: ["weather", "note"] });
     await harness.initialize();
 
     const response = await harness.handleUserInput("十分钟倒计时");

@@ -111,7 +111,14 @@ const initialToolMetadata: InitialToolMetadata[] = [
     name: "board.add_widget",
     description: "Add an existing widget definition to the current Xiaozhuoban board.",
     scope: "desktop",
-    parameters: objectSchema({ definitionId: stringSchema(), mobileMode: booleanSchema() }, ["definitionId"])
+    parameters: objectSchema(
+      {
+        definitionId: stringSchema(),
+        mobileMode: booleanSchema(),
+        followUp: objectSchema({ name: stringSchema(), arguments: objectSchema({}, undefined, true) }, ["name"])
+      },
+      ["definitionId"]
+    )
   },
   {
     name: "widget.focus",
@@ -211,12 +218,12 @@ function booleanSchema() {
   return { type: "boolean" };
 }
 
-function objectSchema(properties: Record<string, unknown>, required?: string[]): JsonObjectSchema {
+function objectSchema(properties: Record<string, unknown>, required?: string[], additionalProperties = false): JsonObjectSchema {
   return {
     type: "object",
     properties,
     ...(required?.length ? { required } : {}),
-    additionalProperties: false
+    additionalProperties
   };
 }
 

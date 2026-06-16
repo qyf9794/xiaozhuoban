@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { IncomingHttpHeaders } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import handler, { createOpenAISafetyIdentifier } from "./session";
+import handler, { createOpenAISafetyIdentifier } from "./session.js";
 
 class MockRequest extends EventEmitter {
   method = "POST";

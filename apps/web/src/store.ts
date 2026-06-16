@@ -290,7 +290,7 @@ interface AppState {
   deleteBoard: (boardId: string) => Promise<void>;
   setBoardWallpaper: (imageDataUrl: string) => Promise<void>;
   setActiveBoard: (boardId: string) => Promise<void>;
-  addWidgetInstance: (definitionId: string, options?: { mobileMode?: boolean }) => Promise<void>;
+  addWidgetInstance: (definitionId: string, options?: { mobileMode?: boolean }) => Promise<WidgetInstance | undefined>;
   removeWidgetInstance: (widgetId: string) => Promise<void>;
   updateWidgetPosition: (widgetId: string, x: number, y: number) => Promise<void>;
   updateWidgetSize: (widgetId: string, w: number, h: number) => Promise<void>;
@@ -870,7 +870,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   async addWidgetInstance(definitionId, options) {
     const { repository, activeBoardId, widgetInstances, widgetDefinitions } = get();
     if (!activeBoardId) {
-      return;
+      return undefined;
     }
     const definition = widgetDefinitions.find((item) => item.id === definitionId);
     const defaultSize = getDefaultWidgetSize(definition?.type);
@@ -895,6 +895,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
     set({ widgetInstances: [...widgetInstances, instance] });
     persistInBackground(repository.upsertInstance(instance), "add widget");
+    return instance;
   },
   async removeWidgetInstance(widgetId) {
     const { repository, widgetInstances } = get();

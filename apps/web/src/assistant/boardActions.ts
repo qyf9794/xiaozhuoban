@@ -7,7 +7,14 @@ import {
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { clampTvWidgetSize } from "../widgets/tvShared";
 
-type AddWidgetArgs = { definitionId: string; mobileMode?: boolean };
+type AddWidgetArgs = {
+  definitionId: string;
+  mobileMode?: boolean;
+  followUp?: {
+    name: string;
+    arguments?: Record<string, unknown>;
+  };
+};
 type WidgetIdArgs = { widgetId: string };
 type MoveWidgetArgs = WidgetIdArgs & { x: number; y: number };
 type ResizeWidgetArgs = WidgetIdArgs & { w: number; h: number };
@@ -19,7 +26,10 @@ type RenameBoardArgs = { boardId: string; name: string };
 export interface BoardActionStore {
   getWidgetInstances: () => WidgetInstance[];
   getWidgetDefinitions: () => WidgetDefinition[];
-  addWidgetInstance: (definitionId: string, options?: { mobileMode?: boolean }) => Promise<void> | void;
+  addWidgetInstance: (
+    definitionId: string,
+    options?: { mobileMode?: boolean }
+  ) => Promise<WidgetInstance | undefined | void> | WidgetInstance | undefined | void;
   removeWidgetInstance: (widgetId: string) => Promise<void> | void;
   updateWidgetPosition: (widgetId: string, x: number, y: number) => Promise<void> | void;
   updateWidgetSize: (widgetId: string, w: number, h: number) => Promise<void> | void;
@@ -58,7 +68,11 @@ const addWidgetSchema = parseWith<AddWidgetArgs>(
   (value): value is AddWidgetArgs =>
     isRecord(value) &&
     hasString(value, "definitionId") &&
-    (value.mobileMode === undefined || typeof value.mobileMode === "boolean")
+    (value.mobileMode === undefined || typeof value.mobileMode === "boolean") &&
+    (value.followUp === undefined ||
+      (isRecord(value.followUp) &&
+        hasString(value.followUp, "name") &&
+        (value.followUp.arguments === undefined || isRecord(value.followUp.arguments))))
 );
 
 const widgetIdSchema = parseWith<WidgetIdArgs>(
@@ -140,8 +154,13 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         scope: "desktop"
       },
       async execute(args) {
-        await store.addWidgetInstance(args.definitionId, { mobileMode: args.mobileMode });
-        return success("已添加小工具", { definitionId: args.definitionId });
+        const widget = await store.addWidgetInstance(args.definitionId, { mobileMode: args.mobileMode });
+        const definition = store.getWidgetDefinitions().find((item) => item.id === args.definitionId);
+        return success("已添加小工具", {
+          definitionId: args.definitionId,
+          widgetId: widget?.id,
+          widgetType: definition?.type
+        });
       }
     }),
     defineAction<WidgetIdArgs>({

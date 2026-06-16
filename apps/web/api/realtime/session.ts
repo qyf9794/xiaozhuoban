@@ -4,7 +4,7 @@ import {
   OPENAI_REALTIME_CLIENT_SECRET_URL,
   createRealtimeClientSecretPayload,
   type RealtimeSessionOptions
-} from "../../src/assistant/realtimeSessionConfig";
+} from "../../src/assistant/realtimeSessionConfig.js";
 
 type JsonValue = Record<string, unknown> | unknown[] | string | number | boolean | null;
 type RealtimeSessionRequestOptions = RealtimeSessionOptions & {
