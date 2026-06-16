@@ -52,8 +52,8 @@ type MusicKitGlobal = {
     developerToken: string;
     app: { name: string; build: string };
     suppressErrorDialog?: boolean;
-  }) => MusicKitInstanceLike;
-  getInstance: () => MusicKitInstanceLike;
+  }) => MusicKitInstanceLike | undefined;
+  getInstance?: () => MusicKitInstanceLike | undefined;
 };
 
 declare global {
@@ -126,6 +126,10 @@ export function createMusicKitQueueDescriptor(item: MusicSearchItem): Record<str
   return { song: item.id };
 }
 
+export function isMusicKitAuthorized(music: MusicKitInstanceLike | null | undefined): boolean {
+  return music?.isAuthorized === true;
+}
+
 export function loadMusicKitScript(windowLike: Window = window): Promise<MusicKitGlobal> {
   if (windowLike.MusicKit) return Promise.resolve(windowLike.MusicKit);
   if (windowLike.__xiaozhuobanMusicKitScriptPromise) return windowLike.__xiaozhuobanMusicKitScriptPromise;
@@ -154,10 +158,14 @@ export async function configureMusicKit(developerToken: string, windowLike: Wind
     throw new Error("未配置 Apple Music Developer Token");
   }
   const musicKit = await loadMusicKitScript(windowLike);
-  musicKit.configure({
+  const configured = musicKit.configure({
     developerToken: token,
     app: { name: "小桌板", build: "xiaozhuoban-web" },
     suppressErrorDialog: true
   });
-  return musicKit.getInstance();
+  const instance = musicKit.getInstance?.() ?? configured;
+  if (!instance) {
+    throw new Error("MusicKit SDK 未返回播放器实例");
+  }
+  return instance;
 }

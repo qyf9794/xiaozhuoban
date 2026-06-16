@@ -18,6 +18,7 @@ import {
   configureMusicKit,
   createMusicKitQueueDescriptor,
   getMusicKitDeveloperToken,
+  isMusicKitAuthorized,
   normalizeITunesTracks,
   normalizeMusicKitSearchResults,
   type ITunesTrack,
@@ -3138,7 +3139,7 @@ export function BuiltinWidgetView({
       if (musicKitRef.current) return musicKitRef.current;
       const music = await configureMusicKit(musicKitDeveloperToken);
       musicKitRef.current = music;
-      setMusicKitStatus(music.isAuthorized ? "Apple Music 已登录" : "Apple Music 待登录");
+      setMusicKitStatus(isMusicKitAuthorized(music) ? "Apple Music 已登录" : "Apple Music 待登录");
       return music;
     };
 
