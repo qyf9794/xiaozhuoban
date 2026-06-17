@@ -293,7 +293,7 @@ describe("OpenAI realtime adapter helpers", () => {
         description: "删除小工具",
         parameters: createPassthroughSchema<Record<string, unknown>>(),
         scope: "desktop",
-        risk: "destructive",
+        risk: "safe",
         requiresTarget: true
       },
       {
@@ -404,7 +404,7 @@ describe("OpenAI realtime adapter helpers", () => {
           description: "删除小工具",
           parameters: createPassthroughSchema<Record<string, unknown>>(),
           scope: "desktop",
-          risk: "destructive",
+          risk: "safe",
           requiresTarget: true
         }
       ]

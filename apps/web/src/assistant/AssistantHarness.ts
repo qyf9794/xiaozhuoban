@@ -72,6 +72,10 @@ export interface AssistantHarnessResponse {
 const CONFIRM_TOOL = "assistant.confirm";
 const CANCEL_TOOL = "assistant.cancel";
 const ADD_WIDGET_TOOL = "board.add_widget";
+const SEQUENTIAL_CONNECTOR_PATTERN = /(?:，|,|。|；|;)?\s*(?:然后|接着|随后|再)\s*/;
+const PARALLEL_CONNECTOR_PATTERN = /(?:，|,|。|；|;)?\s*(?:同时|与此同时)\s*/;
+const CLOSE_MULTI_CONNECTOR_PATTERN = /(?:和|以及|还有|跟|与)/;
+const CLOSE_COMMAND_PATTERN = /(关闭|关掉|关上|关了|收起|删掉|删除|移除|去掉|关)/;
 
 function createId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -106,10 +110,88 @@ function removeTargetText(args: unknown) {
   return next;
 }
 
+function cleanCommandSegment(segment: string) {
+  return segment
+    .replace(/^[\s，,。；;]+|[\s，,。；;]+$/g, "")
+    .replace(/^(先|请|帮我|麻烦|麻烦你)\s*/, "")
+    .trim();
+}
+
+function splitShortcutCommandGroups(input: string): string[][] {
+  const closeGroups = splitCloseMultiTargetCommand(input);
+  if (closeGroups.length) {
+    return closeGroups;
+  }
+  if (!SEQUENTIAL_CONNECTOR_PATTERN.test(input) && !PARALLEL_CONNECTOR_PATTERN.test(input)) {
+    return [];
+  }
+  return input
+    .split(SEQUENTIAL_CONNECTOR_PATTERN)
+    .map((part) => part.split(PARALLEL_CONNECTOR_PATTERN).map(cleanCommandSegment).filter(Boolean))
+    .filter((group) => group.length > 0);
+}
+
+function splitCloseMultiTargetCommand(input: string): string[][] {
+  const closeVerb = input.match(CLOSE_COMMAND_PATTERN)?.[1] ?? "";
+  if (!closeVerb || !CLOSE_MULTI_CONNECTOR_PATTERN.test(input)) {
+    return [];
+  }
+  const entries: Array<{ type: string; aliases: string[] }> = [
+    { type: "music", aliases: ["音乐", "歌曲", "歌", "播放器"] },
+    { type: "weather", aliases: ["天气"] },
+    { type: "tv", aliases: ["电视", "直播"] },
+    { type: "note", aliases: ["便签", "笔记"] },
+    { type: "todo", aliases: ["待办", "任务"] },
+    { type: "clipboard", aliases: ["剪贴板"] },
+    { type: "calculator", aliases: ["计算器", "计算"] },
+    { type: "countdown", aliases: ["倒计时", "计时器"] },
+    { type: "headline", aliases: ["新闻", "头条"] },
+    { type: "market", aliases: ["指数", "行情", "市场"] },
+    { type: "worldClock", aliases: ["世界时钟", "时区"] },
+    { type: "dialClock", aliases: ["时钟", "表盘"] },
+    { type: "translate", aliases: ["翻译"] },
+    { type: "converter", aliases: ["换算", "单位"] },
+    { type: "recorder", aliases: ["录音"] },
+    { type: "messageBoard", aliases: ["留言板", "留言"] }
+  ];
+  const matches = entries
+    .flatMap((entry) =>
+      entry.aliases.map((alias) => ({
+        type: entry.type,
+        alias,
+        index: input.indexOf(alias)
+      }))
+    )
+    .filter((item) => item.index >= 0)
+    .sort((a, b) => a.index - b.index)
+    .filter((item, index, items) => items.findIndex((candidate) => candidate.type === item.type) === index);
+  if (matches.length < 2) {
+    return [];
+  }
+  return matches.map((item) => [`${closeVerb}${item.alias}`]);
+}
+
+type AddedWidgetData = {
+  definitionId: string;
+  widgetId: string;
+  widgetType: string;
+};
+
+function extractAddedWidgetData(result: AssistantToolResult): AddedWidgetData | null {
+  const data = isRecord(result.data) ? result.data : null;
+  const addWidget = isRecord(data?.addWidget) ? data.addWidget : data;
+  const definitionId = typeof addWidget?.definitionId === "string" ? addWidget.definitionId : "";
+  const widgetId = typeof addWidget?.widgetId === "string" ? addWidget.widgetId : "";
+  const widgetType = typeof addWidget?.widgetType === "string" ? addWidget.widgetType : "";
+  return definitionId && widgetId && widgetType ? { definitionId, widgetId, widgetType } : null;
+}
+
 export class AssistantHarness {
   private pendingConfirmation: ConfirmationRequest | null = null;
   private currentTools: AssistantToolSpec[] = [];
   private initialized = false;
+  private transientWidgetTargets = new Map<string, ResolvedWidgetTarget>();
+  private queuedShortcutPlanGroups: AssistantToolCall[][] = [];
 
   constructor(private readonly options: AssistantHarnessOptions) {}
 
@@ -146,10 +228,35 @@ export class AssistantHarness {
   async handleUserInput(input: string): Promise<AssistantHarnessResponse> {
     const startedAt = Date.now();
     const shortcutContext = this.buildShortcutContext();
+    const segmentedShortcut = this.hasSegmentedShortcutInput(input);
+    const shortcutPlan = this.buildShortcutPlan(input, shortcutContext);
+    if (shortcutPlan) {
+      return this.handleShortcutPlan(shortcutPlan, startedAt);
+    }
+
+    if (!segmentedShortcut) {
     const shortcut = this.options.shortcutRouter.route(input, shortcutContext);
     if (shortcut.matched) {
-      const result = await this.handleFunctionCall(shortcut.toolCall, "shortcut", startedAt);
-      return result;
+      const response = await this.handleFunctionCall(shortcut.toolCall, "shortcut", startedAt);
+      if (shortcut.toolCall.name === CONFIRM_TOOL && response.result.status === "success" && this.queuedShortcutPlanGroups.length) {
+        const queued = this.queuedShortcutPlanGroups;
+        this.queuedShortcutPlanGroups = [];
+        const queuedResponse = await this.handleShortcutPlan(queued, startedAt);
+        return {
+          route: "shortcut",
+          call: response.call,
+          result: {
+            ...queuedResponse.result,
+            message: [response.result.message, queuedResponse.result.message].filter(Boolean).join("；"),
+            data: {
+              confirmed: response.result,
+              queued: queuedResponse.result
+            }
+          }
+        };
+      }
+      return response;
+    }
     }
 
     const context = this.getCurrentContext();
@@ -164,6 +271,96 @@ export class AssistantHarness {
     }
 
     return this.handleFunctionCall(modelCall, "model", startedAt);
+  }
+
+  private hasSegmentedShortcutInput(input: string): boolean {
+    const groups = splitShortcutCommandGroups(input);
+    return groups.reduce((count, group) => count + group.length, 0) >= 2;
+  }
+
+  private buildShortcutPlan(input: string, context: IntentShortcutContext): AssistantToolCall[][] | null {
+    if (this.pendingConfirmation) {
+      return null;
+    }
+    const groups = splitShortcutCommandGroups(input);
+    const segmentCount = groups.reduce((count, group) => count + group.length, 0);
+    if (segmentCount < 2) {
+      return null;
+    }
+    const calls: AssistantToolCall[][] = [];
+    for (const group of groups) {
+      const groupCalls: AssistantToolCall[] = [];
+      for (const segment of group) {
+        const routed = this.options.shortcutRouter.route(segment, context);
+        if (!routed.matched) {
+          return null;
+        }
+        groupCalls.push(routed.toolCall);
+      }
+      calls.push(groupCalls);
+    }
+    return calls;
+  }
+
+  private async handleShortcutPlan(groups: AssistantToolCall[][], startedAt: number): Promise<AssistantHarnessResponse> {
+    const responses: AssistantHarnessResponse[] = [];
+    let lastAddedWidget: AddedWidgetData | null = null;
+    for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
+      const group = groups[groupIndex]!;
+      const executableGroup: AssistantToolCall[] = lastAddedWidget
+        ? group.map((call) => this.rewriteAfterWidgetAdd(call, lastAddedWidget as AddedWidgetData))
+        : group;
+      const groupResponses: AssistantHarnessResponse[] =
+        executableGroup.length === 1
+          ? [await this.handleFunctionCall(executableGroup[0]!, "shortcut", startedAt)]
+          : await Promise.all(executableGroup.map((call) => this.handleFunctionCall(call, "shortcut", startedAt)));
+      responses.push(...groupResponses);
+      if (groupResponses.some((response) => response.result.status !== "success")) {
+        if (groupResponses.some((response) => response.result.status === "needs_confirmation")) {
+          this.queuedShortcutPlanGroups = groups.slice(groupIndex + 1);
+        }
+        break;
+      }
+      lastAddedWidget = groupResponses.map((response) => extractAddedWidgetData(response.result)).find(Boolean) ?? lastAddedWidget;
+    }
+
+    const blocking = responses.find((response) => response.result.status !== "success");
+    const status = blocking?.result.status ?? "success";
+    const message = responses.map((response) => response.result.message).filter(Boolean).join("；");
+    return {
+      route: "shortcut",
+      call: responses[0]?.call,
+      result: {
+        status,
+        message,
+        data: { commands: responses.map((response) => ({ name: response.call?.name, result: response.result })) },
+        ...(blocking?.result.confirmation ? { confirmation: blocking.result.confirmation } : {}),
+        ...(blocking?.result.errorCode ? { errorCode: blocking.result.errorCode } : {})
+      }
+    };
+  }
+
+  private rewriteAfterWidgetAdd(call: AssistantToolCall, addedWidget: AddedWidgetData): AssistantToolCall {
+    if (call.name !== ADD_WIDGET_TOOL || !isRecord(call.arguments)) {
+      return call;
+    }
+    const definitionId = typeof call.arguments.definitionId === "string" ? call.arguments.definitionId : "";
+    const followUp = isRecord(call.arguments.followUp) ? call.arguments.followUp : null;
+    if (definitionId !== addedWidget.definitionId || !followUp || typeof followUp.name !== "string") {
+      return call;
+    }
+    const spec = this.options.registry.get(followUp.name);
+    if (!spec || spec.scope !== "widget-detail" || (spec.widgetType && spec.widgetType !== addedWidget.widgetType)) {
+      return call;
+    }
+    this.rememberTransientWidget(addedWidget);
+    const followUpArgs = isRecord(followUp.arguments) ? followUp.arguments : {};
+    return {
+      ...call,
+      id: `${call.id}_after_add`,
+      name: followUp.name,
+      arguments: { ...followUpArgs, widgetId: addedWidget.widgetId }
+    };
   }
 
   async handleFunctionCall(
@@ -273,6 +470,10 @@ export class AssistantHarness {
       const widgetId = call.arguments.widgetId;
       const context = this.getCurrentContext();
       const input = this.options.getContextInput();
+      const transientTarget = this.transientWidgetTargets.get(widgetId);
+      if (transientTarget) {
+        return { status: "ready", target: transientTarget };
+      }
       const widget =
         context.widgets.find((item) => item.widgetId === widgetId) ??
         input.widgets?.find((item) => item.widgetId === widgetId);
@@ -334,6 +535,7 @@ export class AssistantHarness {
       return { status: "cancelled", message: "没有待取消的操作" };
     }
     this.pendingConfirmation = null;
+    this.queuedShortcutPlanGroups = [];
     return { status: "cancelled", message: "已取消" };
   }
 
@@ -401,6 +603,9 @@ export class AssistantHarness {
     if (!widgetId || (spec.widgetType && spec.widgetType !== widgetType)) {
       return null;
     }
+    if (call.name === ADD_WIDGET_TOOL && typeof data?.definitionId === "string") {
+      this.rememberTransientWidget({ definitionId: data.definitionId, widgetId, widgetType });
+    }
 
     const followUpArgs = isRecord(followUp.arguments) ? followUp.arguments : {};
     const followUpCall: AssistantToolCall = {
@@ -428,7 +633,18 @@ export class AssistantHarness {
     if (!isRecord(args) || typeof args.widgetId !== "string") {
       return undefined;
     }
-    return this.getCurrentContext().widgets.find((widget) => widget.widgetId === args.widgetId)?.type;
+    return this.transientWidgetTargets.get(args.widgetId)?.type ?? this.getCurrentContext().widgets.find((widget) => widget.widgetId === args.widgetId)?.type;
+  }
+
+  private rememberTransientWidget(widget: AddedWidgetData): void {
+    this.transientWidgetTargets.set(widget.widgetId, {
+      widgetId: widget.widgetId,
+      definitionId: widget.definitionId,
+      type: widget.widgetType,
+      name: widget.widgetType,
+      confidence: 1,
+      reason: "added_in_current_plan"
+    });
   }
 
   private sameToolList(left: AssistantToolSpec[], right: AssistantToolSpec[]): boolean {

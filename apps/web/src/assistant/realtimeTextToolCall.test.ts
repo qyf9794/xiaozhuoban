@@ -19,7 +19,7 @@ const tools: AssistantToolSpec[] = [
     description: "Remove a widget from the current board.",
     parameters: createPassthroughSchema<Record<string, unknown>>(),
     scope: "desktop",
-    risk: "destructive",
+    risk: "safe",
     requiresTarget: true
   },
   {

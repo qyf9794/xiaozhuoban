@@ -24,7 +24,7 @@ function createTools(): AssistantToolSpec[] {
   return [
     { name: "board.auto_align", description: "整理", parameters: schema, scope: "desktop", risk: "confirm" },
     { name: "widget.focus", description: "聚焦", parameters: schema, scope: "desktop" },
-    { name: "widget.remove", description: "删除", parameters: schema, scope: "desktop", risk: "destructive" },
+    { name: "widget.remove", description: "关闭小工具", parameters: schema, scope: "desktop", risk: "safe" },
     {
       name: "note.append",
       description: "追加便签",
@@ -33,7 +33,16 @@ function createTools(): AssistantToolSpec[] {
       widgetType: "note",
       requiresTarget: true
     },
+    {
+      name: "music.play",
+      description: "播放音乐",
+      parameters: schema,
+      scope: "widget-detail",
+      widgetType: "music",
+      requiresTarget: true
+    },
     { name: "tv.play", description: "播放电视", parameters: schema, scope: "widget-detail", widgetType: "tv", requiresTarget: true },
+    { name: "tv.pause", description: "暂停电视", parameters: schema, scope: "widget-detail", widgetType: "tv", requiresTarget: true },
     {
       name: "tv.fullscreen",
       description: "电视全屏",
@@ -57,10 +66,19 @@ function createRegistry() {
         parameters: schema,
         scope: "desktop"
       },
-      async execute(_args, context) {
+      async execute(args, context) {
         executed.push(`${name}:${context.target?.widgetId ?? "none"}`);
         if (delayMs > 0) {
           await new Promise((resolve) => globalThis.setTimeout(resolve, delayMs));
+        }
+        const recordArgs = args as Record<string, unknown>;
+        if (name === "board.add_widget" && typeof recordArgs.definitionId === "string") {
+          const widgetType = recordArgs.definitionId.replace(/^wd_/, "");
+          return {
+            status: "success",
+            message: `${name} done`,
+            data: { definitionId: recordArgs.definitionId, widgetId: `wi_added_${widgetType}`, widgetType }
+          };
         }
         return result ?? { status: "success", message: `${name} done` };
       }
@@ -72,7 +90,9 @@ function createRegistry() {
   register("widget.focus");
   register("widget.remove");
   register("note.append");
+  register("music.play");
   register("tv.play");
+  register("tv.pause");
   register("tv.fullscreen");
 
   return { registry, executed };
@@ -176,7 +196,7 @@ describe("AssistantHarness", () => {
     await harness.initialize();
     await harness.enterWidgetContext("tv");
 
-    expect(toolUpdates[1]).toEqual(["board.auto_align", "widget.focus", "widget.remove", "tv.play", "tv.fullscreen"]);
+    expect(toolUpdates[1]).toEqual(["board.auto_align", "widget.focus", "widget.remove", "tv.play", "tv.pause", "tv.fullscreen"]);
   });
 
   it("refreshes realtime context only after initialization", async () => {
@@ -241,15 +261,10 @@ describe("AssistantHarness", () => {
     expect(harness.getPendingConfirmation()).toBeNull();
   });
 
-  it("cancels a pending action without execution", async () => {
+  it("cancels a pending confirmation-required action without execution", async () => {
     const { harness, executed } = createHarness();
     await harness.initialize();
-    await harness.handleFunctionCall({
-      id: "call_1",
-      name: "widget.remove",
-      arguments: { widgetId: "wi_note" },
-      source: "test"
-    });
+    await harness.handleUserInput("整理桌面");
 
     const response = await harness.handleUserInput("取消");
 
@@ -291,7 +306,7 @@ describe("AssistantHarness", () => {
 
     expect(toolUpdates).toEqual([
       ["board.auto_align", "widget.focus", "widget.remove"],
-      ["board.auto_align", "widget.focus", "widget.remove", "tv.play", "tv.fullscreen"]
+      ["board.auto_align", "widget.focus", "widget.remove", "tv.play", "tv.pause", "tv.fullscreen"]
     ]);
   });
 
@@ -305,6 +320,82 @@ describe("AssistantHarness", () => {
     expect(response.result.status).toBe("success");
     expect(response.result.message).toBe("tv.play done，tv.fullscreen done");
     expect(executed).toEqual(["tv.play:wi_tv", "tv.fullscreen:wi_tv"]);
+  });
+
+  it("executes sequential shortcut command segments in order", async () => {
+    const { harness, executed } = createHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("播放 CCTV1 然后暂停电视");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("tv.play done；tv.pause done");
+    expect(executed).toEqual(["tv.play:wi_tv", "tv.pause:wi_tv"]);
+  });
+
+  it("reuses a newly added widget for the next sequential shortcut segment", async () => {
+    const { harness, executed } = createHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("打开音乐然后播放周杰伦音乐");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("board.add_widget done；music.play done");
+    expect(executed).toEqual(["board.add_widget:none", "music.play:wi_added_music"]);
+  });
+
+  it("executes simultaneous shortcut command segments with concurrent operation visibility", async () => {
+    const { harness, executed, operationEvents } = createHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("打开电视同时播放 CCTV1");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("widget.focus done；tv.play done");
+    expect(executed).toEqual(["widget.focus:none", "tv.play:wi_tv"]);
+    expect(operationEvents.slice(0, 2)).toMatchObject([
+      { phase: "running", route: "shortcut", toolName: "widget.focus" },
+      { phase: "running", route: "shortcut", toolName: "tv.play" }
+    ]);
+  });
+
+  it("falls back without partial execution when a segmented shortcut command is not fully local", async () => {
+    const { harness, executed } = createHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("播放 CCTV1 然后做一个很复杂的未知动作");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("needs_clarification");
+    expect(executed).toEqual([]);
+  });
+
+  it("executes multi-close shortcut commands without confirmation", async () => {
+    const { harness, executed } = createHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("关闭电视和便签");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("widget.remove done；widget.remove done");
+    expect(harness.getPendingConfirmation()).toBeNull();
+    expect(executed).toEqual(["widget.remove:none", "widget.remove:none"]);
+  });
+
+  it("does not leave queued confirmations after multi-close shortcut commands", async () => {
+    const { harness, executed } = createHarness();
+    await harness.initialize();
+
+    await harness.handleUserInput("关闭电视和便签");
+    const confirmAfterCancel = await harness.handleUserInput("确认");
+
+    expect(confirmAfterCancel.result.status).toBe("needs_clarification");
+    expect(harness.getPendingConfirmation()).toBeNull();
+    expect(executed).toEqual(["widget.remove:none", "widget.remove:none"]);
   });
 
   it("syncs realtime tools to the target widget type after detail action success", async () => {

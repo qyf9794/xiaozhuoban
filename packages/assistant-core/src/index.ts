@@ -459,6 +459,10 @@ function normalizeShortcutInput(input: string) {
     .replace(/\s+/g, " ");
 }
 
+function compactShortcutInput(input: string) {
+  return input.replace(/[\s，。！？、,.!?]+/g, "");
+}
+
 function shortcutCall(name: string, args: unknown, source: AssistantToolSource, transcript: string): AssistantToolCall {
   return {
     id: `shortcut_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -562,16 +566,64 @@ function inferCityName(input: string) {
 function inferTvChannelName(input: string) {
   const cctv = input.match(/CCTV\s*[\w+-]+/i);
   if (cctv) return cctv[0].replace(/\s+/g, "").toUpperCase();
-  const cctvCn = input.match(/央视\s*[\d一二三四五六七八九十]+/);
-  if (cctvCn) return cctvCn[0].replace(/\s+/g, "");
+  const aliases: Array<[RegExp, string]> = [
+    [/(央视|中央|CCTV)\s*(综合|一套|1套|一频道|1频道)/i, "CCTV1"],
+    [/(央视|中央|CCTV)\s*(财经|二套|2套|二频道|2频道)/i, "CCTV2"],
+    [/(央视|中央|CCTV)\s*(综艺|三套|3套|三频道|3频道)/i, "CCTV3"],
+    [/(央视|中央|CCTV)\s*(中文国际|四套|4套|四频道|4频道)/i, "CCTV4"],
+    [/(央视|中央|CCTV)\s*(体育|五套|5套|五频道|5频道|体育频道)/i, "CCTV5"],
+    [/(央视|中央|CCTV)\s*(电影|六套|6套|六频道|6频道|电影频道)/i, "CCTV6"],
+    [/(央视|中央|CCTV)\s*(电视剧|八套|8套|八频道|8频道|电视剧频道)/i, "CCTV8"],
+    [/(央视|中央|CCTV)\s*(新闻|十三套|13套|十三频道|13频道|新闻频道)/i, "CCTV13"],
+    [/(央视|中央|CCTV)\s*(少儿|十四套|14套|十四频道|14频道|少儿频道)/i, "CCTV14"],
+    [/(新闻频道|央视新闻|中央新闻|CCTV新闻)/i, "CCTV13"],
+    [/(体育频道|央视体育|中央体育|CCTV体育)/i, "CCTV5"],
+    [/(财经频道|央视财经|中央财经|CCTV财经)/i, "CCTV2"],
+    [/(电影频道|央视电影|中央电影|CCTV电影)/i, "CCTV6"],
+    [/(电视剧频道|央视电视剧|中央电视剧|CCTV电视剧)/i, "CCTV8"],
+    [/(少儿频道|央视少儿|中央少儿|CCTV少儿)/i, "CCTV14"]
+  ];
+  const known = aliases.find(([pattern]) => pattern.test(input));
+  if (known) return known[1];
+  const cctvCn = input.match(/(?:央视|中央)\s*(?:第)?\s*([\d一二三四五六七八九十]+)\s*(?:套|频道)?/);
+  const channelNumber = cctvCn?.[1] ? parseChineseInteger(cctvCn[1]) : null;
+  if (channelNumber) return `CCTV${channelNumber}`;
   return "";
 }
 
 function inferMusicQuery(input: string) {
   return input
-    .replace(/(播放|搜索|查找|找一下|找|来一首|放一首|放首|听一下|听|音乐播放器|音乐|歌曲|歌单|专辑|歌手|歌|一下|给我)/g, " ")
+    .replace(/(播放|搜索|查找|找一下|找|来一首|放一首|放首|听一下|听|音乐播放器|音乐|歌曲|歌单|专辑|歌手|歌|第一首|第一条|第一个|首个|一下|给我)/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function inferMusicKind(input: string): "song" | "album" | "playlist" | undefined {
+  if (/(歌单|播放列表|playlist)/i.test(input)) return "playlist";
+  if (/(专辑|album)/i.test(input)) return "album";
+  if (/(歌曲|单曲|song)/i.test(input)) return "song";
+  return undefined;
+}
+
+function inferMusicResultIndex(input: string) {
+  if (/(第一首|第一条|第一个|首个)/.test(input)) return 0;
+  if (/(第二首|第二条|第二个)/.test(input)) return 1;
+  if (/(第三首|第三条|第三个)/.test(input)) return 2;
+  const numbered = input.match(/第\s*(\d+)\s*(?:首|条|个)/);
+  if (!numbered) return undefined;
+  const index = Number(numbered[1]);
+  return Number.isInteger(index) && index > 0 ? index - 1 : undefined;
+}
+
+function inferMusicArgs(input: string) {
+  const query = inferMusicQuery(input);
+  const kind = inferMusicKind(input);
+  const resultIndex = inferMusicResultIndex(input);
+  return {
+    ...(query ? { query } : {}),
+    ...(kind ? { kind } : {}),
+    ...(resultIndex !== undefined ? { resultIndex } : {})
+  };
 }
 
 function inferMessageBoardText(input: string) {
@@ -1484,6 +1536,43 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
       }
     },
     {
+      name: "tv_channel_control",
+      match(normalized, raw, context) {
+        if (/(暂停|停一下|停止|停掉)/.test(normalized)) return { matched: false, reason: "tv_pause_deferred" };
+        const channelName = inferTvChannelName(raw);
+        if (!channelName) return { matched: false, reason: "tv_channel_missing" };
+        const hasTvIntent =
+          /(电视|直播|频道|换台|切台|台|央视|中央)/.test(normalized) ||
+          /CCTV/i.test(raw) ||
+          /(新闻频道|体育频道|财经频道|电影频道|电视剧频道|少儿频道)/.test(raw);
+        const hasControlIntent = /(播放|放|看|打开|换台|切台|换到|切到|切换到|转到|调到|选|全屏|放大)/.test(normalized);
+        if (!hasTvIntent || !hasControlIntent) return { matched: false, reason: "not_tv_channel_control" };
+        const wantsFullscreen = /(全屏|放大)/.test(normalized);
+        const wantsPlayback = /(播放|放|看|打开|全屏|放大)/.test(normalized);
+        const toolName = wantsPlayback ? "tv.play" : "tv.select_channel";
+        return (
+          routeWidgetDetailOrAdd(
+            context,
+            raw,
+            "tv",
+            toolName,
+            {
+              channelName,
+              ...(wantsFullscreen
+                ? {
+                    followUp: {
+                      name: "tv.fullscreen",
+                      arguments: {}
+                    }
+                  }
+                : {})
+            },
+            0.87
+          ) ?? { matched: false, reason: "tv_target_missing" }
+        );
+      }
+    },
+    {
       name: "open_widget",
       match(normalized, raw, context) {
         const openIntent = /(打开|添加|新增|叫出|显示|启动|来个|放上|放一个|加一个)/.test(normalized);
@@ -1518,12 +1607,31 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
       }
     },
     {
+      name: "music_search",
+      match(normalized, raw, context) {
+        if (!/(搜索|查找|找一下|找|搜一下|搜)/.test(normalized)) return { matched: false, reason: "not_music_search" };
+        if (!/(音乐|歌曲|歌单|专辑|歌手|歌|播放列表|playlist|album|song)/i.test(raw)) {
+          return { matched: false, reason: "music_search_target_missing" };
+        }
+        const args = inferMusicArgs(raw);
+        if (!args.query) return { matched: false, reason: "music_query_missing" };
+        return (
+          routeWidgetDetailOrAdd(context, raw, "music", "music.search", args, 0.87) ?? {
+            matched: false,
+            reason: "music_target_missing"
+          }
+        );
+      }
+    },
+    {
       name: "media_play_pause",
       match(normalized, raw, context) {
-        const isPlay = /(播放|继续)/.test(normalized);
+        const isResume = /(继续|恢复|接着播|继续播)/.test(normalized);
+        const isPlay = /(播放|来一首|放一首|放首|听一下|听|放点|放个|放些)/.test(normalized) || isResume;
         const isPause = /(暂停|停一下|停止|停掉)/.test(normalized);
         const isNext = /(下一首|下首|切歌|换一首|跳过)/.test(normalized);
-        if (!isPlay && !isPause && !isNext) return { matched: false, reason: "not_media_control" };
+        const isPrevious = /(上一首|上首|前一首|返回上一首|倒回上一首)/.test(normalized);
+        if (!isPlay && !isPause && !isNext && !isPrevious) return { matched: false, reason: "not_media_control" };
         const channelName = inferTvChannelName(raw);
         let targetType =
           raw.includes("录音") || raw.includes("录音机")
@@ -1533,9 +1641,18 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
               : raw.includes("音乐") || raw.includes("歌")
                 ? "music"
                 : "";
-        const musicQuery = isPlay ? inferMusicQuery(raw) : "";
+        const musicArgs = isPlay ? inferMusicArgs(raw) : {};
+        const musicQuery = typeof musicArgs.query === "string" ? musicArgs.query : "";
         if (!targetType && isPlay && musicQuery && findWidgetByType(context, "music")) {
           targetType = "music";
+        }
+        if (targetType === "music" && isPlay && !isPause && !isNext && !isPrevious && !isResume) {
+          return (
+            routeWidgetDetailOrAdd(context, raw, "music", "music.play", musicArgs, 0.86) ?? {
+              matched: false,
+              reason: "music_target_missing"
+            }
+          );
         }
         const widget = targetType ? findWidgetByType(context, targetType) : context.focusedWidget;
         if (!widget || !["tv", "music", "recorder"].includes(widget.type)) {
@@ -1545,10 +1662,17 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
           if (widget.type !== "music") return { matched: false, reason: "media_next_target_missing" };
           return shortcutMatch("music.next", { widgetId: widget.widgetId }, 0.86, context.source ?? "shortcut", raw);
         }
+        if (isPrevious) {
+          if (widget.type !== "music") return { matched: false, reason: "media_previous_target_missing" };
+          return shortcutMatch("music.previous", { widgetId: widget.widgetId }, 0.86, context.source ?? "shortcut", raw);
+        }
+        if (isResume && widget.type === "music") {
+          return shortcutMatch("music.resume", { widgetId: widget.widgetId }, 0.86, context.source ?? "shortcut", raw);
+        }
         const args = {
           widgetId: widget.widgetId,
           ...(channelName ? { channelName } : {}),
-          ...(widget.type === "music" && isPlay && musicQuery ? { query: musicQuery } : {}),
+          ...(widget.type === "music" && isPlay ? musicArgs : {}),
           ...(widget.type === "tv" && isPlay && /(全屏|放大)/.test(normalized)
             ? {
                 followUp: {
@@ -1570,7 +1694,10 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "close_widget",
       match(normalized, raw, context) {
-        if (!/(关|关闭|关掉|关上|关了|收起|删掉|删除|移除|去掉)/.test(normalized)) return { matched: false, reason: "not_close_widget" };
+        if (!/(关|关闭|关掉|关上|关了|收起|收了|收起来|收一收|撤掉|拿掉|删掉|删除|移除|去掉|隐藏)/.test(normalized)) {
+          return { matched: false, reason: "not_close_widget" };
+        }
+        const aliasInput = `${raw}${compactShortcutInput(normalized)}`;
         const knownTypes: Array<{ type: string; aliases: string[] }> = [
           { type: "note", aliases: ["便签", "笔记"] },
           { type: "todo", aliases: ["待办", "任务"] },
@@ -1589,7 +1716,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
           { type: "recorder", aliases: ["录音"] },
           { type: "messageBoard", aliases: ["留言板", "留言"] }
         ];
-        const matchedType = knownTypes.find((entry) => entry.aliases.some((alias) => raw.includes(alias)))?.type;
+        const matchedType = knownTypes.find((entry) => entry.aliases.some((alias) => aliasInput.includes(alias)))?.type;
         if (!matchedType && !/(窗口|小工具|组件|面板)/.test(normalized)) {
           return { matched: false, reason: "close_widget_target_missing" };
         }

@@ -342,20 +342,26 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(modelInputs).toEqual([]);
   });
 
-  it("cancels a destructive pending action without mutation", async () => {
+  it("cancels a confirmation-required pending action without mutation", async () => {
     const { harness, getWidget } = createAcceptanceHarness();
     await harness.initialize();
-    await harness.handleFunctionCall({
-      id: "call_1",
-      name: "widget.remove",
-      arguments: { widgetId: "wi_note" },
-      source: "test"
-    });
+    await harness.handleUserInput("整理桌面");
 
     const response = await harness.handleUserInput("取消");
 
     expect(response.result.status).toBe("cancelled");
     expect(getWidget("note")).toBeTruthy();
+  });
+
+  it("closes a widget immediately without confirmation", async () => {
+    const { harness, getWidget } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("关闭便签");
+
+    expect(response.result.status).toBe("success");
+    expect(harness.getPendingConfirmation()).toBeNull();
+    expect(getWidget("note")).toBeFalsy();
   });
 
   it("does not block previously deferred requests before model fallback", async () => {

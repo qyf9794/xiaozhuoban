@@ -48,6 +48,7 @@ export type MusicKitInstanceLike = {
   play: () => Promise<unknown>;
   pause: () => Promise<unknown> | void;
   skipToNextItem?: () => Promise<unknown>;
+  skipToPreviousItem?: () => Promise<unknown>;
   isAuthorized?: boolean;
   storefrontId?: string;
   api?: MusicKitApiLike;

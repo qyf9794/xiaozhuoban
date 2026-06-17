@@ -124,10 +124,12 @@ describe("WidgetCapabilityBridge", () => {
     const manager = new ToolScopeManager(actions.map((action) => action.spec));
 
     expect(names).toEqual([
+      "music.search",
       "music.play",
       "music.pause",
       "music.resume",
       "music.next",
+      "music.previous",
       "tv.play",
       "tv.pause",
       "tv.fullscreen",
@@ -235,32 +237,53 @@ describe("WidgetCapabilityBridge", () => {
     const bridge = new WidgetCapabilityBridge();
     const calls: string[] = [];
     bridge.register("wi_music", {
+      search(args) {
+        calls.push(`search:${String(args.query ?? "")}:${String(args.kind ?? "")}`);
+      },
       play(args) {
         calls.push(`play:${String(args.query ?? "")}`);
       },
       pause() {
         calls.push("pause");
       },
+      resume() {
+        calls.push("resume");
+      },
       next() {
         calls.push("next");
+      },
+      previous() {
+        calls.push("previous");
       }
     });
     const registry = createRegistry(store, bridge);
 
     await registry.execute(
-      { id: "call_1", name: "music.play", arguments: { query: "Miles Davis" }, source: "test" },
+      { id: "call_1", name: "music.search", arguments: { query: "Miles Davis", kind: "album" }, source: "test" },
       { target: targetFor("music"), now: () => NOW }
     );
     await registry.execute(
-      { id: "call_2", name: "music.pause", arguments: {}, source: "test" },
+      { id: "call_2", name: "music.play", arguments: { query: "Miles Davis" }, source: "test" },
       { target: targetFor("music"), now: () => NOW }
     );
     await registry.execute(
-      { id: "call_3", name: "music.next", arguments: {}, source: "test" },
+      { id: "call_3", name: "music.pause", arguments: {}, source: "test" },
+      { target: targetFor("music"), now: () => NOW }
+    );
+    await registry.execute(
+      { id: "call_4", name: "music.resume", arguments: {}, source: "test" },
+      { target: targetFor("music"), now: () => NOW }
+    );
+    await registry.execute(
+      { id: "call_5", name: "music.next", arguments: {}, source: "test" },
+      { target: targetFor("music"), now: () => NOW }
+    );
+    await registry.execute(
+      { id: "call_6", name: "music.previous", arguments: {}, source: "test" },
       { target: targetFor("music"), now: () => NOW }
     );
 
-    expect(calls).toEqual(["play:Miles Davis", "pause", "next"]);
+    expect(calls).toEqual(["search:Miles Davis:album", "play:Miles Davis", "pause", "resume", "next", "previous"]);
     expect(getWidget("music")?.state.query).toBe("Miles Davis");
   });
 

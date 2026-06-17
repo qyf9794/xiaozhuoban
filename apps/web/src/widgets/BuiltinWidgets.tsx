@@ -3278,25 +3278,38 @@ export function BuiltinWidgetView({
       return { status: "success" as const, message: "已开始播放音乐", data: { itemId: item.id, title: item.title } };
     };
 
+    const selectMusicResult = (items: MusicSearchItem[], args: Record<string, unknown>) => {
+      const requestedKind =
+        typeof args.kind === "string" && ["song", "album", "playlist"].includes(args.kind) ? args.kind : "";
+      const candidates = requestedKind ? items.filter((item) => item.kind === requestedKind) : items;
+      if (!candidates.length) return items[0];
+      const rawIndex = typeof args.resultIndex === "number" && Number.isFinite(args.resultIndex) ? Math.trunc(args.resultIndex) : 0;
+      const index = Math.max(0, Math.min(candidates.length - 1, rawIndex));
+      return candidates[index];
+    };
+
     const currentOrFirstTrack = () => {
       const currentResults = resultsRef.current;
       const activeId = activeItemIdRef.current;
       return currentResults.find((track) => track.id === activeId) ?? currentResults[0];
     };
 
-    const playNext = async () => {
+    const playOffset = async (offset: 1 | -1) => {
       const currentResults = resultsRef.current;
       if (!currentResults.length) {
-        return { status: "failed" as const, message: "没有下一首可播放音乐", errorCode: "MUSIC_TRACK_NOT_FOUND" };
+        return { status: "failed" as const, message: offset > 0 ? "没有下一首可播放音乐" : "没有上一首可播放音乐", errorCode: "MUSIC_TRACK_NOT_FOUND" };
       }
       const activeId = activeItemIdRef.current;
       const activeIndex = currentResults.findIndex((track) => track.id === activeId);
-      const nextTrack = currentResults[(activeIndex + 1) % currentResults.length];
-      if (musicKitRef.current && currentOrFirstTrack()?.source === "apple" && musicKitRef.current.skipToNextItem) {
+      const currentIndex = activeIndex >= 0 ? activeIndex : 0;
+      const nextTrack = currentResults[(currentIndex + offset + currentResults.length) % currentResults.length];
+      const music = musicKitRef.current;
+      const skip = offset > 0 ? music?.skipToNextItem : music?.skipToPreviousItem;
+      if (music && currentOrFirstTrack()?.source === "apple" && skip) {
         try {
-          await musicKitRef.current.skipToNextItem();
+          await skip.call(music);
           if (nextTrack) setActiveItemId(nextTrack.id);
-          return { status: "success" as const, message: "已切到下一首" };
+          return { status: "success" as const, message: offset > 0 ? "已切到下一首" : "已切到上一首" };
         } catch {
           return playItem(nextTrack);
         }
@@ -3304,19 +3317,37 @@ export function BuiltinWidgetView({
       return playItem(nextTrack);
     };
 
+    const playNext = () => playOffset(1);
+    const playPrevious = () => playOffset(-1);
+
     useEffect(() => {
       if (!assistantCapabilityBridge) return undefined;
 
       return assistantCapabilityBridge.register(instance.id, {
+        async search(args) {
+          const nextQuery = typeof args.query === "string" ? args.query.trim() : "";
+          if (!nextQuery) {
+            return { status: "failed" as const, message: "请告诉我要搜索的音乐", errorCode: "MUSIC_QUERY_MISSING" };
+          }
+          setQueryDraft(nextQuery);
+          onStateChange({ ...latestMusicStateRef.current, query: nextQuery });
+          const items = await runSearch(nextQuery);
+          if (!items.length) {
+            return { status: "failed" as const, message: "没有找到音乐", errorCode: "MUSIC_TRACK_NOT_FOUND" };
+          }
+          const selected = selectMusicResult(items, args);
+          if (selected) setActiveItemId(selected.id);
+          return { status: "success" as const, message: "已搜索音乐", data: { count: items.length, itemId: selected?.id, title: selected?.title } };
+        },
         async play(args) {
           const nextQuery = typeof args.query === "string" ? args.query.trim() : "";
           if (nextQuery) {
             setQueryDraft(nextQuery);
             onStateChange({ ...latestMusicStateRef.current, query: nextQuery });
             const items = await runSearch(nextQuery);
-            return playItem(items[0]);
+            return playItem(selectMusicResult(items, args));
           }
-          return playItem(currentOrFirstTrack());
+          return playItem(selectMusicResult(resultsRef.current, args) ?? currentOrFirstTrack());
         },
         pause() {
           audioRef.current?.pause();
@@ -3329,9 +3360,12 @@ export function BuiltinWidgetView({
         },
         next() {
           return playNext();
+        },
+        previous() {
+          return playPrevious();
         }
       });
-    }, [assistantCapabilityBridge, instance.id, onStateChange, runSearch, playItem, playNext]);
+    }, [assistantCapabilityBridge, instance.id, onStateChange, runSearch, playItem, playNext, playPrevious]);
 
     const activeItem = results.find((item) => item.id === activeItemId) ?? results[0];
     const kindLabel: Record<string, string> = { song: "歌曲", album: "专辑", playlist: "歌单" };

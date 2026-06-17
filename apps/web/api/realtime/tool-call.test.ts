@@ -79,7 +79,7 @@ describe("realtime text tool-call API", () => {
           description: "删除小工具",
           scope: "desktop",
           requiresTarget: true,
-          risk: "destructive"
+          risk: "safe"
         },
         {
           name: "music.pause",
@@ -159,7 +159,7 @@ describe("realtime text tool-call API", () => {
           description: "删除小工具",
           scope: "desktop",
           requiresTarget: true,
-          risk: "destructive"
+          risk: "safe"
         },
         {
           name: "music.pause",
@@ -213,7 +213,7 @@ describe("realtime text tool-call API", () => {
           description: "删除小工具",
           scope: "desktop",
           requiresTarget: true,
-          risk: "destructive"
+          risk: "safe"
         },
         {
           name: "music.pause",

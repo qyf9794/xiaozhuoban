@@ -203,9 +203,9 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
     defineAction<WidgetIdArgs>({
       spec: {
         name: "widget.remove",
-        description: "Remove a widget from the current board after confirmation.",
+        description: "Close a widget window on the current board.",
         parameters: widgetIdSchema,
-        risk: "destructive",
+        risk: "safe",
         scope: "desktop"
       },
       async execute(args) {

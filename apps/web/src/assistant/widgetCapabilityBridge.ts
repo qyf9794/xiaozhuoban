@@ -21,6 +21,8 @@ export type WidgetCapabilityMap = Record<string, WidgetCapabilityHandler>;
 
 type WidgetCapabilityArgs = {
   query?: string;
+  kind?: string;
+  resultIndex?: number;
   channelName?: string;
   channelUrl?: string;
   recordingId?: string;
@@ -50,6 +52,8 @@ const genericCapabilitySchema = parseWith<WidgetCapabilityArgs>(
   (value): value is WidgetCapabilityArgs =>
     isRecord(value) &&
     hasOptionalString(value, "query") &&
+    hasOptionalString(value, "kind") &&
+    (value.resultIndex === undefined || typeof value.resultIndex === "number") &&
     hasOptionalString(value, "channelName") &&
     hasOptionalString(value, "channelUrl") &&
     hasOptionalString(value, "recordingId") &&
@@ -174,6 +178,21 @@ function createMusicActions(store: WidgetCapabilityStore, bridge: WidgetCapabili
   return [
     defineAction<WidgetCapabilityArgs>({
       spec: {
+        name: "music.search",
+        description: "Search music without starting playback.",
+        parameters: genericCapabilitySchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      },
+      execute(args, context) {
+        const patch = args.query?.trim() ? { query: args.query.trim() } : undefined;
+        return invokeCapability(store, bridge, context, "music", "search", args, "已搜索音乐", patch);
+      }
+    }),
+    defineAction<WidgetCapabilityArgs>({
+      spec: {
         name: "music.play",
         description: "Play music, optionally searching by query first.",
         parameters: genericCapabilitySchema,
@@ -227,6 +246,20 @@ function createMusicActions(store: WidgetCapabilityStore, bridge: WidgetCapabili
       },
       execute(args, context) {
         return invokeCapability(store, bridge, context, "music", "next", args, "已切到下一首");
+      }
+    }),
+    defineAction<WidgetCapabilityArgs>({
+      spec: {
+        name: "music.previous",
+        description: "Play the previous music result.",
+        parameters: genericCapabilitySchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      },
+      execute(args, context) {
+        return invokeCapability(store, bridge, context, "music", "previous", args, "已切到上一首");
       }
     })
   ];

@@ -144,9 +144,9 @@ const initialToolMetadata: InitialToolMetadata[] = [
   },
   {
     name: "widget.remove",
-    description: "Remove a widget from the current board after confirmation.",
+    description: "Close a widget window on the current board.",
     scope: "desktop",
-    risk: "destructive",
+    risk: "safe",
     parameters: objectSchema({ widgetId: stringSchema() }, ["widgetId"])
   },
   {

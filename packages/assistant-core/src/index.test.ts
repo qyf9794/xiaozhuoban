@@ -1019,6 +1019,52 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes TV channel switch commands", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("切到 CCTV13 新闻频道", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("tv.select_channel");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_tv",
+        channelName: "CCTV13"
+      });
+    }
+  });
+
+  it("routes natural TV channel aliases to playback", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("看央视新闻", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("tv.play");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_tv",
+        channelName: "CCTV13"
+      });
+    }
+  });
+
+  it("routes Chinese-number TV channel aliases with fullscreen follow-up", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("央视五套全屏播放", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("tv.play");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_tv",
+        channelName: "CCTV5",
+        followUp: {
+          name: "tv.fullscreen",
+          arguments: {}
+        }
+      });
+    }
+  });
+
   it("does not locally block deferred game commands before model fallback", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("大富翁掷骰", context);
@@ -1081,6 +1127,17 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("keeps TV pause commands on playback control", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("暂停 CCTV1", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("tv.pause");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_tv", channelName: "CCTV1" });
+    }
+  });
+
   it("routes compact close music wording to widget removal", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("关音乐", {
@@ -1138,6 +1195,44 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes noisy spoken close music commands to widget removal", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const contextWithMusic = {
+      ...context,
+      availableWidgets: [
+        ...(context.availableWidgets ?? []),
+        {
+          widgetId: "wi_music",
+          definitionId: "wd_music",
+          type: "music",
+          name: "音乐",
+          order: 6,
+          summary: "正在播放",
+          recent: true
+        }
+      ]
+    };
+    const noisy = router.route("关闭，啊，这个，音乐", contextWithMusic);
+    const collect = router.route("把音乐收了", contextWithMusic);
+    const tuckedAway = router.route("音乐收起来", contextWithMusic);
+
+    expect(noisy.matched).toBe(true);
+    expect(collect.matched).toBe(true);
+    expect(tuckedAway.matched).toBe(true);
+    if (noisy.matched) {
+      expect(noisy.toolCall.name).toBe("widget.remove");
+      expect(noisy.toolCall.arguments).toEqual({ widgetId: "wi_music" });
+    }
+    if (collect.matched) {
+      expect(collect.toolCall.name).toBe("widget.remove");
+      expect(collect.toolCall.arguments).toEqual({ widgetId: "wi_music" });
+    }
+    if (tuckedAway.matched) {
+      expect(tuckedAway.toolCall.name).toBe("widget.remove");
+      expect(tuckedAway.toolCall.arguments).toEqual({ widgetId: "wi_music" });
+    }
+  });
+
   it("routes pause music commands to the existing music widget pause action", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("暂停音乐", {
@@ -1188,6 +1283,78 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes music search commands without playback", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("搜索周杰伦音乐", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("board.add_widget");
+      expect(result.toolCall.arguments).toEqual({
+        definitionId: "wd_music",
+        followUp: {
+          name: "music.search",
+          arguments: { query: "周杰伦" }
+        }
+      });
+    }
+  });
+
+  it("routes music album playback with a result preference", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("播放周杰伦专辑第一首", {
+      ...context,
+      availableWidgets: [
+        ...(context.availableWidgets ?? []),
+        {
+          widgetId: "wi_music",
+          definitionId: "wd_music",
+          type: "music",
+          name: "音乐",
+          order: 6,
+          summary: "",
+          recent: true
+        }
+      ]
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("music.play");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_music",
+        query: "周杰伦",
+        kind: "album",
+        resultIndex: 0
+      });
+    }
+  });
+
+  it("routes music resume commands to resume instead of search playback", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("继续音乐", {
+      ...context,
+      availableWidgets: [
+        ...(context.availableWidgets ?? []),
+        {
+          widgetId: "wi_music",
+          definitionId: "wd_music",
+          type: "music",
+          name: "音乐",
+          order: 6,
+          summary: "",
+          recent: true
+        }
+      ]
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("music.resume");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_music" });
+    }
+  });
+
   it("routes next music commands to the music next action", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("下一首音乐", {
@@ -1209,6 +1376,31 @@ describe("IntentShortcutRouter", () => {
     expect(result.matched).toBe(true);
     if (result.matched) {
       expect(result.toolCall.name).toBe("music.next");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_music" });
+    }
+  });
+
+  it("routes previous music commands to the music previous action", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("上一首音乐", {
+      ...context,
+      availableWidgets: [
+        ...(context.availableWidgets ?? []),
+        {
+          widgetId: "wi_music",
+          definitionId: "wd_music",
+          type: "music",
+          name: "音乐",
+          order: 6,
+          summary: "",
+          recent: true
+        }
+      ]
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("music.previous");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_music" });
     }
   });
