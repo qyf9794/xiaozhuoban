@@ -264,6 +264,23 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(modelInputs).toEqual([]);
   });
 
+  it("opens widgets from casual aliases without model fallback", async () => {
+    const { harness, modelInputs, getWidget } = createAcceptanceHarness({ initialWidgetTypes: ["weather", "todo"] });
+    await harness.initialize();
+
+    const list = await harness.handleUserInput("唤出清单");
+    const converter = await harness.handleUserInput("开一下单位换算");
+
+    expect([list, converter].map((response) => response.route)).toEqual(["shortcut", "shortcut"]);
+    expect([list, converter].map((response) => response.result)).toMatchObject([
+      { status: "success" },
+      { status: "success" }
+    ]);
+    expect(getWidget("todo")).toBeTruthy();
+    expect(getWidget("converter")).toBeTruthy();
+    expect(modelInputs).toEqual([]);
+  });
+
   it("renames the active board through shortcut-first Harness without model fallback", async () => {
     const { harness, modelInputs, getActiveBoard } = createAcceptanceHarness();
     await harness.initialize();

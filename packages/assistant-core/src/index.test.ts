@@ -1347,6 +1347,29 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes casual open widget intent and target aliases", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const list = router.route("唤出清单", context);
+    const music = router.route("调出播放器", context);
+    const converter = router.route("开一下单位换算", context);
+
+    expect(list.matched).toBe(true);
+    expect(music.matched).toBe(true);
+    expect(converter.matched).toBe(true);
+    if (list.matched) {
+      expect(list.toolCall.name).toBe("widget.focus");
+      expect(list.toolCall.arguments).toEqual({ widgetId: "wi_todo" });
+    }
+    if (music.matched) {
+      expect(music.toolCall.name).toBe("board.add_widget");
+      expect(music.toolCall.arguments).toEqual({ definitionId: "wd_music" });
+    }
+    if (converter.matched) {
+      expect(converter.toolCall.name).toBe("widget.focus");
+      expect(converter.toolCall.arguments).toEqual({ widgetId: "wi_converter" });
+    }
+  });
+
   it("routes media controls to focused media widgets", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("暂停", context);
@@ -1391,6 +1414,17 @@ describe("IntentShortcutRouter", () => {
     if (result.matched) {
       expect(result.toolCall.name).toBe("widget.remove");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_music" });
+    }
+  });
+
+  it("routes close widget target aliases to removal", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("关掉复制板", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("widget.remove");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_clipboard" });
     }
   });
 

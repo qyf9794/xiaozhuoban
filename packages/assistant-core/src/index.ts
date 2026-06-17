@@ -1651,27 +1651,28 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "open_widget",
       match(normalized, raw, context) {
-        const openIntent = /(打开|添加|新增|叫出|显示|启动|来个|放上|放一个|加一个)/.test(normalized);
+        const openIntent = /(打开|打开一下|开一下|添加|新增|叫出|叫一下|唤出|调出|拉起|显示|启动|来个|来一个|放上|放一个|加一个|加个)/.test(normalized);
         if (!openIntent) return { matched: false, reason: "not_open_widget" };
+        const aliasInput = `${raw}${compactShortcutInput(normalized)}`.toLowerCase();
         const knownTypes: Array<{ type: string; aliases: string[] }> = [
-          { type: "note", aliases: ["便签", "笔记"] },
-          { type: "todo", aliases: ["待办", "任务"] },
+          { type: "note", aliases: ["便签", "笔记", "备忘录"] },
+          { type: "todo", aliases: ["待办", "任务", "清单"] },
           { type: "calculator", aliases: ["计算器", "计算"] },
-          { type: "countdown", aliases: ["倒计时", "计时器"] },
+          { type: "countdown", aliases: ["倒计时", "计时器", "定时器", "计时", "定时"] },
           { type: "weather", aliases: ["天气"] },
-          { type: "headline", aliases: ["新闻", "头条"] },
-          { type: "market", aliases: ["指数", "行情", "市场"] },
-          { type: "tv", aliases: ["电视", "直播"] },
-          { type: "music", aliases: ["音乐", "歌曲", "歌", "播放器"] },
-          { type: "worldClock", aliases: ["世界时钟", "时区"] },
-          { type: "dialClock", aliases: ["时钟", "表盘"] },
-          { type: "translate", aliases: ["翻译"] },
-          { type: "converter", aliases: ["换算", "单位"] },
-          { type: "clipboard", aliases: ["剪贴板"] },
-          { type: "recorder", aliases: ["录音"] },
-          { type: "messageBoard", aliases: ["留言板", "留言"] }
+          { type: "headline", aliases: ["新闻", "头条", "资讯"] },
+          { type: "market", aliases: ["指数", "行情", "市场", "股票", "股市"] },
+          { type: "tv", aliases: ["电视", "电视机", "直播"] },
+          { type: "music", aliases: ["音乐", "歌曲", "歌", "播放器", "音乐播放器"] },
+          { type: "worldClock", aliases: ["世界时钟", "世界时间", "时区"] },
+          { type: "dialClock", aliases: ["时钟", "钟表", "表盘"] },
+          { type: "translate", aliases: ["翻译", "翻译器"] },
+          { type: "converter", aliases: ["换算", "转换", "单位", "单位换算"] },
+          { type: "clipboard", aliases: ["剪贴板", "复制板"] },
+          { type: "recorder", aliases: ["录音", "录音机"] },
+          { type: "messageBoard", aliases: ["留言板", "留言", "消息板"] }
         ];
-        const matchedType = knownTypes.find((entry) => entry.aliases.some((alias) => raw.includes(alias)))?.type;
+        const matchedType = knownTypes.find((entry) => entry.aliases.some((alias) => aliasInput.includes(alias.toLowerCase())))?.type;
         if (!matchedType) return { matched: false, reason: "widget_type_missing" };
         const widget = findWidgetByType(context, matchedType);
         if (widget) {
@@ -1776,22 +1777,22 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         }
         const aliasInput = `${raw}${compactShortcutInput(normalized)}`;
         const knownTypes: Array<{ type: string; aliases: string[] }> = [
-          { type: "note", aliases: ["便签", "笔记"] },
-          { type: "todo", aliases: ["待办", "任务"] },
+          { type: "note", aliases: ["便签", "笔记", "备忘录"] },
+          { type: "todo", aliases: ["待办", "任务", "清单"] },
           { type: "calculator", aliases: ["计算器", "计算"] },
-          { type: "countdown", aliases: ["倒计时", "计时器"] },
+          { type: "countdown", aliases: ["倒计时", "计时器", "定时器"] },
           { type: "weather", aliases: ["天气"] },
-          { type: "headline", aliases: ["新闻", "头条"] },
-          { type: "market", aliases: ["指数", "行情", "市场"] },
-          { type: "tv", aliases: ["电视", "直播"] },
-          { type: "music", aliases: ["音乐", "歌曲", "歌", "播放器"] },
-          { type: "worldClock", aliases: ["世界时钟", "时区"] },
-          { type: "dialClock", aliases: ["时钟", "表盘"] },
-          { type: "translate", aliases: ["翻译"] },
-          { type: "converter", aliases: ["换算", "单位"] },
-          { type: "clipboard", aliases: ["剪贴板"] },
-          { type: "recorder", aliases: ["录音"] },
-          { type: "messageBoard", aliases: ["留言板", "留言"] }
+          { type: "headline", aliases: ["新闻", "头条", "资讯"] },
+          { type: "market", aliases: ["指数", "行情", "市场", "股票", "股市"] },
+          { type: "tv", aliases: ["电视", "电视机", "直播"] },
+          { type: "music", aliases: ["音乐", "歌曲", "歌", "播放器", "音乐播放器"] },
+          { type: "worldClock", aliases: ["世界时钟", "世界时间", "时区"] },
+          { type: "dialClock", aliases: ["时钟", "钟表", "表盘"] },
+          { type: "translate", aliases: ["翻译", "翻译器"] },
+          { type: "converter", aliases: ["换算", "转换", "单位", "单位换算"] },
+          { type: "clipboard", aliases: ["剪贴板", "复制板"] },
+          { type: "recorder", aliases: ["录音", "录音机"] },
+          { type: "messageBoard", aliases: ["留言板", "留言", "消息板"] }
         ];
         const matchedType = knownTypes.find((entry) => entry.aliases.some((alias) => aliasInput.includes(alias)))?.type;
         if (!matchedType && !/(窗口|小工具|组件|面板)/.test(normalized)) {
