@@ -10,9 +10,12 @@ import {
 import type { WidgetDefinition } from "@xiaozhuoban/domain";
 import { createDailyWidgetAssistantModules } from "./dailyWidgetAssistantModules";
 import { createClipboardAssistantModule, clipboardMigrationReport, clipboardShortcutConflictReport } from "./clipboard/assistant";
+import { createCountdownAssistantModule, countdownMigrationReport, countdownShortcutConflictReport } from "./countdown/assistant";
+import { createHeadlineAssistantModule, headlineMigrationReport, headlineShortcutConflictReport } from "./headline/assistant";
 import { createMusicAssistantModule, musicMigrationReport, musicShortcutConflictReport } from "./music/assistant";
 import { createTodoAssistantModule, todoMigrationReport, todoShortcutConflictReport } from "./todo/assistant";
 import { createWeatherAssistantModule, weatherMigrationReport, weatherShortcutConflictReport } from "./weather/assistant";
+import { createWorldClockAssistantModule, worldClockMigrationReport, worldClockShortcutConflictReport } from "./worldClock/assistant";
 
 function definition(type: string, name: string): WidgetDefinition {
   return {
@@ -90,6 +93,8 @@ const moduleActions: AssistantAction[] = [
   action("calculator.set_display", "calculator"),
   action("countdown.set", "countdown"),
   action("countdown.pause", "countdown"),
+  action("countdown.resume", "countdown"),
+  action("countdown.reset", "countdown"),
   action("worldClock.set_zones", "worldClock"),
   action("market.set_indices", "market"),
   action("headline.request_refresh", "headline"),
@@ -117,6 +122,9 @@ function registerFirstBatchModules(registry: WidgetAssistantRegistry) {
   registry.register(createWeatherAssistantModule(dailyDefinitions, moduleActions));
   registry.register(createClipboardAssistantModule(dailyDefinitions, moduleActions));
   registry.register(createTodoAssistantModule(dailyDefinitions, moduleActions));
+  registry.register(createCountdownAssistantModule(dailyDefinitions, moduleActions));
+  registry.register(createWorldClockAssistantModule(dailyDefinitions, moduleActions));
+  registry.register(createHeadlineAssistantModule(dailyDefinitions, moduleActions));
   createDailyWidgetAssistantModules(dailyDefinitions, moduleActions).forEach((module) => registry.register(module));
 }
 
@@ -204,7 +212,7 @@ describe("daily widget assistant modules", () => {
     const centralModules = createDailyWidgetAssistantModules(dailyDefinitions, moduleActions);
     const centralTypes = centralModules.map((module) => module.type);
 
-    for (const migratedType of ["music", "weather", "clipboard", "todo"]) {
+    for (const migratedType of ["music", "weather", "clipboard", "todo", "countdown", "worldClock", "headline"]) {
       expect(centralTypes).not.toContain(migratedType);
     }
     expect(musicMigrationReport).toMatchObject({
@@ -223,10 +231,25 @@ describe("daily widget assistant modules", () => {
       module: "todo",
       legacyBridge: true
     });
+    expect(countdownMigrationReport).toMatchObject({
+      module: "countdown",
+      legacyBridge: true
+    });
+    expect(worldClockMigrationReport).toMatchObject({
+      module: "worldClock",
+      legacyBridge: true
+    });
+    expect(headlineMigrationReport).toMatchObject({
+      module: "headline",
+      legacyBridge: true
+    });
     expect(musicShortcutConflictReport.resolution).toBe("none");
     expect(weatherShortcutConflictReport.resolution).toBe("none");
     expect(clipboardShortcutConflictReport.resolution).toBe("none");
     expect(todoShortcutConflictReport.resolution).toBe("none");
+    expect(countdownShortcutConflictReport.resolution).toBe("none");
+    expect(worldClockShortcutConflictReport.resolution).toBe("none");
+    expect(headlineShortcutConflictReport.resolution).toBe("none");
   });
 
   it("uses selected-module strict schemas to reject extra model arguments", () => {
@@ -260,6 +283,45 @@ describe("daily widget assistant modules", () => {
     const weatherResult = validator.validate(weatherPlan);
     expect(weatherResult.ok).toBe(false);
     expect(weatherResult.errors[0]).toMatchObject({ code: "EXTRA_ARGUMENTS" });
+
+    const countdownPlan = createCommandPlanFromToolCalls("定时十分钟", [
+      {
+        id: "call_countdown",
+        name: "countdown.set",
+        arguments: { widgetId: "countdown_1", minutes: 10, articleText: "should not pass" },
+        source: "realtime"
+      }
+    ]);
+    countdownPlan.commands[0]!.module = "countdown";
+    const countdownResult = validator.validate(countdownPlan);
+    expect(countdownResult.ok).toBe(false);
+    expect(countdownResult.errors[0]).toMatchObject({ code: "EXTRA_ARGUMENTS" });
+
+    const worldClockPlan = createCommandPlanFromToolCalls("NYC and Tokyo time", [
+      {
+        id: "call_world_clock",
+        name: "worldClock.set_zones",
+        arguments: { widgetId: "clock_1", zones: ["America/New_York", "Asia/Tokyo"], locationHistory: ["private"] },
+        source: "realtime"
+      }
+    ]);
+    worldClockPlan.commands[0]!.module = "worldClock";
+    const worldClockResult = validator.validate(worldClockPlan);
+    expect(worldClockResult.ok).toBe(false);
+    expect(worldClockResult.errors[0]).toMatchObject({ code: "EXTRA_ARGUMENTS" });
+
+    const headlinePlan = createCommandPlanFromToolCalls("最新头条", [
+      {
+        id: "call_headline",
+        name: "headline.request_refresh",
+        arguments: { widgetId: "headline_1", requestedAt: "2026-06-17T00:00:00.000Z", fullArticlePayload: "should not pass" },
+        source: "realtime"
+      }
+    ]);
+    headlinePlan.commands[0]!.module = "headline";
+    const headlineResult = validator.validate(headlinePlan);
+    expect(headlineResult.ok).toBe(false);
+    expect(headlineResult.errors[0]).toMatchObject({ code: "EXTRA_ARGUMENTS" });
   });
 
   it("keeps Realtime first stage catalog free of widget ids and private summaries", () => {
@@ -358,5 +420,61 @@ describe("daily widget assistant modules", () => {
     expect(JSON.stringify(todoContext)).toContain("todo-summary-only");
     expect(JSON.stringify(todoContext)).not.toContain("私人任务全文");
     expect(JSON.stringify(todoContext)).not.toContain("secret-token-123");
+  });
+
+  it("redacts time and news module scoped contexts", () => {
+    const registry = new WidgetAssistantRegistry();
+    registerFirstBatchModules(registry);
+
+    const compactContext = {
+      widgetCountsByType: { countdown: 1, worldClock: 1, headline: 1 },
+      widgets: [
+        {
+          widgetId: "countdown_1",
+          definitionId: "wd_countdown",
+          type: "countdown",
+          name: "倒计时",
+          order: 1,
+          summary: "倒计时剩余 10 分钟，私人备注：给妈妈打电话"
+        },
+        {
+          widgetId: "world_clock_1",
+          definitionId: "wd_worldClock",
+          type: "worldClock",
+          name: "世界时钟",
+          order: 2,
+          summary: "Tokyo, Paris, Sydney; private location history should not be sent"
+        },
+        {
+          widgetId: "headline_1",
+          definitionId: "wd_headline",
+          type: "headline",
+          name: "新闻",
+          order: 3,
+          summary: "Breaking article full body with private political reading history count 12"
+        }
+      ]
+    };
+
+    const countdownContext = registry.getScopedContextForModule("countdown", {
+      userText: "定时十分钟",
+      compactContext
+    });
+    const worldClockContext = registry.getScopedContextForModule("worldClock", {
+      userText: "NYC and Tokyo time",
+      compactContext
+    });
+    const headlineContext = registry.getScopedContextForModule("headline", {
+      userText: "最新头条",
+      compactContext
+    });
+
+    expect(JSON.stringify(countdownContext)).toContain("countdown-state-summary");
+    expect(JSON.stringify(countdownContext)).not.toContain("给妈妈打电话");
+    expect(JSON.stringify(worldClockContext)).toContain("selectedZonesOnly");
+    expect(JSON.stringify(worldClockContext)).not.toContain("private location history should not be sent");
+    expect(JSON.stringify(headlineContext)).toContain("headline-metadata-only");
+    expect(JSON.stringify(headlineContext)).not.toContain("full body");
+    expect(JSON.stringify(headlineContext)).not.toContain("private political reading history");
   });
 });

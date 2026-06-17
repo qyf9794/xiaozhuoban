@@ -18,9 +18,12 @@ import { WidgetCapabilityBridge, createWidgetCapabilityActions } from "./widgetC
 import { createWidgetStateActions } from "./widgetStateActions";
 import { createDailyWidgetAssistantModules } from "../widgets/modules/dailyWidgetAssistantModules";
 import { createClipboardAssistantModule } from "../widgets/modules/clipboard/assistant";
+import { createCountdownAssistantModule } from "../widgets/modules/countdown/assistant";
+import { createHeadlineAssistantModule } from "../widgets/modules/headline/assistant";
 import { createMusicAssistantModule } from "../widgets/modules/music/assistant";
 import { createTodoAssistantModule } from "../widgets/modules/todo/assistant";
 import { createWeatherAssistantModule } from "../widgets/modules/weather/assistant";
+import { createWorldClockAssistantModule } from "../widgets/modules/worldClock/assistant";
 
 const noopRealtimeAdapter: AssistantRealtimeAdapter = {
   updateTools() {},
@@ -129,6 +132,9 @@ export function createLocalAssistantHarness(options?: {
   moduleRegistry.register(createWeatherAssistantModule(widgetDefinitions, actions));
   moduleRegistry.register(createClipboardAssistantModule(widgetDefinitions, actions));
   moduleRegistry.register(createTodoAssistantModule(widgetDefinitions, actions));
+  moduleRegistry.register(createCountdownAssistantModule(widgetDefinitions, actions));
+  moduleRegistry.register(createWorldClockAssistantModule(widgetDefinitions, actions));
+  moduleRegistry.register(createHeadlineAssistantModule(widgetDefinitions, actions));
   createDailyWidgetAssistantModules(widgetDefinitions, actions).forEach((module) => moduleRegistry.register(module));
 
   const auditContext: AssistantAuditContext = {

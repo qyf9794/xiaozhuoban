@@ -52,25 +52,6 @@ const seeds: DailyWidgetModuleSeed[] = [
     ]
   },
   {
-    type: "countdown",
-    aliases: ["倒计时", "计时器", "定时器", "定时"],
-    capabilities: ["设置倒计时", "暂停", "继续", "重置", "关闭窗口"],
-    shortcutExamples: ["定时十分钟", "暂停计时", "取消倒计时"],
-    shortcuts: [
-      { id: "countdown.set", intent: "countdown_set", actions: ["倒计时", "定时"], examples: ["定时十分钟"], risk: "safe" }
-    ],
-    executionPolicy: { ...defaultExecutionPolicy, defaultMode: "latest-wins" }
-  },
-  {
-    type: "headline",
-    aliases: ["新闻", "头条"],
-    capabilities: ["打开新闻", "刷新新闻", "关闭窗口"],
-    shortcutExamples: ["今天有什么新闻", "最新头条"],
-    shortcuts: [
-      { id: "headline.refresh", intent: "headline_refresh", actions: ["新闻", "头条"], examples: ["今天有什么新闻"], risk: "safe" }
-    ]
-  },
-  {
     type: "market",
     aliases: ["行情", "市场", "指数", "美股", "A股", "港股"],
     capabilities: ["打开行情", "查询指数", "刷新行情", "关闭窗口"],
@@ -99,15 +80,6 @@ const seeds: DailyWidgetModuleSeed[] = [
       { id: "translate.draft", intent: "translate_text", actions: ["翻译"], examples: ["翻译一下 hello"], risk: "safe" }
     ],
     executionPolicy: { ...defaultExecutionPolicy, defaultMode: "latest-wins" }
-  },
-  {
-    type: "worldClock",
-    aliases: ["世界时钟", "世界时间", "时区"],
-    capabilities: ["打开世界时钟", "设置城市时区", "关闭窗口"],
-    shortcutExamples: ["NYC and Tokyo time", "看东京巴黎悉尼时间"],
-    shortcuts: [
-      { id: "worldClock.zones", intent: "world_clock_zones", actions: ["时间", "时区"], examples: ["NYC and Tokyo time"], risk: "safe" }
-    ]
   },
   {
     type: "recorder",
@@ -157,33 +129,14 @@ const toolArgSchemas: Record<string, ReturnType<typeof createStrictObjectSchema>
     mode: { type: "string", enum: ["replace", "append"] }
   }),
   "note.clear": widgetIdArgsSchema,
-  "countdown.set": createStrictObjectSchema({
-    widgetId: { type: "string", required: true },
-    hours: { type: "number" },
-    minutes: { type: "number" },
-    seconds: { type: "number" },
-    totalSeconds: { type: "number" },
-    start: { type: "boolean" }
-  }),
-  "countdown.pause": widgetIdArgsSchema,
-  "countdown.resume": widgetIdArgsSchema,
-  "countdown.reset": widgetIdArgsSchema,
   "calculator.set_display": createStrictObjectSchema({
     widgetId: { type: "string", required: true },
     display: { type: ["string", "number"], required: true }
-  }),
-  "headline.request_refresh": createStrictObjectSchema({
-    widgetId: { type: "string", required: true },
-    requestedAt: { type: "string" }
   }),
   "market.set_indices": createStrictObjectSchema({
     widgetId: { type: "string", required: true },
     indexCode: { type: "string" },
     indexCodes: { type: "array" }
-  }),
-  "worldClock.set_zones": createStrictObjectSchema({
-    widgetId: { type: "string", required: true },
-    zones: { type: "array", required: true }
   }),
   "translate.set_draft": createStrictObjectSchema({
     widgetId: { type: "string", required: true },
