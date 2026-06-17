@@ -1283,6 +1283,31 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("cleans casual music playback filler from query text", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("帮我放点轻松的音乐", {
+      ...context,
+      availableWidgets: [
+        ...(context.availableWidgets ?? []),
+        {
+          widgetId: "wi_music",
+          definitionId: "wd_music",
+          type: "music",
+          name: "音乐",
+          order: 6,
+          summary: "",
+          recent: true
+        }
+      ]
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("music.play");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_music", query: "轻松" });
+    }
+  });
+
   it("routes music search commands without playback", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("搜索周杰伦音乐", context);

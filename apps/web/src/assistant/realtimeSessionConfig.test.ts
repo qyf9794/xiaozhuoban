@@ -113,6 +113,8 @@ describe("realtime session config", () => {
   it("keeps instructions short-response and xiaozhuoban-only", () => {
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("控制小桌板");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("已注册工具");
+    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("widget.remove，不需要请求确认");
+    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("删除用户数据");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("回复要短");
   });
 

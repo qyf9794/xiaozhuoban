@@ -593,7 +593,8 @@ function inferTvChannelName(input: string) {
 
 function inferMusicQuery(input: string) {
   return input
-    .replace(/(播放|搜索|查找|找一下|找|来一首|放一首|放首|听一下|听|音乐播放器|音乐|歌曲|歌单|专辑|歌手|歌|第一首|第一条|第一个|首个|一下|给我)/g, " ")
+    .replace(/(播放|搜索|查找|找一下|找|来一首|放一首|放首|放点|放个|放些|听一下|听|音乐播放器|音乐|歌曲|歌单|专辑|歌手|歌|第一首|第一条|第一个|首个|一下|给我|帮我|麻烦|麻烦你)/g, " ")
+    .replace(/的\s*$/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }

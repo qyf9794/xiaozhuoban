@@ -49,6 +49,22 @@ function createTools(): AssistantToolSpec[] {
       widgetType: "music",
       requiresTarget: true
     },
+    {
+      name: "weather.set_city",
+      description: "设置天气城市",
+      parameters: schema,
+      scope: "widget-detail",
+      widgetType: "weather",
+      requiresTarget: true
+    },
+    {
+      name: "countdown.set",
+      description: "设置倒计时",
+      parameters: schema,
+      scope: "widget-detail",
+      widgetType: "countdown",
+      requiresTarget: true
+    },
     { name: "tv.play", description: "播放电视", parameters: schema, scope: "widget-detail", widgetType: "tv", requiresTarget: true },
     { name: "tv.pause", description: "暂停电视", parameters: schema, scope: "widget-detail", widgetType: "tv", requiresTarget: true },
     {
@@ -100,6 +116,8 @@ function createRegistry() {
   register("note.append");
   register("music.search");
   register("music.play");
+  register("weather.set_city");
+  register("countdown.set");
   register("tv.play");
   register("tv.pause");
   register("tv.fullscreen");
@@ -115,7 +133,9 @@ function createContextInput(): ContextSummarizerInput {
     availableDefinitions: [
       { definitionId: "wd_tv", type: "tv", name: "电视" },
       { definitionId: "wd_note", type: "note", name: "便签" },
-      { definitionId: "wd_music", type: "music", name: "音乐" }
+      { definitionId: "wd_music", type: "music", name: "音乐" },
+      { definitionId: "wd_weather", type: "weather", name: "天气" },
+      { definitionId: "wd_countdown", type: "countdown", name: "倒计时" }
     ],
     recentWidgetIds: ["wi_note"],
     widgets: [
@@ -195,7 +215,13 @@ describe("AssistantHarness", () => {
     expect(toolUpdates).toEqual([["board.auto_align", "widget.focus", "widget.remove"]]);
     expect(contextUpdates[0]).toMatchObject({
       boardName: "我的桌板",
-      availableDefinitions: [{ definitionId: "wd_tv" }, { definitionId: "wd_note" }, { definitionId: "wd_music" }]
+      availableDefinitions: [
+        { definitionId: "wd_tv" },
+        { definitionId: "wd_note" },
+        { definitionId: "wd_music" },
+        { definitionId: "wd_weather" },
+        { definitionId: "wd_countdown" }
+      ]
     });
   });
 
@@ -367,6 +393,18 @@ describe("AssistantHarness", () => {
     expect(executed).toEqual(["board.add_widget:none", "music.search:wi_added_music", "music.play:wi_added_music"]);
   });
 
+  it("executes casual music playback then countdown setup as sequential local shortcuts", async () => {
+    const { harness, executed } = createHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("帮我放点轻松的音乐，然后把倒计时设为 10 分钟");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("board.add_widget done，music.play done；board.add_widget done，countdown.set done");
+    expect(executed).toEqual(["board.add_widget:none", "music.play:wi_added_music", "board.add_widget:none", "countdown.set:wi_added_countdown"]);
+  });
+
   it("executes simultaneous shortcut command segments with concurrent operation visibility", async () => {
     const { harness, executed, operationEvents } = createHarness();
     await harness.initialize();
@@ -380,6 +418,22 @@ describe("AssistantHarness", () => {
     expect(operationEvents.slice(0, 2)).toMatchObject([
       { phase: "running", route: "shortcut", toolName: "widget.focus" },
       { phase: "running", route: "shortcut", toolName: "tv.play" }
+    ]);
+  });
+
+  it("executes simultaneous add music and set weather shortcut segments locally", async () => {
+    const { harness, executed, operationEvents } = createHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("打开音乐，同时查北京天气");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("board.add_widget done；board.add_widget done，weather.set_city done");
+    expect(executed).toEqual(["board.add_widget:none", "board.add_widget:none", "weather.set_city:wi_added_weather"]);
+    expect(operationEvents.slice(0, 2)).toMatchObject([
+      { phase: "running", route: "shortcut", toolName: "board.add_widget" },
+      { phase: "running", route: "shortcut", toolName: "board.add_widget" }
     ]);
   });
 
