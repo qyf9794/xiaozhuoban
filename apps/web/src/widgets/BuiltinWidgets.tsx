@@ -3711,6 +3711,9 @@ export function BuiltinWidgetView({
 
         const nextUrl = selected?.url ?? channelUrl;
         const nextName = selected?.name ?? channelName;
+        if (selected && !channels.some((channel) => channel.url === selected.url)) {
+          setChannels((current) => (current.some((channel) => channel.url === selected.url) ? current : [selected, ...current]));
+        }
         setPlaybackError("");
         onStateChange({
           ...latestStateRef.current,
