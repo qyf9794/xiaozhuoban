@@ -860,6 +860,7 @@ function cleanCommandContent(value: string) {
 
 function inferNoteContent(raw: string) {
   const patterns = [
+    /(?:请|帮我|麻烦|麻烦你)?\s*(?:记个|写个|开个|新建个|新增个|添加个)(?:便签|笔记)[：:\s]*(.+)/,
     /(?:请|帮我|麻烦|麻烦你)?\s*(?:记一下|记下|记录一下|写一下|记一笔)[：:\s]*(.+)/,
     /(?:便签|笔记).*(?:写|记录|记下|添加|追加)(?:一下|一个|一条)?[：:\s]*(.+)/,
     /(?:写|记录|记下|添加|追加)(?:到|进)?(?:便签|笔记)[：:\s]*(.+)/,
@@ -937,6 +938,10 @@ function normalizeTranslateTarget(raw: string, sourceText = "") {
 }
 
 function inferTranslateDraft(raw: string) {
+  const meaning = raw.match(/(?:帮我|请|麻烦|麻烦你)?\s*(?:看下|看看|查一下|查查|查)?\s*(.+?)(?:是什么意思|什么意思|啥意思)\s*$/);
+  const meaningSource = cleanCommandContent(meaning?.[1] ?? "");
+  if (meaningSource) return { sourceText: meaningSource, targetLang: "zh-CN" };
+
   const patterns = [
     /(?:把)?(.+?)(?:翻译)(?:成|为|到)?(英文|英语|中文|汉语|en|zh-CN)?$/,
     /翻译(?:一下)?[：:\s]*(.+?)(?:成|为|到)(英文|英语|中文|汉语|en|zh-CN)$/,
@@ -1316,7 +1321,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "countdown_control",
       match(normalized, raw, context) {
-        if (!/(倒计时|计时器)/.test(normalized)) return { matched: false, reason: "not_countdown_control" };
+        if (!/(倒计时|计时器|定时器|计时|定时)/.test(normalized)) return { matched: false, reason: "not_countdown_control" };
         const widget = findWidgetByType(context, "countdown");
         if (!widget) return { matched: false, reason: "countdown_target_missing" };
         const wantsReset = /(重置|复位|归零|重新来|重新开始)/.test(normalized);
@@ -1336,7 +1341,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "note_write",
       match(normalized, raw, context) {
-        const explicitNoteWrite = /(便签|笔记)/.test(normalized) && /(写|记录|记下|添加|追加)/.test(normalized);
+        const explicitNoteWrite = /(便签|笔记)/.test(normalized) && /(写|写个|记录|记下|记个|开个|新建|新增|添加|追加)/.test(normalized);
         const casualNoteWrite =
           /(记一下|记下|记录一下|写一下|记一笔)/.test(normalized) &&
           !/(待办|任务|清单|提醒|记得|别忘了|剪贴板|留言板|留言区|消息板|留言)/.test(normalized);
@@ -1459,7 +1464,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "translate_set_draft",
       match(normalized, raw, context) {
-        if (!/翻译/.test(normalized)) return { matched: false, reason: "not_translate" };
+        if (!/翻译|什么意思|啥意思|是什么意思/.test(normalized)) return { matched: false, reason: "not_translate" };
         const draft = inferTranslateDraft(raw);
         if (!draft) return { matched: false, reason: "translate_text_missing" };
         return (

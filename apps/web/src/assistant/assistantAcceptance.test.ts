@@ -230,6 +230,27 @@ describe("stage-one assistant acceptance scenarios", () => {
     });
   });
 
+  it("handles casual countdown control, note, and meaning commands without model fallback", async () => {
+    const { harness, modelInputs, getWidget } = createAcceptanceHarness();
+    await harness.initialize();
+
+    await harness.handleUserInput("定时十分钟");
+    const countdown = await harness.handleUserInput("暂停计时");
+    const note = await harness.handleUserInput("帮我记个便签：晚上复盘");
+    const translate = await harness.handleUserInput("hello 是什么意思");
+
+    expect([countdown, note, translate].map((response) => response.route)).toEqual(["shortcut", "shortcut", "shortcut"]);
+    expect([countdown, note, translate].map((response) => response.result)).toMatchObject([
+      { status: "success" },
+      { status: "success" },
+      { status: "success" }
+    ]);
+    expect(getWidget("countdown")?.state).toMatchObject({ running: false, targetEndsAt: 0 });
+    expect(getWidget("note")?.state.content).toBe("晚上复盘");
+    expect(getWidget("translate")?.state).toMatchObject({ sourceText: "hello", targetLang: "zh-CN" });
+    expect(modelInputs).toEqual([]);
+  });
+
   it("creates a named board through shortcut-first Harness without model fallback", async () => {
     const { harness, modelInputs, getActiveBoard, getBoards } = createAcceptanceHarness();
     await harness.initialize();

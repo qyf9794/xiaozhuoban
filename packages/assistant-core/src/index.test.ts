@@ -584,6 +584,30 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes casual timer control commands without requiring countdown wording", () => {
+    const router = createDefaultIntentShortcutRouter();
+
+    const pause = router.route("暂停计时", context);
+    const resume = router.route("继续定时器", context);
+    const reset = router.route("重置定时", context);
+
+    expect(pause.matched).toBe(true);
+    expect(resume.matched).toBe(true);
+    expect(reset.matched).toBe(true);
+    if (pause.matched) {
+      expect(pause.toolCall.name).toBe("countdown.pause");
+      expect(pause.toolCall.arguments).toEqual({ widgetId: "wi_countdown" });
+    }
+    if (resume.matched) {
+      expect(resume.toolCall.name).toBe("countdown.resume");
+      expect(resume.toolCall.arguments).toEqual({ widgetId: "wi_countdown" });
+    }
+    if (reset.matched) {
+      expect(reset.toolCall.name).toBe("countdown.reset");
+      expect(reset.toolCall.arguments).toEqual({ widgetId: "wi_countdown" });
+    }
+  });
+
   it("routes cancel countdown wording as pausing instead of removing the widget", () => {
     const router = createDefaultIntentShortcutRouter();
 
@@ -632,6 +656,17 @@ describe("IntentShortcutRouter", () => {
     if (result.matched) {
       expect(result.toolCall.name).toBe("note.write");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_note", content: "今天继续测试小桌板", mode: "append" });
+    }
+  });
+
+  it("routes write-a-note wording to the note widget", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("帮我记个便签：晚上复盘", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("note.write");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_note", content: "晚上复盘", mode: "append" });
     }
   });
 
@@ -955,6 +990,17 @@ describe("IntentShortcutRouter", () => {
     if (chinese.matched) {
       expect(chinese.toolCall.name).toBe("translate.set_draft");
       expect(chinese.toolCall.arguments).toEqual({ widgetId: "wi_translate", sourceText: "你好", targetLang: "en" });
+    }
+  });
+
+  it("routes meaning question commands to Chinese translation", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("hello 是什么意思", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("translate.set_draft");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_translate", sourceText: "hello", targetLang: "zh-CN" });
     }
   });
 
