@@ -50,6 +50,14 @@ function createTools(): AssistantToolSpec[] {
       requiresTarget: true
     },
     {
+      name: "music.pause",
+      description: "暂停音乐",
+      parameters: schema,
+      scope: "widget-detail",
+      widgetType: "music",
+      requiresTarget: true
+    },
+    {
       name: "weather.set_city",
       description: "设置天气城市",
       parameters: schema,
@@ -63,6 +71,22 @@ function createTools(): AssistantToolSpec[] {
       parameters: schema,
       scope: "widget-detail",
       widgetType: "countdown",
+      requiresTarget: true
+    },
+    {
+      name: "headline.request_refresh",
+      description: "刷新新闻",
+      parameters: schema,
+      scope: "widget-detail",
+      widgetType: "headline",
+      requiresTarget: true
+    },
+    {
+      name: "worldClock.set_zones",
+      description: "设置世界时钟",
+      parameters: schema,
+      scope: "widget-detail",
+      widgetType: "worldClock",
       requiresTarget: true
     },
     { name: "tv.play", description: "播放电视", parameters: schema, scope: "widget-detail", widgetType: "tv", requiresTarget: true },
@@ -116,8 +140,11 @@ function createRegistry() {
   register("note.append");
   register("music.search");
   register("music.play");
+  register("music.pause");
   register("weather.set_city");
   register("countdown.set");
+  register("headline.request_refresh");
+  register("worldClock.set_zones");
   register("tv.play");
   register("tv.pause");
   register("tv.fullscreen");
@@ -163,6 +190,7 @@ function createHarness(options?: {
   modelCall?: AssistantToolCall | null;
   actionTimeoutMs?: number;
   registryFactory?: () => ReturnType<typeof createRegistry>;
+  getContextInput?: () => ContextSummarizerInput;
 }) {
   const registryState = options?.registryFactory?.() ?? createRegistry();
   const toolUpdates: string[][] = [];
@@ -199,7 +227,7 @@ function createHarness(options?: {
     onOperation(event) {
       operationEvents.push(event);
     },
-    getContextInput: createContextInput,
+    getContextInput: options?.getContextInput ?? createContextInput,
     actionTimeoutMs: options?.actionTimeoutMs ?? 500,
     now: () => "2026-06-16T00:00:00.000Z"
   });
@@ -434,6 +462,68 @@ describe("AssistantHarness", () => {
     expect(operationEvents.slice(0, 2)).toMatchObject([
       { phase: "running", route: "shortcut", toolName: "board.add_widget" },
       { phase: "running", route: "shortcut", toolName: "board.add_widget" }
+    ]);
+  });
+
+  it("executes simultaneous pause music and open headline shortcut segments locally", async () => {
+    const { harness, executed, operationEvents } = createHarness({
+      getContextInput: () => ({
+        ...createContextInput(),
+        focusedWidgetId: "wi_music",
+        availableDefinitions: [
+          ...createContextInput().availableDefinitions!,
+          { definitionId: "wd_headline", type: "headline", name: "新闻" }
+        ],
+        widgets: [
+          ...createContextInput().widgets,
+          {
+            widgetId: "wi_music",
+            definitionId: "wd_music",
+            type: "music",
+            name: "音乐",
+            order: 3,
+            summary: "正在播放轻松音乐"
+          }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("暂停音乐，同时打开新闻");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("music.pause done；board.add_widget done");
+    expect(executed).toEqual(["music.pause:wi_music", "board.add_widget:none"]);
+    expect(operationEvents.slice(0, 2)).toMatchObject([
+      { phase: "running", route: "shortcut", toolName: "music.pause" },
+      { phase: "running", route: "shortcut", toolName: "board.add_widget" }
+    ]);
+  });
+
+  it("executes sequential weather and world clock setup shortcut segments locally", async () => {
+    const { harness, executed } = createHarness({
+      getContextInput: () => ({
+        ...createContextInput(),
+        availableDefinitions: [
+          ...createContextInput().availableDefinitions!,
+          { definitionId: "wd_worldClock", type: "worldClock", name: "世界时钟" }
+        ],
+        widgets: createContextInput().widgets.filter((widget) => !["weather", "worldClock"].includes(widget.type))
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("打开天气查北京，再打开世界时钟看东京时间");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("board.add_widget done，weather.set_city done；board.add_widget done，worldClock.set_zones done");
+    expect(executed).toEqual([
+      "board.add_widget:none",
+      "weather.set_city:wi_added_weather",
+      "board.add_widget:none",
+      "worldClock.set_zones:wi_added_worldClock"
     ]);
   });
 
