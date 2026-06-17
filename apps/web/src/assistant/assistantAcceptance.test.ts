@@ -408,6 +408,28 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(modelInputs).toEqual([]);
   });
 
+  it("sets weather, market, and world clock aliases without model fallback", async () => {
+    const { harness, modelInputs, getWidget } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const weather = await harness.handleUserInput("帝都天气");
+    const market = await harness.handleUserInput("美股怎么样");
+    const clock = await harness.handleUserInput("NYC and Tokyo time");
+
+    expect([weather, market, clock].map((response) => response.route)).toEqual(["shortcut", "shortcut", "shortcut"]);
+    expect([weather, market, clock].map((response) => response.result)).toMatchObject([
+      { status: "success" },
+      { status: "success" },
+      { status: "success" }
+    ]);
+    expect(getWidget("weather")?.state.cityCode).toBe("beijing");
+    expect(getWidget("market")?.state.indexCodes).toEqual(["usINX", "usNDX", "usDJI"]);
+    expect(getWidget("worldClock")?.state.zones).toEqual(
+      expect.arrayContaining(["America/New_York", "Asia/Tokyo"])
+    );
+    expect(modelInputs).toEqual([]);
+  });
+
   it("sets casual translate shorthand without model fallback", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness();
     await harness.initialize();

@@ -538,15 +538,23 @@ function inferCityName(input: string) {
   if (/(^|[^a-z])la(?=[^a-z]|$)/i.test(normalized)) return "los-angeles";
   const knownCities: Array<[string, string]> = [
     ["北京", "北京"],
+    ["帝都", "北京"],
+    ["首都", "北京"],
     ["上海", "上海"],
+    ["魔都", "上海"],
     ["大连", "大连"],
     ["广州", "广州"],
+    ["羊城", "广州"],
     ["深圳", "深圳"],
+    ["鹏城", "深圳"],
     ["杭州", "杭州"],
+    ["杭城", "杭州"],
     ["成都", "成都"],
+    ["蓉城", "成都"],
     ["武汉", "武汉"],
     ["荆州", "荆州"],
     ["重庆", "重庆"],
+    ["山城", "重庆"],
     ["南京", "南京"],
     ["西安", "西安"],
     ["洛杉矶", "洛杉矶"],
@@ -1029,6 +1037,9 @@ function inferMarketIndexCodes(raw: string) {
   if (/(沪深|上证.*深|深.*上证|沪指.*深|深.*沪指)/.test(raw)) {
     return ["sh000001", "sz399001"];
   }
+  if (/(A股|a股|中国股市|内地股市)/.test(raw)) {
+    return ["sh000001", "sz399001"];
+  }
   const pairs: Array<[RegExp, string]> = [
     [/(标普|标普500|S&P|sp500|spx|standard\s*&?\s*poor)/i, "usINX"],
     [/(纳指|纳斯达克|纳斯达克100|NDX|nasdaq|nasdaq\s*100)/i, "usNDX"],
@@ -1037,28 +1048,44 @@ function inferMarketIndexCodes(raw: string) {
     [/(上证|沪指|A股|a股|sh000001)/i, "sh000001"],
     [/(深成|深证|深证成指|sz399001)/i, "sz399001"]
   ];
-  return pairs.filter(([pattern]) => pattern.test(normalized)).map(([, code]) => code);
+  const matchedCodes = pairs.filter(([pattern]) => pattern.test(normalized)).map(([, code]) => code);
+  if (matchedCodes.length > 0) return matchedCodes;
+  if (/(美股|美国股市|美国市场)/.test(raw)) return ["usINX", "usNDX", "usDJI"];
+  if (/(港股|香港股市|香港市场)/.test(raw)) return ["hkHSI"];
+  return [];
 }
 
 function inferWorldClockZones(raw: string) {
+  const lower = raw.toLowerCase();
   const pairs: Array<[string, string]> = [
     ["北京", "北京"],
     ["上海", "北京"],
     ["伦敦", "伦敦"],
+    ["london", "伦敦"],
     ["纽约", "纽约"],
+    ["nyc", "纽约"],
+    ["new york", "纽约"],
     ["洛杉矶", "洛杉矶"],
     ["洛城", "洛杉矶"],
+    ["los angeles", "洛杉矶"],
     ["巴黎", "巴黎"],
+    ["paris", "巴黎"],
     ["柏林", "柏林"],
+    ["berlin", "柏林"],
     ["东京", "东京"],
+    ["tokyo", "东京"],
     ["首尔", "首尔"],
     ["汉城", "首尔"],
+    ["seoul", "首尔"],
     ["新加坡", "新加坡"],
+    ["singapore", "新加坡"],
     ["迪拜", "迪拜"],
-    ["悉尼", "悉尼"]
+    ["dubai", "迪拜"],
+    ["悉尼", "悉尼"],
+    ["sydney", "悉尼"]
   ];
   const zones = pairs
-    .map(([alias, zone]) => ({ index: raw.indexOf(alias), zone }))
+    .map(([alias, zone]) => ({ index: lower.indexOf(alias.toLowerCase()), zone }))
     .filter((item) => item.index >= 0)
     .sort((a, b) => a.index - b.index)
     .map((item) => item.zone)
@@ -1493,7 +1520,9 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "world_clock_set_zones",
       match(normalized, raw, context) {
-        if (!/(世界时钟|世界时间|时区|几点|时间)/.test(normalized)) return { matched: false, reason: "not_world_clock" };
+        if (!/(世界时钟|世界时间|时区|几点|时间)/.test(normalized) && !/\btime\b/i.test(raw)) {
+          return { matched: false, reason: "not_world_clock" };
+        }
         const zones = inferWorldClockZones(raw);
         if (zones.length === 0) return { matched: false, reason: "world_clock_zones_missing" };
         return (

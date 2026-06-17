@@ -439,6 +439,21 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes supported Chinese weather city nicknames", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const beijing = router.route("帝都天气", context);
+    const shanghai = router.route("魔都天气", context);
+
+    expect(beijing.matched).toBe(true);
+    expect(shanghai.matched).toBe(true);
+    if (beijing.matched && shanghai.matched) {
+      expect(beijing.toolCall.name).toBe("weather.set_city");
+      expect(beijing.toolCall.arguments).toEqual({ widgetId: "wi_weather", city: "北京" });
+      expect(shanghai.toolCall.name).toBe("weather.set_city");
+      expect(shanghai.toolCall.arguments).toEqual({ widgetId: "wi_weather", city: "上海" });
+    }
+  });
+
   it("routes English weather commands for supported cities", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("Boston weather", context);
@@ -1061,6 +1076,17 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes broad US market commands", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("美股怎么样", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("market.set_indices");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_market", indexCodes: ["usINX", "usNDX", "usDJI"] });
+    }
+  });
+
   it("routes market commands when the user only names an index", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("道琼斯怎么样", context);
@@ -1075,6 +1101,17 @@ describe("IntentShortcutRouter", () => {
   it("routes China market shorthand commands", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("沪深行情", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("market.set_indices");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_market", indexCodes: ["sh000001", "sz399001"] });
+    }
+  });
+
+  it("routes broad China market commands", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("A股行情", context);
 
     expect(result.matched).toBe(true);
     if (result.matched) {
@@ -1113,6 +1150,17 @@ describe("IntentShortcutRouter", () => {
     if (result.matched) {
       expect(result.toolCall.name).toBe("worldClock.set_zones");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_worldClock", zones: ["首尔", "迪拜"] });
+    }
+  });
+
+  it("routes English world clock aliases and time phrasing", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("NYC and Tokyo time", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("worldClock.set_zones");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_worldClock", zones: ["纽约", "东京"] });
     }
   });
 
