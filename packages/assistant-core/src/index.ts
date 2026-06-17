@@ -892,7 +892,8 @@ function inferTodoCompleteText(raw: string) {
   const patterns = [
     /(?:完成|做完|办完|勾掉|勾选|删除|移除|去掉)(?:一个|一条)?(?:待办|任务|清单)[：:\s]*(.+)/,
     /(?:待办|任务|清单).*(?:完成|做完|办完|勾掉|勾选|删除|移除|去掉)(?:一个|一条)?[：:\s]*(.+)/,
-    /把(.+?)(?:标记为已完成|标记完成|设为完成|完成|做完|办完|勾掉|勾选|删除|移除|去掉)(?:待办|任务|清单)?/
+    /把(.+?)(?:标记为已完成|标记完成|设为完成|完成|做完|办完|勾掉|勾选|删除|移除|去掉)(?:待办|任务|清单)?/,
+    /(?:完成|做完|办完|勾掉|勾选|标记完成|标记为已完成)\s*(.+)/
   ];
   for (const pattern of patterns) {
     const match = raw.match(pattern);
@@ -1328,7 +1329,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "note_clear",
       match(normalized, raw, context) {
-        if (!/(便签|笔记)/.test(normalized) || !/(清空|清理|清除|擦掉|删除内容|移除内容)/.test(normalized)) {
+        if (!/(便签|笔记)/.test(normalized) || !/(清空|清理|清除|清一下|清掉|清除一下|擦掉|删除内容|移除内容)/.test(normalized)) {
           return { matched: false, reason: "not_note_clear" };
         }
         const widget = findWidgetByType(context, "note");
@@ -1358,7 +1359,11 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "todo_complete",
       match(normalized, raw, context) {
-        if (!/(待办|任务|清单)/.test(normalized) || !/(完成|做完|办完|勾掉|勾选|删除|移除|去掉|标记)/.test(normalized)) {
+        const explicitTodoComplete = /(待办|任务|清单)/.test(normalized) && /(完成|做完|办完|勾掉|勾选|删除|移除|去掉|标记)/.test(normalized);
+        const implicitTodoComplete =
+          /(完成|做完|办完|勾掉|勾选|标记完成|标记为已完成)/.test(normalized) &&
+          !/(便签|笔记|剪贴板|留言板|留言区|消息板|留言|音乐|电视|倒计时|计时器|新闻|头条)/.test(normalized);
+        if (!explicitTodoComplete && !implicitTodoComplete) {
           return { matched: false, reason: "not_todo_complete" };
         }
         const text = inferTodoCompleteText(raw);
@@ -1393,7 +1398,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "clipboard_clear",
       match(normalized, raw, context) {
-        if (!/(剪贴板|剪贴板历史)/.test(normalized) || !/(清空|清理|清除|删除|移除)/.test(normalized)) {
+        if (!/(剪贴板|剪贴板历史)/.test(normalized) || !/(清空|清理|清除|清一下|清掉|清除一下|删除|移除)/.test(normalized)) {
           return { matched: false, reason: "not_clipboard_clear" };
         }
         const includePinned = /(全部|所有|固定|置顶|包含固定|连固定|一起)/.test(normalized);

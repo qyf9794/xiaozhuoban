@@ -333,6 +333,19 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(modelInputs).toEqual([]);
   });
 
+  it("completes a todo from shorthand wording without model fallback", async () => {
+    const { harness, modelInputs, getWidget } = createAcceptanceHarness();
+    await harness.initialize();
+    await harness.handleUserInput("添加待办买牛奶");
+
+    const response = await harness.handleUserInput("把买牛奶勾掉");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(getWidget("todo")?.state.items).toEqual([]);
+    expect(modelInputs).toEqual([]);
+  });
+
   it("adds a clipboard widget and saves text when clipboard is absent", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness({ initialWidgetTypes: ["weather", "countdown", "note", "todo"] });
     await harness.initialize();

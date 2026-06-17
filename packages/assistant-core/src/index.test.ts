@@ -623,11 +623,17 @@ describe("IntentShortcutRouter", () => {
   it("routes note clear commands to clear content instead of closing the widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("清空便签内容", context);
+    const shorthand = router.route("清一下便签", context);
 
     expect(result.matched).toBe(true);
+    expect(shorthand.matched).toBe(true);
     if (result.matched) {
       expect(result.toolCall.name).toBe("note.clear");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_note" });
+    }
+    if (shorthand.matched) {
+      expect(shorthand.toolCall.name).toBe("note.clear");
+      expect(shorthand.toolCall.arguments).toEqual({ widgetId: "wi_note" });
     }
   });
 
@@ -808,6 +814,17 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes todo completion shorthand when the item is named", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("把买牛奶勾掉", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("todo.complete_item");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_todo", text: "买牛奶" });
+    }
+  });
+
   it("routes clipboard save commands to add-and-save when clipboard is absent", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("保存到剪贴板账号是 demo", {
@@ -842,11 +859,17 @@ describe("IntentShortcutRouter", () => {
   it("routes clipboard clear commands to clear history instead of closing the widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("清空剪贴板历史", context);
+    const shorthand = router.route("清一下剪贴板", context);
 
     expect(result.matched).toBe(true);
+    expect(shorthand.matched).toBe(true);
     if (result.matched) {
       expect(result.toolCall.name).toBe("clipboard.clear");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_clipboard", includePinned: false });
+    }
+    if (shorthand.matched) {
+      expect(shorthand.toolCall.name).toBe("clipboard.clear");
+      expect(shorthand.toolCall.arguments).toEqual({ widgetId: "wi_clipboard", includePinned: false });
     }
   });
 
