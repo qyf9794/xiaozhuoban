@@ -221,6 +221,22 @@ export function extractRealtimeSessionErrorMessage(payload: unknown, fallback = 
   return code || detail || fallback;
 }
 
+export function resolveRealtimeConnectFailureStatus(error: unknown): RealtimeConnectionStatus {
+  const message = error instanceof Error ? error.message : "";
+  if (
+    message === "OPENAI_API_KEY_MISSING" ||
+    message === "AUTH_REQUIRED" ||
+    message === "AUTH_INVALID" ||
+    message === "REALTIME_CLIENT_SECRET_MISSING" ||
+    message === "REALTIME_SESSION_FAILED" ||
+    message.startsWith("OPENAI_REALTIME_SESSION_CREATE_FAILED") ||
+    message.startsWith("OPENAI_REALTIME_SESSION_REQUEST_FAILED")
+  ) {
+    return "session_failed";
+  }
+  return "failed";
+}
+
 async function readRealtimeEndpointError(response: Response, fallback: string): Promise<Error> {
   try {
     return new Error(extractRealtimeSessionErrorMessage(await response.json(), fallback));
@@ -467,7 +483,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     } catch (error) {
       if (this.isCurrentAttempt(attemptId)) {
         this.closeResources();
-        this.options.onStatusChange?.("failed");
+        this.options.onStatusChange?.(resolveRealtimeConnectFailureStatus(error));
         throw error;
       }
     }

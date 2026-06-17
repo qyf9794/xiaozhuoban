@@ -12,6 +12,7 @@ import {
   isCurrentRealtimeConnectAttempt,
   parseRealtimeFunctionCallEvent,
   reduceRealtimeActiveResponseId,
+  resolveRealtimeConnectFailureStatus,
   resolveMicrophoneAccessErrorCode,
   resolveRealtimePeerStatus,
   shouldQueueRealtimeEventWhenClosed,
@@ -274,6 +275,20 @@ describe("OpenAI realtime adapter helpers", () => {
     ).toBe(
       "OPENAI_REALTIME_SESSION_CREATE_FAILED (status 400 · unknown_parameter: param session.output_modalities: Unknown parameter: session.output_modalities.)"
     );
+  });
+
+  it("classifies session creation failures separately from WebRTC channel failures", () => {
+    expect(resolveRealtimeConnectFailureStatus(new Error("OPENAI_API_KEY_MISSING"))).toBe("session_failed");
+    expect(resolveRealtimeConnectFailureStatus(new Error("AUTH_INVALID"))).toBe("session_failed");
+    expect(
+      resolveRealtimeConnectFailureStatus(
+        new Error(
+          "OPENAI_REALTIME_SESSION_CREATE_FAILED (status 400 · unknown_parameter: param session.output_modalities: Unknown parameter: session.output_modalities.)"
+        )
+      )
+    ).toBe("session_failed");
+    expect(resolveRealtimeConnectFailureStatus(new Error("REALTIME_CLIENT_SECRET_MISSING"))).toBe("session_failed");
+    expect(resolveRealtimeConnectFailureStatus(new Error("REALTIME_SDP_FAILED"))).toBe("failed");
   });
 
   it("queues session tool updates before the data channel opens", () => {
