@@ -448,6 +448,28 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes compound countdown duration commands", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("1小时30分钟倒计时", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("countdown.set");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_countdown", totalSeconds: 5400, start: true });
+    }
+  });
+
+  it("routes second-based countdown duration commands", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("90秒倒计时", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("countdown.set");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_countdown", totalSeconds: 90, start: true });
+    }
+  });
+
   it("routes countdown duration commands to add-and-start when the widget is absent", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("十分钟倒计时", {
@@ -586,6 +608,42 @@ describe("IntentShortcutRouter", () => {
         widgetId: "wi_todo",
         text: "前端会议",
         dueAt: new Date(2026, 5, 18, 9, 0, 0).toISOString()
+      });
+    }
+  });
+
+  it("routes todo add commands with weekday due times", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("待办添加 下周一9点团队会", {
+      ...context,
+      currentTime: new Date(2026, 5, 17, 9, 0, 0).toISOString()
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("todo.add_item");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_todo",
+        text: "团队会",
+        dueAt: new Date(2026, 5, 22, 9, 0, 0).toISOString()
+      });
+    }
+  });
+
+  it("routes todo add commands with days-later due times", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("三天后下午4点提醒我寄快递", {
+      ...context,
+      currentTime: new Date(2026, 5, 17, 9, 0, 0).toISOString()
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("todo.add_item");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_todo",
+        text: "寄快递",
+        dueAt: new Date(2026, 5, 20, 16, 0, 0).toISOString()
       });
     }
   });

@@ -600,10 +600,38 @@ function parseTodoMinute(token: string | undefined) {
   return value === null || value < 0 || value > 59 ? null : value;
 }
 
+const WEEKDAY_INDEX: Record<string, number> = {
+  日: 0,
+  天: 0,
+  一: 1,
+  二: 2,
+  两: 2,
+  三: 3,
+  四: 4,
+  五: 5,
+  六: 6
+};
+
+function resolveWeekdayDate(now: Date, token: string, nextWeek: boolean) {
+  const targetDay = WEEKDAY_INDEX[token];
+  if (targetDay === undefined) return undefined;
+  const currentDay = now.getDay();
+  if (nextWeek) {
+    const daysFromCurrentToThisMonday = currentDay === 0 ? -6 : 1 - currentDay;
+    const targetOffsetFromMonday = targetDay === 0 ? 6 : targetDay - 1;
+    return addDays(now, daysFromCurrentToThisMonday + 7 + targetOffsetFromMonday);
+  }
+  let delta = (targetDay - currentDay + 7) % 7;
+  if (delta === 0) delta = 7;
+  return addDays(now, delta);
+}
+
 function inferTodoDueAt(input: string, now: Date) {
   const compact = input.replace(/\s+/g, "");
   const explicitDate = compact.match(/(?:(\d{4})年)?(\d{1,2})月(\d{1,2})[日号]?/);
   const slashDate = compact.match(/(?<!\d)(\d{1,2})[\/.-](\d{1,2})(?!\d)/);
+  const daysLater = compact.match(/([零〇一二两三四五六七八九十\d]{1,3})天后/);
+  const weekday = compact.match(/(?:(下)(?:周|星期|礼拜)|(?:周|星期|礼拜))([日天一二两三四五六])/);
   const timeMatch =
     compact.match(/(?:(凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚))?([零〇一二两三四五六七八九十\d]{1,3})点(?:(半|一刻|三刻|[零〇一二两三四五六七八九十\d]{1,3})分?)?/) ??
     compact.match(/(?:(凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚))?(\d{1,2})[:：]([0-5]\d)/);
@@ -621,6 +649,19 @@ function inferTodoDueAt(input: string, now: Date) {
   } else if (slashDate) {
     month = Number(slashDate[1]) - 1;
     day = Number(slashDate[2]);
+  } else if (daysLater) {
+    const dayCount = parseChineseInteger(daysLater[1] ?? "");
+    if (!dayCount || dayCount < 0) return undefined;
+    const next = addDays(now, dayCount);
+    year = next.getFullYear();
+    month = next.getMonth();
+    day = next.getDate();
+  } else if (weekday) {
+    const next = resolveWeekdayDate(now, weekday[2] ?? "", Boolean(weekday[1]));
+    if (!next) return undefined;
+    year = next.getFullYear();
+    month = next.getMonth();
+    day = next.getDate();
   } else if (/(明天|明早|明晚)/.test(compact)) {
     const next = addDays(now, 1);
     year = next.getFullYear();
@@ -651,16 +692,35 @@ function inferTodoDueAt(input: string, now: Date) {
 
 function stripTodoDueText(text: string) {
   return text
-    .replace(/(?:(?:今天|明天|后天|今晚|明早|明晚)\s*)?(?:凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚)?\s*[零〇一二两三四五六七八九十\d]{1,3}\s*点\s*(?:半|一刻|三刻|[零〇一二两三四五六七八九十\d]{1,3}\s*分?)?\s*(?:之前|以前|前(?!端))/g, " ")
-    .replace(/(?:(?:今天|明天|后天|今晚|明早|明晚)\s*)?(?:凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚)?\s*\d{1,2}\s*[:：]\s*[0-5]\d\s*(?:之前|以前|前(?!端))/g, " ")
-    .replace(/(?:(?:今天|明天|后天|今晚|明早|明晚)\s*)?(?:凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚)?\s*[零〇一二两三四五六七八九十\d]{1,3}\s*点\s*(?:半|一刻|三刻|[零〇一二两三四五六七八九十\d]{1,3}\s*分?)?/g, " ")
-    .replace(/(?:(?:今天|明天|后天|今晚|明早|明晚)\s*)?(?:凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚)?\s*\d{1,2}\s*[:：]\s*[0-5]\d/g, " ")
+    .replace(/(?:(?:今天|明天|后天|今晚|明早|明晚|[零〇一二两三四五六七八九十\d]{1,3}天后|(?:(?:下)?(?:周|星期|礼拜)[日天一二两三四五六]))\s*)?(?:凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚)?\s*[零〇一二两三四五六七八九十\d]{1,3}\s*点\s*(?:半|一刻|三刻|[零〇一二两三四五六七八九十\d]{1,3}\s*分?)?\s*(?:之前|以前|前(?!端))/g, " ")
+    .replace(/(?:(?:今天|明天|后天|今晚|明早|明晚|[零〇一二两三四五六七八九十\d]{1,3}天后|(?:(?:下)?(?:周|星期|礼拜)[日天一二两三四五六]))\s*)?(?:凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚)?\s*\d{1,2}\s*[:：]\s*[0-5]\d\s*(?:之前|以前|前(?!端))/g, " ")
+    .replace(/(?:(?:今天|明天|后天|今晚|明早|明晚|[零〇一二两三四五六七八九十\d]{1,3}天后|(?:(?:下)?(?:周|星期|礼拜)[日天一二两三四五六]))\s*)?(?:凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚)?\s*[零〇一二两三四五六七八九十\d]{1,3}\s*点\s*(?:半|一刻|三刻|[零〇一二两三四五六七八九十\d]{1,3}\s*分?)?/g, " ")
+    .replace(/(?:(?:今天|明天|后天|今晚|明早|明晚|[零〇一二两三四五六七八九十\d]{1,3}天后|(?:(?:下)?(?:周|星期|礼拜)[日天一二两三四五六]))\s*)?(?:凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚)?\s*\d{1,2}\s*[:：]\s*[0-5]\d/g, " ")
     .replace(/(?:(?:\d{4})年)?\d{1,2}月\d{1,2}[日号]?/g, " ")
     .replace(/(?<!\d)\d{1,2}[\/.-]\d{1,2}(?!\d)/g, " ")
-    .replace(/(今天|明天|后天|今晚|明早|明晚)/g, " ")
+    .replace(/(今天|明天|后天|今晚|明早|明晚|[零〇一二两三四五六七八九十\d]{1,3}天后|(?:(?:下)?(?:周|星期|礼拜)[日天一二两三四五六]))/g, " ")
     .replace(/(截止|到时候|的时候|之前|以前|提醒我|提醒|记得|别忘了)/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function parseCountdownDurationSeconds(input: string) {
+  const compact = input.replace(/\s+/g, "");
+  let totalSeconds = 0;
+  const unitPattern = /([零〇一二两三四五六七八九十\d]+|半)(?:个)?(小时|钟头|分钟|分|秒)/g;
+  for (const match of compact.matchAll(unitPattern)) {
+    const token = match[1] ?? "";
+    const unit = match[2] ?? "";
+    const value = token === "半" ? 0.5 : parseChineseInteger(token);
+    if (value === null || value <= 0) continue;
+    if (unit === "小时" || unit === "钟头") totalSeconds += value * 3600;
+    if (unit === "分钟" || unit === "分") totalSeconds += value * 60;
+    if (unit === "秒") totalSeconds += value;
+  }
+  if (/(小时|钟头)半/.test(compact)) totalSeconds += 30 * 60;
+  if (totalSeconds > 0) return Math.round(totalSeconds);
+  const minutes = parseChineseInteger(compact);
+  return minutes && Number.isFinite(minutes) && minutes > 0 ? minutes * 60 : undefined;
 }
 
 function cleanBoardName(value: string) {
@@ -1065,15 +1125,15 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
       name: "countdown_duration",
       match(normalized, raw, context) {
         if (!normalized.includes("倒计时")) return { matched: false, reason: "not_countdown" };
-        const minutes = parseChineseInteger(normalized);
-        if (!minutes || !Number.isFinite(minutes) || minutes <= 0) {
+        const totalSeconds = parseCountdownDurationSeconds(normalized);
+        if (!totalSeconds || !Number.isFinite(totalSeconds) || totalSeconds <= 0) {
           return { matched: false, reason: "countdown_duration_missing" };
         }
         const widget = findWidgetByType(context, "countdown");
         if (widget) {
           return shortcutMatch(
             "countdown.set",
-            { widgetId: widget.widgetId, totalSeconds: minutes * 60, start: true },
+            { widgetId: widget.widgetId, totalSeconds, start: true },
             0.9,
             context.source ?? "shortcut",
             raw
@@ -1087,7 +1147,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
               definitionId: definition.definitionId,
               followUp: {
                 name: "countdown.set",
-                arguments: { totalSeconds: minutes * 60, start: true }
+                arguments: { totalSeconds, start: true }
               }
             },
             0.75,
