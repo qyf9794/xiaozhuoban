@@ -308,6 +308,27 @@ describe("WidgetCapabilityBridge", () => {
     expect(getWidget("dialClock")?.state.nightMode).toBe(true);
   });
 
+  it("turns dial clock night mode off through capability and state patch", async () => {
+    const { store, getWidget } = createStore();
+    const bridge = new WidgetCapabilityBridge();
+    const calls: boolean[] = [];
+    bridge.register("wi_dialClock", {
+      setNightMode(args) {
+        calls.push(args.enabled === true);
+      }
+    });
+    const registry = createRegistry(store, bridge);
+
+    const result = await registry.execute(
+      { id: "call_1", name: "dialClock.set_night_mode", arguments: { enabled: false }, source: "test" },
+      { target: targetFor("dialClock"), now: () => NOW }
+    );
+
+    expect(result.status).toBe("success");
+    expect(calls).toEqual([false]);
+    expect(getWidget("dialClock")?.state.nightMode).toBe(false);
+  });
+
   it("sends message board text through mounted capability", async () => {
     const { store } = createStore();
     const bridge = new WidgetCapabilityBridge();

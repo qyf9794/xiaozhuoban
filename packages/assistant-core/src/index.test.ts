@@ -1785,7 +1785,10 @@ describe("IntentShortcutRouter", () => {
       ["开始录音", "recorder.start"],
       ["停止录音", "recorder.stop"],
       ["播放录音", "recorder.play"],
-      ["暂停录音", "recorder.pause"]
+      ["暂停录音", "recorder.pause"],
+      ["开始录制", "recorder.start"],
+      ["播放录制", "recorder.play"],
+      ["暂停录制", "recorder.pause"]
     ] as const;
 
     for (const [input, toolName] of cases) {
@@ -1854,6 +1857,8 @@ describe("IntentShortcutRouter", () => {
 
     const on = router.route("进入时钟夜间模式", dialClockContext);
     const off = router.route("关闭时钟夜间模式", dialClockContext);
+    const lampOff = router.route("退出夜灯", dialClockContext);
+    const darkOn = router.route("打开深色模式", dialClockContext);
 
     expect(on.matched).toBe(true);
     if (on.matched) {
@@ -1864,6 +1869,16 @@ describe("IntentShortcutRouter", () => {
     if (off.matched) {
       expect(off.toolCall.name).toBe("dialClock.set_night_mode");
       expect(off.toolCall.arguments).toEqual({ widgetId: "wi_dialClock", enabled: false });
+    }
+    expect(lampOff.matched).toBe(true);
+    if (lampOff.matched) {
+      expect(lampOff.toolCall.name).toBe("dialClock.set_night_mode");
+      expect(lampOff.toolCall.arguments).toEqual({ widgetId: "wi_dialClock", enabled: false });
+    }
+    expect(darkOn.matched).toBe(true);
+    if (darkOn.matched) {
+      expect(darkOn.toolCall.name).toBe("dialClock.set_night_mode");
+      expect(darkOn.toolCall.arguments).toEqual({ widgetId: "wi_dialClock", enabled: true });
     }
   });
 

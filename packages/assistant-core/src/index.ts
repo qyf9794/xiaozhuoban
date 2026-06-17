@@ -1568,10 +1568,10 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "recorder_control",
       match(normalized, raw, context) {
-        if (!/(录音|录音机)/.test(normalized)) return { matched: false, reason: "not_recorder" };
+        if (!/(录音|录音机|录制)/.test(normalized)) return { matched: false, reason: "not_recorder" };
         const wantsStop = /(停止|结束|完成|停下|停掉).*(录音|录制)|^(停止|结束|完成|停下|停掉)录音/.test(normalized);
-        const wantsPlay = /(播放|回放|听一下|听).*(录音|录音机)/.test(normalized);
-        const wantsPause = /(暂停).*(录音|录音机)/.test(normalized);
+        const wantsPlay = /(播放|回放|听一下|听).*(录音|录音机|录制)/.test(normalized);
+        const wantsPause = /(暂停).*(录音|录音机|录制)/.test(normalized);
         const wantsStart =
           !wantsStop &&
           !wantsPlay &&
@@ -1603,13 +1603,13 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "dial_clock_night_mode",
       match(normalized, raw, context) {
-        const mentionsNightMode = /(夜间模式|夜晚模式|黑夜模式|睡眠模式|夜灯)/.test(normalized);
+        const mentionsNightMode = /(夜间模式|夜晚模式|黑夜模式|睡眠模式|夜灯|暗色模式|深色模式)/.test(normalized);
         const mentionsDialClock = /(时钟|表盘|钟表)/.test(normalized);
-        if (!mentionsNightMode && !(mentionsDialClock && /(夜间|夜晚|黑夜|睡眠|夜灯)/.test(normalized))) {
+        if (!mentionsNightMode && !(mentionsDialClock && /(夜间|夜晚|黑夜|睡眠|夜灯|暗色|深色)/.test(normalized))) {
           return { matched: false, reason: "not_dial_clock_night_mode" };
         }
-        const wantsOff = /(关闭|关掉|退出|取消|停用|关上|关了)/.test(normalized);
-        const wantsOn = /(打开|开启|进入|启用|切到|切换到|启动)/.test(normalized) || !wantsOff;
+        const wantsOff = /(关闭|关掉|退出|取消|停用|关上|关了|不要|取消)/.test(normalized);
+        const wantsOn = /(打开|开启|进入|启用|切到|切换到|启动|开一下)/.test(normalized) || !wantsOff;
         return (
           routeWidgetDetailOrAdd(context, raw, "dialClock", "dialClock.set_night_mode", { enabled: wantsOn }, 0.88) ?? {
             matched: false,
