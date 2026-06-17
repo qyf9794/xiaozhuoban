@@ -34,6 +34,14 @@ function createTools(): AssistantToolSpec[] {
       requiresTarget: true
     },
     {
+      name: "music.search",
+      description: "搜索音乐",
+      parameters: schema,
+      scope: "widget-detail",
+      widgetType: "music",
+      requiresTarget: true
+    },
+    {
       name: "music.play",
       description: "播放音乐",
       parameters: schema,
@@ -90,6 +98,7 @@ function createRegistry() {
   register("widget.focus");
   register("widget.remove");
   register("note.append");
+  register("music.search");
   register("music.play");
   register("tv.play");
   register("tv.pause");
@@ -344,6 +353,18 @@ describe("AssistantHarness", () => {
     expect(response.result.status).toBe("success");
     expect(response.result.message).toBe("board.add_widget done；music.play done");
     expect(executed).toEqual(["board.add_widget:none", "music.play:wi_added_music"]);
+  });
+
+  it("carries implicit music context across sequential search and play commands", async () => {
+    const { harness, executed } = createHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("先打开音乐，再搜索七里香，然后播放第一首");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("board.add_widget done；music.search done；music.play done");
+    expect(executed).toEqual(["board.add_widget:none", "music.search:wi_added_music", "music.play:wi_added_music"]);
   });
 
   it("executes simultaneous shortcut command segments with concurrent operation visibility", async () => {

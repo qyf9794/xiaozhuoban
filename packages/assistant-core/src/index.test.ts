@@ -1300,6 +1300,41 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes implicit music search when the music widget is focused", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("搜索七里香", {
+      ...context,
+      focusedWidget: {
+        widgetId: "wi_music",
+        definitionId: "wd_music",
+        type: "music",
+        name: "音乐",
+        order: 6,
+        summary: "",
+        focused: true
+      },
+      availableWidgets: [
+        ...(context.availableWidgets ?? []),
+        {
+          widgetId: "wi_music",
+          definitionId: "wd_music",
+          type: "music",
+          name: "音乐",
+          order: 6,
+          summary: "",
+          recent: true,
+          focused: true
+        }
+      ]
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("music.search");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_music", query: "七里香" });
+    }
+  });
+
   it("routes music album playback with a result preference", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("播放周杰伦专辑第一首", {

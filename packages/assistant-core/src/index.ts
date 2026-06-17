@@ -1610,7 +1610,8 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
       name: "music_search",
       match(normalized, raw, context) {
         if (!/(搜索|查找|找一下|找|搜一下|搜)/.test(normalized)) return { matched: false, reason: "not_music_search" };
-        if (!/(音乐|歌曲|歌单|专辑|歌手|歌|播放列表|playlist|album|song)/i.test(raw)) {
+        const hasExplicitMusicTarget = /(音乐|歌曲|歌单|专辑|歌手|歌|播放列表|playlist|album|song)/i.test(raw);
+        if (!hasExplicitMusicTarget && context.focusedWidget?.type !== "music") {
           return { matched: false, reason: "music_search_target_missing" };
         }
         const args = inferMusicArgs(raw);

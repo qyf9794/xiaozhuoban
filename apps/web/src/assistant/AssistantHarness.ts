@@ -8,6 +8,7 @@ import {
   type AssistantToolCall,
   type AssistantToolResult,
   type AssistantToolSpec,
+  type CompactWidgetSummary,
   type CompactAssistantContext,
   type ConfirmationRequest,
   type ContextSummarizerInput,
@@ -72,6 +73,8 @@ export interface AssistantHarnessResponse {
 const CONFIRM_TOOL = "assistant.confirm";
 const CANCEL_TOOL = "assistant.cancel";
 const ADD_WIDGET_TOOL = "board.add_widget";
+const FOCUS_WIDGET_TOOL = "widget.focus";
+const PLANNED_WIDGET_PREFIX = "planned_widget_";
 const SEQUENTIAL_CONNECTOR_PATTERN = /(?:，|,|。|；|;)?\s*(?:然后|接着|随后|再)\s*/;
 const PARALLEL_CONNECTOR_PATTERN = /(?:，|,|。|；|;)?\s*(?:同时|与此同时)\s*/;
 const CLOSE_MULTI_CONNECTOR_PATTERN = /(?:和|以及|还有|跟|与)/;
@@ -186,6 +189,10 @@ function extractAddedWidgetData(result: AssistantToolResult): AddedWidgetData | 
   return definitionId && widgetId && widgetType ? { definitionId, widgetId, widgetType } : null;
 }
 
+function isPlannedWidgetId(widgetId: string) {
+  return widgetId.startsWith(PLANNED_WIDGET_PREFIX);
+}
+
 export class AssistantHarness {
   private pendingConfirmation: ConfirmationRequest | null = null;
   private currentTools: AssistantToolSpec[] = [];
@@ -288,16 +295,20 @@ export class AssistantHarness {
       return null;
     }
     const calls: AssistantToolCall[][] = [];
+    let planningContext = context;
     for (const group of groups) {
       const groupCalls: AssistantToolCall[] = [];
       for (const segment of group) {
-        const routed = this.options.shortcutRouter.route(segment, context);
+        const routed = this.options.shortcutRouter.route(segment, planningContext);
         if (!routed.matched) {
           return null;
         }
         groupCalls.push(routed.toolCall);
       }
       calls.push(groupCalls);
+      for (const call of groupCalls) {
+        planningContext = this.updatePlanningContextAfterPlannedCall(planningContext, call);
+      }
     }
     return calls;
   }
@@ -341,6 +352,17 @@ export class AssistantHarness {
   }
 
   private rewriteAfterWidgetAdd(call: AssistantToolCall, addedWidget: AddedWidgetData): AssistantToolCall {
+    const spec = this.options.registry.get(call.name);
+    if (spec?.scope === "widget-detail" && spec.widgetType === addedWidget.widgetType && isRecord(call.arguments)) {
+      const widgetId = typeof call.arguments.widgetId === "string" ? call.arguments.widgetId : "";
+      if (!widgetId || isPlannedWidgetId(widgetId)) {
+        this.rememberTransientWidget(addedWidget);
+        return {
+          ...call,
+          arguments: { ...call.arguments, widgetId: addedWidget.widgetId }
+        };
+      }
+    }
     if (call.name !== ADD_WIDGET_TOOL || !isRecord(call.arguments)) {
       return call;
     }
@@ -349,8 +371,8 @@ export class AssistantHarness {
     if (definitionId !== addedWidget.definitionId || !followUp || typeof followUp.name !== "string") {
       return call;
     }
-    const spec = this.options.registry.get(followUp.name);
-    if (!spec || spec.scope !== "widget-detail" || (spec.widgetType && spec.widgetType !== addedWidget.widgetType)) {
+    const followUpSpec = this.options.registry.get(followUp.name);
+    if (!followUpSpec || followUpSpec.scope !== "widget-detail" || (followUpSpec.widgetType && followUpSpec.widgetType !== addedWidget.widgetType)) {
       return call;
     }
     this.rememberTransientWidget(addedWidget);
@@ -360,6 +382,50 @@ export class AssistantHarness {
       id: `${call.id}_after_add`,
       name: followUp.name,
       arguments: { ...followUpArgs, widgetId: addedWidget.widgetId }
+    };
+  }
+
+  private updatePlanningContextAfterPlannedCall(context: IntentShortcutContext, call: AssistantToolCall): IntentShortcutContext {
+    if (!isRecord(call.arguments)) {
+      return context;
+    }
+    if (call.name === ADD_WIDGET_TOOL && typeof call.arguments.definitionId === "string") {
+      const definitionId = call.arguments.definitionId;
+      const definition = context.availableDefinitions?.find((item) => item.definitionId === definitionId);
+      if (!definition) {
+        return context;
+      }
+      return this.withPlannedFocusedWidget(context, {
+        widgetId: `${PLANNED_WIDGET_PREFIX}${definition.type}`,
+        definitionId: definition.definitionId,
+        type: definition.type,
+        name: definition.name,
+        order: -1,
+        summary: "",
+        recent: true,
+        focused: true
+      });
+    }
+    if (call.name === FOCUS_WIDGET_TOOL && typeof call.arguments.widgetId === "string") {
+      const widgetId = call.arguments.widgetId;
+      const widget = context.availableWidgets?.find((item) => item.widgetId === widgetId);
+      return widget ? this.withPlannedFocusedWidget(context, widget) : context;
+    }
+    return context;
+  }
+
+  private withPlannedFocusedWidget(context: IntentShortcutContext, widget: CompactWidgetSummary): IntentShortcutContext {
+    const nextWidget = { ...widget, recent: true, focused: true };
+    const widgets = [
+      nextWidget,
+      ...(context.availableWidgets ?? [])
+        .filter((item) => item.widgetId !== widget.widgetId)
+        .map((item) => ({ ...item, focused: false }))
+    ];
+    return {
+      ...context,
+      availableWidgets: widgets,
+      focusedWidget: nextWidget
     };
   }
 
