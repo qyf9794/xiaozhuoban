@@ -417,10 +417,13 @@ export class AssistantHarness {
       );
       const groupResponses = await this.executeCommandPlan(groupPlan, "shortcut", startedAt);
       responses.push(...groupResponses);
-      if (groupResponses.some((response) => response.result.status !== "success")) {
-        if (groupResponses.some((response) => response.result.status === "needs_confirmation")) {
-          this.queuedShortcutPlanGroups = groups.slice(groupIndex + 1);
-        }
+      const needsConfirmation = groupResponses.some((response) => response.result.status === "needs_confirmation");
+      const cancelled = groupResponses.some((response) => response.result.status === "cancelled");
+      if (needsConfirmation) {
+        this.queuedShortcutPlanGroups = groups.slice(groupIndex + 1);
+        break;
+      }
+      if (cancelled) {
         break;
       }
       lastAddedWidget = groupResponses.map((response) => extractAddedWidgetData(response.result)).find(Boolean) ?? lastAddedWidget;

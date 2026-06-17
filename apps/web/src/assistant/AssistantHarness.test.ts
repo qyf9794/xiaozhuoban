@@ -104,7 +104,7 @@ function createTools(): AssistantToolSpec[] {
   ];
 }
 
-function createRegistry() {
+function createRegistry(resultsByTool: Record<string, AssistantToolResult> = {}) {
   const registry = new ActionRegistry();
   const schema = createPassthroughSchema<Record<string, unknown>>();
   const executed: string[] = [];
@@ -130,7 +130,7 @@ function createRegistry() {
             data: { definitionId: recordArgs.definitionId, widgetId: `wi_added_${widgetType}`, widgetType }
           };
         }
-        return result ?? { status: "success", message: `${name} done` };
+        return result ?? resultsByTool[name] ?? { status: "success", message: `${name} done` };
       }
     });
   };
@@ -648,6 +648,28 @@ describe("AssistantHarness", () => {
       "board.add_widget:none",
       "worldClock.set_zones:wi_added_worldClock"
     ]);
+  });
+
+  it("continues independent shortcut groups after a failed music follow-up", async () => {
+    const { harness, executed } = createHarness({
+      registryFactory: () =>
+        createRegistry({
+          "music.play": { status: "failed", message: "没有可播放的音乐", errorCode: "MUSIC_NOT_PLAYABLE" }
+        }),
+      getContextInput: () => ({
+        ...createContextInput(),
+        focusedWidgetId: undefined,
+        widgets: createContextInput().widgets.filter((widget) => !["music", "countdown"].includes(widget.type))
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("帮我放点轻松的音乐，然后把倒计时设为 10 分钟");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("failed");
+    expect(response.result.message).toBe("没有可播放的音乐；board.add_widget done，countdown.set done");
+    expect(executed).toEqual(["board.add_widget:none", "music.play:wi_added_music", "board.add_widget:none", "countdown.set:wi_added_countdown"]);
   });
 
   it("falls back without partial execution when a segmented shortcut command is not fully local", async () => {
