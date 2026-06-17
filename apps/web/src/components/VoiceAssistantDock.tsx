@@ -128,8 +128,11 @@ export function getVisibleVoiceAssistantOperation(
   return internalOperation.phase === "idle" ? externalOperation ?? internalOperation : internalOperation;
 }
 
-export function getVoiceAssistantRuntimeText(runtimeStatus: string, syncPendingCount: number): string {
-  return syncPendingCount > 0 ? `${runtimeStatus} · 待同步 ${syncPendingCount}` : runtimeStatus;
+export function getVoiceAssistantRuntimeText(runtimeStatus: string, syncPendingCount: number, syncLastError?: string): string {
+  if (syncPendingCount <= 0) return runtimeStatus;
+  return syncLastError
+    ? `${runtimeStatus} · 待同步 ${syncPendingCount} · 最近失败：${syncLastError}`
+    : `${runtimeStatus} · 待同步 ${syncPendingCount}`;
 }
 
 function isPreviewRecord(value: unknown): value is {
@@ -169,6 +172,7 @@ export function VoiceAssistantDock({
   operationStatus,
   runtimeStatus,
   syncPendingCount = 0,
+  syncLastError,
   onRetrySync
 }: {
   harness: AssistantHarness;
@@ -181,6 +185,7 @@ export function VoiceAssistantDock({
   operationStatus?: VoiceAssistantOperationStatus | null;
   runtimeStatus?: string | null;
   syncPendingCount?: number;
+  syncLastError?: string;
   onRetrySync?: () => Promise<void> | void;
 }) {
   const [state, setState] = useState<VoiceAssistantDockState>("disconnected");
@@ -346,7 +351,7 @@ export function VoiceAssistantDock({
 
       {runtimeStatus ? (
         <div className="voice-assistant-dock__runtime" data-testid="voice-assistant-runtime">
-          <span>{getVoiceAssistantRuntimeText(runtimeStatus, syncPendingCount)}</span>
+          <span>{getVoiceAssistantRuntimeText(runtimeStatus, syncPendingCount, syncLastError)}</span>
           {syncPendingCount > 0 && onRetrySync ? (
             <button type="button" onClick={() => void onRetrySync()}>
               重试

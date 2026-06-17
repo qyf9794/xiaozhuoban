@@ -22,7 +22,7 @@ import { showDesktopWindowWhenReady } from "./lib/desktopWindow";
 import { abandonUserMonopolyMatches } from "./lib/monopolyOnline";
 import { SupabaseRepository } from "@xiaozhuoban/data";
 import type { AssistantRuntimeMode, RealtimeBudgetMetrics } from "@xiaozhuoban/assistant-core";
-import { getAssistantOutboxPendingCount, retryAssistantOutbox } from "./assistant/assistantOutbox";
+import { getAssistantOutboxStatus, retryAssistantOutbox } from "./assistant/assistantOutbox";
 
 const MOBILE_FRAME_WIDTH = 390;
 const MOBILE_VIEWPORT_MAX = 900;
@@ -159,7 +159,9 @@ export function App() {
     mode: AssistantRuntimeMode;
     metrics: RealtimeBudgetMetrics;
   } | null>(null);
-  const [assistantOutboxPending, setAssistantOutboxPending] = useState(0);
+  const [assistantOutboxStatus, setAssistantOutboxStatus] = useState<{ pendingCount: number; lastError?: string }>({
+    pendingCount: 0
+  });
   const [assistantOperationSnapshot, setAssistantOperationSnapshot] = useState<AssistantOperationSnapshot>({ active: [] });
   const assistantOperation: VoiceAssistantOperationStatus | null = useMemo(
     () => getAssistantOperationStatus(assistantOperationSnapshot),
@@ -222,7 +224,7 @@ export function App() {
 
   useEffect(() => {
     const refresh = () => {
-      void getAssistantOutboxPendingCount().then(setAssistantOutboxPending);
+      void getAssistantOutboxStatus().then(setAssistantOutboxStatus);
     };
     refresh();
     globalThis.addEventListener?.("xiaozhuoban-assistant-outbox", refresh);
@@ -638,10 +640,11 @@ export function App() {
           desktopBottomInset={desktopViewportBottomInset}
           operationStatus={assistantOperation}
           runtimeStatus={getAssistantRuntimeText(assistantRuntimeBudget)}
-          syncPendingCount={assistantOutboxPending}
+          syncPendingCount={assistantOutboxStatus.pendingCount}
+          syncLastError={assistantOutboxStatus.lastError}
           onRetrySync={async () => {
             await retryAssistantOutbox(repository);
-            setAssistantOutboxPending(await getAssistantOutboxPendingCount());
+            setAssistantOutboxStatus(await getAssistantOutboxStatus());
           }}
         />
 

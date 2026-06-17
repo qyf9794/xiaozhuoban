@@ -772,8 +772,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       layoutMode: "free",
       updatedAt: nowIso()
     };
-    await repository.upsertBoard(next);
     set({ boards: boards.map((board) => (board.id === target.id ? next : board)) });
+    persistInBackground(repository.upsertBoard(next), "toggle board layout", {
+      type: "board.upsert",
+      payload: { board: next }
+    });
   },
   async addBoard(name = "新桌板") {
     const { repository, boards, widgetDefinitions } = get();
@@ -782,7 +785,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const board = makeBoard(workspaceId, name);
     const defaultWidgets = createDefaultBoardWidgets(board.id, widgetDefinitions);
     set({ boards: [...boards, board], activeBoardId: board.id, widgetInstances: defaultWidgets, focusedWidgetId: undefined });
-    persistInBackground(persistBoardWithWidgets(repository, board, defaultWidgets), "add board");
+    persistInBackground(persistBoardWithWidgets(repository, board, defaultWidgets), "add board", {
+      type: "backup.import",
+      payload: { board, definitions: [], instances: defaultWidgets }
+    });
   },
   async renameBoard(boardId, name) {
     const { repository, boards } = get();
@@ -791,13 +797,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const next = { ...target, name, updatedAt: nowIso() };
     const optimisticBoards = boards.map((board) => (board.id === boardId ? next : board));
     set({ boards: optimisticBoards });
-    try {
-      await repository.upsertBoard(next);
-    } catch (error) {
-      // Keep local UX responsive, but roll back if cloud persistence fails.
-      set({ boards });
-      throw error;
-    }
+    persistInBackground(repository.upsertBoard(next), "rename board", {
+      type: "board.upsert",
+      payload: { board: next }
+    });
   },
   async deleteBoard(boardId) {
     const { repository, boards, activeBoardId, widgetInstances, widgetDefinitions } = get();
@@ -819,7 +822,11 @@ export const useAppStore = create<AppState>((set, get) => ({
           await repository.deleteBoard(boardId);
           await persistBoardWithWidgets(repository, fallback, defaultWidgets);
         })(),
-        "delete board with fallback"
+        "delete board with fallback",
+        {
+          type: "board.delete",
+          payload: { boardId, fallbackBoard: fallback, fallbackInstances: defaultWidgets }
+        }
       );
       return;
     }
@@ -849,7 +856,11 @@ export const useAppStore = create<AppState>((set, get) => ({
           set({ widgetInstances: resolvedInstances });
         }
       })(),
-      "delete board"
+      "delete board",
+      {
+        type: "board.delete",
+        payload: { boardId }
+      }
     );
   },
   async setBoardWallpaper(imageDataUrl) {
@@ -864,8 +875,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       },
       updatedAt: nowIso()
     };
-    await repository.upsertBoard(next);
     set({ boards: boards.map((board) => (board.id === target.id ? next : board)) });
+    persistInBackground(repository.upsertBoard(next), "set board wallpaper", {
+      type: "board.upsert",
+      payload: { board: next }
+    });
   },
   async setActiveBoard(boardId) {
     const { repository, widgetDefinitions } = get();
@@ -1204,10 +1218,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   async generateAiWidget(prompt, options) {
     const { aiBuilder, repository, widgetDefinitions } = get();
     const draft = aiBuilder.generate(prompt);
-    await repository.upsertDefinition(draft.definition);
     set({
       widgetDefinitions: [...widgetDefinitions, draft.definition],
       aiDialogOpen: false
+    });
+    persistInBackground(repository.upsertDefinition(draft.definition), "generate AI widget definition", {
+      type: "widget_definition.upsert",
+      payload: { definition: draft.definition }
     });
     await get().addWidgetInstance(draft.definition.id, options);
   },
@@ -1256,8 +1273,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       createdAt: now,
       updatedAt: now
     };
-    await repository.upsertBoard(newBoard);
-
     const existingSystemByType = new Map(
       widgetDefinitions.filter((item) => item.kind === "system").map((item) => [item.type, item])
     );
@@ -1281,13 +1296,11 @@ export const useAppStore = create<AppState>((set, get) => ({
           createdAt: now,
           updatedAt: now
         };
-        await repository.upsertDefinition(newDefinition);
         importedDefinitions.push(newDefinition);
         definitionIdMap.set(definition.id, newDefinition.id);
         continue;
       }
 
-      await repository.upsertDefinition(definition);
       importedDefinitions.push(definition);
       definitionIdMap.set(definition.id, definition.id);
     }
@@ -1305,7 +1318,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         createdAt: now,
         updatedAt: now
       };
-      await repository.upsertInstance(newInstance);
       importedInstances.push(newInstance);
     }
 
@@ -1322,5 +1334,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       widgetInstances: importedInstances,
       activeBoardId: newBoard.id
     });
+    persistInBackground(
+      (async () => {
+        await repository.upsertBoard(newBoard);
+        if (importedDefinitions.length > 0) {
+          await repository.upsertDefinitions(importedDefinitions);
+        }
+        if (importedInstances.length > 0) {
+          await repository.upsertInstances(importedInstances);
+        }
+      })(),
+      "import backup snapshot",
+      {
+        type: "backup.import",
+        payload: { board: newBoard, definitions: importedDefinitions, instances: importedInstances }
+      }
+    );
   }
 }));

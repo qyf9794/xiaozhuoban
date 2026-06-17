@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { InMemoryRepository } from "@xiaozhuoban/data";
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
+import { getAssistantOutboxPendingCount } from "./assistant/assistantOutbox";
 import { createDefaultBoardWidgets, toCanvasContentPosition, useAppStore } from "./store";
 
 const now = "2026-03-11T00:00:00.000Z";
@@ -36,6 +38,28 @@ function makeWidget(type: string, zIndex: number): WidgetInstance {
     updatedAt: now
   };
 }
+
+class DefinitionFailingRepository extends InMemoryRepository {
+  async upsertDefinition(): Promise<void> {
+    throw new Error("definition offline");
+  }
+}
+
+function stubOutboxStorage() {
+  const storage = new Map<string, string>();
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => storage.set(key, value),
+    removeItem: (key: string) => storage.delete(key),
+    clear: () => storage.clear()
+  });
+  vi.stubGlobal("dispatchEvent", vi.fn());
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("createDefaultBoardWidgets", () => {
   it("creates a message board widget for a new board", () => {
@@ -101,6 +125,42 @@ describe("assistant widget focus state", () => {
 
     expect(useAppStore.getState().focusedWidgetId).toBeUndefined();
     expect(useAppStore.getState().widgetInstances).toEqual([]);
+  });
+});
+
+describe("assistant outbox store writes", () => {
+  it("keeps generated widget definition writes in the assistant outbox when persistence fails", async () => {
+    stubOutboxStorage();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const repository = new DefinitionFailingRepository();
+    useAppStore.setState({
+      ...useAppStore.getState(),
+      repository,
+      activeBoardId: "board_1",
+      boards: [
+        {
+          id: "board_1",
+          workspaceId: "ws_1",
+          name: "测试桌板",
+          layoutMode: "free",
+          zoom: 1,
+          locked: false,
+          background: { type: "color", value: "#ffffff" },
+          createdAt: now,
+          updatedAt: now
+        }
+      ],
+      widgetDefinitions: [],
+      widgetInstances: []
+    });
+
+    await useAppStore.getState().generateAiWidget("生成一个评分表");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(useAppStore.getState().widgetDefinitions).toHaveLength(1);
+    expect(useAppStore.getState().widgetInstances).toHaveLength(1);
+    expect(await getAssistantOutboxPendingCount()).toBe(1);
   });
 });
 

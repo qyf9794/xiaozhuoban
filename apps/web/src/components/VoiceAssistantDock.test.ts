@@ -102,6 +102,9 @@ describe("VoiceAssistantDock", () => {
     expect(getVoiceAssistantRuntimeText("saving_mode · Realtime 30s · $0.8000", 2)).toBe(
       "saving_mode · Realtime 30s · $0.8000 · 待同步 2"
     );
+    expect(getVoiceAssistantRuntimeText("saving_mode · Realtime 30s · $0.8000", 1, "network offline")).toBe(
+      "saving_mode · Realtime 30s · $0.8000 · 待同步 1 · 最近失败：network offline"
+    );
   });
 
   it("formats confirmation preview lines for the visible preview gate", () => {
