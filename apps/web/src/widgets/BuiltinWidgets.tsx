@@ -28,7 +28,7 @@ import {
   type MusicKitInstanceLike,
   type MusicSearchItem
 } from "./musicKitClient";
-import { DEFAULT_TV_PLAYLIST_URL, parseM3UPlaylist, type TvChannel } from "./tvShared";
+import { DEFAULT_TV_PLAYLIST_URL, findFallbackTvChannel, findTvChannel, parseM3UPlaylist, type TvChannel } from "./tvShared";
 import {
   CHINA_TIME_ZONE,
   WORLD_CLOCK_ZONE_OPTIONS,
@@ -3702,7 +3702,7 @@ export function BuiltinWidgetView({
         const channelUrl = typeof args.channelUrl === "string" ? args.channelUrl.trim() : "";
         const selected =
           (channelUrl ? channels.find((channel) => channel.url === channelUrl) : null) ??
-          (channelName ? channels.find((channel) => channel.name.includes(channelName) || channelName.includes(channel.name)) : null) ??
+          (channelName ? findTvChannel(channels, channelName) ?? findFallbackTvChannel(channelName) : null) ??
           (channelUrl || channelName ? null : channels[0]);
 
         if (!selected && !channelUrl) {

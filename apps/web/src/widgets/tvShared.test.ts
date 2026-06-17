@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampTvWidgetSize, parseM3UPlaylist } from "./tvShared";
+import { clampTvWidgetSize, findFallbackTvChannel, findTvChannel, parseM3UPlaylist } from "./tvShared";
 
 describe("parseM3UPlaylist", () => {
   it("parses EXTINF entries with urls", () => {
@@ -32,6 +32,25 @@ describe("parseM3UPlaylist", () => {
 
     expect(channels).toHaveLength(1);
     expect(channels[0].name).toBe("Discovery");
+  });
+});
+
+describe("findTvChannel", () => {
+  it("matches CCTV channel names despite punctuation and suffix differences", () => {
+    const channels = [
+      { id: "1", name: "CCTV-13 新闻", url: "https://example.com/cctv13.m3u8" },
+      { id: "2", name: "BBC News", url: "https://example.com/bbc.m3u8" }
+    ];
+
+    expect(findTvChannel(channels, "CCTV13")?.id).toBe("1");
+    expect(findTvChannel(channels, "CCTV-13 新闻")?.id).toBe("1");
+    expect(findTvChannel(channels, "BBC")?.id).toBe("2");
+  });
+
+  it("falls back to the built-in CCTV news channel for common aliases", () => {
+    expect(findFallbackTvChannel("CCTV13")?.name).toBe("CCTV-13 新闻");
+    expect(findFallbackTvChannel("央视新闻")?.name).toBe("CCTV-13 新闻");
+    expect(findFallbackTvChannel("中央新闻")?.name).toBe("CCTV-13 新闻");
   });
 });
 
