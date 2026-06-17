@@ -23,8 +23,10 @@ import { createCountdownAssistantModule } from "../widgets/modules/countdown/ass
 import { createHeadlineAssistantModule } from "../widgets/modules/headline/assistant";
 import { createMarketAssistantModule } from "../widgets/modules/market/assistant";
 import { createMusicAssistantModule } from "../widgets/modules/music/assistant";
+import { createRecorderAssistantModule } from "../widgets/modules/recorder/assistant";
 import { createTodoAssistantModule } from "../widgets/modules/todo/assistant";
 import { createTranslateAssistantModule } from "../widgets/modules/translate/assistant";
+import { createTvAssistantModule } from "../widgets/modules/tv/assistant";
 import { createWeatherAssistantModule } from "../widgets/modules/weather/assistant";
 import { createWorldClockAssistantModule } from "../widgets/modules/worldClock/assistant";
 
@@ -141,6 +143,8 @@ export function createLocalAssistantHarness(options?: {
   moduleRegistry.register(createMarketAssistantModule(widgetDefinitions, actions));
   moduleRegistry.register(createCalculatorAssistantModule(widgetDefinitions, actions));
   moduleRegistry.register(createTranslateAssistantModule(widgetDefinitions, actions));
+  moduleRegistry.register(createRecorderAssistantModule(widgetDefinitions, actions));
+  moduleRegistry.register(createTvAssistantModule(widgetDefinitions, actions));
   createDailyWidgetAssistantModules(widgetDefinitions, actions).forEach((module) => moduleRegistry.register(module));
 
   const auditContext: AssistantAuditContext = {

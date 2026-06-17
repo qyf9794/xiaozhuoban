@@ -8,3 +8,11 @@
 - Permissions: microphone permission is required.
 - Context: recording state and permission summary only.
 - Legacy migration: record/recording wording shortcuts are preserved.
+
+## Migration checklist
+
+- Files: `definition.ts`, `shortcuts.ts`, `tools.ts`, `context.ts`, `realtime.ts`, `executionPolicy.ts`, `assistant.ts`, `test-cases.json`.
+- Preserved shortcuts: `开始录制`, `播放录制`, `暂停录制`, `停止录音`, `打开录音机`.
+- Conflict record: none; recorder content is excluded from scoped context and microphone permission remains explicit.
+- Scoped context whitelist: `moduleType`, `tools`, `toolSchemas`, `instances`, `stateSummary.instanceCount`, `stateSummary.focusedWidgetId`, `stateSummary.selectedToolHint`, `stateSummary.recordingContentIncluded`, `stateSummary.permissionSummaryOnly`, `stateSummary.realtimeMicrophoneConflict`, `shortcutExamples`, `executionPolicy`, `riskPolicy`.
+- Explicitly excluded: audio blobs, transcripts, recording content, unrelated widget state, clipboard content, note text.

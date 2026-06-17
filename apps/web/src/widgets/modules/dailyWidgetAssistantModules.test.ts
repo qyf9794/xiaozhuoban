@@ -15,8 +15,10 @@ import { createCountdownAssistantModule, countdownMigrationReport, countdownShor
 import { createHeadlineAssistantModule, headlineMigrationReport, headlineShortcutConflictReport } from "./headline/assistant";
 import { createMarketAssistantModule, marketMigrationReport, marketShortcutConflictReport } from "./market/assistant";
 import { createMusicAssistantModule, musicMigrationReport, musicShortcutConflictReport } from "./music/assistant";
+import { createRecorderAssistantModule, recorderMigrationReport, recorderShortcutConflictReport } from "./recorder/assistant";
 import { createTodoAssistantModule, todoMigrationReport, todoShortcutConflictReport } from "./todo/assistant";
 import { createTranslateAssistantModule, translateMigrationReport, translateShortcutConflictReport } from "./translate/assistant";
+import { createTvAssistantModule, tvMigrationReport, tvShortcutConflictReport } from "./tv/assistant";
 import { createWeatherAssistantModule, weatherMigrationReport, weatherShortcutConflictReport } from "./weather/assistant";
 import { createWorldClockAssistantModule, worldClockMigrationReport, worldClockShortcutConflictReport } from "./worldClock/assistant";
 
@@ -102,6 +104,12 @@ const moduleActions: AssistantAction[] = [
   action("market.set_indices", "market"),
   action("headline.request_refresh", "headline"),
   action("recorder.start", "recorder"),
+  action("recorder.stop", "recorder"),
+  action("recorder.play", "recorder"),
+  action("recorder.pause", "recorder"),
+  action("tv.play", "tv"),
+  action("tv.pause", "tv"),
+  action("tv.fullscreen", "tv"),
   action("tv.select_channel", "tv")
 ];
 
@@ -131,6 +139,8 @@ function registerFirstBatchModules(registry: WidgetAssistantRegistry) {
   registry.register(createMarketAssistantModule(dailyDefinitions, moduleActions));
   registry.register(createCalculatorAssistantModule(dailyDefinitions, moduleActions));
   registry.register(createTranslateAssistantModule(dailyDefinitions, moduleActions));
+  registry.register(createRecorderAssistantModule(dailyDefinitions, moduleActions));
+  registry.register(createTvAssistantModule(dailyDefinitions, moduleActions));
   createDailyWidgetAssistantModules(dailyDefinitions, moduleActions).forEach((module) => registry.register(module));
 }
 
@@ -228,7 +238,9 @@ describe("daily widget assistant modules", () => {
       "headline",
       "market",
       "calculator",
-      "translate"
+      "translate",
+      "recorder",
+      "tv"
     ]) {
       expect(centralTypes).not.toContain(migratedType);
     }
@@ -272,6 +284,14 @@ describe("daily widget assistant modules", () => {
       module: "translate",
       legacyBridge: true
     });
+    expect(recorderMigrationReport).toMatchObject({
+      module: "recorder",
+      legacyBridge: true
+    });
+    expect(tvMigrationReport).toMatchObject({
+      module: "tv",
+      legacyBridge: true
+    });
     expect(musicShortcutConflictReport.resolution).toBe("none");
     expect(weatherShortcutConflictReport.resolution).toBe("none");
     expect(clipboardShortcutConflictReport.resolution).toBe("none");
@@ -282,6 +302,8 @@ describe("daily widget assistant modules", () => {
     expect(marketShortcutConflictReport.resolution).toBe("none");
     expect(calculatorShortcutConflictReport.resolution).toBe("none");
     expect(translateShortcutConflictReport.resolution).toBe("none");
+    expect(recorderShortcutConflictReport.resolution).toBe("none");
+    expect(tvShortcutConflictReport.resolution).toBe("none");
   });
 
   it("uses selected-module strict schemas to reject extra model arguments", () => {
@@ -393,6 +415,32 @@ describe("daily widget assistant modules", () => {
     const translateResult = validator.validate(translatePlan);
     expect(translateResult.ok).toBe(false);
     expect(translateResult.errors[0]).toMatchObject({ code: "EXTRA_ARGUMENTS" });
+
+    const recorderPlan = createCommandPlanFromToolCalls("播放录制", [
+      {
+        id: "call_recorder",
+        name: "recorder.play",
+        arguments: { widgetId: "recorder_1", recordingId: "rec_1", audioBlob: "should not pass" },
+        source: "realtime"
+      }
+    ]);
+    recorderPlan.commands[0]!.module = "recorder";
+    const recorderResult = validator.validate(recorderPlan);
+    expect(recorderResult.ok).toBe(false);
+    expect(recorderResult.errors[0]).toMatchObject({ code: "EXTRA_ARGUMENTS" });
+
+    const tvPlan = createCommandPlanFromToolCalls("看央视新闻", [
+      {
+        id: "call_tv",
+        name: "tv.select_channel",
+        arguments: { widgetId: "tv_1", channelName: "CCTV-13 新闻", channelUrl: "https://example.com/cctv13.m3u8", playlist: "should not pass" },
+        source: "realtime"
+      }
+    ]);
+    tvPlan.commands[0]!.module = "tv";
+    const tvResult = validator.validate(tvPlan);
+    expect(tvResult.ok).toBe(false);
+    expect(tvResult.errors[0]).toMatchObject({ code: "EXTRA_ARGUMENTS" });
   });
 
   it("keeps Realtime first stage catalog free of widget ids and private summaries", () => {
@@ -603,5 +651,48 @@ describe("daily widget assistant modules", () => {
     expect(JSON.stringify(calculatorContext)).not.toContain("salary calculation");
     expect(JSON.stringify(translateContext)).toContain("translate-draft-metadata-only");
     expect(JSON.stringify(translateContext)).not.toContain("very private letter body");
+  });
+
+  it("redacts recorder and tv scoped contexts", () => {
+    const registry = new WidgetAssistantRegistry();
+    registerFirstBatchModules(registry);
+
+    const compactContext = {
+      widgetCountsByType: { recorder: 1, tv: 1 },
+      widgets: [
+        {
+          widgetId: "recorder_1",
+          definitionId: "wd_recorder",
+          type: "recorder",
+          name: "录音机",
+          order: 1,
+          summary: "recording audio transcript says private meeting details, microphone permission granted"
+        },
+        {
+          widgetId: "tv_1",
+          definitionId: "wd_tv",
+          type: "tv",
+          name: "电视",
+          order: 2,
+          summary: "playing CCTV-13 新闻; private playlist url https://private.example.com/list.m3u8"
+        }
+      ]
+    };
+
+    const recorderContext = registry.getScopedContextForModule("recorder", {
+      userText: "开始录制",
+      compactContext
+    });
+    const tvContext = registry.getScopedContextForModule("tv", {
+      userText: "看央视新闻",
+      compactContext
+    });
+
+    expect(JSON.stringify(recorderContext)).toContain("recorder-state-summary-only");
+    expect(JSON.stringify(recorderContext)).toContain("permissionSummaryOnly");
+    expect(JSON.stringify(recorderContext)).not.toContain("private meeting details");
+    expect(JSON.stringify(tvContext)).toContain("tv-playback-summary-only");
+    expect(JSON.stringify(tvContext)).toContain("currentChannelSummaryOnly");
+    expect(JSON.stringify(tvContext)).not.toContain("private.example.com");
   });
 });

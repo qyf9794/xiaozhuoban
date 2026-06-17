@@ -41,26 +41,6 @@ const seeds: DailyWidgetModuleSeed[] = [
       { id: "note.write", intent: "note_write", actions: ["记", "写"], examples: ["帮我记一下今天继续测试小桌板"], risk: "safe" },
       { id: "note.clear", intent: "note_clear", actions: ["清空", "清一下"], examples: ["清一下便签"], risk: "destructive" }
     ]
-  },
-  {
-    type: "tv",
-    aliases: ["电视", "直播", "电视机"],
-    capabilities: ["打开电视", "选择频道", "播放", "暂停", "全屏", "关闭窗口"],
-    shortcutExamples: ["看央视新闻", "暂停 CCTV1", "央视五套全屏播放"],
-    shortcuts: [
-      { id: "tv.channel", intent: "tv_channel", actions: ["看", "切到", "播放"], examples: ["看央视新闻"], risk: "safe" }
-    ]
-  },
-  {
-    type: "recorder",
-    aliases: ["录音", "录制", "录音机"],
-    capabilities: ["开始录音", "播放录音", "暂停录音", "关闭窗口"],
-    shortcutExamples: ["开始录制", "播放录制"],
-    riskSummary: ["录音需要麦克风权限"],
-    permissions: ["microphone"],
-    shortcuts: [
-      { id: "recorder.control", intent: "recorder_control", actions: ["开始", "播放", "暂停"], examples: ["开始录制"], risk: "safe" }
-    ]
   }
 ];
 
@@ -98,22 +78,7 @@ const toolArgSchemas: Record<string, ReturnType<typeof createStrictObjectSchema>
     content: { type: "string", required: true },
     mode: { type: "string", enum: ["replace", "append"] }
   }),
-  "note.clear": widgetIdArgsSchema,
-  "tv.play": widgetIdArgsSchema,
-  "tv.pause": widgetIdArgsSchema,
-  "tv.fullscreen": widgetIdArgsSchema,
-  "tv.select_channel": createStrictObjectSchema({
-    widgetId: { type: "string", required: true },
-    channelName: { type: "string" },
-    channelUrl: { type: "string" }
-  }),
-  "recorder.start": widgetIdArgsSchema,
-  "recorder.stop": widgetIdArgsSchema,
-  "recorder.play": createStrictObjectSchema({
-    widgetId: { type: "string", required: true },
-    recordingId: { type: "string" }
-  }),
-  "recorder.pause": widgetIdArgsSchema
+  "note.clear": widgetIdArgsSchema
 };
 
 function toolExamples(toolName: string, seed: DailyWidgetModuleSeed): string[] {
