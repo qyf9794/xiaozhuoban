@@ -406,6 +406,17 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes casual board switching by known board name", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("回默认", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("board.switch");
+      expect(result.toolCall.arguments).toEqual({ boardId: "board_1" });
+    }
+  });
+
   it("routes weather city commands to the existing weather widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("上海天气", context);
@@ -906,6 +917,17 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes pinned clipboard save wording to add pinned text", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("固定保存到剪贴板账号是 demo", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("clipboard.add_text");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_clipboard", text: "账号是 demo", pinned: true });
+    }
+  });
+
   it("routes clipboard clear commands to clear history instead of closing the widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("清空剪贴板历史", context);
@@ -942,6 +964,17 @@ describe("IntentShortcutRouter", () => {
     if (result.matched) {
       expect(result.toolCall.name).toBe("messageBoard.send");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_messageBoard", text: "M9 测试留言" });
+    }
+  });
+
+  it("routes casual message board announcement commands", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("给大家说一声今天下午三点开会", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("messageBoard.send");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_messageBoard", text: "今天下午三点开会" });
     }
   });
 

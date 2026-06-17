@@ -647,13 +647,13 @@ function inferMessageBoardText(input: string) {
   );
   if (explicit?.[1]?.trim()) return explicit[1].replace(/[，。,.]+$/g, "").trim();
 
-  const broad = input.match(/(?:给大家留言|留言)(?:一条|一句|一下|消息|内容)?\s*(.+)$/);
+  const broad = input.match(/(?:给大家留言|留言|给大家说|跟大家说|公告一下|通知一下)(?:一条|一句|一下|一声|消息|内容)?\s*(.+)$/);
   if (broad?.[1]?.trim()) return broad[1].replace(/[，。,.]+$/g, "").trim();
 
   return input
     .replace(/^(请|帮我|麻烦|麻烦你|可以)?\s*/, "")
-    .replace(/(在|到|往|给)?\s*(留言板|留言区|消息板|留言)\s*(里|上|中|给大家)?/g, " ")
-    .replace(/(发一下|发一条|发一句|发送|发|说一下|说一句|说|写一条|写一句|写|发布|留一条言|留个言)/g, " ")
+    .replace(/(在|到|往|给)?\s*(留言板|留言区|消息板|留言|给大家|跟大家)\s*(里|上|中|给大家)?/g, " ")
+    .replace(/(发一下|发一条|发一句|发送|发|说一下|说一句|说一声|说|写一条|写一句|写|发布|公告一下|通知一下|留一条言|留个言)/g, " ")
     .replace(/(一条|一句|一下|消息|内容)/g, " ")
     .replace(/[，。,.]+$/g, "")
     .replace(/\s+/g, " ")
@@ -835,7 +835,7 @@ function inferNamedBoard(raw: string) {
 function inferBoardSwitchName(raw: string) {
   const named = inferNamedBoard(raw);
   if (named) return named;
-  const switchTarget = raw.match(/(?:切换到|切到|打开|进入|回到)\s*([^，。,.]+)/);
+  const switchTarget = raw.match(/(?:切换到|切到|打开|进入|回到|回|去)\s*([^，。,.]+)/);
   if (switchTarget?.[1]?.trim()) return cleanBoardName(switchTarget[1]);
   return "";
 }
@@ -914,10 +914,10 @@ function inferTodoCompleteText(raw: string) {
 
 function inferClipboardText(raw: string) {
   const patterns = [
-    /(?:保存|存一下|存|加入|添加|记录|复制|拷贝)(?:到|进)?(?:剪贴板|剪贴板历史)[：:\s]*(.+)/,
-    /(?:剪贴板|剪贴板历史).*(?:保存|存一下|存|加入|添加|记录|复制|拷贝)[：:\s]*(.+)/,
-    /(?:复制|拷贝|保存|存一下|存)\s*(.+?)(?:到|进)?(?:剪贴板|剪贴板历史)/,
-    /把(.+?)(?:保存|存一下|存|加入|添加|记录|复制|拷贝)(?:到|进)?(?:剪贴板|剪贴板历史)/
+    /(?:固定|置顶|钉住|pin)?\s*(?:保存|存一下|存|加入|添加|记录|复制|拷贝)(?:到|进)?(?:剪贴板|剪贴板历史)[：:\s]*(.+)/i,
+    /(?:剪贴板|剪贴板历史).*(?:固定|置顶|钉住|pin)?\s*(?:保存|存一下|存|加入|添加|记录|复制|拷贝)[：:\s]*(.+)/i,
+    /(?:固定|置顶|钉住|pin)?\s*(?:复制|拷贝|保存|存一下|存)\s*(.+?)(?:到|进)?(?:剪贴板|剪贴板历史)/i,
+    /把(.+?)(?:固定|置顶|钉住|pin)?\s*(?:保存|存一下|存|加入|添加|记录|复制|拷贝)(?:到|进)?(?:剪贴板|剪贴板历史)/i
   ];
   for (const pattern of patterns) {
     const match = raw.match(pattern);
@@ -925,6 +925,10 @@ function inferClipboardText(raw: string) {
     if (text) return text;
   }
   return "";
+}
+
+function inferClipboardPinned(raw: string) {
+  return /(固定|置顶|钉住|pin)/i.test(raw);
 }
 
 function inferDefaultTranslateTarget(sourceText: string) {
@@ -1231,10 +1235,12 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "switch_board",
       match(normalized, raw, context) {
-        if (!/(切换到|切到|打开|进入|回到).*(桌板|桌面|面板)/.test(normalized)) {
+        const board = findBoardByName(context, inferBoardSwitchName(raw));
+        const explicitBoardSwitch = /(切换到|切到|打开|进入|回到).*(桌板|桌面|面板)/.test(normalized);
+        const casualBoardSwitch = /^(回到|回|去|进入|切到|切换到)/.test(normalized) && Boolean(board);
+        if (!explicitBoardSwitch && !casualBoardSwitch) {
           return { matched: false, reason: "not_switch_board" };
         }
-        const board = findBoardByName(context, inferBoardSwitchName(raw));
         if (!board) {
           return { matched: false, reason: "board_target_missing" };
         }
@@ -1419,8 +1425,9 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         }
         const text = inferClipboardText(raw);
         if (!text) return { matched: false, reason: "clipboard_text_missing" };
+        const pinned = inferClipboardPinned(raw);
         return (
-          routeWidgetDetailOrAdd(context, raw, "clipboard", "clipboard.add_text", { text }, 0.88) ?? {
+          routeWidgetDetailOrAdd(context, raw, "clipboard", "clipboard.add_text", { text, ...(pinned ? { pinned } : {}) }, 0.88) ?? {
             matched: false,
             reason: "clipboard_target_missing"
           }
@@ -1448,7 +1455,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "message_board_send",
       match(normalized, raw, context) {
-        if (!/(留言板|留言区|消息板|留言)/.test(normalized) || !/(发|发送|说|写|发布|留言)/.test(normalized)) {
+        if (!/(留言板|留言区|消息板|留言|给大家|跟大家|公告|通知)/.test(normalized) || !/(发|发送|说|写|发布|留言|公告|通知)/.test(normalized)) {
           return { matched: false, reason: "not_message_board_send" };
         }
         const text = inferMessageBoardText(raw);

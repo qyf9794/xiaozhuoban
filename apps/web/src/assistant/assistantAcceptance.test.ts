@@ -298,7 +298,7 @@ describe("stage-one assistant acceptance scenarios", () => {
     await harness.initialize();
     await harness.handleUserInput("新建桌板叫测试桌板");
 
-    const response = await harness.handleUserInput("切换到我的桌板");
+    const response = await harness.handleUserInput("回我的");
 
     expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
@@ -405,6 +405,18 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(getWidget("clipboard")?.state.items).toMatchObject([{ text: "账号 demo" }]);
+    expect(modelInputs).toEqual([]);
+  });
+
+  it("adds pinned clipboard text through shortcut-first Harness without model fallback", async () => {
+    const { harness, modelInputs, getWidget } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("固定保存到剪贴板账号是 demo");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(getWidget("clipboard")?.state.items).toMatchObject([{ text: "账号是 demo", pinned: true }]);
     expect(modelInputs).toEqual([]);
   });
 
