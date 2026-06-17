@@ -417,6 +417,39 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes prefixed weather city commands without keeping command verbs", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("看洛杉矶天气", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("weather.set_city");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_weather", city: "洛杉矶" });
+    }
+  });
+
+  it("routes supported weather city aliases", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("LA天气", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("weather.set_city");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_weather", city: "los-angeles" });
+    }
+  });
+
+  it("routes English weather commands for supported cities", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("Boston weather", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("weather.set_city");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_weather", city: "boston" });
+    }
+  });
+
   it("routes weather city commands to add-and-set when the widget is absent", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("上海天气", {

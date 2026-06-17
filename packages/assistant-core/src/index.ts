@@ -530,11 +530,33 @@ function parseChineseInteger(input: string): number | null {
 }
 
 function inferCityName(input: string) {
-  const knownCities = ["北京", "上海", "广州", "深圳", "杭州", "成都", "武汉", "荆州", "重庆", "南京", "西安", "大连"];
-  const known = knownCities.find((city) => input.includes(city));
-  if (known) return known;
-  const beforeWeather = input.match(/([\u4e00-\u9fa5a-zA-Z-]{2,24})\s*天气/);
-  return beforeWeather?.[1] ?? "";
+  const normalized = input.trim();
+  if (/(^|[^a-z])la(?=[^a-z]|$)/i.test(normalized)) return "los-angeles";
+  const knownCities: Array<[string, string]> = [
+    ["北京", "北京"],
+    ["上海", "上海"],
+    ["大连", "大连"],
+    ["广州", "广州"],
+    ["深圳", "深圳"],
+    ["杭州", "杭州"],
+    ["成都", "成都"],
+    ["武汉", "武汉"],
+    ["荆州", "荆州"],
+    ["重庆", "重庆"],
+    ["南京", "南京"],
+    ["西安", "西安"],
+    ["洛杉矶", "洛杉矶"],
+    ["洛城", "los-angeles"],
+    ["los-angeles", "los-angeles"],
+    ["波士顿", "波士顿"],
+    ["boston", "boston"]
+  ];
+  const lower = normalized.toLowerCase();
+  const known = knownCities.find(([alias]) => lower.includes(alias.toLowerCase()));
+  if (known) return known[1];
+  const beforeWeather = normalized.match(/([\u4e00-\u9fa5a-zA-Z-]{2,24})\s*(?:天气|weather)/i);
+  const candidate = cleanCommandContent(beforeWeather?.[1] ?? "").replace(/^(查查|查询|切换到|切到|打开|显示|看看|看|查)/, "");
+  return cleanCommandContent(candidate);
 }
 
 function inferTvChannelName(input: string) {
@@ -1105,7 +1127,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "open_weather",
       match(normalized, raw, context) {
-        if (!normalized.includes("天气")) return { matched: false, reason: "not_weather" };
+        if (!/(天气|weather)/i.test(normalized)) return { matched: false, reason: "not_weather" };
         const cityName = inferCityName(raw);
         const widget = findWidgetByType(context, "weather");
         if (widget && cityName) {
