@@ -32,37 +32,6 @@ const defaultExecutionPolicy: WidgetExecutionPolicy = {
 
 const seeds: DailyWidgetModuleSeed[] = [
   {
-    type: "weather",
-    aliases: ["天气", "weather"],
-    capabilities: ["打开天气", "查询城市天气", "切换城市", "关闭窗口"],
-    shortcutExamples: ["北京天气", "帮我查一下北京天气", "上海天气"],
-    shortcuts: [
-      { id: "weather.query", intent: "query_weather", actions: ["查", "查询", "看"], examples: ["北京天气", "帮我查一下北京天气"], risk: "safe" }
-    ],
-    executionPolicy: { ...defaultExecutionPolicy, defaultMode: "latest-wins" }
-  },
-  {
-    type: "clipboard",
-    aliases: ["剪贴板", "复制板"],
-    capabilities: ["保存文本", "清空剪贴板", "关闭窗口"],
-    shortcutExamples: ["复制账号 demo 到剪贴板", "清一下剪贴板"],
-    riskSummary: ["清空剪贴板需要确认"],
-    shortcuts: [
-      { id: "clipboard.add", intent: "clipboard_add", actions: ["复制", "保存"], examples: ["复制账号 demo 到剪贴板"], risk: "safe" },
-      { id: "clipboard.clear", intent: "clipboard_clear", actions: ["清空", "清一下"], examples: ["清一下剪贴板"], risk: "destructive" }
-    ]
-  },
-  {
-    type: "todo",
-    aliases: ["待办", "任务", "清单"],
-    capabilities: ["添加待办", "完成待办", "提醒", "关闭窗口"],
-    shortcutExamples: ["下午三点叫我开会", "把买牛奶勾掉"],
-    shortcuts: [
-      { id: "todo.add", intent: "todo_add", actions: ["添加", "提醒"], examples: ["下午三点叫我开会"], risk: "safe" },
-      { id: "todo.complete", intent: "todo_complete", actions: ["完成", "勾掉"], examples: ["把买牛奶勾掉"], risk: "safe" }
-    ]
-  },
-  {
     type: "note",
     aliases: ["便签", "笔记"],
     capabilities: ["记便签", "追加文本", "清空便签", "关闭窗口"],
@@ -188,15 +157,6 @@ const toolArgSchemas: Record<string, ReturnType<typeof createStrictObjectSchema>
     mode: { type: "string", enum: ["replace", "append"] }
   }),
   "note.clear": widgetIdArgsSchema,
-  "todo.add_item": createStrictObjectSchema({
-    widgetId: { type: "string", required: true },
-    text: { type: "string", required: true },
-    dueAt: { type: "string" }
-  }),
-  "todo.complete_item": createStrictObjectSchema({
-    widgetId: { type: "string", required: true },
-    text: { type: "string", required: true }
-  }),
   "countdown.set": createStrictObjectSchema({
     widgetId: { type: "string", required: true },
     hours: { type: "number" },
@@ -208,11 +168,6 @@ const toolArgSchemas: Record<string, ReturnType<typeof createStrictObjectSchema>
   "countdown.pause": widgetIdArgsSchema,
   "countdown.resume": widgetIdArgsSchema,
   "countdown.reset": widgetIdArgsSchema,
-  "weather.set_city": createStrictObjectSchema({
-    widgetId: { type: "string", required: true },
-    city: { type: "string" },
-    cityCode: { type: "string" }
-  }),
   "calculator.set_display": createStrictObjectSchema({
     widgetId: { type: "string", required: true },
     display: { type: ["string", "number"], required: true }
@@ -236,15 +191,6 @@ const toolArgSchemas: Record<string, ReturnType<typeof createStrictObjectSchema>
     sourceLang: { type: "string" },
     targetLang: { type: "string" }
   }),
-  "clipboard.add_text": createStrictObjectSchema({
-    widgetId: { type: "string", required: true },
-    text: { type: "string", required: true },
-    pinned: { type: "boolean" }
-  }),
-  "clipboard.clear": createStrictObjectSchema({
-    widgetId: { type: "string", required: true },
-    includePinned: { type: "boolean" }
-  }),
   "tv.play": widgetIdArgsSchema,
   "tv.pause": widgetIdArgsSchema,
   "tv.fullscreen": widgetIdArgsSchema,
@@ -265,7 +211,6 @@ const toolArgSchemas: Record<string, ReturnType<typeof createStrictObjectSchema>
 function toolExamples(toolName: string, seed: DailyWidgetModuleSeed): string[] {
   const examples: Record<string, string[]> = {
     "widget.remove": [`关闭${seed.aliases[0]}`, `${seed.aliases[0]}关掉`, `把${seed.aliases[0]}收起来`],
-    "clipboard.clear": ["清空剪贴板", "清一下剪贴板", "清掉复制板"]
   };
   return examples[toolName] ?? seed.shortcutExamples.slice(0, 3).concat(seed.capabilities.slice(0, 3)).slice(0, 3);
 }

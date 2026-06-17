@@ -9,7 +9,10 @@ import {
 } from "@xiaozhuoban/assistant-core";
 import type { WidgetDefinition } from "@xiaozhuoban/domain";
 import { createDailyWidgetAssistantModules } from "./dailyWidgetAssistantModules";
+import { createClipboardAssistantModule, clipboardMigrationReport, clipboardShortcutConflictReport } from "./clipboard/assistant";
 import { createMusicAssistantModule, musicMigrationReport, musicShortcutConflictReport } from "./music/assistant";
+import { createTodoAssistantModule, todoMigrationReport, todoShortcutConflictReport } from "./todo/assistant";
+import { createWeatherAssistantModule, weatherMigrationReport, weatherShortcutConflictReport } from "./weather/assistant";
 
 function definition(type: string, name: string): WidgetDefinition {
   return {
@@ -111,6 +114,9 @@ const dailyDefinitions = [
 
 function registerFirstBatchModules(registry: WidgetAssistantRegistry) {
   registry.register(createMusicAssistantModule(dailyDefinitions, moduleActions));
+  registry.register(createWeatherAssistantModule(dailyDefinitions, moduleActions));
+  registry.register(createClipboardAssistantModule(dailyDefinitions, moduleActions));
+  registry.register(createTodoAssistantModule(dailyDefinitions, moduleActions));
   createDailyWidgetAssistantModules(dailyDefinitions, moduleActions).forEach((module) => registry.register(module));
 }
 
@@ -194,15 +200,33 @@ describe("daily widget assistant modules", () => {
     }
   });
 
-  it("keeps music outside the central daily module factory after migration", () => {
+  it("keeps migrated modules outside the central daily module factory", () => {
     const centralModules = createDailyWidgetAssistantModules(dailyDefinitions, moduleActions);
+    const centralTypes = centralModules.map((module) => module.type);
 
-    expect(centralModules.map((module) => module.type)).not.toContain("music");
+    for (const migratedType of ["music", "weather", "clipboard", "todo"]) {
+      expect(centralTypes).not.toContain(migratedType);
+    }
     expect(musicMigrationReport).toMatchObject({
       module: "music",
       legacyBridge: true
     });
+    expect(weatherMigrationReport).toMatchObject({
+      module: "weather",
+      legacyBridge: true
+    });
+    expect(clipboardMigrationReport).toMatchObject({
+      module: "clipboard",
+      legacyBridge: true
+    });
+    expect(todoMigrationReport).toMatchObject({
+      module: "todo",
+      legacyBridge: true
+    });
     expect(musicShortcutConflictReport.resolution).toBe("none");
+    expect(weatherShortcutConflictReport.resolution).toBe("none");
+    expect(clipboardShortcutConflictReport.resolution).toBe("none");
+    expect(todoShortcutConflictReport.resolution).toBe("none");
   });
 
   it("uses selected-module strict schemas to reject extra model arguments", () => {
@@ -223,6 +247,19 @@ describe("daily widget assistant modules", () => {
 
     expect(result.ok).toBe(false);
     expect(result.errors[0]).toMatchObject({ code: "EXTRA_ARGUMENTS" });
+
+    const weatherPlan = createCommandPlanFromToolCalls("北京天气", [
+      {
+        id: "call_weather",
+        name: "weather.set_city",
+        arguments: { widgetId: "weather_1", city: "北京", privateLocationHistory: "should not pass" },
+        source: "realtime"
+      }
+    ]);
+    weatherPlan.commands[0]!.module = "weather";
+    const weatherResult = validator.validate(weatherPlan);
+    expect(weatherResult.ok).toBe(false);
+    expect(weatherResult.errors[0]).toMatchObject({ code: "EXTRA_ARGUMENTS" });
   });
 
   it("keeps Realtime first stage catalog free of widget ids and private summaries", () => {
@@ -259,5 +296,67 @@ describe("daily widget assistant modules", () => {
     expect(catalogPayload).not.toContain("secret clipboard payload");
     expect(JSON.stringify(musicContext)).toContain("music_widget_1");
     expect(JSON.stringify(musicContext)).not.toContain("secret clipboard payload");
+  });
+
+  it("redacts content-heavy module scoped contexts", () => {
+    const registry = new WidgetAssistantRegistry();
+    registerFirstBatchModules(registry);
+
+    const clipboardContext = registry.getScopedContextForModule("clipboard", {
+      userText: "清一下剪贴板",
+      compactContext: {
+        widgetCountsByType: { clipboard: 1, todo: 1 },
+        widgets: [
+          {
+            widgetId: "clip_1",
+            definitionId: "wd_clipboard",
+            type: "clipboard",
+            name: "剪贴板",
+            order: 1,
+            summary: "secret-token-123 pinned record count 3"
+          },
+          {
+            widgetId: "todo_1",
+            definitionId: "wd_todo",
+            type: "todo",
+            name: "待办",
+            order: 2,
+            summary: "买牛奶，带身份证，私人任务全文"
+          }
+        ]
+      }
+    });
+
+    const todoContext = registry.getScopedContextForModule("todo", {
+      userText: "把买牛奶勾掉",
+      compactContext: {
+        widgetCountsByType: { clipboard: 1, todo: 1 },
+        widgets: [
+          {
+            widgetId: "clip_1",
+            definitionId: "wd_clipboard",
+            type: "clipboard",
+            name: "剪贴板",
+            order: 1,
+            summary: "secret-token-123 pinned record count 3"
+          },
+          {
+            widgetId: "todo_1",
+            definitionId: "wd_todo",
+            type: "todo",
+            name: "待办",
+            order: 2,
+            summary: "买牛奶，带身份证，私人任务全文"
+          }
+        ]
+      }
+    });
+
+    expect(JSON.stringify(clipboardContext)).toContain("clipboard-content-redacted");
+    expect(JSON.stringify(clipboardContext)).not.toContain("secret-token-123");
+    expect(JSON.stringify(clipboardContext)).not.toContain("买牛奶");
+    expect(JSON.stringify(todoContext)).toContain("todo-summary-only");
+    expect(JSON.stringify(todoContext)).not.toContain("私人任务全文");
+    expect(JSON.stringify(todoContext)).not.toContain("secret-token-123");
   });
 });

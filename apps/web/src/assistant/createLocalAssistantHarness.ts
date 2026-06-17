@@ -17,7 +17,10 @@ import { createLocalAssistantAuditAdapter, createSupabaseAssistantAuditAdapter, 
 import { WidgetCapabilityBridge, createWidgetCapabilityActions } from "./widgetCapabilityBridge";
 import { createWidgetStateActions } from "./widgetStateActions";
 import { createDailyWidgetAssistantModules } from "../widgets/modules/dailyWidgetAssistantModules";
+import { createClipboardAssistantModule } from "../widgets/modules/clipboard/assistant";
 import { createMusicAssistantModule } from "../widgets/modules/music/assistant";
+import { createTodoAssistantModule } from "../widgets/modules/todo/assistant";
+import { createWeatherAssistantModule } from "../widgets/modules/weather/assistant";
 
 const noopRealtimeAdapter: AssistantRealtimeAdapter = {
   updateTools() {},
@@ -123,6 +126,9 @@ export function createLocalAssistantHarness(options?: {
   const moduleRegistry = new WidgetAssistantRegistry();
   const widgetDefinitions = useAppStore.getState().widgetDefinitions;
   moduleRegistry.register(createMusicAssistantModule(widgetDefinitions, actions));
+  moduleRegistry.register(createWeatherAssistantModule(widgetDefinitions, actions));
+  moduleRegistry.register(createClipboardAssistantModule(widgetDefinitions, actions));
+  moduleRegistry.register(createTodoAssistantModule(widgetDefinitions, actions));
   createDailyWidgetAssistantModules(widgetDefinitions, actions).forEach((module) => moduleRegistry.register(module));
 
   const auditContext: AssistantAuditContext = {
