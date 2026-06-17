@@ -78,11 +78,18 @@ create table if not exists public.message_board_messages (
 
 create table if not exists public.assistant_command_logs (
   id text primary key,
+  operation_id text null,
   user_id uuid not null references auth.users(id) on delete cascade,
   board_id text null references public.boards(id) on delete set null,
   route text not null,
   source_mode text not null,
   transcript text null,
+  normalized text null,
+  candidate_modules jsonb null,
+  selected_module text null,
+  selected_tool_hint text null,
+  selection_confidence double precision null,
+  learning_candidate boolean not null default false,
   tool_name text null,
   sanitized_args jsonb null,
   target_widget jsonb null,
@@ -93,6 +100,14 @@ create table if not exists public.assistant_command_logs (
   duration_ms integer not null default 0,
   created_at timestamptz not null default now()
 );
+
+alter table public.assistant_command_logs add column if not exists operation_id text null;
+alter table public.assistant_command_logs add column if not exists normalized text null;
+alter table public.assistant_command_logs add column if not exists candidate_modules jsonb null;
+alter table public.assistant_command_logs add column if not exists selected_module text null;
+alter table public.assistant_command_logs add column if not exists selected_tool_hint text null;
+alter table public.assistant_command_logs add column if not exists selection_confidence double precision null;
+alter table public.assistant_command_logs add column if not exists learning_candidate boolean not null default false;
 
 create table if not exists public.gomoku_matches (
   id text primary key,

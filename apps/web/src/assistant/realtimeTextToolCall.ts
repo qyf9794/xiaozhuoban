@@ -1,7 +1,9 @@
 import {
   type AssistantToolCall,
   type AssistantToolSpec,
-  type CompactAssistantContext
+  type CompactAssistantContext,
+  type RealtimeModuleCatalogItem,
+  type RealtimeScopedModuleContext
 } from "@xiaozhuoban/assistant-core";
 import {
   XIAOZHUOBAN_REALTIME_MODEL,
@@ -15,6 +17,8 @@ export type RealtimeTextToolCallRequest = {
   input: string;
   context?: CompactAssistantContext;
   tools: AssistantToolSpec[];
+  moduleCatalog?: RealtimeModuleCatalogItem[];
+  moduleContext?: RealtimeScopedModuleContext;
   phase?: "select" | "execute" | "auto";
   selection?: RealtimeTextToolSelection;
 };
@@ -26,6 +30,7 @@ export type RealtimeTextToolCallResponse = {
 
 export type RealtimeTextToolSelection = {
   name: string;
+  selectedModule?: string;
   targetHint?: string;
   confidence?: number;
 };
@@ -62,17 +67,22 @@ export function createRealtimeTextToolCallRequestBody(
   return JSON.stringify({ input, context, tools, selection, phase: "auto" } satisfies RealtimeTextToolCallRequest);
 }
 
-export function createRealtimeToolSelectionRequestBody(input: string, tools: AssistantToolSpec[]) {
-  return JSON.stringify({ input, tools, phase: "select" } satisfies RealtimeTextToolCallRequest);
+export function createRealtimeToolSelectionRequestBody(
+  input: string,
+  tools: AssistantToolSpec[],
+  moduleCatalog?: RealtimeModuleCatalogItem[]
+) {
+  return JSON.stringify({ input, tools, moduleCatalog, phase: "select" } satisfies RealtimeTextToolCallRequest);
 }
 
 export function createRealtimeScopedToolCallRequestBody(
   input: string,
   context: CompactAssistantContext,
   tools: AssistantToolSpec[],
-  selection: RealtimeTextToolSelection
+  selection: RealtimeTextToolSelection,
+  moduleContext?: RealtimeScopedModuleContext
 ) {
-  return JSON.stringify({ input, context, tools, selection, phase: "execute" } satisfies RealtimeTextToolCallRequest);
+  return JSON.stringify({ input, context, tools, selection, moduleContext, phase: "execute" } satisfies RealtimeTextToolCallRequest);
 }
 
 function toolCatalog(tools: AssistantToolSpec[]) {
@@ -91,14 +101,38 @@ function toolCatalog(tools: AssistantToolSpec[]) {
     .join("\n");
 }
 
-export function createRealtimeToolSelectionPrompt(input: string, tools: AssistantToolSpec[]) {
+function moduleCatalogText(moduleCatalog: RealtimeModuleCatalogItem[] | undefined) {
+  return (moduleCatalog ?? [])
+    .map((module) =>
+      [
+        `- ${module.type}`,
+        `displayName=${module.displayName}`,
+        `aliases=${module.aliases.join("/")}`,
+        `capabilities=${module.capabilities.join("/")}`,
+        module.riskSummary.length ? `risk=${module.riskSummary.join("/")}` : "",
+        module.shortcutExamples.length ? `examples=${module.shortcutExamples.join("/")}` : ""
+      ]
+        .filter(Boolean)
+        .join(" ")
+    )
+    .join("\n");
+}
+
+export function createRealtimeToolSelectionPrompt(
+  input: string,
+  tools: AssistantToolSpec[],
+  moduleCatalog?: RealtimeModuleCatalogItem[]
+) {
   return [
-    "你是小桌板命令路由器。先只判断用户想使用哪个已注册工具，不要生成工具参数。",
-    "你只能基于工具目录和用户命令选择工具；此阶段不会提供桌面上下文。",
+    "你是小桌板命令路由器。先只判断用户想使用哪个模块和已注册工具，不要生成工具参数。",
+    "你只能基于模块目录、工具目录和用户命令选择；此阶段不会提供桌面上下文。",
     "如果用户说“打开 + 小工具名”，优先添加或聚焦这个小工具。",
     "如果用户说“关闭/关掉 + 小工具名”，优先调用 widget.remove 关闭这个小工具窗口。",
     "如果用户说“暂停/继续/播放/下一首”等播放控制，优先调用对应媒体工具。",
     "没有足够把握时不要调用工具。",
+    "",
+    "# 模块目录",
+    moduleCatalogText(moduleCatalog) || "- 未提供模块目录",
     "",
     "# 工具目录",
     toolCatalog(tools),
@@ -107,15 +141,18 @@ export function createRealtimeToolSelectionPrompt(input: string, tools: Assistan
   ].join("\n");
 }
 
-export function createRealtimeToolSelectionInstructions(tools: AssistantToolSpec[]) {
+export function createRealtimeToolSelectionInstructions(tools: AssistantToolSpec[], moduleCatalog?: RealtimeModuleCatalogItem[]) {
   return [
-    "你是小桌板命令路由器。当前阶段只判断用户想使用哪个已注册工具。",
+    "你是小桌板命令路由器。当前阶段只判断用户想使用哪个模块和已注册工具。",
     "不要生成任何真实工具参数，不要猜 widgetId、definitionId、boardId。",
     "不要要求完整桌面上下文；如果需要目标，只把用户说出的目标词放到 targetHint。",
     "用户要控制桌面时，先调用 assistant.select_tool；前端随后会按所选工具提供最小必要上下文。",
     "如果用户说“打开 + 小工具名”，优先选择 board.add_widget 或 widget.focus。",
     "如果用户说“关闭/关掉 + 小工具名”，优先选择 widget.remove 关闭这个小工具窗口。",
     "如果用户说“暂停/继续/播放/下一首”等播放控制，优先选择对应媒体工具。",
+    "",
+    "# 模块目录",
+    moduleCatalogText(moduleCatalog) || "- 未提供模块目录",
     "",
     "# 工具目录",
     toolCatalog(tools)
@@ -134,6 +171,11 @@ export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[]): Rea
           type: "string",
           enum: tools.map((tool) => tool.name),
           description: "Selected registered tool name."
+        },
+        selectedModule: {
+          type: "string",
+          enum: (tools.length > 0 ? [...new Set(tools.map((tool) => tool.widgetType).filter(Boolean))] : []) as string[],
+          description: "Selected module type when known."
         },
         targetHint: {
           type: "string",
@@ -160,7 +202,7 @@ export function createToolSelectionPayload(
     input: [
       {
         role: "user",
-        content: createRealtimeToolSelectionPrompt(request.input, request.tools)
+        content: createRealtimeToolSelectionPrompt(request.input, request.tools, request.moduleCatalog)
       }
     ],
     tools: [
@@ -172,6 +214,7 @@ export function createToolSelectionPayload(
           type: "object",
           properties: {
             name: { type: "string", description: "Selected registered tool name." },
+            selectedModule: { type: "string", description: "Selected Xiaozhuoban module type when known." },
             targetHint: { type: "string", description: "Short widget or board target words from the user command." },
             confidence: { type: "number" }
           },
@@ -272,6 +315,20 @@ export function createScopedToolCallPayload(
         role: "user",
         content: [
           createRealtimeContextInstructions(scopedContext),
+          request.moduleContext
+            ? [
+                "",
+                "# Selected Module Scoped Context",
+                JSON.stringify({
+                  moduleType: request.moduleContext.moduleType,
+                  instances: request.moduleContext.instances,
+                  stateSummary: request.moduleContext.stateSummary,
+                  shortcutExamples: request.moduleContext.shortcutExamples,
+                  executionPolicy: request.moduleContext.executionPolicy,
+                  riskPolicy: request.moduleContext.riskPolicy
+                })
+              ].join("\n")
+            : "",
           "",
           "# Text Command Fallback",
           "现在只根据上一步选中的工具和最小必要上下文，返回可执行工具调用。",
@@ -295,10 +352,25 @@ export function createScopedToolCallPayload(
 export function createScopedRealtimeToolInstructions(
   context: CompactAssistantContext,
   selection: RealtimeTextToolSelection,
-  input: string
+  input: string,
+  moduleContext?: RealtimeScopedModuleContext
 ) {
   return [
     createRealtimeContextInstructions(context),
+    moduleContext
+      ? [
+          "",
+          "# Selected Module Scoped Context",
+          JSON.stringify({
+            moduleType: moduleContext.moduleType,
+            instances: moduleContext.instances,
+            stateSummary: moduleContext.stateSummary,
+            shortcutExamples: moduleContext.shortcutExamples,
+            executionPolicy: moduleContext.executionPolicy,
+            riskPolicy: moduleContext.riskPolicy
+          })
+        ].join("\n")
+      : "",
     "",
     "# Selected Tool Stage",
     "现在只根据上一步选中的工具和此处提供的最小上下文，返回可执行工具调用。",
@@ -321,9 +393,9 @@ export function createScopedRealtimeToolUpdate(
   if (!tool || !request.context) return null;
   const scopedContext = createScopedRealtimeContext(request.context, tool, selection, request.input);
   return {
-    type: "session.update",
-    session: {
-      instructions: createScopedRealtimeToolInstructions(scopedContext, selection, request.input),
+      type: "session.update",
+      session: {
+      instructions: createScopedRealtimeToolInstructions(scopedContext, selection, request.input, request.moduleContext),
       tools: [serializeAssistantToolForRealtime(tool)],
       tool_choice: "auto",
       parallel_tool_calls: false
@@ -390,6 +462,7 @@ export function extractToolSelectionFromResponsesPayload(
   if (!allowedToolNames.has(name)) return null;
   return {
     name,
+    selectedModule: typeof args.selectedModule === "string" ? args.selectedModule : undefined,
     targetHint: typeof args.targetHint === "string" ? args.targetHint : undefined,
     confidence: typeof args.confidence === "number" ? args.confidence : undefined
   };
@@ -417,6 +490,7 @@ export function parseRealtimeTextToolSelectionResponse(value: unknown): Realtime
   if (typeof record.name !== "string") return null;
   return {
     name: record.name,
+    selectedModule: typeof record.selectedModule === "string" ? record.selectedModule : undefined,
     targetHint: typeof record.targetHint === "string" ? record.targetHint : undefined,
     confidence: typeof record.confidence === "number" ? record.confidence : undefined
   };

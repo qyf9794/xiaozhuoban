@@ -71,6 +71,45 @@ const context: CompactAssistantContext = {
   ]
 };
 
+const moduleCatalog = [
+  {
+    type: "music",
+    displayName: "音乐",
+    aliases: ["音乐"],
+    capabilities: ["播放", "暂停"],
+    shortcutExamples: ["暂停音乐"],
+    riskSummary: []
+  },
+  {
+    type: "weather",
+    displayName: "天气",
+    aliases: ["天气"],
+    capabilities: ["查询城市天气"],
+    shortcutExamples: ["北京天气"],
+    riskSummary: []
+  }
+];
+
+const moduleContext = {
+  moduleType: "weather",
+  tools: [tools[0]!],
+  toolSchemas: {},
+  instances: [
+    {
+      widgetId: "wi_weather",
+      definitionId: "wd_weather",
+      type: "weather",
+      name: "天气",
+      order: 3,
+      summary: "北京"
+    }
+  ],
+  stateSummary: { instanceCount: 1 },
+  shortcutExamples: ["北京天气"],
+  executionPolicy: { defaultMode: "latest-wins" as const },
+  riskPolicy: { safe: ["weather.set_city"], confirm: [], destructive: [] }
+};
+
 describe("Realtime text tool call fallback", () => {
   it("creates a first-pass tool selection payload without board widget context", () => {
     const payload = createToolSelectionPayload({ input: "关闭音乐", context, tools });
@@ -83,10 +122,12 @@ describe("Realtime text tool call fallback", () => {
   });
 
   it("creates a selector request body without desktop context", () => {
-    const body = JSON.parse(createRealtimeToolSelectionRequestBody("关闭音乐", tools));
+    const body = JSON.parse(createRealtimeToolSelectionRequestBody("关闭音乐", tools, moduleCatalog));
     const serialized = JSON.stringify(body);
 
     expect(body).toMatchObject({ input: "关闭音乐", phase: "select" });
+    expect(serialized).toContain("moduleCatalog");
+    expect(serialized).toContain("weather");
     expect(serialized).toContain("widget.remove");
     expect(serialized).not.toContain("context");
     expect(serialized).not.toContain("wi_music");
@@ -94,12 +135,14 @@ describe("Realtime text tool call fallback", () => {
   });
 
   it("creates realtime selection instructions and a selector tool without board widget context", () => {
-    const instructions = createRealtimeToolSelectionInstructions(tools);
+    const instructions = createRealtimeToolSelectionInstructions(tools, moduleCatalog);
     const selector = createRealtimeToolSelectionTool(tools);
     const serialized = JSON.stringify({ instructions, selector });
 
     expect(serialized).toContain("widget.remove");
     expect(serialized).toContain("music.pause");
+    expect(serialized).toContain("模块目录");
+    expect(serialized).toContain("weather");
     expect(serialized).toContain("assistant__dot__select_tool");
     expect(serialized).not.toContain("wi_music");
     expect(serialized).not.toContain("private note");
@@ -160,13 +203,16 @@ describe("Realtime text tool call fallback", () => {
         "关闭音乐",
         scopedContext,
         tools,
-        { name: "widget.remove", targetHint: "音乐" }
+        { name: "widget.remove", selectedModule: "weather", targetHint: "音乐" },
+        moduleContext
       )
     );
     const serialized = JSON.stringify(body);
 
     expect(body).toMatchObject({ input: "关闭音乐", phase: "execute", selection: { name: "widget.remove" } });
     expect(serialized).toContain("wi_music");
+    expect(serialized).toContain("moduleContext");
+    expect(serialized).toContain("wi_weather");
     expect(serialized).not.toContain("wi_note");
     expect(serialized).not.toContain("private note");
   });

@@ -1,0 +1,7 @@
+[
+  {
+    "id": "countdown-set-001",
+    "input": "定时十分钟",
+    "expected": { "module": "countdown", "tool": "countdown.set", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+  }
+]

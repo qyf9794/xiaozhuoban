@@ -2,15 +2,41 @@ import { describe, expect, it } from "vitest";
 import {
   ActionRegistry,
   AssistantRegistryError,
+  LocalHarnessResponsibility,
+  RealtimePlannerResponsibility,
+  TextModelFallbackResponsibility,
+  TranscriptionResponsibility,
+  RemoteCodexResponsibility,
+  PlanValidator,
+  CommandExecutor,
+  LearnedCommandStore,
+  MutationOutbox,
+  RealtimePlanAdapter,
+  RealtimeRuntimeController,
+  ShortcutPlanAdapter,
+  TextFallbackPlanAdapter,
+  WidgetAssistantRegistry,
+  XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL,
+  XIAOZHUOBAN_REALTIME_MODEL,
+  createPlanPreview,
+  createCommandPlanFromToolCalls,
   createDefaultIntentShortcutRouter,
   createPassthroughSchema,
+  createStrictObjectSchema,
+  reviewAiGeneratedModule,
+  runWidgetModuleStaticChecks,
   ContextSummarizer,
+  normalizeText,
+  scoreCandidates,
+  segmentCommandText,
   ToolScopeManager,
   WidgetTargetResolver,
   type AssistantParameterSchema,
   type AssistantToolSpec,
+  type CommandPlan,
   type CompactWidgetSummary,
-  type IntentShortcutContext
+  type IntentShortcutContext,
+  type RealtimeScopedModuleContext
 } from "./index";
 
 interface AddArgs {
@@ -163,6 +189,221 @@ describe("createPassthroughSchema", () => {
 
     expect(schema.safeParse({ ok: true }).success).toBe(true);
     expect(schema.safeParse({ ok: false }).success).toBe(false);
+  });
+});
+
+describe("assistant responsibility boundaries", () => {
+  it("freezes model roles so execution stays inside the harness", () => {
+    expect(LocalHarnessResponsibility.responsibilities.join(" ")).toContain("CommandPlan");
+    expect(LocalHarnessResponsibility.forbidden.join(" ")).toContain("绕过 harness");
+    expect(RealtimePlannerResponsibility.responsibilities.join(" ")).toContain("第一阶段");
+    expect(RealtimePlannerResponsibility.responsibilities.join(" ")).toContain("第二阶段");
+    expect(RealtimePlannerResponsibility.forbidden.join(" ")).toContain("全量桌面上下文");
+    expect(TranscriptionResponsibility.forbidden.join(" ")).toContain("执行工具");
+    expect(TextModelFallbackResponsibility.forbidden.join(" ")).toContain("默认使用 realtime 模型");
+    expect(RemoteCodexResponsibility.forbidden.join(" ")).toContain("实时麦克风流");
+  });
+
+  it("uses a dedicated low-latency text fallback model by default", () => {
+    expect(XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL).not.toBe(XIAOZHUOBAN_REALTIME_MODEL);
+  });
+});
+
+describe("WidgetAssistantRegistry and Command Planner", () => {
+  const weatherAction = {
+    spec: {
+      name: "weather.set_city",
+      description: "Set weather city",
+      parameters: createPassthroughSchema<{ widgetId: string; city: string }>(
+        (value): value is { widgetId: string; city: string } =>
+          Boolean(value) &&
+          typeof value === "object" &&
+          typeof (value as Record<string, unknown>).widgetId === "string" &&
+          typeof (value as Record<string, unknown>).city === "string"
+      ),
+      risk: "safe" as const,
+      scope: "widget-detail" as const,
+      widgetType: "weather",
+      requiresTarget: true
+    },
+    execute: () => ({ status: "success" as const, message: "ok" })
+  };
+
+  function createWeatherModule() {
+    return {
+      type: "weather",
+      definition: { id: "wd_weather", type: "weather", name: "天气" },
+      aliases: ["天气", "weather"],
+      shortcuts: [
+        {
+          id: "weather.query",
+          intent: "query_weather",
+          actions: ["查", "查询"],
+          examples: ["帮我查一下北京天气"],
+          risk: "safe" as const
+        }
+      ],
+      tools: [weatherAction],
+      executionPolicy: { defaultMode: "latest-wins" as const },
+      context: {
+        getScopedContext: () => ({
+          moduleType: "weather",
+          tools: [weatherAction.spec],
+          toolSchemas: {},
+          instances: [],
+          stateSummary: { city: "北京" },
+          shortcutExamples: ["北京天气"],
+          executionPolicy: { defaultMode: "latest-wins" as const },
+          riskPolicy: { safe: ["weather.set_city"], confirm: [], destructive: [] }
+        })
+      },
+      realtime: {
+        exposeCatalog: () => ({
+          type: "weather",
+          displayName: "天气",
+          aliases: ["天气", "weather"],
+          capabilities: ["查询城市天气"],
+          shortcutExamples: ["北京天气"],
+          riskSummary: []
+        }),
+        getScopedContext: () => ({
+          moduleType: "weather",
+          tools: [weatherAction.spec],
+          toolSchemas: {},
+          instances: [],
+          stateSummary: { city: "北京" },
+          shortcutExamples: ["北京天气"],
+          executionPolicy: { defaultMode: "latest-wins" as const },
+          riskPolicy: { safe: ["weather.set_city"], confirm: [], destructive: [] }
+        })
+      }
+    };
+  }
+
+  it("registers modules and generates realtime catalog plus scoped context", () => {
+    const registry = new WidgetAssistantRegistry();
+    registry.register(createWeatherModule());
+
+    expect(registry.get("weather")?.aliases).toContain("天气");
+    expect(registry.getRealtimeCatalog()).toEqual([
+      expect.objectContaining({ type: "weather", capabilities: ["查询城市天气"] })
+    ]);
+    expect(
+      registry.getScopedContextForModule("weather", {
+        userText: "北京天气",
+        selectedToolHint: "weather.set_city",
+        tools: [weatherAction.spec]
+      })
+    ).toMatchObject({ moduleType: "weather", stateSummary: { city: "北京" } });
+
+    expect(registry.disable("weather")).toBe(true);
+    expect(registry.getRealtimeCatalog()).toEqual([]);
+    expect(registry.enable("weather")).toBe(true);
+    expect(registry.unregister("weather")).toBe(true);
+  });
+
+  it("lists active tools, shortcuts, and test matrices by module state", () => {
+    const registry = new WidgetAssistantRegistry();
+    const module = {
+      ...createWeatherModule(),
+      testMatrix: { localParsing: ["北京天气"], regression: ["帮我查一下北京天气"] }
+    };
+    registry.register(module);
+
+    expect(registry.listTools().map((tool) => tool.name)).toEqual(["weather.set_city"]);
+    expect(registry.listShortcuts().map((shortcut) => shortcut.id)).toEqual(["weather.query"]);
+    expect(registry.getToolsForModule("weather").map((tool) => tool.name)).toEqual(["weather.set_city"]);
+    expect(registry.getShortcutsForModule("weather").map((shortcut) => shortcut.intent)).toEqual(["query_weather"]);
+    expect(registry.getTestMatrixForModule("weather")).toEqual(module.testMatrix);
+    expect(registry.listTestMatrices()).toEqual([{ module: "weather", testMatrix: module.testMatrix }]);
+
+    registry.disable("weather");
+
+    expect(registry.listTools()).toEqual([]);
+    expect(registry.listShortcuts()).toEqual([]);
+    expect(registry.getToolsForModule("weather")).toEqual([]);
+    expect(registry.getShortcutsForModule("weather")).toEqual([]);
+    expect(registry.getTestMatrixForModule("weather")).toBeNull();
+    expect(registry.listTools({ includeDisabled: true }).map((tool) => tool.name)).toEqual(["weather.set_city"]);
+  });
+
+  it("normalizes text, segments commands, and scores candidate modules", () => {
+    const registry = new WidgetAssistantRegistry();
+    registry.register(createWeatherModule());
+
+    expect(normalizeText("帮我，啊，查一下北京天气")).toBe("查 北京天气");
+    expect(segmentCommandText("先打开音乐，再播放周杰伦，同时查北京天气")).toEqual([
+      { id: "segment_1", text: "先打开音乐", connector: "start" },
+      { id: "segment_2", text: "播放周杰伦", connector: "sequential" },
+      { id: "segment_3", text: "查北京天气", connector: "parallel" }
+    ]);
+    expect(scoreCandidates("帮我查一下北京天气", registry.list()).candidates[0]).toMatchObject({
+      type: "weather"
+    });
+  });
+
+  it("validates command plans before execution", () => {
+    const registry = new WidgetAssistantRegistry();
+    registry.register(createWeatherModule());
+    const validator = new PlanValidator({
+      tools: [weatherAction.spec],
+      moduleRegistry: registry,
+      allowedArgumentKeysByTool: { "weather.set_city": ["widgetId", "city"] }
+    });
+
+    const valid = createCommandPlanFromToolCalls("北京天气", [
+      { id: "call_1", name: "weather.set_city", arguments: { widgetId: "wi_weather", city: "北京" }, source: "text" }
+    ]);
+    valid.commands[0]!.module = "weather";
+    expect(validator.validate(valid).ok).toBe(true);
+
+    const extra = createCommandPlanFromToolCalls("北京天气", [
+      {
+        id: "call_2",
+        name: "weather.set_city",
+        arguments: { widgetId: "wi_weather", city: "北京", token: "secret" },
+        source: "text"
+      }
+    ]);
+    extra.commands[0]!.module = "weather";
+    expect(validator.validate(extra).errors[0]).toMatchObject({ code: "EXTRA_ARGUMENTS" });
+
+    const unknown = createCommandPlanFromToolCalls("未知", [
+      { id: "call_3", name: "weather.delete_everything", arguments: {}, source: "text" }
+    ]);
+    expect(validator.validate(unknown).errors[0]).toMatchObject({ code: "UNKNOWN_TOOL" });
+  });
+
+  it("adapts shortcut, realtime, and text fallback outputs into command plans", () => {
+    const shortcutPlan = new ShortcutPlanAdapter().createPlan("打开音乐，同时查天气", [
+      [{ id: "music", name: "board.add_widget", arguments: { definitionId: "wd_music" }, source: "shortcut" }],
+      [
+        { id: "weather", name: "weather.set_city", arguments: { widgetId: "wi_weather", city: "北京" }, source: "shortcut" },
+        { id: "headline", name: "headline.request_refresh", arguments: { widgetId: "wi_headline" }, source: "shortcut" }
+      ]
+    ]);
+    expect(shortcutPlan.createdBy).toBe("local");
+    expect(shortcutPlan.executionGroups).toEqual([
+      { id: "group_1", mode: "sequential", commandIds: ["music"] },
+      { id: "group_2", mode: "parallel", commandIds: ["weather", "headline"] }
+    ]);
+
+    expect(
+      new RealtimePlanAdapter().createPlan("查天气", {
+        id: "rt",
+        name: "weather.set_city",
+        arguments: { widgetId: "wi_weather", city: "北京" },
+        source: "text"
+      }).createdBy
+    ).toBe("realtime-2");
+    expect(
+      new TextFallbackPlanAdapter().createPlan("查天气", {
+        id: "txt",
+        name: "weather.set_city",
+        arguments: { widgetId: "wi_weather", city: "北京" },
+        source: "realtime"
+      }).createdBy
+    ).toBe("text-llm");
   });
 });
 
@@ -2236,5 +2477,256 @@ describe("ContextSummarizer", () => {
     expect(result.widgets.map((widget) => widget.widgetId)).toEqual(["wi_3", "wi_2"]);
     expect(result.focusedWidget?.focused).toBe(true);
     expect(result.widgets[1].recent).toBe(true);
+  });
+});
+
+describe("Strict schemas, preview gate, executor, budget, outbox, learning, and module review", () => {
+  function createPlan(commands: CommandPlan["commands"]): CommandPlan {
+    return {
+      id: "plan_test",
+      sourceText: "test",
+      normalizedText: "test",
+      commands,
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "parallel", commandIds: commands.map((command) => command.id) }],
+      confidence: 0.9,
+      needsConfirmation: commands.some((command) => command.risk !== "safe"),
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+  }
+
+  it("rejects extra fields with strict action schemas", () => {
+    const schema = createStrictObjectSchema({ widgetId: { type: "string", required: true } });
+    const parsed = schema.safeParse({ widgetId: "w1", query: "should-not-pass" });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it("creates a preview for destructive or confirmation-required plans", () => {
+    const plan = createPlan([
+      {
+        id: "clear",
+        module: "clipboard",
+        tool: "clipboard.clear",
+        args: { widgetId: "clip_1" },
+        risk: "destructive",
+        confidence: 0.93,
+        source: "realtime",
+        requiresHarnessValidation: true
+      }
+    ]);
+
+    const preview = createPlanPreview(plan);
+
+    expect(preview.requiresConfirmation).toBe(true);
+    expect(preview.commands[0]).toMatchObject({ module: "clipboard", tool: "clipboard.clear", reversible: false });
+  });
+
+  it("executes independent commands in parallel and skips failed dependencies", async () => {
+    const started: string[] = [];
+    const executor = new CommandExecutor({
+      async execute(call) {
+        started.push(call.name);
+        if (call.name === "weather.set_city") {
+          return { status: "failed", message: "weather failed" };
+        }
+        return { status: "success", message: "ok" };
+      }
+    });
+    const plan: CommandPlan = {
+      ...createPlan([
+        {
+          id: "weather",
+          module: "weather",
+          tool: "weather.set_city",
+          args: { widgetId: "w_weather", city: "北京" },
+          risk: "safe",
+          confidence: 0.9,
+          source: "realtime",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "headline",
+          module: "headline",
+          tool: "headline.request_refresh",
+          args: { widgetId: "w_headline" },
+          risk: "safe",
+          confidence: 0.9,
+          source: "realtime",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "weather_dep",
+          module: "weather",
+          tool: "weather.set_city",
+          args: { widgetId: "w_weather", city: "上海" },
+          risk: "safe",
+          confidence: 0.9,
+          dependsOn: ["weather"],
+          source: "realtime",
+          requiresHarnessValidation: true
+        }
+      ]),
+      executionGroups: [
+        { id: "group_1", mode: "parallel", commandIds: ["weather", "headline"] },
+        { id: "group_2", mode: "sequential", commandIds: ["weather_dep"] }
+      ]
+    };
+
+    const result = await executor.execute(plan);
+
+    expect(started).toEqual(["weather.set_city", "headline.request_refresh"]);
+    expect(result.records.find((record) => record.command.id === "weather_dep")?.phase).toBe("skipped");
+    expect(result.status).toBe("failed");
+  });
+
+  it("tracks low-cost runtime soft and hard limits", () => {
+    const controller = new RealtimeRuntimeController({
+      dailyBudgetUsd: 1,
+      softLimitUsd: 0.8,
+      hardLimitUsd: 1,
+      commandWindowIdleMs: 10_000,
+      dialogueIdleMs: 30_000,
+      maxSingleCommandSessionMs: 60_000,
+      maxDialogueSessionMs: 300_000,
+      assistantAudioDailyLimitSeconds: 300
+    });
+
+    expect(controller.requestRealtime("wake").allowed).toBe(true);
+    controller.recordRealtimeUsage({ userAudioSeconds: 2500, assistantAudioSeconds: 0 });
+    expect(controller.mode).toBe("saving_mode");
+    controller.recordRealtimeUsage({ userAudioSeconds: 800, assistantAudioSeconds: 0 });
+    expect(controller.requestRealtime("wake")).toMatchObject({ allowed: false, mode: "hard_limited" });
+  });
+
+  it("keeps failed cloud writes in the outbox for retry", async () => {
+    const outbox = new MutationOutbox(undefined, { maxRetries: 2 }, () => "2026-06-17T00:00:00.000Z");
+    await outbox.enqueue({ type: "widget.upsert", payload: { widgetId: "w1" }, operationId: "op1" });
+    const remaining = await outbox.retry({
+      sync() {
+        throw new Error("network down");
+      }
+    });
+
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]).toMatchObject({ status: "failed", retryCount: 1, operationId: "op1" });
+    expect(await outbox.pendingCount()).toBe(1);
+  });
+
+  it("stores confirmed learned shortcuts without overwriting conflicts", async () => {
+    const store = new LearnedCommandStore();
+    const candidate = {
+      id: "learn1",
+      type: "shortcut_alias" as const,
+      module: "music",
+      rawText: "把音乐收了",
+      normalizedText: "音乐 收",
+      intent: "widget.remove",
+      tool: "widget.remove",
+      args: { widgetId: "music1" },
+      risk: "safe" as const,
+      confidence: 0.92,
+      source: "realtime-success" as const,
+      status: "candidate" as const,
+      createdAt: "2026-06-17T00:00:00.000Z"
+    };
+
+    await store.addCandidate(candidate);
+    await store.confirm("learn1");
+
+    expect(await store.match("音乐 收")).toMatchObject({ tool: "widget.remove", status: "confirmed" });
+    await expect(store.addCandidate({ ...candidate, id: "learn2", tool: "music.pause" })).rejects.toThrow("冲突");
+  });
+
+  it("reviews AI generated modules before install", () => {
+    const registry = new WidgetAssistantRegistry();
+    const schema = createStrictObjectSchema({});
+    registry.register({
+      type: "music",
+      definition: { id: "music", type: "music", name: "音乐" },
+      aliases: ["音乐"],
+      shortcuts: [],
+      tools: [
+        {
+          spec: { name: "music.pause", description: "pause", parameters: schema, resultSchema: {}, examples: ["暂停音乐", "停一下", "别放了"] },
+          execute: () => ({ status: "success", message: "ok" })
+        }
+      ],
+      context: { maxRealtimeContextTokens: 100, getScopedContext: () => ({ moduleType: "music", tools: [], toolSchemas: {}, instances: [], stateSummary: {}, shortcutExamples: [], executionPolicy: { defaultMode: "sequential" }, riskPolicy: { safe: [], confirm: [], destructive: [] } }), redactContext: (context) => context },
+      realtime: { exposeCatalog: () => ({ type: "music", displayName: "音乐", aliases: ["音乐"], capabilities: [], shortcutExamples: [], riskSummary: [] }), getScopedContext: () => ({ moduleType: "music", tools: [], toolSchemas: {}, instances: [], stateSummary: {}, shortcutExamples: [], executionPolicy: { defaultMode: "sequential" }, riskPolicy: { safe: [], confirm: [], destructive: [] } }) },
+      executionPolicy: { defaultMode: "sequential" }
+    });
+
+    const preview = reviewAiGeneratedModule(
+      {
+        type: "newTool",
+        displayName: "New Tool",
+        aliases: ["音乐"],
+        shortcuts: [],
+        tools: [{ name: "music.pause", description: "conflict", argsSchema: {}, risk: "safe" }],
+        logicSpec: { kind: "eval" }
+      },
+      registry
+    );
+
+    expect(preview.canInstall).toBe(false);
+    expect(preview.issues.map((issue) => issue.code)).toEqual(["TOOL_CONFLICT", "ALIAS_CONFLICT", "UNSAFE_LOGIC"]);
+  });
+
+  it("reports module static completeness gaps", () => {
+    const registry = new WidgetAssistantRegistry();
+    const schema = createStrictObjectSchema({});
+    const module = {
+      type: "weather",
+      definition: { id: "weather", type: "weather", name: "天气" },
+      aliases: ["天气"],
+      shortcuts: [{ id: "weather.query", intent: "query", examples: ["北京天气"], risk: "safe" as const }],
+      tools: [
+        {
+          spec: {
+            name: "weather.set_city",
+            description: "set city",
+            parameters: schema,
+            argumentKeys: schema.argumentKeys,
+            resultSchema: {},
+            examples: ["北京天气", "上海天气", "查天气"]
+          },
+          execute: () => ({ status: "success" as const, message: "ok" })
+        }
+      ],
+      actionSpecs: [
+        {
+          name: "weather.set_city",
+          intent: "query_weather",
+          description: "set city",
+          argsSchema: schema.jsonSchema,
+          resultSchema: {},
+          risk: "safe" as const,
+          idempotency: "stateful" as const,
+          missingArgPolicy: "ask" as const,
+          examples: ["北京天气", "上海天气", "查天气"]
+        }
+      ],
+      context: {
+        maxRealtimeContextTokens: 100,
+        getScopedContext: () => ({ moduleType: "weather", tools: [], toolSchemas: {}, instances: [], stateSummary: {}, shortcutExamples: [], executionPolicy: { defaultMode: "latest-wins" as const }, riskPolicy: { safe: [], confirm: [], destructive: [] } }),
+        redactContext: (context: RealtimeScopedModuleContext) => context
+      },
+      realtime: {
+        exposeCatalog: () => ({ type: "weather", displayName: "天气", aliases: ["天气"], capabilities: ["查询"], shortcutExamples: ["北京天气"], riskSummary: [] }),
+        getScopedContext: () => ({ moduleType: "weather", tools: [], toolSchemas: {}, instances: [], stateSummary: {}, shortcutExamples: [], executionPolicy: { defaultMode: "latest-wins" as const }, riskPolicy: { safe: [], confirm: [], destructive: [] } })
+      },
+      executionPolicy: { defaultMode: "latest-wins" as const }
+    };
+    registry.register(module);
+
+    const report = runWidgetModuleStaticChecks(registry, module, [
+      { id: "weather-1", input: "北京天气", expected: { module: "weather", tool: "weather.set_city" } }
+    ]);
+
+    expect(report.ok).toBe(true);
+    expect(report.uncoveredActions).toEqual([]);
+    expect(report.scopedContextFields).toContain("stateSummary");
   });
 });

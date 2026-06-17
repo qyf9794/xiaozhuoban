@@ -322,6 +322,8 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
   return actions as Array<AssistantAction<any>>;
 }
 
-export function registerBoardActions(registry: ActionRegistry, store: BoardActionStore): void {
-  boardActions(store).forEach((action) => registry.register(action));
+export function registerBoardActions(registry: ActionRegistry, store: BoardActionStore): Array<AssistantAction<any>> {
+  const actions = boardActions(store);
+  actions.forEach((action) => registry.register(action));
+  return actions;
 }

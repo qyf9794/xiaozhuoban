@@ -1,0 +1,7 @@
+[
+  {
+    "id": "tv-cctv-news-001",
+    "input": "看央视新闻",
+    "expected": { "module": "tv", "tool": "tv.select_channel", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+  }
+]

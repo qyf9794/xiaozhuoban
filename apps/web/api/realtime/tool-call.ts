@@ -1,4 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL } from "../../src/assistant/realtimeSessionConfig";
+import { authenticateRealtimeRequest } from "./auth";
 
 type AssistantToolSpecLike = {
   name: string;
@@ -37,23 +39,43 @@ type CompactContext = {
   widgets: CompactWidget[];
 };
 
+type RealtimeModuleCatalogItem = {
+  type: string;
+  displayName: string;
+  aliases: string[];
+  capabilities: string[];
+  shortcutExamples: string[];
+  riskSummary: string[];
+};
+
+type RealtimeScopedModuleContext = {
+  moduleType: string;
+  instances: CompactWidget[];
+  stateSummary: Record<string, unknown>;
+  shortcutExamples: string[];
+  executionPolicy: Record<string, unknown>;
+  riskPolicy: Record<string, unknown>;
+};
+
 type TextToolCallRequest = {
   input: string;
   context?: CompactContext;
   tools: AssistantToolSpecLike[];
+  moduleCatalog?: RealtimeModuleCatalogItem[];
+  moduleContext?: RealtimeScopedModuleContext;
   phase: "select" | "execute" | "auto";
   selection?: TextToolSelection;
 };
 
 type TextToolSelection = {
   name: string;
+  selectedModule?: string;
   targetHint?: string;
   confidence?: number;
 };
 
 type JsonBody = Record<string, unknown>;
 
-const XIAOZHUOBAN_REALTIME_MODEL = "gpt-realtime-2";
 const SELECT_TOOL_NAME = "assistant.select_tool";
 
 const widgetAliases: Record<string, string[]> = {
@@ -105,14 +127,24 @@ function parseRequestBody(value: unknown): TextToolCallRequest | null {
   const selection = isRecord(value.selection) && typeof value.selection.name === "string"
     ? {
         name: value.selection.name,
+        selectedModule: typeof value.selection.selectedModule === "string" ? value.selection.selectedModule : undefined,
         targetHint: typeof value.selection.targetHint === "string" ? value.selection.targetHint : undefined,
         confidence: typeof value.selection.confidence === "number" ? value.selection.confidence : undefined
       }
     : undefined;
+  const moduleCatalog = Array.isArray(value.moduleCatalog)
+    ? (value.moduleCatalog.filter(isRecord).filter((item) => typeof item.type === "string") as RealtimeModuleCatalogItem[])
+    : undefined;
+  const moduleContext =
+    isRecord(value.moduleContext) && typeof value.moduleContext.moduleType === "string"
+      ? (value.moduleContext as RealtimeScopedModuleContext)
+      : undefined;
   return {
     input: value.input,
     context: context as CompactContext | undefined,
     tools: value.tools.filter(isRecord).filter((tool) => typeof tool.name === "string") as AssistantToolSpecLike[],
+    moduleCatalog,
+    moduleContext,
     phase,
     selection
   };
@@ -205,6 +237,23 @@ function toolCatalog(tools: AssistantToolSpecLike[]) {
     .join("\n");
 }
 
+function moduleCatalogText(moduleCatalog: RealtimeModuleCatalogItem[] | undefined) {
+  return (moduleCatalog ?? [])
+    .map((module) =>
+      [
+        `- ${module.type}`,
+        `displayName=${module.displayName}`,
+        `aliases=${module.aliases?.join("/") ?? ""}`,
+        `capabilities=${module.capabilities?.join("/") ?? ""}`,
+        module.riskSummary?.length ? `risk=${module.riskSummary.join("/")}` : "",
+        module.shortcutExamples?.length ? `examples=${module.shortcutExamples.join("/")}` : ""
+      ]
+        .filter(Boolean)
+        .join(" ")
+    )
+    .join("\n");
+}
+
 function createToolSelectionPayload(request: TextToolCallRequest, model: string) {
   return {
     model,
@@ -212,12 +261,15 @@ function createToolSelectionPayload(request: TextToolCallRequest, model: string)
       {
         role: "user",
         content: [
-          "你是小桌板命令路由器。先只判断用户想使用哪个已注册工具，不要生成工具参数。",
-          "你只能基于工具目录和用户命令选择工具；此阶段不会提供桌面上下文。",
+          "你是小桌板命令路由器。先只判断用户想使用哪个模块和已注册工具，不要生成工具参数。",
+          "你只能基于模块目录、工具目录和用户命令选择；此阶段不会提供桌面上下文。",
           "如果用户说“打开 + 小工具名”，优先添加或聚焦这个小工具。",
           "如果用户说“关闭/关掉 + 小工具名”，优先调用 widget.remove 关闭这个小工具窗口。",
           "如果用户说“暂停/继续/播放/下一首”等播放控制，优先调用对应媒体工具。",
           "没有足够把握时不要调用工具。",
+          "",
+          "# 模块目录",
+          moduleCatalogText(request.moduleCatalog) || "- 未提供模块目录",
           "",
           "# 工具目录",
           toolCatalog(request.tools),
@@ -234,6 +286,7 @@ function createToolSelectionPayload(request: TextToolCallRequest, model: string)
         parameters: objectSchema(
           {
             name: { type: "string", description: "Selected registered tool name." },
+            selectedModule: { type: "string", description: "Selected Xiaozhuoban module type when known." },
             targetHint: { type: "string", description: "Short widget or board target words from the user command." },
             confidence: { type: "number" }
           },
@@ -356,6 +409,20 @@ function createScopedToolCallPayload(request: TextToolCallRequest, selection: Te
         role: "user",
         content: [
           createContextInstructions(scopedContext),
+          request.moduleContext
+            ? [
+                "",
+                "# Selected Module Scoped Context",
+                JSON.stringify({
+                  moduleType: request.moduleContext.moduleType,
+                  instances: request.moduleContext.instances,
+                  stateSummary: request.moduleContext.stateSummary,
+                  shortcutExamples: request.moduleContext.shortcutExamples,
+                  executionPolicy: request.moduleContext.executionPolicy,
+                  riskPolicy: request.moduleContext.riskPolicy
+                })
+              ].join("\n")
+            : "",
           "",
           "# Text Command Fallback",
           "现在只根据上一步选中的工具和最小必要上下文，返回可执行工具调用。",
@@ -410,6 +477,7 @@ function extractSelection(payload: unknown, allowedToolNames: Set<string>): Text
   if (!allowedToolNames.has(name)) return null;
   return {
     name,
+    selectedModule: typeof args.selectedModule === "string" ? args.selectedModule : undefined,
     targetHint: typeof args.targetHint === "string" ? args.targetHint : undefined,
     confidence: typeof args.confidence === "number" ? args.confidence : undefined
   };
@@ -459,6 +527,12 @@ export default async function handler(request: IncomingMessage, response: Server
       return;
     }
 
+    const auth = await authenticateRealtimeRequest(request);
+    if (!auth.ok) {
+      sendJson(response, auth.status, { error: auth.error });
+      return;
+    }
+
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       sendJson(response, 503, { error: "OPENAI_API_KEY_MISSING" });
@@ -478,7 +552,7 @@ export default async function handler(request: IncomingMessage, response: Server
     }
 
     const allowedToolNames = new Set(body.tools.map((tool) => tool.name));
-    const model = process.env.XIAOZHUOBAN_TEXT_TOOL_MODEL || XIAOZHUOBAN_REALTIME_MODEL;
+    const model = process.env.XIAOZHUOBAN_TEXT_TOOL_MODEL || XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL;
     let selection: TextToolSelection | null = body.selection && allowedToolNames.has(body.selection.name) ? body.selection : null;
 
     if (body.phase === "execute" && !selection) {

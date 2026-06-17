@@ -9,6 +9,7 @@ import {
 
 const baseEvent = {
   route: "shortcut" as const,
+  operationId: "op_1",
   call: {
     id: "call_1",
     name: "note.write",
@@ -27,6 +28,12 @@ const baseEvent = {
     status: "success" as const,
     message: "已写入便签"
   },
+  normalized: "便签 写 hello",
+  candidateModules: [{ type: "note", score: 0.91, reason: "alias" }],
+  selectedModule: "note",
+  selectedToolHint: "note.write",
+  selectionConfidence: 0.9123,
+  learningCandidate: true,
   durationMs: 12.4
 };
 
@@ -48,9 +55,15 @@ describe("assistant audit", () => {
 
     expect(log).toMatchObject({
       userId: "user_1",
+      operationId: "op_1",
       boardId: "board_1",
       route: "shortcut",
       sourceMode: "shortcut",
+      normalized: "便签 写 hello",
+      selectedModule: "note",
+      selectedToolHint: "note.write",
+      selectionConfidence: 0.912,
+      learningCandidate: true,
       toolName: "note.write",
       resultStatus: "success",
       durationMs: 12
@@ -96,7 +109,10 @@ describe("assistant audit", () => {
     expect(insert).toHaveBeenCalledWith(
       expect.objectContaining({
         user_id: "user_1",
+        operation_id: "op_1",
         board_id: "board_1",
+        selected_module: "note",
+        learning_candidate: true,
         tool_name: "note.write",
         result_status: "success"
       })

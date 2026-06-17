@@ -1,8 +1,10 @@
-import type {
-  AssistantToolCall,
-  AssistantToolResult,
-  AssistantToolSpec,
-  CompactAssistantContext
+import {
+  REALTIME_TOOL_SELECTION_CONFIDENCE_THRESHOLD,
+  type WidgetAssistantRegistry,
+  type AssistantToolCall,
+  type AssistantToolResult,
+  type AssistantToolSpec,
+  type CompactAssistantContext
 } from "@xiaozhuoban/assistant-core";
 import type { AssistantRealtimeAdapter } from "./AssistantHarness";
 import {
@@ -24,8 +26,10 @@ import {
 export type RealtimeConnectionStatus =
   | "disconnected"
   | "connecting"
+  | "configuring"
   | "connected"
   | "failed"
+  | "session_failed"
   | "microphone_denied"
   | "microphone_unavailable";
 
@@ -33,10 +37,12 @@ export interface OpenAIRealtimeWebRtcAdapterOptions {
   sessionEndpoint?: string;
   textToolCallEndpoint?: string;
   model?: string;
+  getAccessToken?: () => string | undefined | Promise<string | undefined>;
   getSafetyIdentifier?: () => string | undefined;
   onFunctionCall?: (call: AssistantToolCall) => void | Promise<void>;
   onStatusChange?: (status: RealtimeConnectionStatus) => void;
   fetchImpl?: typeof fetch;
+  sessionUpdateTimeoutMs?: number;
 }
 
 type RealtimeEvent = Record<string, unknown>;
@@ -71,6 +77,7 @@ function parseArguments(value: unknown): unknown {
 
 function parseToolSelectionArguments(value: unknown): {
   name: string;
+  selectedModule?: string;
   targetHint?: string;
   userCommand?: string;
   confidence?: number;
@@ -79,6 +86,7 @@ function parseToolSelectionArguments(value: unknown): {
   if (!isRecord(parsed) || typeof parsed.name !== "string") return null;
   return {
     name: parsed.name,
+    selectedModule: typeof parsed.selectedModule === "string" ? parsed.selectedModule : undefined,
     targetHint: typeof parsed.targetHint === "string" ? parsed.targetHint : undefined,
     userCommand: typeof parsed.userCommand === "string" ? parsed.userCommand : undefined,
     confidence: typeof parsed.confidence === "number" ? parsed.confidence : undefined
@@ -142,8 +150,12 @@ export function handleRealtimeFunctionCallEvent(
   }
 }
 
-export function createRealtimeToolResultEvents(call: AssistantToolCall, result: AssistantToolResult): RealtimeEvent[] {
-  return [
+export function createRealtimeToolResultEvents(
+  call: AssistantToolCall,
+  result: AssistantToolResult,
+  options: { activeResponseId?: string | null } = {}
+): RealtimeEvent[] {
+  const events: RealtimeEvent[] = [
     {
       type: "conversation.item.create",
       item: {
@@ -151,11 +163,12 @@ export function createRealtimeToolResultEvents(call: AssistantToolCall, result: 
         call_id: call.id,
         output: JSON.stringify(result)
       }
-    },
-    {
-      type: "response.create"
     }
   ];
+  if (!options.activeResponseId) {
+    events.push({ type: "response.create" });
+  }
+  return events;
 }
 
 function extractClientSecret(payload: unknown): string {
@@ -173,8 +186,8 @@ export function extractRealtimeSessionErrorCode(payload: unknown): string {
 }
 
 export function createRealtimeSessionRequestBody(safetyIdentifier: string | undefined): string {
-  const trimmed = safetyIdentifier?.trim();
-  return JSON.stringify(trimmed ? { safetyIdentifier: trimmed } : {});
+  void safetyIdentifier;
+  return JSON.stringify({});
 }
 
 export function closeRealtimeConnectionResources(resources: RealtimeClosableResources): void {
@@ -202,6 +215,30 @@ export function isCurrentRealtimeConnectAttempt(activeAttemptId: number, attempt
 
 export function shouldQueueRealtimeEventWhenClosed(event: RealtimeEvent): boolean {
   return event.type === "session.update";
+}
+
+function extractRealtimeResponseId(event: RealtimeEvent): string {
+  const response = isRecord(event.response) ? event.response : null;
+  return typeof response?.id === "string" ? response.id : typeof event.response_id === "string" ? event.response_id : "";
+}
+
+export function reduceRealtimeActiveResponseId(activeResponseId: string | null, event: RealtimeEvent): string | null {
+  if (event.type === "response.created") {
+    return extractRealtimeResponseId(event) || activeResponseId;
+  }
+  if (event.type === "response.done" || event.type === "response.cancelled") {
+    const responseId = extractRealtimeResponseId(event);
+    return !responseId || responseId === activeResponseId ? null : activeResponseId;
+  }
+  return activeResponseId;
+}
+
+function createBearerHeaders(token: string | undefined, extra: Record<string, string> = {}): Record<string, string> {
+  const headers = { ...extra };
+  if (token?.trim()) {
+    headers.authorization = `Bearer ${token.trim()}`;
+  }
+  return headers;
 }
 
 export async function getMicrophonePermissionState(
@@ -232,9 +269,13 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private queuedEvents: RealtimeEvent[] = [];
   private currentTools: AssistantToolSpec[] = [];
   private currentContext: CompactAssistantContext | null = null;
+  private moduleRegistry: WidgetAssistantRegistry | null = null;
   private handledFunctionCallIds = new Set<string>();
   private connectPromise: Promise<void> | null = null;
   private connectionAttemptId = 0;
+  private sessionReady = false;
+  private sessionUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
+  private activeResponseId: string | null = null;
 
   constructor(private readonly options: OpenAIRealtimeWebRtcAdapterOptions = {}) {}
 
@@ -260,6 +301,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const fetchImpl = this.options.fetchImpl ?? fetch;
     this.options.onStatusChange?.("connecting");
     this.handledFunctionCallIds.clear();
+    this.sessionReady = false;
+    this.activeResponseId = null;
 
     let stream: MediaStream;
     const permissionState = await getMicrophonePermissionState(navigator);
@@ -294,9 +337,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.mediaStream = stream;
 
     try {
+      const accessToken = await this.options.getAccessToken?.();
       const sessionResponse = await fetchImpl(this.options.sessionEndpoint ?? "/api/realtime/session", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: createBearerHeaders(accessToken, { "content-type": "application/json" }),
         body: createRealtimeSessionRequestBody(this.options.getSafetyIdentifier?.())
       });
       if (!sessionResponse.ok) {
@@ -345,11 +389,15 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         if (this.currentTools.length > 0) {
           void this.updateTools(this.currentTools);
         }
-        this.options.onStatusChange?.("connected");
+        this.armSessionUpdateTimeout();
+        this.options.onStatusChange?.("configuring");
       };
-      dataChannel.onmessage = (event) =>
-        handleRealtimeFunctionCallEvent(event.data, this.handledFunctionCallIds, (call) => this.handleFunctionCall(call));
-      dataChannel.onclose = () => this.options.onStatusChange?.("disconnected");
+      dataChannel.onmessage = (event) => this.handleRealtimeEventData(event.data);
+      dataChannel.onclose = () => {
+        this.clearSessionUpdateTimeout();
+        this.sessionReady = false;
+        this.options.onStatusChange?.("disconnected");
+      };
 
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
@@ -386,6 +434,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.connectPromise = null;
     this.closeResources();
     this.handledFunctionCallIds.clear();
+    this.sessionReady = false;
+    this.activeResponseId = null;
     this.options.onStatusChange?.("disconnected");
   }
 
@@ -407,6 +457,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.dataChannel = null;
     this.peerConnection = null;
     this.mediaStream = null;
+    this.clearSessionUpdateTimeout();
   }
 
   updateTools(tools: AssistantToolSpec[]): void {
@@ -414,7 +465,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.sendEvent({
       type: "session.update",
       session: {
-        instructions: createRealtimeToolSelectionInstructions(tools),
+        instructions: createRealtimeToolSelectionInstructions(tools, this.moduleRegistry?.getRealtimeCatalog()),
         tools: [createRealtimeToolSelectionTool(tools)],
         tool_choice: "auto",
         parallel_tool_calls: false
@@ -422,12 +473,18 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     });
   }
 
+  updateModules(registry: WidgetAssistantRegistry): void {
+    this.moduleRegistry = registry;
+  }
+
   updateContext(context: CompactAssistantContext): void {
     this.currentContext = context;
   }
 
   sendToolResult(call: AssistantToolCall, result: AssistantToolResult): void {
-    createRealtimeToolResultEvents(call, result).forEach((event) => this.sendEvent(event, { queueWhenClosed: false }));
+    createRealtimeToolResultEvents(call, result, { activeResponseId: this.activeResponseId }).forEach((event) =>
+      this.sendEvent(event, { queueWhenClosed: false })
+    );
   }
 
   async requestToolCall(
@@ -437,27 +494,47 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   ): Promise<AssistantToolCall | null> {
     const fetchImpl = this.options.fetchImpl ?? fetch;
     const endpoint = this.options.textToolCallEndpoint ?? "/api/realtime/tool-call";
+    const accessToken = await this.options.getAccessToken?.();
     const selectionResponse = await fetchImpl(endpoint, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: createRealtimeToolSelectionRequestBody(input, tools)
+      headers: createBearerHeaders(accessToken, { "content-type": "application/json" }),
+      body: createRealtimeToolSelectionRequestBody(input, tools, this.moduleRegistry?.getRealtimeCatalog())
     });
     if (!selectionResponse.ok) return null;
     const selection = parseRealtimeTextToolSelectionResponse(await selectionResponse.json());
     const selectedTool = selection ? tools.find((tool) => tool.name === selection.name) : undefined;
     if (!selection || !selectedTool) return null;
+    if (typeof selection.confidence === "number" && selection.confidence < REALTIME_TOOL_SELECTION_CONFIDENCE_THRESHOLD) {
+      return null;
+    }
 
     const scopedContext = createScopedRealtimeContext(context, selectedTool, selection, input);
+    const selectedModule =
+      selection.selectedModule ??
+      selectedTool.widgetType ??
+      this.moduleRegistry?.findModuleForTool(selectedTool.name)?.type ??
+      selectedTool.name.split(".")[0];
+    const moduleContext = selectedModule
+      ? this.moduleRegistry?.getScopedContextForModule(selectedModule, {
+          userText: input,
+          selectedToolHint: selectedTool.name,
+          compactContext: context,
+          tools
+        })
+      : undefined;
     const toolCallResponse = await fetchImpl(endpoint, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: createRealtimeScopedToolCallRequestBody(input, scopedContext, tools, selection)
+      headers: createBearerHeaders(accessToken, { "content-type": "application/json" }),
+      body: createRealtimeScopedToolCallRequestBody(input, scopedContext, tools, selection, moduleContext ?? undefined)
     });
     if (!toolCallResponse.ok) return null;
     return parseRealtimeTextToolCallResponse(await toolCallResponse.json());
   }
 
   private handleFunctionCall(call: AssistantToolCall): void {
+    if (!this.sessionReady) {
+      return;
+    }
     if (call.name === REALTIME_TOOL_SELECTION_TOOL_NAME) {
       this.handleToolSelection(call);
       return;
@@ -476,12 +553,28 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       });
       return;
     }
+    if (typeof selection.confidence === "number" && selection.confidence < REALTIME_TOOL_SELECTION_CONFIDENCE_THRESHOLD) {
+      this.sendToolResult(call, {
+        status: "needs_clarification",
+        message: "我需要再确认要操作哪个小工具。",
+        errorCode: "TOOL_SELECTION_LOW_CONFIDENCE"
+      });
+      return;
+    }
 
     const update = createScopedRealtimeToolUpdate(
       {
         input: selection.userCommand || selection.targetHint || selection.name,
         context: this.currentContext,
-        tools: this.currentTools
+        tools: this.currentTools,
+        moduleContext: selection.selectedModule
+          ? this.moduleRegistry?.getScopedContextForModule(selection.selectedModule, {
+              userText: selection.userCommand || selection.targetHint || selection.name,
+              selectedToolHint: selection.name,
+              compactContext: this.currentContext,
+              tools: this.currentTools
+            }) ?? undefined
+          : undefined
       },
       selection
     );
@@ -518,5 +611,44 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private flushQueuedEvents(): void {
     const events = this.queuedEvents.splice(0);
     events.forEach((event) => this.sendEvent(event));
+  }
+
+  private handleRealtimeEventData(data: unknown): void {
+    let parsed: RealtimeEvent | null = null;
+    try {
+      parsed = typeof data === "string" ? (JSON.parse(data) as RealtimeEvent) : isRecord(data) ? data : null;
+    } catch {
+      handleRealtimeFunctionCallEvent(data, this.handledFunctionCallIds, (call) => this.handleFunctionCall(call));
+      return;
+    }
+    if (parsed) {
+      this.handleRealtimeLifecycleEvent(parsed);
+    }
+    handleRealtimeFunctionCallEvent(parsed ?? data, this.handledFunctionCallIds, (call) => this.handleFunctionCall(call));
+  }
+
+  private handleRealtimeLifecycleEvent(event: RealtimeEvent): void {
+    this.activeResponseId = reduceRealtimeActiveResponseId(this.activeResponseId, event);
+    if (event.type === "session.updated") {
+      this.clearSessionUpdateTimeout();
+      this.sessionReady = true;
+      this.options.onStatusChange?.("connected");
+    }
+  }
+
+  private armSessionUpdateTimeout(): void {
+    this.clearSessionUpdateTimeout();
+    this.sessionUpdateTimeout = setTimeout(() => {
+      if (this.sessionReady) return;
+      this.closeResources();
+      this.options.onStatusChange?.("session_failed");
+    }, this.options.sessionUpdateTimeoutMs ?? 4_000);
+  }
+
+  private clearSessionUpdateTimeout(): void {
+    if (this.sessionUpdateTimeout) {
+      clearTimeout(this.sessionUpdateTimeout);
+      this.sessionUpdateTimeout = null;
+    }
   }
 }

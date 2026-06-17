@@ -1,3 +1,14 @@
+export * from "./realtimeConfig";
+export * from "./moduleRegistry";
+export * from "./commandPlanner";
+export * from "./previewGate";
+export * from "./commandExecutor";
+export * from "./runtimeBudget";
+export * from "./outbox";
+export * from "./learningSystem";
+export * from "./aiModuleReview";
+export * from "./moduleTestRunner";
+
 export type AssistantActionRisk = "safe" | "confirm" | "destructive";
 
 export type AssistantToolSource = "shortcut" | "realtime" | "text" | "test";
@@ -32,6 +43,14 @@ export interface AssistantToolSpec<TArgs = unknown> {
   scope?: AssistantToolScopeKind;
   widgetType?: string;
   requiresTarget?: boolean;
+  argumentKeys?: string[];
+  resultSchema?: unknown;
+  idempotency?: "idempotent" | "repeatable" | "stateful" | "destructive";
+  missingArgPolicy?: "ask" | "use_default" | "fail";
+  requiresAuth?: boolean;
+  requiresPermission?: string[];
+  concurrencyKey?: string;
+  examples?: string[];
 }
 
 export interface AssistantToolCall<TArgs = unknown> {
@@ -58,6 +77,7 @@ export interface ConfirmationRequest<TArgs = unknown> {
   target?: ResolvedWidgetTarget;
   message: string;
   createdAt: string;
+  preview?: unknown;
 }
 
 export type AssistantToolResultStatus =
@@ -447,6 +467,86 @@ export function createPassthroughSchema<T>(guard?: (value: unknown) => value is 
           issues: [{ message: "参数形状不匹配" }]
         }
       };
+    }
+  };
+}
+
+type StrictObjectFieldType = "string" | "number" | "boolean" | "object" | "array" | "unknown";
+
+export interface StrictObjectField {
+  type: StrictObjectFieldType | StrictObjectFieldType[];
+  required?: boolean;
+  enum?: unknown[];
+}
+
+export type StrictObjectShape = Record<string, StrictObjectField>;
+
+function isStrictObjectRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function matchesStrictFieldType(value: unknown, type: StrictObjectFieldType): boolean {
+  if (type === "unknown") return true;
+  if (type === "array") return Array.isArray(value);
+  if (type === "object") return isStrictObjectRecord(value);
+  return typeof value === type;
+}
+
+export function createStrictObjectSchema<T extends Record<string, unknown> = Record<string, unknown>>(
+  shape: StrictObjectShape
+): AssistantParameterSchema<T> & { argumentKeys: string[]; jsonSchema: Record<string, unknown> } {
+  const argumentKeys = Object.keys(shape);
+  return {
+    argumentKeys,
+    jsonSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: argumentKeys.filter((key) => shape[key]?.required),
+      properties: Object.fromEntries(
+        argumentKeys.map((key) => {
+          const field = shape[key]!;
+          const type = Array.isArray(field.type) ? field.type : [field.type];
+          return [
+            key,
+            {
+              type: type.length === 1 ? type[0] : type,
+              ...(field.enum ? { enum: field.enum } : {})
+            }
+          ];
+        })
+      )
+    },
+    safeParse(value) {
+      if (!isStrictObjectRecord(value)) {
+        return { success: false, error: { issues: [{ message: "参数必须是对象" }] } };
+      }
+      const extraKeys = Object.keys(value).filter((key) => !argumentKeys.includes(key));
+      if (extraKeys.length > 0) {
+        return {
+          success: false,
+          error: { issues: extraKeys.map((key) => ({ path: [key], message: "未声明参数" })) }
+        };
+      }
+      const issues: AssistantSchemaParseFailure["error"]["issues"] = [];
+      for (const [key, field] of Object.entries(shape)) {
+        const current = value[key];
+        if (current === undefined) {
+          if (field.required) issues.push({ path: [key], message: "参数必填" });
+          continue;
+        }
+        const types = Array.isArray(field.type) ? field.type : [field.type];
+        if (!types.some((type) => matchesStrictFieldType(current, type))) {
+          issues.push({ path: [key], message: `参数类型必须是 ${types.join(" 或 ")}` });
+          continue;
+        }
+        if (field.enum && !field.enum.includes(current)) {
+          issues.push({ path: [key], message: "参数不在允许范围内" });
+        }
+      }
+      if (issues.length > 0) {
+        return { success: false, error: { issues } };
+      }
+      return { success: true, data: value as T };
     }
   };
 }

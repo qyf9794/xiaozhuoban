@@ -1,25 +1,39 @@
 import {
+  DEFAULT_REALTIME_CLIENT_SECRET_TTL_SECONDS,
+  OPENAI_REALTIME_CLIENT_SECRET_URL,
+  REALTIME_TOOL_SELECTION_TOOL_NAME,
   ToolScopeManager,
+  XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL,
+  XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
+  XIAOZHUOBAN_REALTIME_MODEL,
+  clampRealtimeClientSecretTtl,
   createPassthroughSchema,
+  createRealtimeTurnDetection,
+  decodeRealtimeToolName,
+  encodeRealtimeToolName,
   type AssistantParameterSchema,
   type CompactAssistantContext,
+  type RealtimeReasoningEffort,
+  type RealtimeSemanticVadEagerness,
+  type RealtimeSessionOptions,
   type AssistantToolScopeKind,
   type AssistantToolSpec
 } from "@xiaozhuoban/assistant-core";
 
-export const OPENAI_REALTIME_CLIENT_SECRET_URL = "https://api.openai.com/v1/realtime/client_secrets";
-export const XIAOZHUOBAN_REALTIME_MODEL = "gpt-realtime-2";
-export const DEFAULT_REALTIME_CLIENT_SECRET_TTL_SECONDS = 600;
-export const REALTIME_TOOL_SELECTION_TOOL_NAME = "assistant.select_tool";
+export {
+  DEFAULT_REALTIME_CLIENT_SECRET_TTL_SECONDS,
+  OPENAI_REALTIME_CLIENT_SECRET_URL,
+  REALTIME_TOOL_SELECTION_TOOL_NAME,
+  XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL,
+  XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
+  XIAOZHUOBAN_REALTIME_MODEL,
+  clampRealtimeClientSecretTtl,
+  createRealtimeTurnDetection,
+  decodeRealtimeToolName,
+  encodeRealtimeToolName
+};
 
-export type RealtimeReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
-export type RealtimeSemanticVadEagerness = "low" | "medium" | "high" | "auto";
-
-export interface RealtimeSessionOptions {
-  ttlSeconds?: number;
-  reasoningEffort?: RealtimeReasoningEffort;
-  turnDetectionEagerness?: RealtimeSemanticVadEagerness;
-}
+export type { RealtimeReasoningEffort, RealtimeSemanticVadEagerness, RealtimeSessionOptions };
 
 export interface RealtimeFunctionTool {
   type: "function";
@@ -42,26 +56,6 @@ type InitialToolMetadata = {
   risk?: AssistantToolSpec["risk"];
   parameters: JsonObjectSchema;
 };
-
-export const XIAOZHUOBAN_REALTIME_INSTRUCTIONS = [
-  "# Role and Objective",
-  "你是小桌板里的语音助手，负责控制小桌板 Web 桌面、已加载小工具和已注册工具。",
-  "",
-  "# Tool Policy",
-  "- 常驻阶段只选择工具，不直接生成真实工具参数。",
-  "- 需要控制桌面时，先调用 assistant.select_tool，让前端按所选工具提供最小必要上下文。",
-  "- 前端提供局部上下文后，只调用已选工具；工具缺失时再简短说明缺少对应能力。",
-  "- 关闭、关掉、收起小工具窗口时调用 widget.remove，不需要请求确认。",
-  "- 清空内容、删除用户数据、覆盖内容、批量修改数据必须请求确认。",
-  "- 不控制 macOS、Windows、浏览器外部桌面或用户本地系统。",
-  "- 不调用 Codex 或浏览器外部系统；动态生成、复杂规划和长文本改写需要对应工具注册后才执行。",
-  "",
-  "# Context",
-  "默认不会收到完整桌面状态。不要要求完整桌面状态，也不要输出完整 widget payload。",
-  "",
-  "# Voice Style",
-  "回复要短，通常一句话。成功时说“好了”或简短结果；不支持时说明缺少哪个工具或目标。"
-].join("\n");
 
 function formatRealtimeContextList(items: string[], fallback: string) {
   return items.length > 0 ? items.join("\n") : fallback;
@@ -103,14 +97,6 @@ export function createRealtimeContextInstructions(context?: CompactAssistantCont
     "- availableDefinitions:",
     definitions
   ].join("\n");
-}
-
-export function encodeRealtimeToolName(name: string): string {
-  return name.replace(/\./g, "__dot__");
-}
-
-export function decodeRealtimeToolName(name: string): string {
-  return name.replace(/__dot__/g, ".");
 }
 
 const anyObjectSchema = createPassthroughSchema<Record<string, unknown>>((value): value is Record<string, unknown> =>
@@ -232,13 +218,6 @@ function toAssistantToolSpec(metadata: InitialToolMetadata): AssistantToolSpec<R
   };
 }
 
-export function clampRealtimeClientSecretTtl(value: unknown): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return DEFAULT_REALTIME_CLIENT_SECRET_TTL_SECONDS;
-  }
-  return Math.max(10, Math.min(7200, Math.floor(value)));
-}
-
 export function createInitialRealtimeToolSpecs(): AssistantToolSpec[] {
   const specs = initialToolMetadata.map(toAssistantToolSpec);
   return new ToolScopeManager(specs).getInitialTools();
@@ -325,15 +304,6 @@ function inferAssistantToolParameters(tool: AssistantToolSpec): Record<string, u
         ? objectSchema({ widgetId: stringSchema() }, ["widgetId"], true)
         : objectSchema({}, undefined, true);
   }
-}
-
-export function createRealtimeTurnDetection(options: RealtimeSessionOptions = {}) {
-  return {
-    type: "semantic_vad",
-    eagerness: options.turnDetectionEagerness ?? "low",
-    create_response: true,
-    interrupt_response: true
-  };
 }
 
 export function createRealtimeClientSecretPayload(options: RealtimeSessionOptions = {}) {

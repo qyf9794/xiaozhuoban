@@ -12,6 +12,7 @@ import { LocalTemplateAIBuilder } from "@xiaozhuoban/ai-builder";
 import { DEFAULT_TV_PLAYLIST_URL, clampTvWidgetSize } from "./widgets/tvShared";
 import { DIAL_CLOCK_MARK_COUNT } from "./widgets/dialClockShared";
 import { DEFAULT_WORLD_CLOCK_ZONES } from "./widgets/worldClockShared";
+import { enqueueAssistantCloudMutation, type AssistantCloudMutation } from "./assistant/assistantOutbox";
 
 const defaultWorkspaceName = "默认工作空间";
 const defaultBoardName = "我的桌板";
@@ -322,9 +323,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
 
-function persistInBackground(task: Promise<void>, label: string) {
+function persistInBackground(task: Promise<void>, label: string, mutation?: AssistantCloudMutation) {
   void task.catch((error) => {
     console.error(`[store] ${label} failed`, error);
+    if (mutation) {
+      void enqueueAssistantCloudMutation(mutation);
+    }
   });
 }
 
@@ -901,7 +905,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       updatedAt: now
     };
     set({ widgetInstances: [...widgetInstances, instance] });
-    persistInBackground(repository.upsertInstance(instance), "add widget");
+    persistInBackground(repository.upsertInstance(instance), "add widget", {
+      type: "widget.upsert",
+      payload: { instance }
+    });
     return instance;
   },
   async removeWidgetInstance(widgetId) {
@@ -910,7 +917,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       widgetInstances: widgetInstances.filter((item) => item.id !== widgetId),
       focusedWidgetId: focusedWidgetId === widgetId ? undefined : focusedWidgetId
     });
-    persistInBackground(repository.deleteInstance(widgetId), "remove widget");
+    persistInBackground(repository.deleteInstance(widgetId), "remove widget", {
+      type: "widget.delete",
+      payload: { widgetId }
+    });
   },
   async focusWidget(widgetId) {
     await get().bringWidgetToFront(widgetId);
@@ -937,7 +947,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       updatedAt: nowIso()
     };
     set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)) });
-    persistInBackground(repository.upsertInstance(next), "bring widget to front");
+    persistInBackground(repository.upsertInstance(next), "bring widget to front", {
+      type: "widget.upsert",
+      payload: { instance: next }
+    });
   },
   async updateWidgetPosition(widgetId, x, y) {
     const { repository, widgetInstances } = get();
@@ -951,7 +964,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       updatedAt: nowIso()
     };
     set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)) });
-    void repository.upsertInstance(next);
+    persistInBackground(repository.upsertInstance(next), "move widget", {
+      type: "widget.upsert",
+      payload: { instance: next }
+    });
   },
   async updateWidgetSize(widgetId, w, h) {
     const { repository, widgetInstances, widgetDefinitions } = get();
@@ -975,7 +991,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       updatedAt: nowIso()
     };
     set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)) });
-    void repository.upsertInstance(next);
+    persistInBackground(repository.upsertInstance(next), "resize widget", {
+      type: "widget.upsert",
+      payload: { instance: next }
+    });
   },
   async updateWidgetState(widgetId, state) {
     const { repository, widgetInstances } = get();
@@ -989,7 +1008,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       updatedAt: nowIso()
     };
     set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)) });
-    void repository.upsertInstance(next);
+    persistInBackground(repository.upsertInstance(next), "update widget state", {
+      type: "widget.upsert",
+      payload: { instance: next }
+    });
   },
   async autoAlignWidgets(_viewportWidth, options) {
     const { repository, widgetInstances, widgetDefinitions } = get();
@@ -1090,7 +1112,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         widgetInstances: widgetInstances.map((item) => nextById.get(item.id) ?? item)
       });
-      persistInBackground(repository.upsertInstances(nextInstances), "auto align mobile widgets");
+      persistInBackground(repository.upsertInstances(nextInstances), "auto align mobile widgets", {
+        type: "widget.upsert_many",
+        payload: { instances: nextInstances }
+      });
       return;
     }
 
@@ -1165,7 +1190,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       widgetInstances: widgetInstances.map((item) => byId.get(item.id) ?? item)
     });
-    persistInBackground(repository.upsertInstances(nextInstances), "auto align widgets");
+    persistInBackground(repository.upsertInstances(nextInstances), "auto align widgets", {
+      type: "widget.upsert_many",
+      payload: { instances: nextInstances }
+    });
   },
   setCommandPaletteOpen(open) {
     set({ commandPaletteOpen: open });

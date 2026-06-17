@@ -2,21 +2,26 @@ import {
   ActionRegistry,
   ContextSummarizer,
   ToolScopeManager,
+  WidgetAssistantRegistry,
   WidgetTargetResolver,
   createDefaultIntentShortcutRouter,
+  type AssistantAction,
   type ContextSummarizerInput
 } from "@xiaozhuoban/assistant-core";
 import { useAuthStore } from "../auth/authStore";
 import { useAppStore } from "../store";
+import { supabase, supabaseConfigError } from "../lib/supabase";
 import { registerBoardActions } from "./boardActions";
-import { AssistantHarness, type AssistantOperationEvent, type AssistantRealtimeAdapter } from "./AssistantHarness";
-import { createLocalAssistantAuditAdapter } from "./assistantAudit";
+import { AssistantHarness, type AssistantAuditEvent, type AssistantOperationEvent, type AssistantRealtimeAdapter } from "./AssistantHarness";
+import { createLocalAssistantAuditAdapter, createSupabaseAssistantAuditAdapter, type AssistantAuditContext } from "./assistantAudit";
 import { WidgetCapabilityBridge, createWidgetCapabilityActions } from "./widgetCapabilityBridge";
 import { createWidgetStateActions } from "./widgetStateActions";
+import { createDailyWidgetAssistantModules } from "../widgets/modules/dailyWidgetAssistantModules";
 
 const noopRealtimeAdapter: AssistantRealtimeAdapter = {
   updateTools() {},
   updateContext() {},
+  updateModules() {},
   sendToolResult() {},
   requestToolCall() {
     return null;
@@ -103,9 +108,26 @@ export function createLocalAssistantHarness(options?: {
     renameBoard: (boardId: string, name: string) => useAppStore.getState().renameBoard(boardId, name)
   };
 
-  registerBoardActions(registry, adapter);
-  createWidgetStateActions(adapter).forEach((action) => registry.register(action));
-  createWidgetCapabilityActions(adapter, capabilityBridge).forEach((action) => registry.register(action));
+  const actions: AssistantAction[] = [
+    ...registerBoardActions(registry, adapter),
+    ...createWidgetStateActions(adapter),
+    ...createWidgetCapabilityActions(adapter, capabilityBridge)
+  ];
+  actions.forEach((action) => {
+    if (!registry.get(action.spec.name)) {
+      registry.register(action);
+    }
+  });
+
+  const moduleRegistry = new WidgetAssistantRegistry();
+  createDailyWidgetAssistantModules(useAppStore.getState().widgetDefinitions, actions).forEach((module) => moduleRegistry.register(module));
+
+  const auditContext: AssistantAuditContext = {
+    getUserId: () => useAuthStore.getState().user?.id,
+    getBoardId: () => useAppStore.getState().activeBoardId
+  };
+  const localAudit = createLocalAssistantAuditAdapter(auditContext);
+  const supabaseAudit = supabaseConfigError ? null : createSupabaseAssistantAuditAdapter(supabase, auditContext);
 
   return new AssistantHarness({
     registry,
@@ -114,10 +136,19 @@ export function createLocalAssistantHarness(options?: {
     toolScopeManager: new ToolScopeManager(registry.list()),
     contextSummarizer: new ContextSummarizer(),
     realtime: options?.realtime ?? noopRealtimeAdapter,
-    audit: createLocalAssistantAuditAdapter({
-      getUserId: () => useAuthStore.getState().user?.id,
-      getBoardId: () => useAppStore.getState().activeBoardId
-    }),
+    moduleRegistry,
+    audit: {
+      async write(event: AssistantAuditEvent) {
+        if (!useAuthStore.getState().user?.id || !supabaseAudit) {
+          return localAudit.write(event);
+        }
+        try {
+          await supabaseAudit.write(event);
+        } catch {
+          await localAudit.write(event);
+        }
+      }
+    },
     onOperation: options?.onOperation,
     getContextInput: createContextInput,
     actionTimeoutMs: 8_000,

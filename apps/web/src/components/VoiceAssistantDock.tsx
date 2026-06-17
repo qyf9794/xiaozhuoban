@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { AssistantHarness } from "../assistant/AssistantHarness";
 import type { RealtimeConnectionStatus } from "../assistant/openaiRealtimeAdapter";
+import type { ConfirmationRequest } from "@xiaozhuoban/assistant-core";
 
 export type VoiceAssistantDockState =
   | "disconnected"
@@ -28,16 +29,21 @@ export function getVoiceAssistantDockStatusText(state: VoiceAssistantDockState):
 
 export function getVoiceAssistantDockStateForRealtimeStatus(status: RealtimeConnectionStatus): VoiceAssistantDockState {
   if (status === "connecting") return "connecting";
+  if (status === "configuring") return "connecting";
   if (status === "connected") return "listening";
-  if (status === "failed" || status === "microphone_denied" || status === "microphone_unavailable") return "error";
+  if (status === "failed" || status === "session_failed" || status === "microphone_denied" || status === "microphone_unavailable") {
+    return "error";
+  }
   return "disconnected";
 }
 
 export function getVoiceAssistantConnectionMessage(status: RealtimeConnectionStatus): string {
   if (status === "connecting") return "正在连接 gpt-realtime-2。";
+  if (status === "configuring") return "正在应用语音会话配置。";
   if (status === "connected") return "语音已连接，可以直接说话。";
   if (status === "microphone_denied") return MICROPHONE_PERMISSION_MESSAGE;
   if (status === "microphone_unavailable") return MICROPHONE_UNAVAILABLE_MESSAGE;
+  if (status === "session_failed") return "Realtime 会话配置未生效，请重试。";
   if (status === "failed") return "语音连接失败，请稍后重试。";
   return "语音未连接，文字指令可用。";
 }
@@ -50,6 +56,7 @@ export function getVoiceAssistantErrorMessage(error: unknown): string {
   if (message === "REALTIME_CLIENT_SECRET_MISSING") return "Realtime 临时密钥缺失。";
   if (message === "REALTIME_SDP_FAILED") return "Realtime 语音通道连接失败。";
   if (message === "REALTIME_SESSION_FAILED") return "Realtime 会话创建失败。";
+  if (message === "REALTIME_SESSION_UPDATE_TIMEOUT") return "Realtime 会话配置未生效。";
   return message || "语音连接失败";
 }
 
@@ -121,6 +128,27 @@ export function getVisibleVoiceAssistantOperation(
   return internalOperation.phase === "idle" ? externalOperation ?? internalOperation : internalOperation;
 }
 
+export function getVoiceAssistantRuntimeText(runtimeStatus: string, syncPendingCount: number): string {
+  return syncPendingCount > 0 ? `${runtimeStatus} · 待同步 ${syncPendingCount}` : runtimeStatus;
+}
+
+function isPreviewRecord(value: unknown): value is {
+  commands?: Array<{ module?: string; tool?: string; impact?: string; reversible?: boolean }>;
+  recovery?: string;
+} {
+  return Boolean(value) && typeof value === "object";
+}
+
+export function getVoiceAssistantPreviewLines(pending?: ConfirmationRequest | null): string[] {
+  if (!pending || !isPreviewRecord(pending.preview)) return [];
+  const commandLines = (pending.preview.commands ?? []).slice(0, 4).map((command) => {
+    const name = [command.module, command.tool].filter(Boolean).join(" / ");
+    const reversible = command.reversible === false ? "不可撤销" : "可恢复";
+    return [name, command.impact, reversible].filter(Boolean).join(" · ");
+  });
+  return [...commandLines, pending.preview.recovery ? `恢复策略：${pending.preview.recovery}` : ""].filter(Boolean);
+}
+
 function getResultText(status: string, message: string) {
   if (status === "success") return message || "好了";
   if (status === "needs_confirmation") return message || "请确认";
@@ -138,7 +166,10 @@ export function VoiceAssistantDock({
   isMobileMode = false,
   mobileVisible = true,
   desktopBottomInset = 14,
-  operationStatus
+  operationStatus,
+  runtimeStatus,
+  syncPendingCount = 0,
+  onRetrySync
 }: {
   harness: AssistantHarness;
   voiceStatus?: RealtimeConnectionStatus;
@@ -148,6 +179,9 @@ export function VoiceAssistantDock({
   mobileVisible?: boolean;
   desktopBottomInset?: number;
   operationStatus?: VoiceAssistantOperationStatus | null;
+  runtimeStatus?: string | null;
+  syncPendingCount?: number;
+  onRetrySync?: () => Promise<void> | void;
 }) {
   const [state, setState] = useState<VoiceAssistantDockState>("disconnected");
   const [muted, setMuted] = useState(false);
@@ -310,9 +344,20 @@ export function VoiceAssistantDock({
         <span>{getVoiceAssistantOperationText(visibleOperation)}</span>
       </div>
 
+      {runtimeStatus ? (
+        <div className="voice-assistant-dock__runtime" data-testid="voice-assistant-runtime">
+          <span>{getVoiceAssistantRuntimeText(runtimeStatus, syncPendingCount)}</span>
+          {syncPendingCount > 0 && onRetrySync ? (
+            <button type="button" onClick={() => void onRetrySync()}>
+              重试
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       {voiceEnabled ? (
         <div className="voice-assistant-dock__voice">
-          {voiceStatus === "connected" ? (
+          {voiceStatus === "connected" || voiceStatus === "configuring" ? (
             <button type="button" onClick={disconnectVoice} disabled={muted} aria-label="断开语音">
               断开语音
             </button>
@@ -348,6 +393,13 @@ export function VoiceAssistantDock({
 
       {pending ? (
         <div className="voice-assistant-dock__confirm">
+          {getVoiceAssistantPreviewLines(pending).length > 0 ? (
+            <div className="voice-assistant-dock__preview" data-testid="voice-assistant-preview">
+              {getVoiceAssistantPreviewLines(pending).map((line) => (
+                <span key={line}>{line}</span>
+              ))}
+            </div>
+          ) : null}
           <button type="button" onClick={confirm}>
             确认
           </button>

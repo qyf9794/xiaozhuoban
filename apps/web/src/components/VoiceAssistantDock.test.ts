@@ -5,6 +5,8 @@ import {
   getVoiceAssistantErrorMessage,
   getVoiceAssistantDockStatusText,
   getVisibleVoiceAssistantOperation,
+  getVoiceAssistantRuntimeText,
+  getVoiceAssistantPreviewLines,
   getVoiceAssistantOperationText,
   prependVoiceAssistantHistory,
   resolveVoiceAssistantSubmitText,
@@ -93,15 +95,54 @@ describe("VoiceAssistantDock", () => {
     });
   });
 
+  it("formats runtime mode with visible outbox count", () => {
+    expect(getVoiceAssistantRuntimeText("local_standby · Realtime 0s · $0.0000", 0)).toBe(
+      "local_standby · Realtime 0s · $0.0000"
+    );
+    expect(getVoiceAssistantRuntimeText("saving_mode · Realtime 30s · $0.8000", 2)).toBe(
+      "saving_mode · Realtime 30s · $0.8000 · 待同步 2"
+    );
+  });
+
+  it("formats confirmation preview lines for the visible preview gate", () => {
+    const lines = getVoiceAssistantPreviewLines({
+      id: "confirm_1",
+      actionName: "clipboard.clear",
+      arguments: { widgetId: "clip_1" },
+      message: "确认执行 clipboard.clear 吗？",
+      createdAt: "2026-06-17T00:00:00.000Z",
+      preview: {
+        commands: [
+          {
+            module: "clipboard",
+            tool: "clipboard.clear",
+            impact: "将清空剪贴板摘要",
+            reversible: false
+          }
+        ],
+        recovery: "取消后不会执行相关依赖链"
+      }
+    });
+
+    expect(lines).toEqual([
+      "clipboard / clipboard.clear · 将清空剪贴板摘要 · 不可撤销",
+      "恢复策略：取消后不会执行相关依赖链"
+    ]);
+  });
+
   it("maps realtime connection status to dock state and short messages", () => {
     expect(getVoiceAssistantDockStateForRealtimeStatus("disconnected")).toBe("disconnected");
     expect(getVoiceAssistantDockStateForRealtimeStatus("connecting")).toBe("connecting");
+    expect(getVoiceAssistantDockStateForRealtimeStatus("configuring")).toBe("connecting");
     expect(getVoiceAssistantDockStateForRealtimeStatus("connected")).toBe("listening");
     expect(getVoiceAssistantDockStateForRealtimeStatus("failed")).toBe("error");
+    expect(getVoiceAssistantDockStateForRealtimeStatus("session_failed")).toBe("error");
     expect(getVoiceAssistantDockStateForRealtimeStatus("microphone_denied")).toBe("error");
     expect(getVoiceAssistantDockStateForRealtimeStatus("microphone_unavailable")).toBe("error");
 
+    expect(getVoiceAssistantConnectionMessage("configuring")).toBe("正在应用语音会话配置。");
     expect(getVoiceAssistantConnectionMessage("connected")).toBe("语音已连接，可以直接说话。");
+    expect(getVoiceAssistantConnectionMessage("session_failed")).toBe("Realtime 会话配置未生效，请重试。");
     expect(getVoiceAssistantConnectionMessage("microphone_denied")).toBe(
       "麦克风权限被拒绝，请在浏览器地址栏允许麦克风后重试。"
     );

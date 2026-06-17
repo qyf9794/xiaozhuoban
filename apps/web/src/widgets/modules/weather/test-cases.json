@@ -1,0 +1,7 @@
+[
+  {
+    "id": "weather-city-001",
+    "input": "帮我查一下北京天气",
+    "expected": { "module": "weather", "tool": "weather.set_city", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+  }
+]

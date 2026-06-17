@@ -1,0 +1,7 @@
+[
+  {
+    "id": "recorder-start-001",
+    "input": "开始录制",
+    "expected": { "module": "recorder", "tool": "recorder.start", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+  }
+]

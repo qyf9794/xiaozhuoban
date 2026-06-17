@@ -1,0 +1,7 @@
+[
+  {
+    "id": "headline-refresh-001",
+    "input": "今天有什么新闻",
+    "expected": { "module": "headline", "tool": "headline.request_refresh", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+  }
+]

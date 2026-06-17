@@ -1,0 +1,12 @@
+[
+  {
+    "id": "todo-reminder-001",
+    "input": "下午三点叫我开会",
+    "expected": { "module": "todo", "tool": "todo.add_item", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+  },
+  {
+    "id": "todo-complete-001",
+    "input": "把买牛奶勾掉",
+    "expected": { "module": "todo", "tool": "todo.complete_item", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+  }
+]

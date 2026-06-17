@@ -1,22 +1,7 @@
-import { EventEmitter } from "node:events";
 import type { IncomingHttpHeaders } from "node:http";
+import { Readable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import handler, { createOpenAISafetyIdentifier } from "./session.js";
-
-class MockRequest extends EventEmitter {
-  method = "POST";
-  headers: IncomingHttpHeaders = {};
-
-  constructor(private readonly body = "") {
-    super();
-    queueMicrotask(() => {
-      if (this.body) {
-        this.emit("data", Buffer.from(this.body));
-      }
-      this.emit("end");
-    });
-  }
-}
 
 class MockResponse {
   statusCode = 200;
@@ -32,11 +17,25 @@ class MockResponse {
   }
 }
 
-async function callHandler(body = "") {
-  const request = new MockRequest(body);
+async function callHandler(body = "", headers: IncomingHttpHeaders = { authorization: "Bearer supabase-token" }) {
+  const request = Readable.from(body ? [Buffer.from(body)] : []) as Readable & {
+    method?: string;
+    headers?: IncomingHttpHeaders;
+  };
+  request.method = "POST";
+  request.headers = headers;
   const response = new MockResponse();
   await handler(request as never, response as never);
   return response;
+}
+
+function stubSupabaseEnv() {
+  vi.stubEnv("VITE_SUPABASE_URL", "https://project.supabase.co");
+  vi.stubEnv("VITE_SUPABASE_ANON_KEY", "anon-test");
+}
+
+function createSupabaseUserResponse(userId = "user_123") {
+  return new Response(JSON.stringify({ id: userId, aud: "authenticated", role: "authenticated" }), { status: 200 });
 }
 
 describe("realtime session API", () => {
@@ -46,7 +45,9 @@ describe("realtime session API", () => {
   });
 
   it("requires a server-side OpenAI API key", async () => {
+    stubSupabaseEnv();
     vi.stubEnv("OPENAI_API_KEY", "");
+    vi.stubGlobal("fetch", vi.fn(async () => createSupabaseUserResponse()));
 
     const response = await callHandler();
 
@@ -54,20 +55,48 @@ describe("realtime session API", () => {
     expect(JSON.parse(response.body)).toEqual({ error: "OPENAI_API_KEY_MISSING" });
   });
 
-  it("hashes the user safety identifier before sending it to OpenAI", async () => {
+  it("requires a Supabase bearer token before creating a Realtime session", async () => {
+    stubSupabaseEnv();
     vi.stubEnv("OPENAI_API_KEY", "sk-test");
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      new Response(JSON.stringify({ value: "client-secret" }), { status: 200 })
-    );
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const response = await callHandler(JSON.stringify({ safetyIdentifier: " user_123 ", ttlSeconds: 120 }));
+    const response = await callHandler("", {});
+
+    expect(response.statusCode).toBe(401);
+    expect(JSON.parse(response.body)).toEqual({ error: "AUTH_REQUIRED" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 for expired Supabase tokens and does not call OpenAI", async () => {
+    stubSupabaseEnv();
+    vi.stubEnv("OPENAI_API_KEY", "sk-test");
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ msg: "JWT expired" }), { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await callHandler();
+
+    expect(response.statusCode).toBe(401);
+    expect(JSON.parse(response.body)).toEqual({ error: "AUTH_INVALID" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("hashes the authenticated Supabase user id before sending it to OpenAI", async () => {
+    stubSupabaseEnv();
+    vi.stubEnv("OPENAI_API_KEY", "sk-test");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createSupabaseUserResponse("user_123"))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ value: "client-secret" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await callHandler(JSON.stringify({ safetyIdentifier: " forged_user ", ttlSeconds: 120 }));
 
     expect(response.statusCode).toBe(200);
     expect(response.headers.get("x-xiaozhuoban-realtime-turn-detection")).toBe("semantic_vad;eagerness=low");
     expect(response.headers.get("x-xiaozhuoban-realtime-parallel-tools")).toBe("true");
     expect(response.headers.get("x-xiaozhuoban-realtime-tool-stage")).toBe("selector-only");
-    const [, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
+    const [, init] = fetchMock.mock.calls[1] as [RequestInfo | URL, RequestInit];
     expect(init?.headers).toMatchObject({
       authorization: "Bearer sk-test",
       "OpenAI-Safety-Identifier": createOpenAISafetyIdentifier("user_123")
@@ -90,24 +119,29 @@ describe("realtime session API", () => {
     expect(JSON.stringify(payload.session.tools[0].parameters)).not.toContain("widgetId");
   });
 
-  it("does not send an OpenAI safety identifier when the request has none", async () => {
+  it("derives the OpenAI safety identifier from auth even when the request has none", async () => {
+    stubSupabaseEnv();
     vi.stubEnv("OPENAI_API_KEY", "sk-test");
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      new Response(JSON.stringify({ value: "client-secret" }), { status: 200 })
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createSupabaseUserResponse("user_123"))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ value: "client-secret" }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await callHandler(JSON.stringify({}));
 
-    const [, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
-    expect(init?.headers).not.toHaveProperty("OpenAI-Safety-Identifier");
+    const [, init] = fetchMock.mock.calls[1] as [RequestInfo | URL, RequestInit];
+    expect(init?.headers).toMatchObject({
+      "OpenAI-Safety-Identifier": createOpenAISafetyIdentifier("user_123")
+    });
   });
 
   it("returns JSON when the OpenAI client secret request fails before a response", async () => {
+    stubSupabaseEnv();
     vi.stubEnv("OPENAI_API_KEY", "sk-test");
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => {
+      vi.fn().mockResolvedValueOnce(createSupabaseUserResponse()).mockImplementationOnce(async () => {
         throw new Error("network down");
       })
     );

@@ -3,11 +3,18 @@ import type { AssistantAuditAdapter, AssistantAuditEvent } from "./AssistantHarn
 
 export interface AssistantCommandLog {
   id: string;
+  operationId?: string;
   userId?: string;
   boardId?: string;
   route: AssistantAuditEvent["route"];
   sourceMode: string;
   transcript?: string;
+  normalized?: string;
+  candidateModules?: unknown;
+  selectedModule?: string;
+  selectedToolHint?: string;
+  selectionConfidence?: number;
+  learningCandidate?: boolean;
   toolName?: string;
   sanitizedArgs?: unknown;
   targetWidget?: unknown;
@@ -75,11 +82,21 @@ export function createAssistantCommandLog(event: AssistantAuditEvent, context: A
 
   return {
     id: createId(createdAt),
+    operationId: event.operationId,
     userId: context.getUserId?.(),
     boardId: context.getBoardId?.(),
     route: event.route,
     sourceMode: event.call?.source ?? event.route,
     transcript: event.call?.transcript ? truncateText(event.call.transcript) : undefined,
+    normalized: event.normalized ? truncateText(event.normalized) : undefined,
+    candidateModules: event.candidateModules ? sanitizeAssistantAuditValue(event.candidateModules) : undefined,
+    selectedModule: event.selectedModule,
+    selectedToolHint: event.selectedToolHint,
+    selectionConfidence:
+      typeof event.selectionConfidence === "number" && Number.isFinite(event.selectionConfidence)
+        ? Math.round(event.selectionConfidence * 1000) / 1000
+        : undefined,
+    learningCandidate: event.learningCandidate,
     toolName: event.call?.name,
     sanitizedArgs: event.call ? sanitizeAssistantAuditValue(event.call.arguments) : undefined,
     targetWidget: event.result.confirmation?.target ? sanitizeAssistantAuditValue(event.result.confirmation.target) : undefined,
@@ -122,11 +139,18 @@ export function createSupabaseAssistantAuditAdapter(
       }
       const { error } = await client.from("assistant_command_logs").insert({
         id: log.id,
+        operation_id: log.operationId ?? log.id,
         user_id: log.userId,
         board_id: log.boardId ?? null,
         route: log.route,
         source_mode: log.sourceMode,
         transcript: log.transcript ?? null,
+        normalized: log.normalized ?? null,
+        candidate_modules: log.candidateModules ?? null,
+        selected_module: log.selectedModule ?? null,
+        selected_tool_hint: log.selectedToolHint ?? null,
+        selection_confidence: log.selectionConfidence ?? null,
+        learning_candidate: log.learningCandidate ?? false,
         tool_name: log.toolName ?? null,
         sanitized_args: log.sanitizedArgs ?? null,
         target_widget: log.targetWidget ?? null,

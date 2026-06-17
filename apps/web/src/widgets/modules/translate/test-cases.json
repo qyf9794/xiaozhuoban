@@ -1,0 +1,7 @@
+[
+  {
+    "id": "translate-default-001",
+    "input": "翻译一下 hello",
+    "expected": { "module": "translate", "tool": "translate.set_draft", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+  }
+]

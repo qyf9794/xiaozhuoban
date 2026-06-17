@@ -1,0 +1,17 @@
+[
+  {
+    "id": "music-close-window-001",
+    "input": "关闭音乐",
+    "expected": { "module": "music", "tool": "widget.remove", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+  },
+  {
+    "id": "music-pause-playback-001",
+    "input": "暂停音乐",
+    "expected": { "module": "music", "tool": "music.pause", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+  },
+  {
+    "id": "music-sequential-search-play-001",
+    "input": "先打开音乐，再搜索七里香，然后播放第一首",
+    "expected": { "module": "music", "tool": "music.play", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+  }
+]

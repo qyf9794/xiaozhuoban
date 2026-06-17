@@ -21,6 +21,8 @@ import { resolveUserName } from "./lib/collab";
 import { showDesktopWindowWhenReady } from "./lib/desktopWindow";
 import { abandonUserMonopolyMatches } from "./lib/monopolyOnline";
 import { SupabaseRepository } from "@xiaozhuoban/data";
+import type { AssistantRuntimeMode, RealtimeBudgetMetrics } from "@xiaozhuoban/assistant-core";
+import { getAssistantOutboxPendingCount, retryAssistantOutbox } from "./assistant/assistantOutbox";
 
 const MOBILE_FRAME_WIDTH = 390;
 const MOBILE_VIEWPORT_MAX = 900;
@@ -29,6 +31,12 @@ const WALLPAPER_MAX_LONG_EDGE = 2560;
 const MOBILE_CHROME_IDLE_HIDE_MS = 3000;
 const MOBILE_CHROME_SCROLL_THRESHOLD = 6;
 const repositoryByUserId = new Map<string, SupabaseRepository>();
+
+function getAssistantRuntimeText(status: { mode: AssistantRuntimeMode; metrics: RealtimeBudgetMetrics } | null) {
+  if (!status) return "本地待机 · Realtime 按需连接";
+  const activeSeconds = Math.round(status.metrics.realtimeActiveMs / 1000);
+  return `${status.mode} · Realtime ${activeSeconds}s · $${status.metrics.estimatedCostUsd.toFixed(4)}`;
+}
 
 function isLikelyMobileUA() {
   if (typeof navigator === "undefined") return false;
@@ -107,6 +115,7 @@ function getRepositoryForUser(userId: string): SupabaseRepository {
 export function App() {
   const {
     ready,
+    repository,
     initialize,
     setRepository,
     boards,
@@ -146,6 +155,11 @@ export function App() {
   const [desktopViewportBottomInset, setDesktopViewportBottomInset] = useState(14);
   const [mobileChromeVisible, setMobileChromeVisible] = useState(true);
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeConnectionStatus>("disconnected");
+  const [assistantRuntimeBudget, setAssistantRuntimeBudget] = useState<{
+    mode: AssistantRuntimeMode;
+    metrics: RealtimeBudgetMetrics;
+  } | null>(null);
+  const [assistantOutboxPending, setAssistantOutboxPending] = useState(0);
   const [assistantOperationSnapshot, setAssistantOperationSnapshot] = useState<AssistantOperationSnapshot>({ active: [] });
   const assistantOperation: VoiceAssistantOperationStatus | null = useMemo(
     () => getAssistantOperationStatus(assistantOperationSnapshot),
@@ -177,9 +191,10 @@ export function App() {
       createRealtimeAssistantRuntime({
         capabilityBridge: assistantCapabilityBridgeRef.current,
         adapterOptions: {
-          getSafetyIdentifier: () => useAuthStore.getState().user?.id
+          getAccessToken: () => useAuthStore.getState().session?.access_token
         },
         onStatusChange: setRealtimeStatus,
+        onRuntimeBudgetChange: setAssistantRuntimeBudget,
         onOperation: (event) => setAssistantOperationSnapshot((snapshot) => updateAssistantOperationSnapshot(snapshot, event))
       }),
     []
@@ -204,6 +219,15 @@ export function App() {
   }, [activeBoard, ready]);
 
   useEffect(() => () => assistantRuntime.disconnect(), [assistantRuntime]);
+
+  useEffect(() => {
+    const refresh = () => {
+      void getAssistantOutboxPendingCount().then(setAssistantOutboxPending);
+    };
+    refresh();
+    globalThis.addEventListener?.("xiaozhuoban-assistant-outbox", refresh);
+    return () => globalThis.removeEventListener?.("xiaozhuoban-assistant-outbox", refresh);
+  }, []);
 
   useEffect(() => {
     void assistantRuntime.harness.refreshRealtimeContext();
@@ -604,16 +628,22 @@ export function App() {
         desktopBottomInset={desktopViewportBottomInset}
       />
 
-      <VoiceAssistantDock
-        harness={assistantRuntime.harness}
-        voiceStatus={realtimeStatus}
-        onConnectVoice={assistantRuntime.connect}
-        onDisconnectVoice={assistantRuntime.disconnect}
-        isMobileMode={isMobileMode}
-        mobileVisible={mobileChromeVisible}
-        desktopBottomInset={desktopViewportBottomInset}
-        operationStatus={assistantOperation}
-      />
+        <VoiceAssistantDock
+          harness={assistantRuntime.harness}
+          voiceStatus={realtimeStatus}
+          onConnectVoice={assistantRuntime.connect}
+          onDisconnectVoice={assistantRuntime.disconnect}
+          isMobileMode={isMobileMode}
+          mobileVisible={mobileChromeVisible}
+          desktopBottomInset={desktopViewportBottomInset}
+          operationStatus={assistantOperation}
+          runtimeStatus={getAssistantRuntimeText(assistantRuntimeBudget)}
+          syncPendingCount={assistantOutboxPending}
+          onRetrySync={async () => {
+            await retryAssistantOutbox(repository);
+            setAssistantOutboxPending(await getAssistantOutboxPendingCount());
+          }}
+        />
 
       <input
         ref={wallpaperInputRef}

@@ -1,0 +1,7 @@
+[
+  {
+    "id": "market-us-001",
+    "input": "美股怎么样",
+    "expected": { "module": "market", "tool": "market.set_indices", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+  }
+]

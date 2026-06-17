@@ -1,0 +1,7 @@
+[
+  {
+    "id": "world-clock-en-001",
+    "input": "NYC and Tokyo time",
+    "expected": { "module": "worldClock", "tool": "worldClock.set_zones", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+  }
+]

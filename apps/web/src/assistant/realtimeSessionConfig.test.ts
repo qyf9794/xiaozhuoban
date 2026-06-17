@@ -3,6 +3,7 @@ import { createPassthroughSchema } from "@xiaozhuoban/assistant-core";
 import {
   XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
   XIAOZHUOBAN_REALTIME_MODEL,
+  XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL,
   clampRealtimeClientSecretTtl,
   createInitialRegisteredRealtimeTools,
   createInitialRealtimeToolSpecs,
@@ -95,6 +96,11 @@ describe("realtime session config", () => {
     expect(payload.session.tool_choice).toBe("auto");
     expect(payload.session.parallel_tool_calls).toBe(true);
     expect(payload.session.tools.map((tool) => tool.name)).toEqual(["assistant__dot__select_tool"]);
+  });
+
+  it("keeps text fallback model separate from the realtime model", () => {
+    expect(XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL).toBeTruthy();
+    expect(XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL).not.toBe(XIAOZHUOBAN_REALTIME_MODEL);
   });
 
   it("allows semantic VAD eagerness to be tuned for cutoff testing", () => {

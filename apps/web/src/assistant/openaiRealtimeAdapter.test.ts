@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createPassthroughSchema } from "@xiaozhuoban/assistant-core";
+import { WidgetAssistantRegistry, createPassthroughSchema } from "@xiaozhuoban/assistant-core";
 import {
   OpenAIRealtimeWebRtcAdapter,
   closeRealtimeConnectionResources,
@@ -10,6 +10,7 @@ import {
   handleRealtimeFunctionCallEvent,
   isCurrentRealtimeConnectAttempt,
   parseRealtimeFunctionCallEvent,
+  reduceRealtimeActiveResponseId,
   resolveMicrophoneAccessErrorCode,
   resolveRealtimePeerStatus,
   shouldQueueRealtimeEventWhenClosed,
@@ -134,12 +135,32 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(events[1]).toEqual({ type: "response.create" });
   });
 
-  it("adds a trimmed safety identifier to session requests when available", () => {
-    expect(JSON.parse(createRealtimeSessionRequestBody(" user_123 "))).toEqual({
-      safetyIdentifier: "user_123"
-    });
+  it("does not trust client-side safety identifiers in session requests", () => {
+    expect(JSON.parse(createRealtimeSessionRequestBody(" user_123 "))).toEqual({});
     expect(JSON.parse(createRealtimeSessionRequestBody("   "))).toEqual({});
     expect(JSON.parse(createRealtimeSessionRequestBody(undefined))).toEqual({});
+  });
+
+  it("does not create a new response while another response is active", () => {
+    const events = createRealtimeToolResultEvents(
+      { id: "call_1", name: "board.auto_align", arguments: {}, source: "realtime" },
+      { status: "success", message: "已整理" },
+      { activeResponseId: "resp_1" }
+    );
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "conversation.item.create",
+      item: { type: "function_call_output", call_id: "call_1" }
+    });
+  });
+
+  it("tracks active realtime responses through lifecycle events", () => {
+    const active = reduceRealtimeActiveResponseId(null, { type: "response.created", response: { id: "resp_1" } });
+
+    expect(active).toBe("resp_1");
+    expect(reduceRealtimeActiveResponseId(active, { type: "response.done", response: { id: "resp_other" } })).toBe("resp_1");
+    expect(reduceRealtimeActiveResponseId(active, { type: "response.cancelled", response: { id: "resp_1" } })).toBeNull();
   });
 
   it("closes realtime resources and stops local media tracks", () => {
@@ -328,6 +349,7 @@ describe("OpenAI realtime adapter helpers", () => {
         }
       ]
     });
+    (adapter as unknown as { sessionReady: boolean }).sessionReady = true;
 
     (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
       id: "select_1",
@@ -344,12 +366,31 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(serialized).not.toContain("private note");
   });
 
+  it("does not process realtime function calls before session.updated", () => {
+    const calls: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall: (call) => {
+        calls.push(call);
+      }
+    });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "call_1",
+      name: "widget.focus",
+      arguments: { widgetId: "wi_music" },
+      source: "realtime"
+    });
+
+    expect(calls).toEqual([]);
+  });
+
   it("requests text fallback tool calls from the scoped backend endpoint", async () => {
-    const requests: Array<{ url: string; body: unknown }> = [];
+    const requests: Array<{ url: string; body: unknown; headers?: HeadersInit }> = [];
     const adapter = new OpenAIRealtimeWebRtcAdapter({
       textToolCallEndpoint: "/api/realtime/tool-call",
+      getAccessToken: () => "supabase-token",
       fetchImpl: (async (url, init) => {
-        requests.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+        requests.push({ url: String(url), body: JSON.parse(String(init?.body)), headers: init?.headers });
         if (requests.length === 1) {
           return new Response(
             JSON.stringify({
@@ -372,6 +413,60 @@ describe("OpenAI realtime adapter helpers", () => {
         );
       }) as typeof fetch
     });
+    const moduleRegistry = new WidgetAssistantRegistry();
+    moduleRegistry.register({
+      type: "music",
+      definition: { id: "wd_music", type: "music", name: "音乐" },
+      aliases: ["音乐"],
+      shortcuts: [{ id: "music.close", intent: "close", examples: ["关闭音乐"], risk: "safe" }],
+      tools: [
+        {
+          spec: {
+            name: "widget.remove",
+            description: "删除小工具",
+            parameters: createPassthroughSchema<Record<string, unknown>>(),
+            scope: "desktop",
+            risk: "safe",
+            requiresTarget: true
+          },
+          execute: () => ({ status: "success", message: "ok" })
+        }
+      ],
+      context: {
+        getScopedContext: () => ({
+          moduleType: "music",
+          tools: [],
+          toolSchemas: {},
+          instances: [],
+          stateSummary: { instanceCount: 1 },
+          shortcutExamples: ["关闭音乐"],
+          executionPolicy: { defaultMode: "sequential" },
+          riskPolicy: { safe: ["widget.remove"], confirm: [], destructive: [] }
+        })
+      },
+      realtime: {
+        exposeCatalog: () => ({
+          type: "music",
+          displayName: "音乐",
+          aliases: ["音乐"],
+          capabilities: ["关闭窗口"],
+          shortcutExamples: ["关闭音乐"],
+          riskSummary: []
+        }),
+        getScopedContext: () => ({
+          moduleType: "music",
+          tools: [],
+          toolSchemas: {},
+          instances: [],
+          stateSummary: { instanceCount: 1 },
+          shortcutExamples: ["关闭音乐"],
+          executionPolicy: { defaultMode: "sequential" },
+          riskPolicy: { safe: ["widget.remove"], confirm: [], destructive: [] }
+        })
+      },
+      executionPolicy: { defaultMode: "sequential" }
+    });
+    adapter.updateModules(moduleRegistry);
 
     const call = await adapter.requestToolCall(
       "关音乐",
@@ -412,16 +507,22 @@ describe("OpenAI realtime adapter helpers", () => {
 
     expect(requests).toHaveLength(2);
     expect(requests[0]?.url).toBe("/api/realtime/tool-call");
+    expect(requests[0]?.headers).toMatchObject({ authorization: "Bearer supabase-token" });
     expect(requests[0]?.body).toMatchObject({ input: "关音乐", phase: "select" });
+    expect(JSON.stringify(requests[0]?.body)).toContain("moduleCatalog");
+    expect(JSON.stringify(requests[0]?.body)).toContain("关闭窗口");
     expect(JSON.stringify(requests[0]?.body)).not.toContain("context");
     expect(JSON.stringify(requests[0]?.body)).not.toContain("wi_music");
     expect(JSON.stringify(requests[0]?.body)).not.toContain("private note");
     expect(requests[1]?.url).toBe("/api/realtime/tool-call");
+    expect(requests[1]?.headers).toMatchObject({ authorization: "Bearer supabase-token" });
     expect(requests[1]?.body).toMatchObject({
       input: "关音乐",
       phase: "execute",
       selection: { name: "widget.remove", targetHint: "音乐", confidence: 0.9 }
     });
+    expect(JSON.stringify(requests[1]?.body)).toContain("moduleContext");
+    expect(JSON.stringify(requests[1]?.body)).toContain("instanceCount");
     expect(JSON.stringify(requests[1]?.body)).toContain("wi_music");
     expect(JSON.stringify(requests[1]?.body)).not.toContain("wi_note");
     expect(JSON.stringify(requests[1]?.body)).not.toContain("private note");

@@ -1,0 +1,7 @@
+[
+  {
+    "id": "calculator-cn-001",
+    "input": "12加30是多少",
+    "expected": { "module": "calculator", "tool": "calculator.set_display", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+  }
+]

@@ -1,13 +1,22 @@
 import {
   ActionRegistry,
+  CommandExecutor,
   ContextSummarizer,
   IntentShortcutRouter,
+  PlanValidator,
+  ShortcutPlanAdapter,
   ToolScopeManager,
+  WidgetAssistantRegistry,
   WidgetTargetResolver,
+  createCommandPlanFromToolCalls,
+  createPlanPreview,
+  scoreCandidates,
+  normalizeText,
   type AssistantActionContext,
   type AssistantToolCall,
   type AssistantToolResult,
   type AssistantToolSpec,
+  type CommandPlan,
   type CompactWidgetSummary,
   type CompactAssistantContext,
   type ConfirmationRequest,
@@ -21,26 +30,35 @@ export type AssistantRoute = "shortcut" | "model" | "function_call";
 export interface AssistantRealtimeAdapter {
   updateTools: (tools: AssistantToolSpec[]) => Promise<void> | void;
   updateContext?: (context: CompactAssistantContext) => Promise<void> | void;
+  updateModules?: (registry: WidgetAssistantRegistry) => Promise<void> | void;
   sendToolResult: (call: AssistantToolCall, result: AssistantToolResult) => Promise<void> | void;
   requestToolCall?: (
     input: string,
     context: CompactAssistantContext,
-    tools: AssistantToolSpec[]
+    tools: AssistantToolSpec[],
+    moduleRegistry?: WidgetAssistantRegistry
   ) => Promise<AssistantToolCall | null> | AssistantToolCall | null;
 }
 
 export interface AssistantAuditEvent {
   route: AssistantRoute;
+  operationId?: string;
   call?: AssistantToolCall;
   result: AssistantToolResult;
   durationMs: number;
+  normalized?: string;
+  candidateModules?: Array<{ type: string; score: number; reason: string }>;
+  selectedModule?: string;
+  selectedToolHint?: string;
+  selectionConfidence?: number;
+  learningCandidate?: boolean;
 }
 
 export interface AssistantAuditAdapter {
   write: (event: AssistantAuditEvent) => Promise<void> | void;
 }
 
-export type AssistantOperationPhase = "running" | "waiting_confirmation" | "success" | "failed";
+export type AssistantOperationPhase = "running" | "waiting_confirmation" | "success" | "failed" | "cancelled" | "skipped";
 
 export interface AssistantOperationEvent {
   id: string;
@@ -57,6 +75,8 @@ export interface AssistantHarnessOptions {
   toolScopeManager: ToolScopeManager;
   contextSummarizer: ContextSummarizer;
   realtime: AssistantRealtimeAdapter;
+  moduleRegistry?: WidgetAssistantRegistry;
+  planValidator?: PlanValidator;
   audit?: AssistantAuditAdapter;
   onOperation?: (event: AssistantOperationEvent) => void;
   getContextInput: () => ContextSummarizerInput;
@@ -199,12 +219,25 @@ export class AssistantHarness {
   private initialized = false;
   private transientWidgetTargets = new Map<string, ResolvedWidgetTarget>();
   private queuedShortcutPlanGroups: AssistantToolCall[][] = [];
+  private readonly planValidator: PlanValidator;
+  private readonly shortcutPlanAdapter = new ShortcutPlanAdapter();
+  private readonly auditMetadataByCallId = new Map<string, Pick<AssistantAuditEvent, "normalized" | "candidateModules" | "selectedModule" | "selectedToolHint" | "selectionConfidence">>();
 
-  constructor(private readonly options: AssistantHarnessOptions) {}
+  constructor(private readonly options: AssistantHarnessOptions) {
+    this.planValidator =
+      options.planValidator ??
+      new PlanValidator({
+        tools: options.registry.list(),
+        moduleRegistry: options.moduleRegistry
+      });
+  }
 
   async initialize(): Promise<void> {
     this.currentTools = this.options.toolScopeManager.getInitialTools();
     this.initialized = true;
+    if (this.options.moduleRegistry) {
+      await this.options.realtime.updateModules?.(this.options.moduleRegistry);
+    }
     await this.options.realtime.updateTools(this.currentTools);
     await this.updateRealtimeContext();
   }
@@ -244,6 +277,7 @@ export class AssistantHarness {
     if (!segmentedShortcut) {
     const shortcut = this.options.shortcutRouter.route(input, shortcutContext);
     if (shortcut.matched) {
+      this.rememberAuditMetadata(shortcut.toolCall, input);
       const response = await this.handleFunctionCall(shortcut.toolCall, "shortcut", startedAt);
       if (shortcut.toolCall.name === CONFIRM_TOOL && response.result.status === "success" && this.queuedShortcutPlanGroups.length) {
         const queued = this.queuedShortcutPlanGroups;
@@ -267,7 +301,7 @@ export class AssistantHarness {
     }
 
     const context = this.getCurrentContext();
-    const modelCall = await this.options.realtime.requestToolCall?.(input, context, this.currentTools);
+    const modelCall = await this.options.realtime.requestToolCall?.(input, context, this.currentTools, this.options.moduleRegistry);
     if (!modelCall) {
       const result: AssistantToolResult = {
         status: "needs_clarification",
@@ -277,6 +311,7 @@ export class AssistantHarness {
       return { route: "model", result };
     }
 
+    this.rememberAuditMetadata(modelCall, input);
     return this.handleFunctionCall(modelCall, "model", startedAt);
   }
 
@@ -303,6 +338,7 @@ export class AssistantHarness {
         if (!routed.matched) {
           return null;
         }
+        this.rememberAuditMetadata(routed.toolCall, segment);
         groupCalls.push(routed.toolCall);
       }
       calls.push(groupCalls);
@@ -321,10 +357,11 @@ export class AssistantHarness {
       const executableGroup: AssistantToolCall[] = lastAddedWidget
         ? group.map((call) => this.rewriteAfterWidgetAdd(call, lastAddedWidget as AddedWidgetData))
         : group;
-      const groupResponses: AssistantHarnessResponse[] =
-        executableGroup.length === 1
-          ? [await this.handleFunctionCall(executableGroup[0]!, "shortcut", startedAt)]
-          : await Promise.all(executableGroup.map((call) => this.handleFunctionCall(call, "shortcut", startedAt)));
+      const groupPlan = this.shortcutPlanAdapter.createPlan(
+        executableGroup.map((call) => call.transcript ?? call.name).join("，"),
+        [executableGroup]
+      );
+      const groupResponses = await this.executeCommandPlan(groupPlan, "shortcut", startedAt);
       responses.push(...groupResponses);
       if (groupResponses.some((response) => response.result.status !== "success")) {
         if (groupResponses.some((response) => response.result.status === "needs_confirmation")) {
@@ -434,19 +471,111 @@ export class AssistantHarness {
     route: AssistantRoute = "function_call",
     startedAt = Date.now()
   ): Promise<AssistantHarnessResponse> {
-    this.emitOperation({ id: call.id, phase: "running", route, toolName: call.name });
-    const result = await this.executeCall(call);
-    this.emitOperation({
-      id: call.id,
-      phase: result.status === "needs_confirmation" ? "waiting_confirmation" : result.status === "success" ? "success" : "failed",
+    if (call.name === CONFIRM_TOOL || call.name === CANCEL_TOOL) {
+      this.emitOperation({ id: call.id, phase: "running", route, toolName: call.name });
+      const result = await this.executeCall(call);
+      this.emitOperation({
+        id: call.id,
+        phase: result.status === "success" ? "success" : result.status === "cancelled" ? "cancelled" : "failed",
+        route,
+        toolName: call.name,
+        message: result.message
+      });
+      await this.options.realtime.sendToolResult(call, result);
+      await this.updateRealtimeContext();
+      await this.audit({ route, call, result, durationMs: Date.now() - startedAt });
+      return { route, call, result };
+    }
+
+    const plan = createCommandPlanFromToolCalls(call.transcript ?? call.name, [call]);
+    const responses = await this.executeCommandPlan(plan, route, startedAt);
+    return responses[0] ?? {
       route,
-      toolName: call.name,
-      message: result.message
+      call,
+      result: { status: "failed", message: "命令计划为空", errorCode: "PLAN_EMPTY" }
+    };
+  }
+
+  private async executeCommandPlan(
+    plan: CommandPlan,
+    route: AssistantRoute,
+    startedAt: number
+  ): Promise<AssistantHarnessResponse[]> {
+    const validation = this.planValidator.validate(plan);
+    if (!validation.ok) {
+      const firstCommand = plan.commands[0];
+      const call: AssistantToolCall = {
+        id: firstCommand?.id ?? createId("invalid_call"),
+        name: firstCommand?.tool ?? "unknown",
+        arguments: firstCommand?.args ?? {},
+        source: firstCommand?.source ?? "test",
+        transcript: plan.sourceText
+      };
+      const result: AssistantToolResult = {
+        status: "failed",
+        message: validation.errors.map((error) => error.message).join("；") || "命令计划校验失败",
+        errorCode: validation.errors[0]?.code ?? "PLAN_VALIDATION_FAILED"
+      };
+      this.emitOperation({ id: call.id, phase: "failed", route, toolName: call.name, message: result.message });
+      await this.options.realtime.sendToolResult(call, result);
+      await this.audit({ route, call, result, durationMs: Date.now() - startedAt });
+      return [{ route, call, result }];
+    }
+
+    const responses: AssistantHarnessResponse[] = [];
+    const executor = new CommandExecutor({
+      execute: (call) => this.executeCall(call),
+      onEvent: (event) => {
+        this.emitOperation({
+          id: event.operationId,
+          phase:
+            event.phase === "waiting_confirmation"
+              ? "waiting_confirmation"
+              : event.phase === "success"
+                ? "success"
+                : event.phase === "cancelled"
+                  ? "cancelled"
+                  : event.phase === "skipped"
+                    ? "skipped"
+                    : event.phase === "running"
+                      ? "running"
+                      : "failed",
+          route,
+          toolName: event.tool,
+          message: event.message
+        });
+      }
     });
-    await this.options.realtime.sendToolResult(call, result);
+    const execution = await executor.execute(validation.plan);
+    for (const record of execution.records) {
+      const call: AssistantToolCall = {
+        id: record.command.id,
+        name: record.command.tool,
+        arguments: record.command.args,
+        source: record.command.source,
+        transcript: plan.sourceText
+      };
+      await this.options.realtime.sendToolResult(call, record.result);
+      await this.audit({ route, call, result: record.result, durationMs: Date.now() - startedAt });
+      responses.push({ route, call, result: record.result });
+    }
     await this.updateRealtimeContext();
-    await this.audit({ route, call, result, durationMs: Date.now() - startedAt });
-    return { route, call, result };
+    return responses;
+  }
+
+  private validateCallPlan(call: AssistantToolCall): { ok: true; call: AssistantToolCall } | { ok: false; errors: Array<{ code: string; message: string }> } {
+    if (call.name === CONFIRM_TOOL || call.name === CANCEL_TOOL) {
+      return { ok: true, call };
+    }
+    const plan = createCommandPlanFromToolCalls(call.transcript ?? call.name, [call]);
+    const validation = this.planValidator.validate(plan);
+    if (!validation.ok) {
+      return { ok: false, errors: validation.errors };
+    }
+    const next = validation.plan.commands[0];
+    return next
+      ? { ok: true, call: { ...call, name: next.tool, arguments: next.args } }
+      : { ok: false, errors: [{ code: "PLAN_EMPTY", message: "命令计划为空" }] };
   }
 
   private buildShortcutContext(): IntentShortcutContext {
@@ -499,19 +628,28 @@ export class AssistantHarness {
     }
 
     if ((spec.risk === "confirm" || spec.risk === "destructive") && !this.pendingConfirmation) {
+      const confirmationPlan = createCommandPlanFromToolCalls(call.transcript ?? call.name, [call]);
+      const command = confirmationPlan.commands[0];
+      if (command) {
+        command.module = this.options.moduleRegistry?.findModuleForTool(call.name)?.type ?? command.module;
+        command.risk = spec.risk;
+      }
+      const preview = createPlanPreview(confirmationPlan, { moduleRegistry: this.options.moduleRegistry });
       const confirmation: ConfirmationRequest = {
         id: createId("confirm"),
         actionName: call.name,
         arguments: call.arguments,
         target: target.target,
         message: `确认执行 ${call.name} 吗？`,
-        createdAt: this.options.now?.() ?? new Date().toISOString()
+        createdAt: this.options.now?.() ?? new Date().toISOString(),
+        preview
       };
       this.pendingConfirmation = confirmation;
       return {
         status: "needs_confirmation",
         message: confirmation.message,
-        confirmation
+        confirmation,
+        data: { preview }
       };
     }
 
@@ -723,10 +861,35 @@ export class AssistantHarness {
   }
 
   private async audit(event: AssistantAuditEvent): Promise<void> {
-    await this.options.audit?.write(event);
+    const metadata = event.call ? this.auditMetadataByCallId.get(event.call.id) : undefined;
+    if (event.call) {
+      this.auditMetadataByCallId.delete(event.call.id);
+    }
+    await this.options.audit?.write({
+      ...metadata,
+      operationId: event.operationId ?? event.call?.id,
+      ...event,
+      learningCandidate:
+        event.learningCandidate ??
+        (event.route === "model" || event.route === "function_call" ? event.result.status === "success" : false)
+    });
   }
 
   private emitOperation(event: AssistantOperationEvent): void {
     this.options.onOperation?.(event);
+  }
+
+  private rememberAuditMetadata(call: AssistantToolCall, input: string): void {
+    const candidateResult = this.options.moduleRegistry
+      ? scoreCandidates(input, this.options.moduleRegistry.list(), this.buildShortcutContext())
+      : { normalizedText: normalizeText(input), candidates: [] };
+    const module = this.options.moduleRegistry?.findModuleForTool(call.name);
+    this.auditMetadataByCallId.set(call.id, {
+      normalized: candidateResult.normalizedText,
+      candidateModules: candidateResult.candidates.slice(0, 5),
+      selectedModule: module?.type,
+      selectedToolHint: call.name,
+      selectionConfidence: candidateResult.candidates[0]?.score
+    });
   }
 }

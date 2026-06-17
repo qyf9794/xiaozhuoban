@@ -1,0 +1,12 @@
+[
+  {
+    "id": "clipboard-add-001",
+    "input": "复制账号 demo 到剪贴板",
+    "expected": { "module": "clipboard", "tool": "clipboard.add_text", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+  },
+  {
+    "id": "clipboard-clear-confirm-001",
+    "input": "清空剪贴板",
+    "expected": { "module": "clipboard", "tool": "clipboard.clear", "risk": "destructive", "needsRealtime": false, "needsConfirmation": true }
+  }
+]
