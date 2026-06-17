@@ -681,4 +681,57 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(JSON.stringify(requests[1]?.body)).toContain("weather");
     expect(plan?.executionGroups[0]).toMatchObject({ mode: "parallel", commandIds: ["cmd_music", "cmd_weather"] });
   });
+
+  it("surfaces realtime command plan endpoint errors instead of silently falling back to clarification", async () => {
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      textToolCallEndpoint: "/api/realtime/tool-call",
+      getAccessToken: () => "supabase-token",
+      fetchImpl: (async () =>
+        new Response(JSON.stringify({ error: "OPENAI_API_KEY_MISSING" }), {
+          status: 503,
+          headers: { "content-type": "application/json" }
+        })) as typeof fetch
+    });
+
+    await expect(
+      adapter.requestCommandPlan(
+        "开始工作",
+        { boardId: "board_1", boardName: "默认桌板", widgetCountsByType: {}, widgets: [] },
+        [
+          {
+            name: "board.add_widget",
+            description: "添加小工具",
+            parameters: createPassthroughSchema<Record<string, unknown>>(),
+            scope: "desktop"
+          }
+        ]
+      )
+    ).rejects.toThrow("OPENAI_API_KEY_MISSING");
+  });
+
+  it("surfaces realtime tool-call endpoint errors instead of returning null", async () => {
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      textToolCallEndpoint: "/api/realtime/tool-call",
+      fetchImpl: (async () =>
+        new Response(JSON.stringify({ error: "AUTH_REQUIRED" }), {
+          status: 401,
+          headers: { "content-type": "application/json" }
+        })) as typeof fetch
+    });
+
+    await expect(
+      adapter.requestToolCall(
+        "把音乐收了",
+        { boardId: "board_1", boardName: "默认桌板", widgetCountsByType: {}, widgets: [] },
+        [
+          {
+            name: "widget.remove",
+            description: "删除小工具",
+            parameters: createPassthroughSchema<Record<string, unknown>>(),
+            scope: "desktop"
+          }
+        ]
+      )
+    ).rejects.toThrow("AUTH_REQUIRED");
+  });
 });

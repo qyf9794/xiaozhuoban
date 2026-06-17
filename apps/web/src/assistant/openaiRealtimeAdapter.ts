@@ -190,6 +190,15 @@ export function extractRealtimeSessionErrorCode(payload: unknown): string {
   return typeof payload.error === "string" ? payload.error : "";
 }
 
+async function readRealtimeEndpointError(response: Response, fallback: string): Promise<Error> {
+  try {
+    const errorCode = extractRealtimeSessionErrorCode(await response.json());
+    return new Error(errorCode || fallback);
+  } catch {
+    return new Error(fallback);
+  }
+}
+
 export function createRealtimeSessionRequestBody(safetyIdentifier: string | undefined): string {
   void safetyIdentifier;
   return JSON.stringify({});
@@ -505,7 +514,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       headers: createBearerHeaders(accessToken, { "content-type": "application/json" }),
       body: createRealtimePlanSelectionRequestBody(input, tools, this.moduleRegistry?.getRealtimeCatalog())
     });
-    if (!selectionResponse.ok) return null;
+    if (!selectionResponse.ok) {
+      throw await readRealtimeEndpointError(selectionResponse, "REALTIME_PLAN_SELECTION_FAILED");
+    }
     const planSelection = parseRealtimeTextPlanSelectionResponse(await selectionResponse.json());
     if (!planSelection?.steps.length) return null;
     const moduleContexts = planSelection.steps
@@ -531,7 +542,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       headers: createBearerHeaders(accessToken, { "content-type": "application/json" }),
       body: createRealtimeCommandPlanRequestBody(input, context, tools, planSelection, moduleContexts)
     });
-    if (!planResponse.ok) return null;
+    if (!planResponse.ok) {
+      throw await readRealtimeEndpointError(planResponse, "REALTIME_PLAN_EXECUTION_FAILED");
+    }
     return parseRealtimeCommandPlanResponse(await planResponse.json());
   }
 
@@ -548,7 +561,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       headers: createBearerHeaders(accessToken, { "content-type": "application/json" }),
       body: createRealtimeToolSelectionRequestBody(input, tools, this.moduleRegistry?.getRealtimeCatalog())
     });
-    if (!selectionResponse.ok) return null;
+    if (!selectionResponse.ok) {
+      throw await readRealtimeEndpointError(selectionResponse, "REALTIME_TOOL_SELECTION_FAILED");
+    }
     const selection = parseRealtimeTextToolSelectionResponse(await selectionResponse.json());
     const selectedTool = selection ? tools.find((tool) => tool.name === selection.name) : undefined;
     if (!selection || !selectedTool) return null;
@@ -575,7 +590,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       headers: createBearerHeaders(accessToken, { "content-type": "application/json" }),
       body: createRealtimeScopedToolCallRequestBody(input, scopedContext, tools, selection, moduleContext ?? undefined)
     });
-    if (!toolCallResponse.ok) return null;
+    if (!toolCallResponse.ok) {
+      throw await readRealtimeEndpointError(toolCallResponse, "REALTIME_TOOL_CALL_FAILED");
+    }
     return parseRealtimeTextToolCallResponse(await toolCallResponse.json());
   }
 
