@@ -554,6 +554,42 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes todo add commands with before-deadline wording", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("待办添加 明天9点前交报告", {
+      ...context,
+      currentTime: new Date(2026, 5, 17, 9, 0, 0).toISOString()
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("todo.add_item");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_todo",
+        text: "交报告",
+        dueAt: new Date(2026, 5, 18, 9, 0, 0).toISOString()
+      });
+    }
+  });
+
+  it("keeps todo text that starts with front-end after a due time", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("待办添加 明天9点前端会议", {
+      ...context,
+      currentTime: new Date(2026, 5, 17, 9, 0, 0).toISOString()
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("todo.add_item");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_todo",
+        text: "前端会议",
+        dueAt: new Date(2026, 5, 18, 9, 0, 0).toISOString()
+      });
+    }
+  });
+
   it("routes reminder wording to todo add with a due time", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("今天下午三点提醒我买牛奶", {
