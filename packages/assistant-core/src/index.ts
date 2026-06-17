@@ -934,7 +934,28 @@ function inferMarketIndexCodes(raw: string) {
 }
 
 function inferWorldClockZones(raw: string) {
-  const zones = ["北京", "伦敦", "纽约", "东京", "洛杉矶", "波士顿"].filter((city) => raw.includes(city));
+  const pairs: Array<[string, string]> = [
+    ["北京", "北京"],
+    ["上海", "北京"],
+    ["伦敦", "伦敦"],
+    ["纽约", "纽约"],
+    ["洛杉矶", "洛杉矶"],
+    ["洛城", "洛杉矶"],
+    ["巴黎", "巴黎"],
+    ["柏林", "柏林"],
+    ["东京", "东京"],
+    ["首尔", "首尔"],
+    ["汉城", "首尔"],
+    ["新加坡", "新加坡"],
+    ["迪拜", "迪拜"],
+    ["悉尼", "悉尼"]
+  ];
+  const zones = pairs
+    .map(([alias, zone]) => ({ index: raw.indexOf(alias), zone }))
+    .filter((item) => item.index >= 0)
+    .sort((a, b) => a.index - b.index)
+    .map((item) => item.zone)
+    .filter((zone, index, items) => items.indexOf(zone) === index);
   return zones.length > 0 ? zones : [];
 }
 
@@ -1352,7 +1373,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "world_clock_set_zones",
       match(normalized, raw, context) {
-        if (!/(世界时钟|时区|几点)/.test(normalized)) return { matched: false, reason: "not_world_clock" };
+        if (!/(世界时钟|世界时间|时区|几点|时间)/.test(normalized)) return { matched: false, reason: "not_world_clock" };
         const zones = inferWorldClockZones(raw);
         if (zones.length === 0) return { matched: false, reason: "world_clock_zones_missing" };
         return (

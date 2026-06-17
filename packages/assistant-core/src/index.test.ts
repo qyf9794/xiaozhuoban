@@ -851,6 +851,28 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes broader world clock city commands", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("看东京巴黎悉尼新加坡时间", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("worldClock.set_zones");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_worldClock", zones: ["东京", "巴黎", "悉尼", "新加坡"] });
+    }
+  });
+
+  it("routes world clock city aliases", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("汉城和迪拜现在几点", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("worldClock.set_zones");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_worldClock", zones: ["首尔", "迪拜"] });
+    }
+  });
+
   it("routes headline refresh commands to the headline widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("刷新新闻", context);
