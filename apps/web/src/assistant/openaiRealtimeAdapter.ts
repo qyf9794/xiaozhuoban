@@ -10,6 +10,7 @@ import {
 import type { AssistantRealtimeAdapter } from "./AssistantHarness";
 import {
   XIAOZHUOBAN_REALTIME_MODEL,
+  createInitialRealtimeToolSpecs,
   decodeRealtimeToolName
 } from "./realtimeSessionConfig";
 import {
@@ -466,12 +467,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       };
 
       dataChannel.onopen = () => {
-        this.flushQueuedEvents();
-        if (this.currentTools.length > 0) {
-          void this.updateTools(this.currentTools);
-        }
-        this.armSessionUpdateTimeout();
         this.options.onStatusChange?.("configuring");
+        this.armSessionUpdateTimeout();
+        this.flushQueuedEvents();
+        void this.updateTools(this.getEffectiveSessionTools());
       };
       dataChannel.onmessage = (event) => this.handleRealtimeEventData(event.data);
       dataChannel.onclose = () => {
@@ -554,6 +553,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         parallel_tool_calls: false
       }
     });
+  }
+
+  private getEffectiveSessionTools(): AssistantToolSpec[] {
+    return this.currentTools.length > 0 ? this.currentTools : createInitialRealtimeToolSpecs();
   }
 
   updateModules(registry: WidgetAssistantRegistry): void {

@@ -334,6 +334,24 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(event.session.tools[0].name).toBe("assistant__dot__select_tool");
   });
 
+  it("falls back to initial selector tools if voice connects before harness initialization finishes", () => {
+    const adapter = new OpenAIRealtimeWebRtcAdapter();
+
+    const tools = (
+      adapter as unknown as {
+        getEffectiveSessionTools: () => Parameters<OpenAIRealtimeWebRtcAdapter["updateTools"]>[0];
+      }
+    ).getEffectiveSessionTools();
+    adapter.updateTools(tools);
+
+    const event = (adapter as unknown as { queuedEvents: Array<{ session: { instructions: string; tools: Array<{ name: string; parameters: unknown }> } }> })
+      .queuedEvents[0];
+    expect(tools.map((tool) => tool.name)).toContain("board.add_widget");
+    expect(event.session.tools[0].name).toBe("assistant__dot__select_tool");
+    expect(JSON.stringify(event.session.tools[0].parameters)).toContain("board.add_widget");
+    expect(JSON.stringify(event.session.tools[0].parameters)).not.toContain("widgetId");
+  });
+
   it("does not queue stale tool results before the data channel opens", () => {
     const adapter = new OpenAIRealtimeWebRtcAdapter();
 
