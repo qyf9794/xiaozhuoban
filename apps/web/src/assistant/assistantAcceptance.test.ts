@@ -378,6 +378,30 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(modelInputs).toEqual([]);
   });
 
+  it("sets calculator from natural Chinese arithmetic without model fallback", async () => {
+    const { harness, modelInputs, getWidget } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("12加30是多少");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(getWidget("calculator")?.state.calcDisplay).toBe("42");
+    expect(modelInputs).toEqual([]);
+  });
+
+  it("refreshes headlines from natural news request without model fallback", async () => {
+    const { harness, modelInputs, getWidget } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("今天有什么新闻");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(getWidget("headline")?.state.headlineRefreshRequestedAt).toBe(NOW);
+    expect(modelInputs).toEqual([]);
+  });
+
   it("continues a queued todo command after confirming clipboard clear", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness();
     await harness.initialize();

@@ -986,7 +986,15 @@ function inferConverterArgs(raw: string) {
 }
 
 function evaluateArithmeticExpression(expression: string) {
-  const normalized = expression.replace(/×/g, "*").replace(/÷/g, "/").replace(/，/g, "").trim();
+  const normalized = expression
+    .replace(/加上|加/g, "+")
+    .replace(/减去|减/g, "-")
+    .replace(/乘以|乘/g, "*")
+    .replace(/除以|除/g, "/")
+    .replace(/×/g, "*")
+    .replace(/÷/g, "/")
+    .replace(/，/g, "")
+    .trim();
   if (!/^[\d+\-*/().\s]+$/.test(normalized) || !/[+\-*/]/.test(normalized)) return null;
   try {
     const value = Function(`"use strict"; return (${normalized});`)();
@@ -997,7 +1005,9 @@ function evaluateArithmeticExpression(expression: string) {
 }
 
 function inferCalculatorDisplay(raw: string) {
-  const expression = raw.match(/([0-9][0-9+\-*/×÷().\s]+[0-9])/);
+  const expression =
+    raw.match(/([0-9][0-9+\-*/×÷().\s]+[0-9])/) ??
+    raw.match(/([0-9][0-9+\-*/×÷().\s]*(?:加上|加|减去|减|乘以|乘|除以|除)[0-9+\-*/×÷().\s]*\d)/);
   const evaluated = expression ? evaluateArithmeticExpression(expression[1]) : null;
   if (evaluated) return evaluated;
   const display = raw.match(/(?:计算器)(?:显示|设为|输入)?[：:\s]*([+-]?\d+(?:\.\d+)?)/);
@@ -1439,7 +1449,10 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "calculator_set_display",
       match(normalized, raw, context) {
-        if (!/(计算器|计算|算一下|等于多少)/.test(normalized)) return { matched: false, reason: "not_calculator" };
+        const hasArithmeticIntent = /[0-9]\s*(?:[+\-*/×÷]|加上|加|减去|减|乘以|乘|除以|除)/.test(raw);
+        if (!hasArithmeticIntent && !/(计算器|计算|算一下|等于多少|是多少)/.test(normalized)) {
+          return { matched: false, reason: "not_calculator" };
+        }
         const display = inferCalculatorDisplay(raw);
         if (!display) return { matched: false, reason: "calculator_display_missing" };
         return (
@@ -1483,7 +1496,13 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "headline_refresh",
       match(normalized, raw, context) {
-        if (!/(刷新|更新|重新加载|换一批)/.test(normalized) || !/(新闻|头条)/.test(normalized)) {
+        if (inferTvChannelName(raw) && /(央视|中央|CCTV|频道)/i.test(raw)) {
+          return { matched: false, reason: "headline_deferred_to_tv" };
+        }
+        if (
+          !/(新闻|头条)/.test(normalized) ||
+          !/(刷新|更新|重新加载|换一批|看看|看一下|看|有什么|今日|今天|最新)/.test(normalized)
+        ) {
           return { matched: false, reason: "not_headline_refresh" };
         }
         return (

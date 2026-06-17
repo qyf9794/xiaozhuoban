@@ -952,6 +952,23 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes natural Chinese arithmetic questions to the calculator widget", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const plus = router.route("12加30是多少", context);
+    const multiply = router.route("12乘以8", context);
+
+    expect(plus.matched).toBe(true);
+    expect(multiply.matched).toBe(true);
+    if (plus.matched) {
+      expect(plus.toolCall.name).toBe("calculator.set_display");
+      expect(plus.toolCall.arguments).toEqual({ widgetId: "wi_calculator", display: "42" });
+    }
+    if (multiply.matched) {
+      expect(multiply.toolCall.name).toBe("calculator.set_display");
+      expect(multiply.toolCall.arguments).toEqual({ widgetId: "wi_calculator", display: "96" });
+    }
+  });
+
   it("routes market index commands to the market widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("看标普和恒生行情", context);
@@ -1032,6 +1049,17 @@ describe("IntentShortcutRouter", () => {
   it("routes headline refresh commands to the headline widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("刷新新闻", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("headline.request_refresh");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_headline" });
+    }
+  });
+
+  it("routes natural headline request commands to the headline widget", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("今天有什么新闻", context);
 
     expect(result.matched).toBe(true);
     if (result.matched) {
