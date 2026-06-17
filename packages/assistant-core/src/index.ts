@@ -846,6 +846,7 @@ function cleanCommandContent(value: string) {
 
 function inferNoteContent(raw: string) {
   const patterns = [
+    /(?:请|帮我|麻烦|麻烦你)?\s*(?:记一下|记下|记录一下|写一下|记一笔)[：:\s]*(.+)/,
     /(?:便签|笔记).*(?:写|记录|记下|添加|追加)(?:一下|一个|一条)?[：:\s]*(.+)/,
     /(?:写|记录|记下|添加|追加)(?:到|进)?(?:便签|笔记)[：:\s]*(.+)/,
     /把(.+?)(?:写|记录|记下|添加|追加)(?:到|进)?(?:便签|笔记)/
@@ -897,9 +898,10 @@ function inferTodoCompleteText(raw: string) {
 
 function inferClipboardText(raw: string) {
   const patterns = [
-    /(?:保存|加入|添加|记录)(?:到|进)?(?:剪贴板|剪贴板历史)[：:\s]*(.+)/,
-    /(?:剪贴板|剪贴板历史).*(?:保存|加入|添加|记录)[：:\s]*(.+)/,
-    /把(.+?)(?:保存|加入|添加|记录)(?:到|进)?(?:剪贴板|剪贴板历史)/
+    /(?:保存|存一下|存|加入|添加|记录|复制|拷贝)(?:到|进)?(?:剪贴板|剪贴板历史)[：:\s]*(.+)/,
+    /(?:剪贴板|剪贴板历史).*(?:保存|存一下|存|加入|添加|记录|复制|拷贝)[：:\s]*(.+)/,
+    /(?:复制|拷贝|保存|存一下|存)\s*(.+?)(?:到|进)?(?:剪贴板|剪贴板历史)/,
+    /把(.+?)(?:保存|存一下|存|加入|添加|记录|复制|拷贝)(?:到|进)?(?:剪贴板|剪贴板历史)/
   ];
   for (const pattern of patterns) {
     const match = raw.match(pattern);
@@ -909,23 +911,28 @@ function inferClipboardText(raw: string) {
   return "";
 }
 
-function normalizeTranslateTarget(raw: string) {
+function inferDefaultTranslateTarget(sourceText: string) {
+  return /[\u4e00-\u9fa5]/.test(sourceText) ? "en" : "zh-CN";
+}
+
+function normalizeTranslateTarget(raw: string, sourceText = "") {
   if (/(英文|英语|en)/i.test(raw)) return "en";
   if (/(中文|汉语|zh)/i.test(raw)) return "zh-CN";
-  return "zh-CN";
+  return inferDefaultTranslateTarget(sourceText);
 }
 
 function inferTranslateDraft(raw: string) {
   const patterns = [
     /(?:把)?(.+?)(?:翻译)(?:成|为|到)?(英文|英语|中文|汉语|en|zh-CN)?$/,
     /翻译(?:一下)?[：:\s]*(.+?)(?:成|为|到)(英文|英语|中文|汉语|en|zh-CN)$/,
-    /(?:把)(.+?)(?:翻译)?(?:成|为|到)(英文|英语|中文|汉语|en|zh-CN)$/
+    /(?:把)(.+?)(?:翻译)?(?:成|为|到)(英文|英语|中文|汉语|en|zh-CN)$/,
+    /翻译(?:一下)?[：:\s]*(.+)$/
   ];
   for (const pattern of patterns) {
     const match = raw.match(pattern);
     const sourceText = cleanCommandContent(match?.[1] ?? "");
     if (!sourceText || /^(一下|翻译)$/.test(sourceText)) continue;
-    return { sourceText, targetLang: normalizeTranslateTarget(match?.[2] ?? raw) };
+    return { sourceText, targetLang: normalizeTranslateTarget(match?.[2] ?? raw, sourceText) };
   }
   return null;
 }
@@ -1285,7 +1292,11 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "note_write",
       match(normalized, raw, context) {
-        if (!/(便签|笔记)/.test(normalized) || !/(写|记录|记下|添加|追加)/.test(normalized)) {
+        const explicitNoteWrite = /(便签|笔记)/.test(normalized) && /(写|记录|记下|添加|追加)/.test(normalized);
+        const casualNoteWrite =
+          /(记一下|记下|记录一下|写一下|记一笔)/.test(normalized) &&
+          !/(待办|任务|清单|提醒|记得|别忘了|剪贴板|留言板|留言区|消息板|留言)/.test(normalized);
+        if (!explicitNoteWrite && !casualNoteWrite) {
           return { matched: false, reason: "not_note_write" };
         }
         const content = inferNoteContent(raw);
@@ -1350,7 +1361,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "clipboard_add",
       match(normalized, raw, context) {
-        if (!/(剪贴板|剪贴板历史)/.test(normalized) || !/(保存|加入|添加|记录)/.test(normalized)) {
+        if (!/(剪贴板|剪贴板历史)/.test(normalized) || !/(保存|存一下|存|加入|添加|记录|复制|拷贝)/.test(normalized)) {
           return { matched: false, reason: "not_clipboard_add" };
         }
         const text = inferClipboardText(raw);

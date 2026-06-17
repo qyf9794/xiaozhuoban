@@ -598,6 +598,17 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes casual note shorthand to the note widget", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("帮我记一下今天继续测试小桌板", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("note.write");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_note", content: "今天继续测试小桌板", mode: "append" });
+    }
+  });
+
   it("routes note clear commands to clear content instead of closing the widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("清空便签内容", context);
@@ -770,6 +781,17 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes clipboard copy wording to add text", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("复制账号 demo 到剪贴板", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("clipboard.add_text");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_clipboard", text: "账号 demo" });
+    }
+  });
+
   it("routes clipboard clear commands to clear history instead of closing the widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("清空剪贴板历史", context);
@@ -831,6 +853,23 @@ describe("IntentShortcutRouter", () => {
     if (result.matched) {
       expect(result.toolCall.name).toBe("translate.set_draft");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_translate", sourceText: "你好", targetLang: "en" });
+    }
+  });
+
+  it("routes casual translate commands with inferred target languages", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const english = router.route("翻译一下 hello", context);
+    const chinese = router.route("翻译一下 你好", context);
+
+    expect(english.matched).toBe(true);
+    expect(chinese.matched).toBe(true);
+    if (english.matched) {
+      expect(english.toolCall.name).toBe("translate.set_draft");
+      expect(english.toolCall.arguments).toEqual({ widgetId: "wi_translate", sourceText: "hello", targetLang: "zh-CN" });
+    }
+    if (chinese.matched) {
+      expect(chinese.toolCall.name).toBe("translate.set_draft");
+      expect(chinese.toolCall.arguments).toEqual({ widgetId: "wi_translate", sourceText: "你好", targetLang: "en" });
     }
   });
 

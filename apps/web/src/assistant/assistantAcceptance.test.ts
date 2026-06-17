@@ -280,6 +280,18 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(modelInputs).toEqual([]);
   });
 
+  it("writes casual note shorthand through shortcut-first Harness without model fallback", async () => {
+    const { harness, modelInputs, getWidget } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("帮我记一下今天继续测试小桌板");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(getWidget("note")?.state.content).toBe("今天继续测试小桌板");
+    expect(modelInputs).toEqual([]);
+  });
+
   it("adds a todo item through shortcut-first Harness without model fallback", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness();
     await harness.initialize();
@@ -301,6 +313,18 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(getWidget("clipboard")?.state.items).toMatchObject([{ text: "账号是 demo" }]);
+    expect(modelInputs).toEqual([]);
+  });
+
+  it("adds copied text to clipboard through shortcut-first Harness without model fallback", async () => {
+    const { harness, modelInputs, getWidget } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("复制账号 demo 到剪贴板");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(getWidget("clipboard")?.state.items).toMatchObject([{ text: "账号 demo" }]);
     expect(modelInputs).toEqual([]);
   });
 
@@ -339,6 +363,18 @@ describe("stage-one assistant acceptance scenarios", () => {
       expect.arrayContaining(["Asia/Shanghai", "Europe/London", "America/New_York"])
     );
     expect(getWidget("headline")?.state.headlineRefreshRequestedAt).toBe(NOW);
+    expect(modelInputs).toEqual([]);
+  });
+
+  it("sets casual translate shorthand without model fallback", async () => {
+    const { harness, modelInputs, getWidget } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("翻译一下 hello");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(getWidget("translate")?.state).toMatchObject({ sourceText: "hello", targetLang: "zh-CN" });
     expect(modelInputs).toEqual([]);
   });
 
