@@ -17,6 +17,7 @@ import { createLocalAssistantAuditAdapter, createSupabaseAssistantAuditAdapter, 
 import { WidgetCapabilityBridge, createWidgetCapabilityActions } from "./widgetCapabilityBridge";
 import { createWidgetStateActions } from "./widgetStateActions";
 import { createDailyWidgetAssistantModules } from "../widgets/modules/dailyWidgetAssistantModules";
+import { createMusicAssistantModule } from "../widgets/modules/music/assistant";
 
 const noopRealtimeAdapter: AssistantRealtimeAdapter = {
   updateTools() {},
@@ -120,7 +121,9 @@ export function createLocalAssistantHarness(options?: {
   });
 
   const moduleRegistry = new WidgetAssistantRegistry();
-  createDailyWidgetAssistantModules(useAppStore.getState().widgetDefinitions, actions).forEach((module) => moduleRegistry.register(module));
+  const widgetDefinitions = useAppStore.getState().widgetDefinitions;
+  moduleRegistry.register(createMusicAssistantModule(widgetDefinitions, actions));
+  createDailyWidgetAssistantModules(widgetDefinitions, actions).forEach((module) => moduleRegistry.register(module));
 
   const auditContext: AssistantAuditContext = {
     getUserId: () => useAuthStore.getState().user?.id,

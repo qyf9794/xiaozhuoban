@@ -9,6 +9,7 @@ import {
 } from "@xiaozhuoban/assistant-core";
 import type { WidgetDefinition } from "@xiaozhuoban/domain";
 import { createDailyWidgetAssistantModules } from "./dailyWidgetAssistantModules";
+import { createMusicAssistantModule, musicMigrationReport, musicShortcutConflictReport } from "./music/assistant";
 
 function definition(type: string, name: string): WidgetDefinition {
   return {
@@ -108,6 +109,11 @@ const dailyDefinitions = [
   definition("tv", "电视")
 ];
 
+function registerFirstBatchModules(registry: WidgetAssistantRegistry) {
+  registry.register(createMusicAssistantModule(dailyDefinitions, moduleActions));
+  createDailyWidgetAssistantModules(dailyDefinitions, moduleActions).forEach((module) => registry.register(module));
+}
+
 describe("daily widget assistant modules", () => {
   it("keeps per-widget module boundaries while reusing existing actions", () => {
     const registry = new WidgetAssistantRegistry();
@@ -153,7 +159,7 @@ describe("daily widget assistant modules", () => {
 
   it("registers all first-batch daily modules with strict schemas and scoped contexts", () => {
     const registry = new WidgetAssistantRegistry();
-    createDailyWidgetAssistantModules(dailyDefinitions, moduleActions).forEach((module) => registry.register(module));
+    registerFirstBatchModules(registry);
 
     const expectedTypes = [
       "music",
@@ -188,9 +194,20 @@ describe("daily widget assistant modules", () => {
     }
   });
 
+  it("keeps music outside the central daily module factory after migration", () => {
+    const centralModules = createDailyWidgetAssistantModules(dailyDefinitions, moduleActions);
+
+    expect(centralModules.map((module) => module.type)).not.toContain("music");
+    expect(musicMigrationReport).toMatchObject({
+      module: "music",
+      legacyBridge: true
+    });
+    expect(musicShortcutConflictReport.resolution).toBe("none");
+  });
+
   it("uses selected-module strict schemas to reject extra model arguments", () => {
     const registry = new WidgetAssistantRegistry();
-    createDailyWidgetAssistantModules(dailyDefinitions, moduleActions).forEach((module) => registry.register(module));
+    registerFirstBatchModules(registry);
     const validator = new PlanValidator({ tools: moduleActions.map((item) => item.spec), moduleRegistry: registry });
     const plan = createCommandPlanFromToolCalls("暂停音乐", [
       {
@@ -210,7 +227,7 @@ describe("daily widget assistant modules", () => {
 
   it("keeps Realtime first stage catalog free of widget ids and private summaries", () => {
     const registry = new WidgetAssistantRegistry();
-    createDailyWidgetAssistantModules(dailyDefinitions, moduleActions).forEach((module) => registry.register(module));
+    registerFirstBatchModules(registry);
 
     const catalogPayload = JSON.stringify(registry.getRealtimeCatalog());
     const musicContext = registry.getScopedContextForModule("music", {

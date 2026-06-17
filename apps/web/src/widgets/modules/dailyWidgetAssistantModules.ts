@@ -32,17 +32,6 @@ const defaultExecutionPolicy: WidgetExecutionPolicy = {
 
 const seeds: DailyWidgetModuleSeed[] = [
   {
-    type: "music",
-    aliases: ["音乐", "歌曲", "歌", "播放器", "音乐播放器"],
-    capabilities: ["打开音乐", "搜索音乐", "播放", "暂停", "继续", "上一首", "下一首", "关闭窗口"],
-    shortcutExamples: ["打开音乐", "搜索周杰伦音乐", "播放第一首", "暂停音乐", "关闭音乐"],
-    shortcuts: [
-      { id: "music.window", intent: "window_control", actions: ["打开", "关闭"], examples: ["打开音乐", "关闭音乐"], risk: "safe" },
-      { id: "music.playback", intent: "media_control", actions: ["播放", "暂停", "继续"], examples: ["暂停音乐", "继续音乐"], risk: "safe" }
-    ],
-    executionPolicy: { ...defaultExecutionPolicy, defaultMode: "latest-wins" }
-  },
-  {
     type: "weather",
     aliases: ["天气", "weather"],
     capabilities: ["打开天气", "查询城市天气", "切换城市", "关闭窗口"],
@@ -256,21 +245,6 @@ const toolArgSchemas: Record<string, ReturnType<typeof createStrictObjectSchema>
     widgetId: { type: "string", required: true },
     includePinned: { type: "boolean" }
   }),
-  "music.search": createStrictObjectSchema({
-    widgetId: { type: "string", required: true },
-    query: { type: "string", required: true },
-    kind: { type: "string" }
-  }),
-  "music.play": createStrictObjectSchema({
-    widgetId: { type: "string", required: true },
-    query: { type: "string" },
-    kind: { type: "string" },
-    resultIndex: { type: "number" }
-  }),
-  "music.pause": widgetIdArgsSchema,
-  "music.resume": widgetIdArgsSchema,
-  "music.next": widgetIdArgsSchema,
-  "music.previous": widgetIdArgsSchema,
   "tv.play": widgetIdArgsSchema,
   "tv.pause": widgetIdArgsSchema,
   "tv.fullscreen": widgetIdArgsSchema,
@@ -290,9 +264,6 @@ const toolArgSchemas: Record<string, ReturnType<typeof createStrictObjectSchema>
 
 function toolExamples(toolName: string, seed: DailyWidgetModuleSeed): string[] {
   const examples: Record<string, string[]> = {
-    "music.pause": ["暂停音乐", "音乐暂停", "先别放音乐"],
-    "music.play": ["播放周杰伦", "播放第一首", "继续放这首歌"],
-    "music.search": ["搜索七里香", "找周杰伦音乐", "搜一首轻松的音乐"],
     "widget.remove": [`关闭${seed.aliases[0]}`, `${seed.aliases[0]}关掉`, `把${seed.aliases[0]}收起来`],
     "clipboard.clear": ["清空剪贴板", "清一下剪贴板", "清掉复制板"]
   };
