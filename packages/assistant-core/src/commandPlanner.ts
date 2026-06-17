@@ -152,7 +152,14 @@ export function createCommandPlanFromToolCalls(input: string, calls: AssistantTo
     ],
     confidence: calls.every((call) => call.source === "shortcut") ? 0.95 : REALTIME_TOOL_SELECTION_CONFIDENCE_THRESHOLD,
     needsConfirmation: false,
-    createdBy: calls[0]?.source === "shortcut" ? "local" : calls[0]?.source === "text" ? "text-llm" : "realtime-2",
+    createdBy:
+      calls[0]?.source === "shortcut"
+        ? "local"
+        : calls[0]?.source === "text"
+          ? "text-llm"
+          : calls[0]?.source === "learned"
+            ? "learned"
+            : "realtime-2",
     requiresHarnessValidation: true
   };
 }

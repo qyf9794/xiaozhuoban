@@ -19,6 +19,7 @@ import {
   XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL,
   XIAOZHUOBAN_REALTIME_MODEL,
   createPlanPreview,
+  createLearningCandidate,
   createCommandPlanFromToolCalls,
   createDefaultIntentShortcutRouter,
   createPassthroughSchema,
@@ -2614,7 +2615,7 @@ describe("Strict schemas, preview gate, executor, budget, outbox, learning, and 
     expect(await outbox.pendingCount()).toBe(1);
   });
 
-  it("stores confirmed learned shortcuts without overwriting conflicts", async () => {
+  it("stores confirmed learned shortcuts without overwriting conflicts and respects rejection", async () => {
     const store = new LearnedCommandStore();
     const candidate = {
       id: "learn1",
@@ -2637,6 +2638,33 @@ describe("Strict schemas, preview gate, executor, budget, outbox, learning, and 
 
     expect(await store.match("音乐 收")).toMatchObject({ tool: "widget.remove", status: "confirmed" });
     await expect(store.addCandidate({ ...candidate, id: "learn2", tool: "music.pause" })).rejects.toThrow("冲突");
+    await store.reject("learn1");
+    expect(await store.match("音乐 收")).toBeNull();
+  });
+
+  it("does not create learning candidates for sensitive arguments", () => {
+    const plan = createPlan([
+      {
+        id: "note",
+        module: "note",
+        tool: "note.write",
+        args: { content: "password=abc123" },
+        risk: "safe",
+        confidence: 0.95,
+        source: "realtime",
+        requiresHarnessValidation: true
+      }
+    ]);
+
+    expect(
+      createLearningCandidate({
+        rawText: "记住 password=abc123",
+        normalizedText: "记住 password abc123",
+        plan,
+        call: { id: "note", name: "note.write", arguments: { content: "password=abc123" }, source: "realtime" },
+        result: { status: "success", message: "ok" }
+      })
+    ).toBeNull();
   });
 
   it("reviews AI generated modules before install", () => {

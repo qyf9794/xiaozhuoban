@@ -14,6 +14,7 @@ import { supabase, supabaseConfigError } from "../lib/supabase";
 import { registerBoardActions } from "./boardActions";
 import { AssistantHarness, type AssistantAuditEvent, type AssistantOperationEvent, type AssistantRealtimeAdapter } from "./AssistantHarness";
 import { createLocalAssistantAuditAdapter, createSupabaseAssistantAuditAdapter, type AssistantAuditContext } from "./assistantAudit";
+import { assistantLearnedCommandStore } from "./assistantLearning";
 import { WidgetCapabilityBridge, createWidgetCapabilityActions } from "./widgetCapabilityBridge";
 import { createWidgetStateActions } from "./widgetStateActions";
 import { createDailyWidgetAssistantModules } from "../widgets/modules/dailyWidgetAssistantModules";
@@ -84,11 +85,12 @@ export function createLocalAssistantHarness(options?: {
   const adapter = {
     getWidgetInstances: () => useAppStore.getState().widgetInstances,
     getWidgetDefinitions: () => useAppStore.getState().widgetDefinitions,
-    addWidgetInstance: (definitionId: string, widgetOptions?: { mobileMode?: boolean }) =>
+    addWidgetInstance: (definitionId: string, widgetOptions?: { mobileMode?: boolean; operationId?: string }) =>
       useAppStore.getState().addWidgetInstance(definitionId, widgetOptions),
-    removeWidgetInstance: (widgetId: string) => useAppStore.getState().removeWidgetInstance(widgetId),
-    focusWidget: async (widgetId: string) => {
-      await useAppStore.getState().focusWidget(widgetId);
+    removeWidgetInstance: (widgetId: string, persistOptions?: { operationId?: string }) =>
+      useAppStore.getState().removeWidgetInstance(widgetId, persistOptions),
+    focusWidget: async (widgetId: string, persistOptions?: { operationId?: string }) => {
+      await useAppStore.getState().focusWidget(widgetId, persistOptions);
       if (typeof document === "undefined") return;
       const element = document.querySelector<HTMLElement>(`[data-widget-id="${CSS.escape(widgetId)}"]`);
       element?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
@@ -101,23 +103,26 @@ export function createLocalAssistantHarness(options?: {
         { duration: 900, easing: "ease-out" }
       );
     },
-    fullscreenWidget: async (widgetId: string) => {
-      await useAppStore.getState().fullscreenWidget(widgetId);
+    fullscreenWidget: async (widgetId: string, persistOptions?: { operationId?: string }) => {
+      await useAppStore.getState().fullscreenWidget(widgetId, persistOptions);
       if (typeof document === "undefined") return;
       const element = document.querySelector<HTMLElement>(`[data-widget-id="${CSS.escape(widgetId)}"]`);
       await element?.requestFullscreen?.();
     },
-    bringWidgetToFront: (widgetId: string) => useAppStore.getState().bringWidgetToFront(widgetId),
-    updateWidgetPosition: (widgetId: string, x: number, y: number) =>
-      useAppStore.getState().updateWidgetPosition(widgetId, x, y),
-    updateWidgetSize: (widgetId: string, w: number, h: number) => useAppStore.getState().updateWidgetSize(widgetId, w, h),
-    updateWidgetState: (widgetId: string, nextState: Record<string, unknown>) =>
-      useAppStore.getState().updateWidgetState(widgetId, nextState),
-    autoAlignWidgets: (viewportWidth: number, alignOptions?: { mobileMode?: boolean }) =>
+    bringWidgetToFront: (widgetId: string, persistOptions?: { operationId?: string }) =>
+      useAppStore.getState().bringWidgetToFront(widgetId, persistOptions),
+    updateWidgetPosition: (widgetId: string, x: number, y: number, persistOptions?: { operationId?: string }) =>
+      useAppStore.getState().updateWidgetPosition(widgetId, x, y, persistOptions),
+    updateWidgetSize: (widgetId: string, w: number, h: number, persistOptions?: { operationId?: string }) =>
+      useAppStore.getState().updateWidgetSize(widgetId, w, h, persistOptions),
+    updateWidgetState: (widgetId: string, nextState: Record<string, unknown>, persistOptions?: { operationId?: string }) =>
+      useAppStore.getState().updateWidgetState(widgetId, nextState, persistOptions),
+    autoAlignWidgets: (viewportWidth: number, alignOptions?: { mobileMode?: boolean; operationId?: string }) =>
       useAppStore.getState().autoAlignWidgets(viewportWidth, alignOptions),
     setActiveBoard: (boardId: string) => useAppStore.getState().setActiveBoard(boardId),
-    addBoard: (name?: string) => useAppStore.getState().addBoard(name),
-    renameBoard: (boardId: string, name: string) => useAppStore.getState().renameBoard(boardId, name)
+    addBoard: (name?: string, persistOptions?: { operationId?: string }) => useAppStore.getState().addBoard(name, persistOptions),
+    renameBoard: (boardId: string, name: string, persistOptions?: { operationId?: string }) =>
+      useAppStore.getState().renameBoard(boardId, name, persistOptions)
   };
 
   const actions: AssistantAction[] = [
@@ -162,6 +167,7 @@ export function createLocalAssistantHarness(options?: {
     contextSummarizer: new ContextSummarizer(),
     realtime: options?.realtime ?? noopRealtimeAdapter,
     moduleRegistry,
+    learnedCommandStore: assistantLearnedCommandStore,
     audit: {
       async write(event: AssistantAuditEvent) {
         if (!useAuthStore.getState().user?.id || !supabaseAudit) {

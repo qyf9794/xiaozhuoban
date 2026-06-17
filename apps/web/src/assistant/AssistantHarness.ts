@@ -9,9 +9,12 @@ import {
   WidgetAssistantRegistry,
   WidgetTargetResolver,
   createCommandPlanFromToolCalls,
+  createLearningCandidate,
   createPlanPreview,
   scoreCandidates,
   normalizeText,
+  type LearnedCommandStore,
+  type LearningCandidate,
   type AssistantActionContext,
   type AssistantToolCall,
   type AssistantToolResult,
@@ -25,7 +28,7 @@ import {
   type ResolvedWidgetTarget
 } from "@xiaozhuoban/assistant-core";
 
-export type AssistantRoute = "shortcut" | "model" | "function_call";
+export type AssistantRoute = "shortcut" | "model" | "function_call" | "learned";
 
 export interface AssistantRealtimeAdapter {
   updateTools: (tools: AssistantToolSpec[]) => Promise<void> | void;
@@ -77,6 +80,7 @@ export interface AssistantHarnessOptions {
   realtime: AssistantRealtimeAdapter;
   moduleRegistry?: WidgetAssistantRegistry;
   planValidator?: PlanValidator;
+  learnedCommandStore?: LearnedCommandStore;
   audit?: AssistantAuditAdapter;
   onOperation?: (event: AssistantOperationEvent) => void;
   getContextInput: () => ContextSummarizerInput;
@@ -219,6 +223,7 @@ export class AssistantHarness {
   private initialized = false;
   private transientWidgetTargets = new Map<string, ResolvedWidgetTarget>();
   private queuedShortcutPlanGroups: AssistantToolCall[][] = [];
+  private pendingLearningCandidate: LearningCandidate | null = null;
   private readonly planValidator: PlanValidator;
   private readonly shortcutPlanAdapter = new ShortcutPlanAdapter();
   private readonly auditMetadataByCallId = new Map<string, Pick<AssistantAuditEvent, "normalized" | "candidateModules" | "selectedModule" | "selectedToolHint" | "selectionConfidence">>();
@@ -254,7 +259,7 @@ export class AssistantHarness {
   }
 
   getPendingConfirmation(): ConfirmationRequest | null {
-    return this.pendingConfirmation;
+    return this.pendingConfirmation ?? this.getLearningConfirmation();
   }
 
   getCurrentContext(): CompactAssistantContext {
@@ -267,6 +272,14 @@ export class AssistantHarness {
 
   async handleUserInput(input: string): Promise<AssistantHarnessResponse> {
     const startedAt = Date.now();
+    const learningResponse = await this.handlePendingLearningInput(input, startedAt);
+    if (learningResponse) {
+      return learningResponse;
+    }
+    const learnedResponse = await this.handleLearnedShortcut(input, startedAt);
+    if (learnedResponse) {
+      return learnedResponse;
+    }
     const shortcutContext = this.buildShortcutContext();
     const segmentedShortcut = this.hasSegmentedShortcutInput(input);
     const shortcutPlan = this.buildShortcutPlan(input, shortcutContext);
@@ -311,8 +324,12 @@ export class AssistantHarness {
       return { route: "model", result };
     }
 
-    this.rememberAuditMetadata(modelCall, input);
-    return this.handleFunctionCall(modelCall, "model", startedAt);
+    const modelCallWithTranscript: AssistantToolCall = {
+      ...modelCall,
+      transcript: modelCall.transcript ?? input
+    };
+    this.rememberAuditMetadata(modelCallWithTranscript, input);
+    return this.handleFunctionCall(modelCallWithTranscript, "model", startedAt);
   }
 
   private hasSegmentedShortcutInput(input: string): boolean {
@@ -496,6 +513,77 @@ export class AssistantHarness {
     };
   }
 
+  private getLearningConfirmation(): ConfirmationRequest | null {
+    const candidate = this.pendingLearningCandidate;
+    if (!candidate) return null;
+    return {
+      id: candidate.id,
+      actionName: "assistant.learn",
+      arguments: { candidateId: candidate.id },
+      message: `要记住“${candidate.rawText}”下次直接执行 ${candidate.tool} 吗？`,
+      createdAt: candidate.createdAt,
+      preview: {
+        commands: [
+          {
+            module: candidate.module,
+            tool: candidate.tool,
+            impact: "确认后相同说法将优先本地命中",
+            reversible: true
+          }
+        ],
+        recovery: "可在本地学习规则中拒绝或覆盖"
+      }
+    };
+  }
+
+  private async handlePendingLearningInput(input: string, startedAt: number): Promise<AssistantHarnessResponse | null> {
+    const candidate = this.pendingLearningCandidate;
+    if (!candidate) return null;
+    const normalized = normalizeText(input);
+    const isConfirm = /^(确认|确定|可以|记住|学习)$/.test(normalized);
+    const isCancel = /^(取消|不用|不要|拒绝)$/.test(normalized);
+    if (!isConfirm && !isCancel) return null;
+
+    this.pendingLearningCandidate = null;
+    const ok = isConfirm
+      ? await this.options.learnedCommandStore?.confirm(candidate.id)
+      : await this.options.learnedCommandStore?.reject(candidate.id);
+    const result: AssistantToolResult = {
+      status: isConfirm && ok ? "success" : "cancelled",
+      message: isConfirm && ok ? "已记住这个说法" : "已取消学习",
+      data: { candidateId: candidate.id, learned: isConfirm && ok }
+    };
+    const call: AssistantToolCall = {
+      id: isConfirm ? `learn_confirm_${candidate.id}` : `learn_reject_${candidate.id}`,
+      name: isConfirm ? "assistant.learn.confirm" : "assistant.learn.reject",
+      arguments: { candidateId: candidate.id },
+      source: "learned",
+      transcript: input
+    };
+    await this.options.realtime.sendToolResult(call, result);
+    await this.audit({ route: "learned", call, result, durationMs: Date.now() - startedAt, learningCandidate: false });
+    return { route: "learned", call, result };
+  }
+
+  private async handleLearnedShortcut(input: string, startedAt: number): Promise<AssistantHarnessResponse | null> {
+    const store = this.options.learnedCommandStore;
+    if (!store || this.pendingConfirmation) return null;
+    const matched = await store.match(normalizeText(input));
+    if (!matched) return null;
+    const call: AssistantToolCall = {
+      id: createId("learned"),
+      name: matched.tool,
+      arguments: matched.args,
+      source: "learned",
+      transcript: input
+    };
+    this.rememberAuditMetadata(call, input);
+    const plan = createCommandPlanFromToolCalls(input, [call]);
+    plan.createdBy = "learned";
+    const responses = await this.executeCommandPlan(plan, "learned", startedAt);
+    return responses[0] ?? { route: "learned", call, result: { status: "failed", message: "学习规则没有生成命令", errorCode: "LEARNED_PLAN_EMPTY" } };
+  }
+
   private async executeCommandPlan(
     plan: CommandPlan,
     route: AssistantRoute,
@@ -556,7 +644,8 @@ export class AssistantHarness {
         transcript: plan.sourceText
       };
       await this.options.realtime.sendToolResult(call, record.result);
-      await this.audit({ route, call, result: record.result, durationMs: Date.now() - startedAt });
+      const learningCandidate = await this.recordLearningCandidate(validation.plan, call, record.result, route);
+      await this.audit({ route, call, result: record.result, durationMs: Date.now() - startedAt, learningCandidate });
       responses.push({ route, call, result: record.result });
     }
     await this.updateRealtimeContext();
@@ -859,6 +948,34 @@ export class AssistantHarness {
 
   private async updateRealtimeContext(): Promise<void> {
     await this.options.realtime.updateContext?.(this.getCurrentContext());
+  }
+
+  private async recordLearningCandidate(
+    plan: CommandPlan,
+    call: AssistantToolCall,
+    result: AssistantToolResult,
+    route: AssistantRoute
+  ): Promise<boolean> {
+    const store = this.options.learnedCommandStore;
+    if (!store || (route !== "model" && route !== "function_call")) {
+      return false;
+    }
+    const candidate = createLearningCandidate({
+      rawText: plan.sourceText,
+      normalizedText: plan.normalizedText,
+      plan,
+      call,
+      result,
+      now: this.options.now
+    });
+    if (!candidate) return false;
+    try {
+      await store.addCandidate(candidate);
+      this.pendingLearningCandidate = candidate;
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async audit(event: AssistantAuditEvent): Promise<void> {

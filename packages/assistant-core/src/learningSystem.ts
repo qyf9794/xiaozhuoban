@@ -71,8 +71,12 @@ export class InMemoryLearnedCommandStorage implements LearnedCommandStorage {
 export function canAutoLearn(candidate: Pick<LearningCandidate, "risk" | "type" | "args">): boolean {
   if (candidate.risk !== "safe") return false;
   if (candidate.type === "macro" || candidate.type === "parameter_default") return false;
-  const joinedArgs = JSON.stringify(candidate.args).toLowerCase();
-  return !/(token|password|secret|密码|口令|密钥)/.test(joinedArgs);
+  return !containsSensitiveLearningText(candidate.args);
+}
+
+export function containsSensitiveLearningText(value: unknown): boolean {
+  const text = typeof value === "string" ? value : JSON.stringify(value ?? "");
+  return /(token|password|secret|密码|口令|密钥|api[_-]?key|access[_-]?key)/i.test(text);
 }
 
 export function createLearningCandidate(input: {
@@ -86,6 +90,7 @@ export function createLearningCandidate(input: {
   if (input.result.status !== "success") return null;
   const command = input.plan.commands.find((item) => item.tool === input.call.name) ?? input.plan.commands[0];
   if (!command || command.confidence < 0.65) return null;
+  if (containsSensitiveLearningText(input.rawText) || containsSensitiveLearningText(command.args)) return null;
   return {
     id: `learn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     type: input.plan.commands.length > 1 ? "macro" : "shortcut_alias",
@@ -98,7 +103,7 @@ export function createLearningCandidate(input: {
     risk: command.risk,
     confidence: command.confidence,
     source: input.plan.createdBy === "text-llm" ? "text-success" : "realtime-success",
-    status: canAutoLearn({ type: "shortcut_alias", risk: command.risk, args: command.args }) ? "candidate" : "candidate",
+    status: "candidate",
     createdAt: input.now?.() ?? new Date().toISOString(),
     regressionCase: {
       input: input.rawText,
@@ -120,8 +125,17 @@ export class LearnedCommandStore {
     if (bucket.some((item) => item.normalizedText === candidate.normalizedText && item.tool !== candidate.tool)) {
       throw new Error("学习规则与已有规则冲突");
     }
-    bucket.push(candidate);
+    const existingIndex = bucket.findIndex((item) => item.normalizedText === candidate.normalizedText && item.tool === candidate.tool);
+    if (existingIndex >= 0) {
+      bucket[existingIndex] = { ...candidate, id: bucket[existingIndex].id, status: bucket[existingIndex].status };
+    } else {
+      bucket.push(candidate);
+    }
     await this.storage.save(snapshot);
+  }
+
+  async list(): Promise<LearnedCommandStoreSnapshot> {
+    return this.storage.load();
   }
 
   async confirm(id: string): Promise<boolean> {
@@ -130,6 +144,16 @@ export class LearnedCommandStore {
     const candidate = all.find((item) => item.id === id);
     if (!candidate) return false;
     candidate.status = "confirmed";
+    await this.storage.save(snapshot);
+    return true;
+  }
+
+  async reject(id: string): Promise<boolean> {
+    const snapshot = await this.storage.load();
+    const all = Object.values(snapshot).flat();
+    const candidate = all.find((item) => item.id === id);
+    if (!candidate) return false;
+    candidate.status = "rejected";
     await this.storage.save(snapshot);
     return true;
   }

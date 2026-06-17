@@ -11,7 +11,7 @@ export * from "./moduleTestRunner";
 
 export type AssistantActionRisk = "safe" | "confirm" | "destructive";
 
-export type AssistantToolSource = "shortcut" | "realtime" | "text" | "test";
+export type AssistantToolSource = "shortcut" | "realtime" | "text" | "learned" | "test";
 
 export type AssistantToolScopeKind = "desktop" | "widget-selection" | "widget-detail" | "deferred";
 

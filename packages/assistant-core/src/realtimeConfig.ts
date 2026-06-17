@@ -23,7 +23,7 @@ export interface CommandPlanStep {
   risk: "safe" | "confirm" | "destructive";
   confidence: number;
   dependsOn?: string[];
-  source: "shortcut" | "realtime" | "text" | "test";
+  source: "shortcut" | "realtime" | "text" | "learned" | "test";
   requiresHarnessValidation: true;
 }
 
@@ -55,7 +55,7 @@ export interface LegacyCommandPlanStep {
   id: string;
   toolName: string;
   args: Record<string, unknown>;
-  source: "shortcut" | "realtime" | "text" | "test";
+  source: "shortcut" | "realtime" | "text" | "learned" | "test";
   requiresHarnessValidation: true;
 }
 

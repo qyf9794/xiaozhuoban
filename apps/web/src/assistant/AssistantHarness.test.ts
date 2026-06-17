@@ -4,6 +4,7 @@ import {
   ContextSummarizer,
   ToolScopeManager,
   WidgetTargetResolver,
+  LearnedCommandStore,
   createDefaultIntentShortcutRouter,
   createPassthroughSchema,
   type AssistantToolCall,
@@ -191,6 +192,7 @@ function createHarness(options?: {
   actionTimeoutMs?: number;
   registryFactory?: () => ReturnType<typeof createRegistry>;
   getContextInput?: () => ContextSummarizerInput;
+  learnedCommandStore?: LearnedCommandStore;
 }) {
   const registryState = options?.registryFactory?.() ?? createRegistry();
   const toolUpdates: string[][] = [];
@@ -219,6 +221,7 @@ function createHarness(options?: {
     toolScopeManager: new ToolScopeManager(createTools()),
     contextSummarizer: new ContextSummarizer(),
     realtime,
+    learnedCommandStore: options?.learnedCommandStore,
     audit: {
       write(event) {
         auditEvents.push(event);
@@ -352,6 +355,62 @@ describe("AssistantHarness", () => {
     expect(response.route).toBe("model");
     expect(response.result.status).toBe("success");
     expect(executed).toEqual(["widget.focus:none"]);
+  });
+
+  it("turns successful model fallback into a confirmed learned local shortcut", async () => {
+    const learnedCommandStore = new LearnedCommandStore();
+    const { harness, executed, auditEvents } = createHarness({
+      learnedCommandStore,
+      modelCall: {
+        id: "model_close_music",
+        name: "widget.remove",
+        arguments: { widgetId: "wi_tv" },
+        source: "realtime"
+      }
+    });
+    await harness.initialize();
+
+    const first = await harness.handleUserInput("执行我的电视收纳暗号");
+
+    expect(first.route).toBe("model");
+    expect(first.result.status).toBe("success");
+    expect(harness.getPendingConfirmation()).toMatchObject({
+      actionName: "assistant.learn",
+      message: "要记住“执行我的电视收纳暗号”下次直接执行 widget.remove 吗？"
+    });
+    expect(auditEvents.at(-1)).toMatchObject({ learningCandidate: true });
+
+    const confirmed = await harness.handleUserInput("确认");
+    expect(confirmed.route).toBe("learned");
+    expect(confirmed.result.status).toBe("success");
+    expect(await learnedCommandStore.match("执行我的电视收纳暗号")).toMatchObject({ tool: "widget.remove", status: "confirmed" });
+
+    executed.length = 0;
+    const second = await harness.handleUserInput("执行我的电视收纳暗号");
+
+    expect(second.route).toBe("learned");
+    expect(second.result.status).toBe("success");
+    expect(executed).toEqual(["widget.remove:none"]);
+  });
+
+  it("does not create learned candidates for sensitive model fallback payloads", async () => {
+    const learnedCommandStore = new LearnedCommandStore();
+    const { harness } = createHarness({
+      learnedCommandStore,
+      modelCall: {
+        id: "model_sensitive",
+        name: "note.append",
+        arguments: { widgetId: "wi_note", content: "password=abc123" },
+        source: "realtime"
+      }
+    });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("执行敏感内容存储暗号");
+
+    expect(response.result.status).toBe("success");
+    expect(harness.getPendingConfirmation()).toBeNull();
+    expect((await learnedCommandStore.list()).shortcuts).toEqual([]);
   });
 
   it("syncs realtime tools to a focused widget after successful focus", async () => {
