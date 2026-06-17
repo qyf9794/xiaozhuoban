@@ -470,6 +470,17 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes half-hour countdown duration commands", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("半小时倒计时", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("countdown.set");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_countdown", totalSeconds: 1800, start: true });
+    }
+  });
+
   it("routes countdown duration commands to add-and-start when the widget is absent", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("十分钟倒计时", {
@@ -511,6 +522,24 @@ describe("IntentShortcutRouter", () => {
     if (reset.matched) {
       expect(reset.toolCall.name).toBe("countdown.reset");
       expect(reset.toolCall.arguments).toEqual({ widgetId: "wi_countdown" });
+    }
+  });
+
+  it("routes cancel countdown wording as pausing instead of removing the widget", () => {
+    const router = createDefaultIntentShortcutRouter();
+
+    const cancel = router.route("取消倒计时", context);
+    const finish = router.route("结束计时器", context);
+
+    expect(cancel.matched).toBe(true);
+    expect(finish.matched).toBe(true);
+    if (cancel.matched) {
+      expect(cancel.toolCall.name).toBe("countdown.pause");
+      expect(cancel.toolCall.arguments).toEqual({ widgetId: "wi_countdown" });
+    }
+    if (finish.matched) {
+      expect(finish.toolCall.name).toBe("countdown.pause");
+      expect(finish.toolCall.arguments).toEqual({ widgetId: "wi_countdown" });
     }
   });
 

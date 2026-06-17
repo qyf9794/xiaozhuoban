@@ -1166,7 +1166,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         if (!widget) return { matched: false, reason: "countdown_target_missing" };
         const wantsReset = /(重置|复位|归零|重新来|重新开始)/.test(normalized);
         const wantsResume = /(继续|恢复|接着|启动|开始)/.test(normalized);
-        const wantsPause = /(暂停|停止|停一下|停住|停掉|先停)/.test(normalized);
+        const wantsPause = /(暂停|停止|停一下|停住|停掉|先停|取消|结束)/.test(normalized);
         const action = wantsReset ? "reset" : wantsResume ? "resume" : wantsPause ? "pause" : "";
         if (!action) return { matched: false, reason: "countdown_control_intent_missing" };
         return shortcutMatch(
