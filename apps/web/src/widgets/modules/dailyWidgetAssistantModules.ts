@@ -52,36 +52,6 @@ const seeds: DailyWidgetModuleSeed[] = [
     ]
   },
   {
-    type: "market",
-    aliases: ["行情", "市场", "指数", "美股", "A股", "港股"],
-    capabilities: ["打开行情", "查询指数", "刷新行情", "关闭窗口"],
-    shortcutExamples: ["美股怎么样", "A股行情", "看恒生指数"],
-    shortcuts: [
-      { id: "market.indices", intent: "market_indices", actions: ["行情", "指数"], examples: ["美股怎么样", "A股行情"], risk: "safe" }
-    ],
-    executionPolicy: { ...defaultExecutionPolicy, defaultMode: "latest-wins" }
-  },
-  {
-    type: "calculator",
-    aliases: ["计算器", "计算", "算一下"],
-    capabilities: ["打开计算器", "展示计算结果", "关闭窗口"],
-    shortcutExamples: ["12加30是多少", "12乘以8"],
-    shortcuts: [
-      { id: "calculator.calculate", intent: "calculate", actions: ["计算", "算"], examples: ["12加30是多少"], risk: "safe" }
-    ],
-    executionPolicy: { ...defaultExecutionPolicy, defaultMode: "latest-wins" }
-  },
-  {
-    type: "translate",
-    aliases: ["翻译", "翻译器", "什么意思"],
-    capabilities: ["打开翻译", "翻译文本", "设置目标语言", "关闭窗口"],
-    shortcutExamples: ["翻译一下 hello", "hello 是什么意思"],
-    shortcuts: [
-      { id: "translate.draft", intent: "translate_text", actions: ["翻译"], examples: ["翻译一下 hello"], risk: "safe" }
-    ],
-    executionPolicy: { ...defaultExecutionPolicy, defaultMode: "latest-wins" }
-  },
-  {
     type: "recorder",
     aliases: ["录音", "录制", "录音机"],
     capabilities: ["开始录音", "播放录音", "暂停录音", "关闭窗口"],
@@ -129,21 +99,6 @@ const toolArgSchemas: Record<string, ReturnType<typeof createStrictObjectSchema>
     mode: { type: "string", enum: ["replace", "append"] }
   }),
   "note.clear": widgetIdArgsSchema,
-  "calculator.set_display": createStrictObjectSchema({
-    widgetId: { type: "string", required: true },
-    display: { type: ["string", "number"], required: true }
-  }),
-  "market.set_indices": createStrictObjectSchema({
-    widgetId: { type: "string", required: true },
-    indexCode: { type: "string" },
-    indexCodes: { type: "array" }
-  }),
-  "translate.set_draft": createStrictObjectSchema({
-    widgetId: { type: "string", required: true },
-    sourceText: { type: "string", required: true },
-    sourceLang: { type: "string" },
-    targetLang: { type: "string" }
-  }),
   "tv.play": widgetIdArgsSchema,
   "tv.pause": widgetIdArgsSchema,
   "tv.fullscreen": widgetIdArgsSchema,

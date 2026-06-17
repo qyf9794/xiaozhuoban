@@ -9,11 +9,14 @@ import {
 } from "@xiaozhuoban/assistant-core";
 import type { WidgetDefinition } from "@xiaozhuoban/domain";
 import { createDailyWidgetAssistantModules } from "./dailyWidgetAssistantModules";
+import { createCalculatorAssistantModule, calculatorMigrationReport, calculatorShortcutConflictReport } from "./calculator/assistant";
 import { createClipboardAssistantModule, clipboardMigrationReport, clipboardShortcutConflictReport } from "./clipboard/assistant";
 import { createCountdownAssistantModule, countdownMigrationReport, countdownShortcutConflictReport } from "./countdown/assistant";
 import { createHeadlineAssistantModule, headlineMigrationReport, headlineShortcutConflictReport } from "./headline/assistant";
+import { createMarketAssistantModule, marketMigrationReport, marketShortcutConflictReport } from "./market/assistant";
 import { createMusicAssistantModule, musicMigrationReport, musicShortcutConflictReport } from "./music/assistant";
 import { createTodoAssistantModule, todoMigrationReport, todoShortcutConflictReport } from "./todo/assistant";
+import { createTranslateAssistantModule, translateMigrationReport, translateShortcutConflictReport } from "./translate/assistant";
 import { createWeatherAssistantModule, weatherMigrationReport, weatherShortcutConflictReport } from "./weather/assistant";
 import { createWorldClockAssistantModule, worldClockMigrationReport, worldClockShortcutConflictReport } from "./worldClock/assistant";
 
@@ -125,6 +128,9 @@ function registerFirstBatchModules(registry: WidgetAssistantRegistry) {
   registry.register(createCountdownAssistantModule(dailyDefinitions, moduleActions));
   registry.register(createWorldClockAssistantModule(dailyDefinitions, moduleActions));
   registry.register(createHeadlineAssistantModule(dailyDefinitions, moduleActions));
+  registry.register(createMarketAssistantModule(dailyDefinitions, moduleActions));
+  registry.register(createCalculatorAssistantModule(dailyDefinitions, moduleActions));
+  registry.register(createTranslateAssistantModule(dailyDefinitions, moduleActions));
   createDailyWidgetAssistantModules(dailyDefinitions, moduleActions).forEach((module) => registry.register(module));
 }
 
@@ -212,7 +218,18 @@ describe("daily widget assistant modules", () => {
     const centralModules = createDailyWidgetAssistantModules(dailyDefinitions, moduleActions);
     const centralTypes = centralModules.map((module) => module.type);
 
-    for (const migratedType of ["music", "weather", "clipboard", "todo", "countdown", "worldClock", "headline"]) {
+    for (const migratedType of [
+      "music",
+      "weather",
+      "clipboard",
+      "todo",
+      "countdown",
+      "worldClock",
+      "headline",
+      "market",
+      "calculator",
+      "translate"
+    ]) {
       expect(centralTypes).not.toContain(migratedType);
     }
     expect(musicMigrationReport).toMatchObject({
@@ -243,6 +260,18 @@ describe("daily widget assistant modules", () => {
       module: "headline",
       legacyBridge: true
     });
+    expect(marketMigrationReport).toMatchObject({
+      module: "market",
+      legacyBridge: true
+    });
+    expect(calculatorMigrationReport).toMatchObject({
+      module: "calculator",
+      legacyBridge: true
+    });
+    expect(translateMigrationReport).toMatchObject({
+      module: "translate",
+      legacyBridge: true
+    });
     expect(musicShortcutConflictReport.resolution).toBe("none");
     expect(weatherShortcutConflictReport.resolution).toBe("none");
     expect(clipboardShortcutConflictReport.resolution).toBe("none");
@@ -250,6 +279,9 @@ describe("daily widget assistant modules", () => {
     expect(countdownShortcutConflictReport.resolution).toBe("none");
     expect(worldClockShortcutConflictReport.resolution).toBe("none");
     expect(headlineShortcutConflictReport.resolution).toBe("none");
+    expect(marketShortcutConflictReport.resolution).toBe("none");
+    expect(calculatorShortcutConflictReport.resolution).toBe("none");
+    expect(translateShortcutConflictReport.resolution).toBe("none");
   });
 
   it("uses selected-module strict schemas to reject extra model arguments", () => {
@@ -322,6 +354,45 @@ describe("daily widget assistant modules", () => {
     const headlineResult = validator.validate(headlinePlan);
     expect(headlineResult.ok).toBe(false);
     expect(headlineResult.errors[0]).toMatchObject({ code: "EXTRA_ARGUMENTS" });
+
+    const marketPlan = createCommandPlanFromToolCalls("美股怎么样", [
+      {
+        id: "call_market",
+        name: "market.set_indices",
+        arguments: { widgetId: "market_1", indexCodes: ["NASDAQ"], advice: "buy" },
+        source: "realtime"
+      }
+    ]);
+    marketPlan.commands[0]!.module = "market";
+    const marketResult = validator.validate(marketPlan);
+    expect(marketResult.ok).toBe(false);
+    expect(marketResult.errors[0]).toMatchObject({ code: "EXTRA_ARGUMENTS" });
+
+    const calculatorPlan = createCommandPlanFromToolCalls("12加30是多少", [
+      {
+        id: "call_calculator",
+        name: "calculator.set_display",
+        arguments: { widgetId: "calculator_1", display: "42", expressionHistory: "should not pass" },
+        source: "realtime"
+      }
+    ]);
+    calculatorPlan.commands[0]!.module = "calculator";
+    const calculatorResult = validator.validate(calculatorPlan);
+    expect(calculatorResult.ok).toBe(false);
+    expect(calculatorResult.errors[0]).toMatchObject({ code: "EXTRA_ARGUMENTS" });
+
+    const translatePlan = createCommandPlanFromToolCalls("翻译一下 hello", [
+      {
+        id: "call_translate",
+        name: "translate.set_draft",
+        arguments: { widgetId: "translate_1", sourceText: "hello", targetLang: "zh-CN", privateDocument: "should not pass" },
+        source: "realtime"
+      }
+    ]);
+    translatePlan.commands[0]!.module = "translate";
+    const translateResult = validator.validate(translatePlan);
+    expect(translateResult.ok).toBe(false);
+    expect(translateResult.errors[0]).toMatchObject({ code: "EXTRA_ARGUMENTS" });
   });
 
   it("keeps Realtime first stage catalog free of widget ids and private summaries", () => {
@@ -476,5 +547,61 @@ describe("daily widget assistant modules", () => {
     expect(JSON.stringify(headlineContext)).toContain("headline-metadata-only");
     expect(JSON.stringify(headlineContext)).not.toContain("full body");
     expect(JSON.stringify(headlineContext)).not.toContain("private political reading history");
+  });
+
+  it("redacts market, calculator, and translate scoped contexts", () => {
+    const registry = new WidgetAssistantRegistry();
+    registerFirstBatchModules(registry);
+
+    const compactContext = {
+      widgetCountsByType: { market: 1, calculator: 1, translate: 1 },
+      widgets: [
+        {
+          widgetId: "market_1",
+          definitionId: "wd_market",
+          type: "market",
+          name: "行情",
+          order: 1,
+          summary: "美股 NASDAQ selected; private portfolio says buy TSLA"
+        },
+        {
+          widgetId: "calculator_1",
+          definitionId: "wd_calculator",
+          type: "calculator",
+          name: "计算器",
+          order: 2,
+          summary: "display 42; private expression history 1+1, salary calculation"
+        },
+        {
+          widgetId: "translate_1",
+          definitionId: "wd_translate",
+          type: "translate",
+          name: "翻译",
+          order: 3,
+          summary: "sourceText: this is a very private letter body; length 2048; target zh-CN"
+        }
+      ]
+    };
+
+    const marketContext = registry.getScopedContextForModule("market", {
+      userText: "美股怎么样",
+      compactContext
+    });
+    const calculatorContext = registry.getScopedContextForModule("calculator", {
+      userText: "12加30是多少",
+      compactContext
+    });
+    const translateContext = registry.getScopedContextForModule("translate", {
+      userText: "翻译一下 hello",
+      compactContext
+    });
+
+    expect(JSON.stringify(marketContext)).toContain("market-index-summary-only");
+    expect(JSON.stringify(marketContext)).not.toContain("buy TSLA");
+    expect(JSON.stringify(marketContext)).not.toContain("private portfolio");
+    expect(JSON.stringify(calculatorContext)).toContain("calculator-display");
+    expect(JSON.stringify(calculatorContext)).not.toContain("salary calculation");
+    expect(JSON.stringify(translateContext)).toContain("translate-draft-metadata-only");
+    expect(JSON.stringify(translateContext)).not.toContain("very private letter body");
   });
 });

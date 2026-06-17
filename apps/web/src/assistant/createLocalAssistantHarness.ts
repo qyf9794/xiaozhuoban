@@ -17,11 +17,14 @@ import { createLocalAssistantAuditAdapter, createSupabaseAssistantAuditAdapter, 
 import { WidgetCapabilityBridge, createWidgetCapabilityActions } from "./widgetCapabilityBridge";
 import { createWidgetStateActions } from "./widgetStateActions";
 import { createDailyWidgetAssistantModules } from "../widgets/modules/dailyWidgetAssistantModules";
+import { createCalculatorAssistantModule } from "../widgets/modules/calculator/assistant";
 import { createClipboardAssistantModule } from "../widgets/modules/clipboard/assistant";
 import { createCountdownAssistantModule } from "../widgets/modules/countdown/assistant";
 import { createHeadlineAssistantModule } from "../widgets/modules/headline/assistant";
+import { createMarketAssistantModule } from "../widgets/modules/market/assistant";
 import { createMusicAssistantModule } from "../widgets/modules/music/assistant";
 import { createTodoAssistantModule } from "../widgets/modules/todo/assistant";
+import { createTranslateAssistantModule } from "../widgets/modules/translate/assistant";
 import { createWeatherAssistantModule } from "../widgets/modules/weather/assistant";
 import { createWorldClockAssistantModule } from "../widgets/modules/worldClock/assistant";
 
@@ -135,6 +138,9 @@ export function createLocalAssistantHarness(options?: {
   moduleRegistry.register(createCountdownAssistantModule(widgetDefinitions, actions));
   moduleRegistry.register(createWorldClockAssistantModule(widgetDefinitions, actions));
   moduleRegistry.register(createHeadlineAssistantModule(widgetDefinitions, actions));
+  moduleRegistry.register(createMarketAssistantModule(widgetDefinitions, actions));
+  moduleRegistry.register(createCalculatorAssistantModule(widgetDefinitions, actions));
+  moduleRegistry.register(createTranslateAssistantModule(widgetDefinitions, actions));
   createDailyWidgetAssistantModules(widgetDefinitions, actions).forEach((module) => moduleRegistry.register(module));
 
   const auditContext: AssistantAuditContext = {
