@@ -5,10 +5,23 @@ import {
   createPassthroughSchema,
   runWidgetModuleStaticChecks,
   WidgetAssistantRegistry,
-  type AssistantAction
+  type AssistantAction,
+  type WidgetModuleTestCase
 } from "@xiaozhuoban/assistant-core";
 import type { WidgetDefinition } from "@xiaozhuoban/domain";
+import calculatorTestCases from "./calculator/test-cases.json";
 import { createDailyWidgetAssistantModules } from "./dailyWidgetAssistantModules";
+import clipboardTestCases from "./clipboard/test-cases.json";
+import countdownTestCases from "./countdown/test-cases.json";
+import headlineTestCases from "./headline/test-cases.json";
+import marketTestCases from "./market/test-cases.json";
+import musicTestCases from "./music/test-cases.json";
+import recorderTestCases from "./recorder/test-cases.json";
+import todoTestCases from "./todo/test-cases.json";
+import translateTestCases from "./translate/test-cases.json";
+import tvTestCases from "./tv/test-cases.json";
+import weatherTestCases from "./weather/test-cases.json";
+import worldClockTestCases from "./worldClock/test-cases.json";
 import { createCalculatorAssistantModule, calculatorMigrationReport, calculatorShortcutConflictReport } from "./calculator/assistant";
 import { createClipboardAssistantModule, clipboardMigrationReport, clipboardShortcutConflictReport } from "./clipboard/assistant";
 import { createCountdownAssistantModule, countdownMigrationReport, countdownShortcutConflictReport } from "./countdown/assistant";
@@ -128,6 +141,21 @@ const dailyDefinitions = [
   definition("tv", "电视")
 ];
 
+const testCasesByModule: Record<string, WidgetModuleTestCase[]> = {
+  calculator: calculatorTestCases as WidgetModuleTestCase[],
+  clipboard: clipboardTestCases as WidgetModuleTestCase[],
+  countdown: countdownTestCases as WidgetModuleTestCase[],
+  headline: headlineTestCases as WidgetModuleTestCase[],
+  market: marketTestCases as WidgetModuleTestCase[],
+  music: musicTestCases as WidgetModuleTestCase[],
+  recorder: recorderTestCases as WidgetModuleTestCase[],
+  todo: todoTestCases as WidgetModuleTestCase[],
+  translate: translateTestCases as WidgetModuleTestCase[],
+  tv: tvTestCases as WidgetModuleTestCase[],
+  weather: weatherTestCases as WidgetModuleTestCase[],
+  worldClock: worldClockTestCases as WidgetModuleTestCase[]
+};
+
 function registerFirstBatchModules(registry: WidgetAssistantRegistry) {
   registry.register(createMusicAssistantModule(dailyDefinitions, moduleActions));
   registry.register(createWeatherAssistantModule(dailyDefinitions, moduleActions));
@@ -221,6 +249,28 @@ describe("daily widget assistant modules", () => {
         "toolSchemas",
         "tools"
       ]);
+    }
+  });
+
+  it("covers every migrated module test matrix category, action, risk, and scoped context field", () => {
+    const registry = new WidgetAssistantRegistry();
+    registerFirstBatchModules(registry);
+
+    for (const [moduleType, testCases] of Object.entries(testCasesByModule)) {
+      const module = registry.get(moduleType);
+      expect(module, `${moduleType}: module missing`).toBeTruthy();
+      const report = runWidgetModuleStaticChecks(registry, module!, testCases);
+
+      expect(report.ok, `${moduleType}: ${report.issues.join(", ")}`).toBe(true);
+      expect(report.uncoveredActions, `${moduleType}: uncovered actions`).toEqual([]);
+      expect(report.uncoveredRisks, `${moduleType}: uncovered risks`).toEqual([]);
+      expect(report.uncoveredContextFields, `${moduleType}: uncovered context fields`).toEqual([]);
+      expect(report.missingCoverageCategories, `${moduleType}: missing categories`).toEqual([]);
+      expect(report.regressionCandidates.length, `${moduleType}: failure regression candidates`).toBeGreaterThan(0);
+      if (moduleType === "music" || moduleType === "recorder" || moduleType === "tv") {
+        expect(report.coveredCategories, `${moduleType}: mounted capability coverage`).toContain("mountedCapability");
+        expect(report.coveredCategories, `${moduleType}: permission coverage`).toContain("permissionOrAuth");
+      }
     }
   });
 

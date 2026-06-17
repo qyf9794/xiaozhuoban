@@ -2,11 +2,37 @@
   {
     "id": "todo-reminder-001",
     "input": "下午三点叫我开会",
-    "expected": { "module": "todo", "tool": "todo.add_item", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+    "expected": { "module": "todo", "tool": "todo.add_item", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": {
+      "categories": ["singleTool", "scopedContextRedaction", "auditRedaction"],
+      "actions": ["board.add_widget", "widget.focus", "widget.fullscreen_focus", "widget.remove", "todo.add_item", "todo.complete_item"],
+      "risks": ["safe"],
+      "contextFields": ["moduleType", "tools", "toolSchemas", "instances", "stateSummary", "shortcutExamples", "executionPolicy", "riskPolicy"]
+    }
   },
   {
     "id": "todo-complete-001",
     "input": "把买牛奶勾掉",
-    "expected": { "module": "todo", "tool": "todo.complete_item", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+    "expected": { "module": "todo", "tool": "todo.complete_item", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": { "categories": ["learningRegression"] }
+  },
+  {
+    "id": "todo-window-cross-001",
+    "input": "打开待办，然后添加一条：明天买牛奶",
+    "expected": { "module": "todo", "tool": "todo.add_item", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": { "categories": ["windowControl", "crossTool"] }
+  },
+  {
+    "id": "todo-noisy-fallback-001",
+    "input": "嗯，记一下，明天买牛奶",
+    "expected": { "module": "todo", "tool": "todo.add_item", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["noisySpeech", "realtimeFallback", "permissionOrAuth"] }
+  },
+  {
+    "id": "todo-missing-item-001",
+    "input": "添加待办",
+    "expected": { "module": "todo", "tool": "todo.add_item", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["missingArgs"] },
+    "failure": { "reason": "缺少待办内容时应澄清，不能生成空待办", "regressionCandidate": true }
   }
 ]

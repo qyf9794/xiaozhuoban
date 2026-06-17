@@ -2,6 +2,37 @@
   {
     "id": "weather-city-001",
     "input": "帮我查一下北京天气",
-    "expected": { "module": "weather", "tool": "weather.set_city", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+    "expected": { "module": "weather", "tool": "weather.set_city", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": {
+      "categories": ["singleTool", "scopedContextRedaction", "auditRedaction"],
+      "actions": ["board.add_widget", "widget.focus", "widget.fullscreen_focus", "widget.remove", "weather.set_city"],
+      "risks": ["safe"],
+      "contextFields": ["moduleType", "tools", "toolSchemas", "instances", "stateSummary", "shortcutExamples", "executionPolicy", "riskPolicy"]
+    }
+  },
+  {
+    "id": "weather-window-001",
+    "input": "打开天气再关闭天气",
+    "expected": { "module": "weather", "tool": "widget.remove", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": { "categories": ["windowControl", "crossTool"] }
+  },
+  {
+    "id": "weather-noisy-001",
+    "input": "嗯，帮我看下北京天气吧",
+    "expected": { "module": "weather", "tool": "weather.set_city", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": { "categories": ["noisySpeech"] }
+  },
+  {
+    "id": "weather-fallback-learning-001",
+    "input": "外面冷不冷",
+    "expected": { "module": "weather", "tool": "weather.set_city", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["realtimeFallback", "learningRegression", "permissionOrAuth"] }
+  },
+  {
+    "id": "weather-missing-city-001",
+    "input": "查天气",
+    "expected": { "module": "weather", "tool": "weather.set_city", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["missingArgs"] },
+    "failure": { "reason": "没有城市且无安全默认城市时应澄清", "regressionCandidate": true }
   }
 ]

@@ -2,11 +2,37 @@
   {
     "id": "clipboard-add-001",
     "input": "复制账号 demo 到剪贴板",
-    "expected": { "module": "clipboard", "tool": "clipboard.add_text", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+    "expected": { "module": "clipboard", "tool": "clipboard.add_text", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": {
+      "categories": ["singleTool", "scopedContextRedaction", "auditRedaction"],
+      "actions": ["board.add_widget", "widget.focus", "widget.fullscreen_focus", "widget.remove", "clipboard.add_text", "clipboard.clear"],
+      "risks": ["safe", "destructive"],
+      "contextFields": ["moduleType", "tools", "toolSchemas", "instances", "stateSummary", "shortcutExamples", "executionPolicy", "riskPolicy"]
+    }
   },
   {
     "id": "clipboard-clear-confirm-001",
     "input": "清空剪贴板",
-    "expected": { "module": "clipboard", "tool": "clipboard.clear", "risk": "destructive", "needsRealtime": false, "needsConfirmation": true }
+    "expected": { "module": "clipboard", "tool": "clipboard.clear", "risk": "destructive", "needsRealtime": false, "needsConfirmation": true },
+    "coverage": { "categories": ["windowControl"] }
+  },
+  {
+    "id": "clipboard-cross-tool-001",
+    "input": "清空剪贴板，然后添加一条待办：明天买牛奶",
+    "expected": { "module": "clipboard", "tool": "clipboard.clear", "risk": "destructive", "needsRealtime": false, "needsConfirmation": true },
+    "coverage": { "categories": ["crossTool", "realtimeFallback"] }
+  },
+  {
+    "id": "clipboard-noisy-learning-001",
+    "input": "把这个，呃，保存到剪贴板",
+    "expected": { "module": "clipboard", "tool": "clipboard.add_text", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["noisySpeech", "learningRegression", "permissionOrAuth"] }
+  },
+  {
+    "id": "clipboard-missing-content-001",
+    "input": "复制到剪贴板",
+    "expected": { "module": "clipboard", "tool": "clipboard.add_text", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["missingArgs"] },
+    "failure": { "reason": "缺少要写入的内容时应澄清，不能读取完整私密剪贴板上下文补全", "regressionCandidate": true }
   }
 ]

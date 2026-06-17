@@ -1,6 +1,19 @@
 import type { AssistantActionRisk } from "./index";
 import type { RealtimeScopedModuleContext, WidgetAssistantModule, WidgetAssistantRegistry } from "./moduleRegistry";
 
+export type WidgetModuleCoverageCategory =
+  | "singleTool"
+  | "noisySpeech"
+  | "missingArgs"
+  | "realtimeFallback"
+  | "crossTool"
+  | "windowControl"
+  | "permissionOrAuth"
+  | "learningRegression"
+  | "scopedContextRedaction"
+  | "auditRedaction"
+  | "mountedCapability";
+
 export interface WidgetModuleTestCase {
   id: string;
   input: string;
@@ -11,6 +24,16 @@ export interface WidgetModuleTestCase {
     needsRealtime?: boolean;
     needsConfirmation?: boolean;
   };
+  coverage?: {
+    categories?: WidgetModuleCoverageCategory[];
+    actions?: string[];
+    risks?: AssistantActionRisk[];
+    contextFields?: string[];
+  };
+  failure?: {
+    reason: string;
+    regressionCandidate?: boolean;
+  };
 }
 
 export interface WidgetModuleTestReport {
@@ -20,11 +43,45 @@ export interface WidgetModuleTestReport {
   coveredActions: string[];
   uncoveredActions: string[];
   risks: AssistantActionRisk[];
+  coveredRisks: AssistantActionRisk[];
+  uncoveredRisks: AssistantActionRisk[];
   scopedContextFields: string[];
+  coveredContextFields: string[];
+  uncoveredContextFields: string[];
+  coveredCategories: WidgetModuleCoverageCategory[];
+  missingCoverageCategories: WidgetModuleCoverageCategory[];
+  regressionCandidates: Array<{ id: string; input: string; reason: string }>;
 }
 
 function contextKeys(context: RealtimeScopedModuleContext): string[] {
   return Object.keys(context).sort();
+}
+
+const baseCoverageCategories: WidgetModuleCoverageCategory[] = [
+  "singleTool",
+  "noisySpeech",
+  "missingArgs",
+  "realtimeFallback",
+  "crossTool",
+  "windowControl",
+  "permissionOrAuth",
+  "learningRegression",
+  "scopedContextRedaction",
+  "auditRedaction"
+];
+
+const mediaCoverageCategories: WidgetModuleCoverageCategory[] = ["mountedCapability"];
+
+export function getRequiredCoverageCategories(module: WidgetAssistantModule): WidgetModuleCoverageCategory[] {
+  const categories = [...baseCoverageCategories];
+  if (["music", "recorder", "tv"].includes(module.type)) {
+    categories.push(...mediaCoverageCategories);
+  }
+  return categories;
+}
+
+function uniqueSorted<T extends string>(values: T[]): T[] {
+  return [...new Set(values)].sort();
 }
 
 export function validateWidgetModuleCompleteness(module: WidgetAssistantModule): string[] {
@@ -67,10 +124,24 @@ export function runWidgetModuleStaticChecks(
   if (!context) {
     issues.push("module missing scoped context");
   }
-  const coveredActions = [...new Set(testCases.map((item) => item.expected.tool).filter((tool): tool is string => Boolean(tool)))];
+  const coveredActions = uniqueSorted(
+    testCases.flatMap((item) => [...(item.expected.tool ? [item.expected.tool] : []), ...(item.coverage?.actions ?? [])])
+  );
   const actionNames = module.tools.map((action) => action.spec.name);
   const uncoveredActions = actionNames.filter((name) => !coveredActions.includes(name));
-  const risks = [...new Set(module.tools.map((action) => action.spec.risk ?? "safe"))];
+  const risks = uniqueSorted(module.tools.map((action) => action.spec.risk ?? "safe"));
+  const coveredRisks = uniqueSorted(
+    testCases.flatMap((item) => [...(item.expected.risk ? [item.expected.risk] : []), ...(item.coverage?.risks ?? [])])
+  );
+  const uncoveredRisks = risks.filter((risk) => !coveredRisks.includes(risk));
+  const scopedContextFields = context ? contextKeys(context) : [];
+  const coveredContextFields = uniqueSorted(testCases.flatMap((item) => item.coverage?.contextFields ?? []));
+  const uncoveredContextFields = scopedContextFields.filter((field) => !coveredContextFields.includes(field));
+  const coveredCategories = uniqueSorted(testCases.flatMap((item) => item.coverage?.categories ?? []));
+  const missingCoverageCategories = getRequiredCoverageCategories(module).filter((category) => !coveredCategories.includes(category));
+  const regressionCandidates = testCases
+    .filter((item) => item.failure?.regressionCandidate)
+    .map((item) => ({ id: item.id, input: item.input, reason: item.failure?.reason ?? "failed command" }));
   return {
     module: module.type,
     ok: issues.length === 0,
@@ -78,6 +149,13 @@ export function runWidgetModuleStaticChecks(
     coveredActions,
     uncoveredActions,
     risks,
-    scopedContextFields: context ? contextKeys(context) : []
+    coveredRisks,
+    uncoveredRisks,
+    scopedContextFields,
+    coveredContextFields,
+    uncoveredContextFields,
+    coveredCategories,
+    missingCoverageCategories,
+    regressionCandidates
   };
 }

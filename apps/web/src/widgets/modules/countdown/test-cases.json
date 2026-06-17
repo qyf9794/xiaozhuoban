@@ -2,6 +2,37 @@
   {
     "id": "countdown-set-001",
     "input": "定时十分钟",
-    "expected": { "module": "countdown", "tool": "countdown.set", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+    "expected": { "module": "countdown", "tool": "countdown.set", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": {
+      "categories": ["singleTool", "scopedContextRedaction", "auditRedaction"],
+      "actions": ["board.add_widget", "widget.focus", "widget.fullscreen_focus", "widget.remove", "countdown.set", "countdown.pause", "countdown.resume", "countdown.reset"],
+      "risks": ["safe"],
+      "contextFields": ["moduleType", "tools", "toolSchemas", "instances", "stateSummary", "shortcutExamples", "executionPolicy", "riskPolicy"]
+    }
+  },
+  {
+    "id": "countdown-control-001",
+    "input": "暂停倒计时再继续",
+    "expected": { "module": "countdown", "tool": "countdown.resume", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": { "categories": ["crossTool", "learningRegression"] }
+  },
+  {
+    "id": "countdown-window-001",
+    "input": "打开倒计时然后关闭倒计时",
+    "expected": { "module": "countdown", "tool": "widget.remove", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": { "categories": ["windowControl"] }
+  },
+  {
+    "id": "countdown-noisy-fallback-001",
+    "input": "帮我，呃，倒数十分钟",
+    "expected": { "module": "countdown", "tool": "countdown.set", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["noisySpeech", "realtimeFallback", "permissionOrAuth"] }
+  },
+  {
+    "id": "countdown-missing-duration-001",
+    "input": "设个倒计时",
+    "expected": { "module": "countdown", "tool": "countdown.set", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["missingArgs"] },
+    "failure": { "reason": "缺少时长时应澄清，不能默认任意时长", "regressionCandidate": true }
   }
 ]

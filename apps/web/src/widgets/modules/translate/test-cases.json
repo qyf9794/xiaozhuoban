@@ -2,6 +2,31 @@
   {
     "id": "translate-default-001",
     "input": "翻译一下 hello",
-    "expected": { "module": "translate", "tool": "translate.set_draft", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+    "expected": { "module": "translate", "tool": "translate.set_draft", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": {
+      "categories": ["singleTool", "scopedContextRedaction", "auditRedaction"],
+      "actions": ["board.add_widget", "widget.focus", "widget.fullscreen_focus", "widget.remove", "translate.set_draft"],
+      "risks": ["safe"],
+      "contextFields": ["moduleType", "tools", "toolSchemas", "instances", "stateSummary", "shortcutExamples", "executionPolicy", "riskPolicy"]
+    }
+  },
+  {
+    "id": "translate-cross-001",
+    "input": "打开翻译，再把 hello 翻成中文",
+    "expected": { "module": "translate", "tool": "translate.set_draft", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": { "categories": ["crossTool", "windowControl"] }
+  },
+  {
+    "id": "translate-noisy-fallback-001",
+    "input": "那个，hello 是啥意思",
+    "expected": { "module": "translate", "tool": "translate.set_draft", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["noisySpeech", "realtimeFallback", "learningRegression", "permissionOrAuth"] }
+  },
+  {
+    "id": "translate-missing-text-001",
+    "input": "帮我翻译",
+    "expected": { "module": "translate", "tool": "translate.set_draft", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["missingArgs"] },
+    "failure": { "reason": "缺少源文本时应澄清，长文本不得默认进入 Realtime", "regressionCandidate": true }
   }
 ]

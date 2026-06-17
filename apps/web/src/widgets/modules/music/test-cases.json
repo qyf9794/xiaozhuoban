@@ -2,16 +2,37 @@
   {
     "id": "music-close-window-001",
     "input": "关闭音乐",
-    "expected": { "module": "music", "tool": "widget.remove", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+    "expected": { "module": "music", "tool": "widget.remove", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": {
+      "categories": ["singleTool", "windowControl", "scopedContextRedaction", "auditRedaction"],
+      "actions": ["board.add_widget", "widget.focus", "widget.fullscreen_focus", "widget.remove", "music.search", "music.play", "music.pause", "music.resume"],
+      "risks": ["safe"],
+      "contextFields": ["moduleType", "tools", "toolSchemas", "instances", "stateSummary", "shortcutExamples", "executionPolicy", "riskPolicy"]
+    }
   },
   {
     "id": "music-pause-playback-001",
     "input": "暂停音乐",
-    "expected": { "module": "music", "tool": "music.pause", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+    "expected": { "module": "music", "tool": "music.pause", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": { "categories": ["mountedCapability", "permissionOrAuth"] }
   },
   {
     "id": "music-sequential-search-play-001",
     "input": "先打开音乐，再搜索七里香，然后播放第一首",
-    "expected": { "module": "music", "tool": "music.play", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+    "expected": { "module": "music", "tool": "music.play", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": { "categories": ["crossTool", "realtimeFallback"] }
+  },
+  {
+    "id": "music-noisy-learned-001",
+    "input": "关闭，啊，这个，音乐",
+    "expected": { "module": "music", "tool": "widget.remove", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": { "categories": ["noisySpeech", "learningRegression"] }
+  },
+  {
+    "id": "music-missing-query-001",
+    "input": "播放",
+    "expected": { "module": "music", "tool": "music.play", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["missingArgs"] },
+    "failure": { "reason": "播放命令缺少歌曲或结果索引时应澄清，不能猜测播放目标", "regressionCandidate": true }
   }
 ]

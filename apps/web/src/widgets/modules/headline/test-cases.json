@@ -2,6 +2,31 @@
   {
     "id": "headline-refresh-001",
     "input": "今天有什么新闻",
-    "expected": { "module": "headline", "tool": "headline.request_refresh", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+    "expected": { "module": "headline", "tool": "headline.request_refresh", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": {
+      "categories": ["singleTool", "scopedContextRedaction", "auditRedaction"],
+      "actions": ["board.add_widget", "widget.focus", "widget.fullscreen_focus", "widget.remove", "headline.request_refresh"],
+      "risks": ["safe"],
+      "contextFields": ["moduleType", "tools", "toolSchemas", "instances", "stateSummary", "shortcutExamples", "executionPolicy", "riskPolicy"]
+    }
+  },
+  {
+    "id": "headline-cross-001",
+    "input": "暂停音乐，同时打开新闻",
+    "expected": { "module": "headline", "tool": "headline.request_refresh", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": { "categories": ["crossTool", "windowControl"] }
+  },
+  {
+    "id": "headline-noisy-fallback-001",
+    "input": "呃，看看今天大事",
+    "expected": { "module": "headline", "tool": "headline.request_refresh", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["noisySpeech", "realtimeFallback", "learningRegression", "permissionOrAuth"] }
+  },
+  {
+    "id": "headline-tv-confusion-001",
+    "input": "看央视新闻",
+    "expected": { "module": "headline", "tool": "headline.request_refresh", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["missingArgs"] },
+    "failure": { "reason": "电视频道命令不能被 headline 误吞，应转给 tv 或澄清", "regressionCandidate": true }
   }
 ]

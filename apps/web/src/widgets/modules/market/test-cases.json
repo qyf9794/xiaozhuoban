@@ -2,6 +2,31 @@
   {
     "id": "market-us-001",
     "input": "美股怎么样",
-    "expected": { "module": "market", "tool": "market.set_indices", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+    "expected": { "module": "market", "tool": "market.set_indices", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": {
+      "categories": ["singleTool", "scopedContextRedaction", "auditRedaction"],
+      "actions": ["board.add_widget", "widget.focus", "widget.fullscreen_focus", "widget.remove", "market.set_indices"],
+      "risks": ["safe"],
+      "contextFields": ["moduleType", "tools", "toolSchemas", "instances", "stateSummary", "shortcutExamples", "executionPolicy", "riskPolicy"]
+    }
+  },
+  {
+    "id": "market-cross-001",
+    "input": "打开行情，同时看新闻",
+    "expected": { "module": "market", "tool": "market.set_indices", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": { "categories": ["crossTool", "windowControl"] }
+  },
+  {
+    "id": "market-noisy-fallback-001",
+    "input": "那个，纳指今天如何",
+    "expected": { "module": "market", "tool": "market.set_indices", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["noisySpeech", "realtimeFallback", "learningRegression", "permissionOrAuth"] }
+  },
+  {
+    "id": "market-advice-block-001",
+    "input": "帮我买入特斯拉",
+    "expected": { "module": "market", "tool": "market.set_indices", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["missingArgs"] },
+    "failure": { "reason": "market 只做行情展示，不能提供投资建议或交易", "regressionCandidate": true }
   }
 ]

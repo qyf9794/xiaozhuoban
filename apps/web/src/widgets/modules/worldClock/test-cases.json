@@ -2,6 +2,31 @@
   {
     "id": "world-clock-en-001",
     "input": "NYC and Tokyo time",
-    "expected": { "module": "worldClock", "tool": "worldClock.set_zones", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+    "expected": { "module": "worldClock", "tool": "worldClock.set_zones", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": {
+      "categories": ["singleTool", "scopedContextRedaction", "auditRedaction"],
+      "actions": ["board.add_widget", "widget.focus", "widget.fullscreen_focus", "widget.remove", "worldClock.set_zones"],
+      "risks": ["safe"],
+      "contextFields": ["moduleType", "tools", "toolSchemas", "instances", "stateSummary", "shortcutExamples", "executionPolicy", "riskPolicy"]
+    }
+  },
+  {
+    "id": "world-clock-cross-001",
+    "input": "打开天气查北京，再打开世界时钟看东京时间",
+    "expected": { "module": "worldClock", "tool": "worldClock.set_zones", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": { "categories": ["crossTool", "windowControl"] }
+  },
+  {
+    "id": "world-clock-noisy-001",
+    "input": "那个，帮我看看东京几点",
+    "expected": { "module": "worldClock", "tool": "worldClock.set_zones", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["noisySpeech", "realtimeFallback", "learningRegression", "permissionOrAuth"] }
+  },
+  {
+    "id": "world-clock-missing-zone-001",
+    "input": "看下那边时间",
+    "expected": { "module": "worldClock", "tool": "worldClock.set_zones", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["missingArgs"] },
+    "failure": { "reason": "缺少城市/时区时应澄清，不能使用位置历史补全", "regressionCandidate": true }
   }
 ]

@@ -2,6 +2,37 @@
   {
     "id": "recorder-start-001",
     "input": "开始录制",
-    "expected": { "module": "recorder", "tool": "recorder.start", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+    "expected": { "module": "recorder", "tool": "recorder.start", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": {
+      "categories": ["singleTool", "scopedContextRedaction", "auditRedaction", "mountedCapability", "permissionOrAuth"],
+      "actions": ["board.add_widget", "widget.focus", "widget.fullscreen_focus", "widget.remove", "recorder.start", "recorder.stop", "recorder.play", "recorder.pause"],
+      "risks": ["safe"],
+      "contextFields": ["moduleType", "tools", "toolSchemas", "instances", "stateSummary", "shortcutExamples", "executionPolicy", "riskPolicy"]
+    }
+  },
+  {
+    "id": "recorder-control-001",
+    "input": "停止录制然后播放录音",
+    "expected": { "module": "recorder", "tool": "recorder.play", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": { "categories": ["crossTool", "learningRegression"] }
+  },
+  {
+    "id": "recorder-window-001",
+    "input": "打开录音机再关闭录音机",
+    "expected": { "module": "recorder", "tool": "widget.remove", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": { "categories": ["windowControl"] }
+  },
+  {
+    "id": "recorder-noisy-fallback-001",
+    "input": "嗯，开始记个声音",
+    "expected": { "module": "recorder", "tool": "recorder.start", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["noisySpeech", "realtimeFallback"] }
+  },
+  {
+    "id": "recorder-permission-conflict-001",
+    "input": "一边连接语音一边录音",
+    "expected": { "module": "recorder", "tool": "recorder.start", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["missingArgs"] },
+    "failure": { "reason": "录音与 Realtime 麦克风冲突时应给可见错误，不能同时抢占麦克风", "regressionCandidate": true }
   }
 ]

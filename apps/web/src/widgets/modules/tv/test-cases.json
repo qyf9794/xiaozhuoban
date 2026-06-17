@@ -2,6 +2,37 @@
   {
     "id": "tv-cctv-news-001",
     "input": "看央视新闻",
-    "expected": { "module": "tv", "tool": "tv.select_channel", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+    "expected": { "module": "tv", "tool": "tv.select_channel", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": {
+      "categories": ["singleTool", "scopedContextRedaction", "auditRedaction", "mountedCapability", "permissionOrAuth"],
+      "actions": ["board.add_widget", "widget.focus", "widget.fullscreen_focus", "widget.remove", "tv.play", "tv.pause", "tv.fullscreen", "tv.select_channel"],
+      "risks": ["safe"],
+      "contextFields": ["moduleType", "tools", "toolSchemas", "instances", "stateSummary", "shortcutExamples", "executionPolicy", "riskPolicy"]
+    }
+  },
+  {
+    "id": "tv-control-001",
+    "input": "暂停电视再播放电视",
+    "expected": { "module": "tv", "tool": "tv.play", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": { "categories": ["crossTool", "learningRegression"] }
+  },
+  {
+    "id": "tv-window-001",
+    "input": "打开电视然后关闭电视",
+    "expected": { "module": "tv", "tool": "widget.remove", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": { "categories": ["windowControl"] }
+  },
+  {
+    "id": "tv-noisy-fallback-001",
+    "input": "那个，给我放新闻台",
+    "expected": { "module": "tv", "tool": "tv.select_channel", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["noisySpeech", "realtimeFallback"] }
+  },
+  {
+    "id": "tv-missing-capability-001",
+    "input": "看一个频道",
+    "expected": { "module": "tv", "tool": "tv.select_channel", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["missingArgs"] },
+    "failure": { "reason": "缺少频道或 mounted capability 时应明确失败，不能发送私有 playlist/source URL", "regressionCandidate": true }
   }
 ]

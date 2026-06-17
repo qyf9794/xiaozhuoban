@@ -2,6 +2,31 @@
   {
     "id": "calculator-cn-001",
     "input": "12加30是多少",
-    "expected": { "module": "calculator", "tool": "calculator.set_display", "risk": "safe", "needsRealtime": false, "needsConfirmation": false }
+    "expected": { "module": "calculator", "tool": "calculator.set_display", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": {
+      "categories": ["singleTool", "scopedContextRedaction", "auditRedaction"],
+      "actions": ["board.add_widget", "widget.focus", "widget.fullscreen_focus", "widget.remove", "calculator.set_display"],
+      "risks": ["safe"],
+      "contextFields": ["moduleType", "tools", "toolSchemas", "instances", "stateSummary", "shortcutExamples", "executionPolicy", "riskPolicy"]
+    }
+  },
+  {
+    "id": "calculator-cross-001",
+    "input": "打开计算器，再算 12+30",
+    "expected": { "module": "calculator", "tool": "calculator.set_display", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": { "categories": ["crossTool", "windowControl"] }
+  },
+  {
+    "id": "calculator-noisy-001",
+    "input": "嗯，十二加三十，算一下",
+    "expected": { "module": "calculator", "tool": "calculator.set_display", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
+    "coverage": { "categories": ["noisySpeech", "learningRegression", "permissionOrAuth"] }
+  },
+  {
+    "id": "calculator-fallback-missing-001",
+    "input": "算一下",
+    "expected": { "module": "calculator", "tool": "calculator.set_display", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["missingArgs", "realtimeFallback"] },
+    "failure": { "reason": "缺少表达式时应澄清，不能读取历史表达式补全", "regressionCandidate": true }
   }
 ]
