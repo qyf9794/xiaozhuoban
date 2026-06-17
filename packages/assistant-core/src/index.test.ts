@@ -514,6 +514,17 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes timer shorthand duration commands", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("定时十分钟", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("countdown.set");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_countdown", totalSeconds: 600, start: true });
+    }
+  });
+
   it("routes countdown duration commands to add-and-start when the widget is absent", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("十分钟倒计时", {
@@ -735,6 +746,42 @@ describe("IntentShortcutRouter", () => {
         widgetId: "wi_todo",
         text: "买牛奶",
         dueAt: new Date(2026, 5, 17, 15, 0, 0).toISOString()
+      });
+    }
+  });
+
+  it("routes call-me reminder wording to todo add with an absolute due time", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("下午三点叫我开会", {
+      ...context,
+      currentTime: new Date(2026, 5, 17, 9, 0, 0).toISOString()
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("todo.add_item");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_todo",
+        text: "开会",
+        dueAt: new Date(2026, 5, 17, 15, 0, 0).toISOString()
+      });
+    }
+  });
+
+  it("routes relative-time reminder wording to todo add", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("十分钟后叫我喝水", {
+      ...context,
+      currentTime: new Date(2026, 5, 17, 9, 0, 0).toISOString()
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("todo.add_item");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_todo",
+        text: "喝水",
+        dueAt: new Date(2026, 5, 17, 9, 10, 0).toISOString()
       });
     }
   });

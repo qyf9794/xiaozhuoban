@@ -215,6 +215,21 @@ describe("stage-one assistant acceptance scenarios", () => {
     });
   });
 
+  it("sets the countdown from timer shorthand", async () => {
+    const { harness, getWidget } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("定时十分钟");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(getWidget("countdown")?.state).toMatchObject({
+      totalSeconds: 600,
+      remainingSeconds: 600,
+      running: true
+    });
+  });
+
   it("creates a named board through shortcut-first Harness without model fallback", async () => {
     const { harness, modelInputs, getActiveBoard, getBoards } = createAcceptanceHarness();
     await harness.initialize();
@@ -301,6 +316,20 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(getWidget("todo")?.state.items).toMatchObject([{ text: "买牛奶" }]);
+    expect(modelInputs).toEqual([]);
+  });
+
+  it("adds call-me reminders through shortcut-first Harness without model fallback", async () => {
+    const { harness, modelInputs, getWidget } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("下午三点叫我开会");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(getWidget("todo")?.state.items).toMatchObject([
+      { text: "开会", dueAt: new Date(2026, 5, 17, 15, 0, 0).toISOString() }
+    ]);
     expect(modelInputs).toEqual([]);
   });
 

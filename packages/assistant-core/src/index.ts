@@ -711,7 +711,11 @@ function inferTodoDueAt(input: string, now: Date) {
     compact.match(/(?:(凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚))?([零〇一二两三四五六七八九十\d]{1,3})点(?:(半|一刻|三刻|[零〇一二两三四五六七八九十\d]{1,3})分?)?/) ??
     compact.match(/(?:(凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚))?(\d{1,2})[:：]([0-5]\d)/);
 
-  if (!timeMatch) return undefined;
+  if (!timeMatch) {
+    const relativeSeconds = /(小时|钟头|分钟|分|秒)后/.test(compact) ? parseCountdownDurationSeconds(compact) : undefined;
+    if (!relativeSeconds || !Number.isFinite(relativeSeconds) || relativeSeconds <= 0) return undefined;
+    return new Date(now.getTime() + relativeSeconds * 1000).toISOString();
+  }
 
   let year = now.getFullYear();
   let month = now.getMonth();
@@ -767,6 +771,8 @@ function inferTodoDueAt(input: string, now: Date) {
 
 function stripTodoDueText(text: string) {
   return text
+    .replace(/(?:[零〇一二两三四五六七八九十\d]+|半)(?:个)?(?:小时|钟头)(?:(?:[零〇一二两三四五六七八九十\d]+|半)(?:分钟|分))?后/g, " ")
+    .replace(/(?:[零〇一二两三四五六七八九十\d]+|半)(?:个)?(?:分钟|分|秒)后/g, " ")
     .replace(/(?:(?:今天|明天|后天|今晚|明早|明晚|[零〇一二两三四五六七八九十\d]{1,3}天后|(?:(?:下)?(?:周|星期|礼拜)[日天一二两三四五六]))\s*)?(?:凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚)?\s*[零〇一二两三四五六七八九十\d]{1,3}\s*点\s*(?:半|一刻|三刻|[零〇一二两三四五六七八九十\d]{1,3}\s*分?)?\s*(?:之前|以前|前(?!端))/g, " ")
     .replace(/(?:(?:今天|明天|后天|今晚|明早|明晚|[零〇一二两三四五六七八九十\d]{1,3}天后|(?:(?:下)?(?:周|星期|礼拜)[日天一二两三四五六]))\s*)?(?:凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚)?\s*\d{1,2}\s*[:：]\s*[0-5]\d\s*(?:之前|以前|前(?!端))/g, " ")
     .replace(/(?:(?:今天|明天|后天|今晚|明早|明晚|[零〇一二两三四五六七八九十\d]{1,3}天后|(?:(?:下)?(?:周|星期|礼拜)[日天一二两三四五六]))\s*)?(?:凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚)?\s*[零〇一二两三四五六七八九十\d]{1,3}\s*点\s*(?:半|一刻|三刻|[零〇一二两三四五六七八九十\d]{1,3}\s*分?)?/g, " ")
@@ -774,7 +780,7 @@ function stripTodoDueText(text: string) {
     .replace(/(?:(?:\d{4})年)?\d{1,2}月\d{1,2}[日号]?/g, " ")
     .replace(/(?<!\d)\d{1,2}[\/.-]\d{1,2}(?!\d)/g, " ")
     .replace(/(今天|明天|后天|今晚|明早|明晚|[零〇一二两三四五六七八九十\d]{1,3}天后|(?:(?:下)?(?:周|星期|礼拜)[日天一二两三四五六]))/g, " ")
-    .replace(/(截止|到时候|的时候|之前|以前|提醒我|提醒|记得|别忘了)/g, " ")
+    .replace(/(截止|到时候|的时候|之前|以前|提醒我|提醒|到点叫我|叫我|记得|别忘了)/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -1245,7 +1251,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "countdown_duration",
       match(normalized, raw, context) {
-        if (!normalized.includes("倒计时")) return { matched: false, reason: "not_countdown" };
+        if (!/(倒计时|计时器|定时|计时)/.test(normalized)) return { matched: false, reason: "not_countdown" };
         const totalSeconds = parseCountdownDurationSeconds(normalized);
         if (!totalSeconds || !Number.isFinite(totalSeconds) || totalSeconds <= 0) {
           return { matched: false, reason: "countdown_duration_missing" };
@@ -1335,7 +1341,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
       match(normalized, raw, context) {
         if (
           (!/(待办|任务|清单)/.test(normalized) || !/(添加|新增|记下|记录|加入)/.test(normalized)) &&
-          !/(提醒我|提醒|记得|别忘了)/.test(normalized)
+          !/(提醒我|提醒|叫我|到点叫我|记得|别忘了)/.test(normalized)
         ) {
           return { matched: false, reason: "not_todo_add" };
         }
