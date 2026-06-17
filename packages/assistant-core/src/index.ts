@@ -944,15 +944,22 @@ function inferCalculatorDisplay(raw: string) {
 }
 
 function inferMarketIndexCodes(raw: string) {
+  const normalized = raw.toLowerCase();
+  if (/(美股三大|三大美股|美股.*三大|三大.*美股)/.test(raw)) {
+    return ["usINX", "usNDX", "usDJI"];
+  }
+  if (/(沪深|上证.*深|深.*上证|沪指.*深|深.*沪指)/.test(raw)) {
+    return ["sh000001", "sz399001"];
+  }
   const pairs: Array<[RegExp, string]> = [
-    [/(标普|S&P|sp500|SPX)/i, "usINX"],
-    [/(纳指|纳斯达克|NDX|nasdaq)/i, "usNDX"],
-    [/(道指|道琼斯|DJI)/i, "usDJI"],
-    [/(恒生|港股|HSI)/i, "hkHSI"],
-    [/(上证|沪指|A股|sh000001)/i, "sh000001"],
-    [/(深成|深证|sz399001)/i, "sz399001"]
+    [/(标普|标普500|S&P|sp500|spx|standard\s*&?\s*poor)/i, "usINX"],
+    [/(纳指|纳斯达克|纳斯达克100|NDX|nasdaq|nasdaq\s*100)/i, "usNDX"],
+    [/(道指|道琼斯|道琼斯工业|DJI|dow|dow\s*jones)/i, "usDJI"],
+    [/(恒生|港股|HSI|hang\s*seng)/i, "hkHSI"],
+    [/(上证|沪指|A股|a股|sh000001)/i, "sh000001"],
+    [/(深成|深证|深证成指|sz399001)/i, "sz399001"]
   ];
-  return pairs.filter(([pattern]) => pattern.test(raw)).map(([, code]) => code);
+  return pairs.filter(([pattern]) => pattern.test(normalized)).map(([, code]) => code);
 }
 
 function inferWorldClockZones(raw: string) {
@@ -1381,8 +1388,10 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "market_set_indices",
       match(normalized, raw, context) {
-        if (!/(行情|指数|市场|股票)/.test(normalized)) return { matched: false, reason: "not_market" };
         const indexCodes = inferMarketIndexCodes(raw);
+        if (!/(行情|指数|市场|股票|涨跌|走势|怎么样|如何)/.test(normalized) && indexCodes.length === 0) {
+          return { matched: false, reason: "not_market" };
+        }
         if (indexCodes.length === 0) return { matched: false, reason: "market_indices_missing" };
         return (
           routeWidgetDetailOrAdd(context, raw, "market", "market.set_indices", { indexCodes }, 0.86) ?? {

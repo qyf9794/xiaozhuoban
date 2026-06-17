@@ -873,6 +873,39 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes US major market shorthand commands", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("看美股三大指数", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("market.set_indices");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_market", indexCodes: ["usINX", "usNDX", "usDJI"] });
+    }
+  });
+
+  it("routes market commands when the user only names an index", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("道琼斯怎么样", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("market.set_indices");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_market", indexCodes: ["usDJI"] });
+    }
+  });
+
+  it("routes China market shorthand commands", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("沪深行情", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("market.set_indices");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_market", indexCodes: ["sh000001", "sz399001"] });
+    }
+  });
+
   it("routes world clock zone commands to the world clock widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("世界时钟显示北京伦敦纽约", context);
