@@ -909,6 +909,7 @@ function inferConverterArgs(raw: string) {
   const unitPattern = "(摄氏度|华氏度|开尔文|摄氏|华氏|公里|千米|厘米|英寸|英尺|公斤|千克|盎司|米|克|磅|km|cm|inch|ft|kg|lb|oz|m|g)";
   const patterns = [
     new RegExp(`([+-]?\\d+(?:\\.\\d+)?)\\s*${unitPattern}.*(?:换算|转换|转|到|成)\\s*${unitPattern}`, "i"),
+    new RegExp(`([+-]?\\d+(?:\\.\\d+)?)\\s*${unitPattern}\\s*(?:等于多少|是多少|有多少|等于|多少|是)\\s*${unitPattern}`, "i"),
     new RegExp(`(?:换算|转换)\\s*([+-]?\\d+(?:\\.\\d+)?)\\s*${unitPattern}\\s*(?:到|成|为)\\s*${unitPattern}`, "i")
   ];
   for (const pattern of patterns) {
@@ -1360,7 +1361,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "converter_set",
       match(normalized, raw, context) {
-        if (!/(换算|转换|转成|转为)/.test(normalized)) return { matched: false, reason: "not_converter" };
+        if (!/(换算|转换|转成|转为|等于|多少|是多少|转)/.test(normalized)) return { matched: false, reason: "not_converter" };
         const args = inferConverterArgs(raw);
         if (!args) return { matched: false, reason: "converter_args_missing" };
         return (

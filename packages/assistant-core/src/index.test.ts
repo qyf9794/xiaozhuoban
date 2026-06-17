@@ -851,6 +851,57 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes natural converter question commands", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("12公里是多少米", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("converter.set");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_converter",
+        category: "length",
+        value: "12",
+        fromUnit: "km",
+        toUnit: "m"
+      });
+    }
+  });
+
+  it("routes natural temperature converter commands", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("100华氏是多少摄氏", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("converter.set");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_converter",
+        category: "temperature",
+        value: "100",
+        fromUnit: "f",
+        toUnit: "c"
+      });
+    }
+  });
+
+  it("routes natural weight converter commands", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("5公斤等于多少磅", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("converter.set");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_converter",
+        category: "weight",
+        value: "5",
+        fromUnit: "kg",
+        toUnit: "lb"
+      });
+    }
+  });
+
   it("routes arithmetic commands to the calculator widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("计算 12+30", context);
