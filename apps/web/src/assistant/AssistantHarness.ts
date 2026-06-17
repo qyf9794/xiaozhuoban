@@ -41,6 +41,12 @@ export interface AssistantRealtimeAdapter {
     tools: AssistantToolSpec[],
     moduleRegistry?: WidgetAssistantRegistry
   ) => Promise<AssistantToolCall | null> | AssistantToolCall | null;
+  requestCommandPlan?: (
+    input: string,
+    context: CompactAssistantContext,
+    tools: AssistantToolSpec[],
+    moduleRegistry?: WidgetAssistantRegistry
+  ) => Promise<CommandPlan | null> | CommandPlan | null;
 }
 
 export interface AssistantAuditEvent {
@@ -314,6 +320,11 @@ export class AssistantHarness {
     }
 
     const context = this.getCurrentContext();
+    const modelPlan = await this.options.realtime.requestCommandPlan?.(input, context, this.currentTools, this.options.moduleRegistry);
+    if (modelPlan) {
+      return this.handleModelCommandPlan(input, modelPlan, startedAt);
+    }
+
     const modelCall = await this.options.realtime.requestToolCall?.(input, context, this.currentTools, this.options.moduleRegistry);
     if (!modelCall) {
       const result: AssistantToolResult = {
@@ -330,6 +341,32 @@ export class AssistantHarness {
     };
     this.rememberAuditMetadata(modelCallWithTranscript, input);
     return this.handleFunctionCall(modelCallWithTranscript, "model", startedAt);
+  }
+
+  private async handleModelCommandPlan(input: string, plan: CommandPlan, startedAt: number): Promise<AssistantHarnessResponse> {
+    plan.commands.forEach((command) => {
+      this.rememberAuditMetadata(
+        {
+          id: command.id,
+          name: command.tool,
+          arguments: command.args,
+          source: command.source,
+          transcript: plan.sourceText || input
+        },
+        input
+      );
+    });
+    const responses = await this.executeCommandPlan(
+      {
+        ...plan,
+        sourceText: plan.sourceText || input,
+        createdBy: plan.createdBy === "local" ? "realtime-2" : plan.createdBy,
+        requiresHarnessValidation: true
+      },
+      "model",
+      startedAt
+    );
+    return this.aggregatePlanResponses("model", responses);
   }
 
   private hasSegmentedShortcutInput(input: string): boolean {
@@ -398,6 +435,22 @@ export class AssistantHarness {
       result: {
         status,
         message,
+        data: { commands: responses.map((response) => ({ name: response.call?.name, result: response.result })) },
+        ...(blocking?.result.confirmation ? { confirmation: blocking.result.confirmation } : {}),
+        ...(blocking?.result.errorCode ? { errorCode: blocking.result.errorCode } : {})
+      }
+    };
+  }
+
+  private aggregatePlanResponses(route: AssistantRoute, responses: AssistantHarnessResponse[]): AssistantHarnessResponse {
+    const blocking = responses.find((response) => response.result.status !== "success");
+    const status = blocking?.result.status ?? "success";
+    return {
+      route,
+      call: responses[0]?.call,
+      result: {
+        status,
+        message: responses.map((response) => response.result.message).filter(Boolean).join("；"),
         data: { commands: responses.map((response) => ({ name: response.call?.name, result: response.result })) },
         ...(blocking?.result.confirmation ? { confirmation: blocking.result.confirmation } : {}),
         ...(blocking?.result.errorCode ? { errorCode: blocking.result.errorCode } : {})

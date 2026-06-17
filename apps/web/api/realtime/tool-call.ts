@@ -63,8 +63,10 @@ type TextToolCallRequest = {
   tools: AssistantToolSpecLike[];
   moduleCatalog?: RealtimeModuleCatalogItem[];
   moduleContext?: RealtimeScopedModuleContext;
-  phase: "select" | "execute" | "auto";
+  moduleContexts?: RealtimeScopedModuleContext[];
+  phase: "select" | "execute" | "auto" | "plan_select" | "plan_execute";
   selection?: TextToolSelection;
+  planSelection?: TextPlanSelection;
 };
 
 type TextToolSelection = {
@@ -74,9 +76,52 @@ type TextToolSelection = {
   confidence?: number;
 };
 
+type TextPlanSelectionStep = TextToolSelection & {
+  id?: string;
+  connector?: "start" | "sequential" | "parallel";
+};
+
+type TextPlanSelection = {
+  steps: TextPlanSelectionStep[];
+};
+
+type TextCommandPlan = {
+  id?: string;
+  sourceText?: string;
+  normalizedText?: string;
+  commands: Array<{
+    id?: string;
+    module?: string;
+    tool: string;
+    args?: Record<string, unknown>;
+    risk?: "safe" | "confirm" | "destructive";
+    confidence?: number;
+    dependsOn?: string[];
+    source?: "text";
+    requiresHarnessValidation?: true;
+  }>;
+  executionGroups?: Array<{ id?: string; mode?: "sequential" | "parallel"; commandIds: string[] }>;
+  dependencies?: Array<{ from: string; to: string }>;
+  confidence?: number;
+  needsConfirmation?: boolean;
+  createdBy?: "text-llm";
+  requiresHarnessValidation?: true;
+};
+
 type JsonBody = Record<string, unknown>;
 
 const SELECT_TOOL_NAME = "assistant.select_tool";
+const SELECT_PLAN_TOOL_NAME = "assistant.select_command_plan";
+const SUBMIT_PLAN_TOOL_NAME = "assistant.submit_command_plan";
+
+function parsePlanConnector(value: unknown): TextPlanSelectionStep["connector"] {
+  return value === "parallel" || value === "sequential" || value === "start" ? value : undefined;
+}
+
+function parsePlanRisk(value: unknown, fallback?: string): "safe" | "confirm" | "destructive" {
+  if (value === "confirm" || value === "destructive" || value === "safe") return value;
+  return fallback === "confirm" || fallback === "destructive" ? fallback : "safe";
+}
 
 const widgetAliases: Record<string, string[]> = {
   note: ["便签", "笔记"],
@@ -120,9 +165,15 @@ function parseRequestBody(value: unknown): TextToolCallRequest | null {
   if (!isRecord(value)) return null;
   if (typeof value.input !== "string" || !Array.isArray(value.tools)) return null;
   const phase =
-    value.phase === "select" || value.phase === "execute" || value.phase === "auto" ? value.phase : "auto";
+    value.phase === "select" ||
+    value.phase === "execute" ||
+    value.phase === "auto" ||
+    value.phase === "plan_select" ||
+    value.phase === "plan_execute"
+      ? value.phase
+      : "auto";
   const context = isRecord(value.context) ? value.context : undefined;
-  if (phase !== "select" && !context) return null;
+  if (phase !== "select" && phase !== "plan_select" && !context) return null;
   if (context && (!Array.isArray(context.widgets) || !isRecord(context.widgetCountsByType))) return null;
   const selection = isRecord(value.selection) && typeof value.selection.name === "string"
     ? {
@@ -139,14 +190,31 @@ function parseRequestBody(value: unknown): TextToolCallRequest | null {
     isRecord(value.moduleContext) && typeof value.moduleContext.moduleType === "string"
       ? (value.moduleContext as RealtimeScopedModuleContext)
       : undefined;
+  const moduleContexts = Array.isArray(value.moduleContexts)
+    ? (value.moduleContexts.filter(isRecord).filter((item) => typeof item.moduleType === "string") as RealtimeScopedModuleContext[])
+    : undefined;
+  const planSelection = isRecord(value.planSelection) && Array.isArray(value.planSelection.steps)
+    ? {
+        steps: value.planSelection.steps.filter(isRecord).map((step) => ({
+          id: typeof step.id === "string" ? step.id : undefined,
+          name: typeof step.name === "string" ? step.name : "",
+          selectedModule: typeof step.selectedModule === "string" ? step.selectedModule : undefined,
+          targetHint: typeof step.targetHint === "string" ? step.targetHint : undefined,
+          confidence: typeof step.confidence === "number" ? step.confidence : undefined,
+          connector: parsePlanConnector(step.connector)
+        })).filter((step) => step.name)
+      }
+    : undefined;
   return {
     input: value.input,
     context: context as CompactContext | undefined,
     tools: value.tools.filter(isRecord).filter((tool) => typeof tool.name === "string") as AssistantToolSpecLike[],
     moduleCatalog,
     moduleContext,
+    moduleContexts,
     phase,
-    selection
+    selection,
+    planSelection
   };
 }
 
@@ -300,6 +368,65 @@ function createToolSelectionPayload(request: TextToolCallRequest, model: string)
   };
 }
 
+function createPlanSelectionPayload(request: TextToolCallRequest, model: string) {
+  return {
+    model,
+    input: [
+      {
+        role: "user",
+        content: [
+          "你是小桌板 Realtime-2 命令规划器的第一阶段。",
+          "只根据模块目录、工具目录和用户命令选择一个或多个候选工具；不要生成真实参数。",
+          "复杂命令可以拆成多个步骤。独立步骤标记 connector=parallel；有顺序依赖的步骤标记 connector=sequential。",
+          "第一阶段不会提供桌面上下文、widgetId、definitionId 或用户私密状态。",
+          "只能选择已注册工具；没把握时少选，不要猜。",
+          "",
+          "# 模块目录",
+          moduleCatalogText(request.moduleCatalog) || "- 未提供模块目录",
+          "",
+          "# 工具目录",
+          toolCatalog(request.tools),
+          "",
+          `用户命令：${request.input}`
+        ].join("\n")
+      }
+    ],
+    tools: [
+      {
+        type: "function",
+        name: encodeToolName(SELECT_PLAN_TOOL_NAME),
+        description: "Select registered tools/modules for a multi-step Xiaozhuoban command without arguments.",
+        parameters: {
+          type: "object",
+          properties: {
+            steps: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  name: { type: "string", enum: request.tools.map((tool) => tool.name) },
+                  selectedModule: { type: "string" },
+                  targetHint: { type: "string" },
+                  connector: { type: "string", enum: ["start", "sequential", "parallel"] },
+                  confidence: { type: "number" }
+                },
+                required: ["name"],
+                additionalProperties: false
+              }
+            }
+          },
+          required: ["steps"],
+          additionalProperties: false
+        }
+      }
+    ],
+    tool_choice: "required",
+    parallel_tool_calls: false,
+    max_output_tokens: 240
+  };
+}
+
 function inputMentionsWidgetType(input: string, type: string) {
   return (widgetAliases[type] ?? []).some((alias) => input.includes(alias));
 }
@@ -443,6 +570,105 @@ function createScopedToolCallPayload(request: TextToolCallRequest, selection: Te
   };
 }
 
+function createCommandPlanPayload(request: TextToolCallRequest, model: string) {
+  const planSelection = request.planSelection;
+  const contexts = (planSelection?.steps ?? []).map((step, index) => {
+    const tool = request.tools.find((candidate) => candidate.name === step.name);
+    const scopedContext = tool && request.context ? createScopedContext(request.context, tool, step, request.input) : null;
+    const moduleType = step.selectedModule ?? tool?.widgetType ?? tool?.name.split(".")[0] ?? "";
+    const moduleContext = (request.moduleContexts ?? []).find((item) => item.moduleType === moduleType);
+    return {
+      step: {
+        id: step.id ?? `step_${index + 1}`,
+        name: step.name,
+        selectedModule: moduleType,
+        targetHint: step.targetHint,
+        connector: step.connector ?? (index === 0 ? "start" : "sequential")
+      },
+      scopedContext,
+      moduleContext: moduleContext
+        ? {
+            moduleType: moduleContext.moduleType,
+            instances: moduleContext.instances,
+            stateSummary: moduleContext.stateSummary,
+            shortcutExamples: moduleContext.shortcutExamples,
+            executionPolicy: moduleContext.executionPolicy,
+            riskPolicy: moduleContext.riskPolicy
+          }
+        : undefined
+    };
+  });
+  return {
+    model,
+    input: [
+      {
+        role: "user",
+        content: [
+          "你是小桌板 Realtime-2 命令规划器的第二阶段。",
+          "只根据已选步骤的 scoped context 和 selected module scoped context 生成 CommandPlan。",
+          "不得调用未选择的工具；不得使用未提供的上下文；缺少目标时不要猜 widgetId。",
+          "所有输出必须是 assistant.submit_command_plan 函数调用，之后会交给本地 harness 校验和执行。",
+          "独立步骤放在 parallel execution group；需要前一步结果的步骤放在后续 sequential group 或设置 dependsOn。",
+          "",
+          "# Selected Step Scoped Contexts",
+          JSON.stringify(contexts),
+          "",
+          `用户命令：${request.input}`
+        ].join("\n")
+      }
+    ],
+    tools: [
+      {
+        type: "function",
+        name: encodeToolName(SUBMIT_PLAN_TOOL_NAME),
+        description: "Submit a harness-validated Xiaozhuoban CommandPlan.",
+        parameters: {
+          type: "object",
+          properties: {
+            commands: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  module: { type: "string" },
+                  tool: { type: "string", enum: request.tools.map((tool) => tool.name) },
+                  args: { type: "object", additionalProperties: true },
+                  risk: { type: "string", enum: ["safe", "confirm", "destructive"] },
+                  confidence: { type: "number" },
+                  dependsOn: { type: "array", items: { type: "string" } }
+                },
+                required: ["tool", "args"],
+                additionalProperties: false
+              }
+            },
+            executionGroups: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  mode: { type: "string", enum: ["sequential", "parallel"] },
+                  commandIds: { type: "array", items: { type: "string" } }
+                },
+                required: ["mode", "commandIds"],
+                additionalProperties: false
+              }
+            },
+            confidence: { type: "number" },
+            needsConfirmation: { type: "boolean" }
+          },
+          required: ["commands"],
+          additionalProperties: false
+        }
+      }
+    ],
+    tool_choice: "required",
+    parallel_tool_calls: false,
+    max_output_tokens: 520
+  };
+}
+
 function parseArguments(value: unknown): Record<string, unknown> {
   if (!value) return {};
   if (isRecord(value)) return value;
@@ -483,6 +709,30 @@ function extractSelection(payload: unknown, allowedToolNames: Set<string>): Text
   };
 }
 
+function extractPlanSelection(payload: unknown, allowedToolNames: Set<string>): TextPlanSelection | null {
+  const functionCall = findFunctionCall(payload);
+  if (!functionCall || decodeToolName(String(functionCall.name)) !== SELECT_PLAN_TOOL_NAME) return null;
+  const args = parseArguments(functionCall.arguments);
+  const steps = Array.isArray(args.steps) ? args.steps : [];
+  const parsed = steps
+    .filter(isRecord)
+    .map((step, index): TextPlanSelectionStep => ({
+      id: typeof step.id === "string" ? step.id : `step_${index + 1}`,
+      name: typeof step.name === "string" ? step.name : "",
+      selectedModule: typeof step.selectedModule === "string" ? step.selectedModule : undefined,
+      targetHint: typeof step.targetHint === "string" ? step.targetHint : undefined,
+      confidence: typeof step.confidence === "number" ? step.confidence : undefined,
+      connector:
+        step.connector === "parallel" || step.connector === "sequential" || step.connector === "start"
+          ? step.connector
+          : index === 0
+            ? "start"
+            : "sequential"
+    }))
+    .filter((step) => allowedToolNames.has(step.name));
+  return parsed.length > 0 ? { steps: parsed } : null;
+}
+
 function extractToolCall(payload: unknown, allowedToolNames: Set<string>) {
   const functionCall = findFunctionCall(payload);
   if (!functionCall || typeof functionCall.name !== "string") return null;
@@ -498,6 +748,58 @@ function extractToolCall(payload: unknown, allowedToolNames: Set<string>) {
     name,
     arguments: parseArguments(functionCall.arguments),
     source: "text"
+  };
+}
+
+function extractCommandPlan(payload: unknown, request: TextToolCallRequest, allowedToolNames: Set<string>): TextCommandPlan | null {
+  const functionCall = findFunctionCall(payload);
+  if (!functionCall || decodeToolName(String(functionCall.name)) !== SUBMIT_PLAN_TOOL_NAME) return null;
+  const args = parseArguments(functionCall.arguments);
+  const rawCommands = Array.isArray(args.commands) ? args.commands : [];
+  const commands: TextCommandPlan["commands"] = [];
+  rawCommands.filter(isRecord).forEach((command, index) => {
+    const tool = typeof command.tool === "string" ? command.tool : "";
+    const spec = request.tools.find((candidate) => candidate.name === tool);
+    if (!allowedToolNames.has(tool) || !spec) return;
+    const id = typeof command.id === "string" ? command.id : `cmd_${index + 1}`;
+    commands.push({
+      id,
+      module: typeof command.module === "string" ? command.module : spec.widgetType ?? tool.split(".")[0] ?? "unknown",
+      tool,
+      args: isRecord(command.args) ? command.args : {},
+      risk: parsePlanRisk(command.risk, spec.risk),
+      confidence: typeof command.confidence === "number" ? command.confidence : 0.75,
+      dependsOn: Array.isArray(command.dependsOn) ? command.dependsOn.filter((item) => typeof item === "string") : undefined,
+      source: "text",
+      requiresHarnessValidation: true
+    });
+  });
+  if (commands.length === 0) return null;
+  const commandIds = new Set(commands.map((command) => command.id));
+  const rawGroups = Array.isArray(args.executionGroups) ? args.executionGroups : [];
+  const executionGroups = rawGroups
+    .filter(isRecord)
+    .map((group, index) => ({
+      id: typeof group.id === "string" ? group.id : `group_${index + 1}`,
+      mode: group.mode === "parallel" ? "parallel" as const : "sequential" as const,
+      commandIds: Array.isArray(group.commandIds) ? group.commandIds.filter((id) => typeof id === "string" && commandIds.has(id)) : []
+    }))
+    .filter((group) => group.commandIds.length > 0);
+  return {
+    id: `plan_${Date.now()}`,
+    sourceText: request.input,
+    normalizedText: request.input.trim().toLowerCase(),
+    commands,
+    dependencies: Array.isArray(args.dependencies)
+      ? args.dependencies.filter(isRecord).filter((item) => typeof item.from === "string" && typeof item.to === "string") as Array<{ from: string; to: string }>
+      : [],
+    executionGroups: executionGroups.length
+      ? executionGroups
+      : [{ id: "group_1", mode: commands.length > 1 ? "parallel" : "sequential", commandIds: commands.map((command) => command.id) }],
+    confidence: typeof args.confidence === "number" ? args.confidence : Math.min(...commands.map((command) => command.confidence ?? 0.75)),
+    needsConfirmation: typeof args.needsConfirmation === "boolean" ? args.needsConfirmation : commands.some((command) => command.risk !== "safe"),
+    createdBy: "text-llm",
+    requiresHarnessValidation: true
   };
 }
 
@@ -554,6 +856,62 @@ export default async function handler(request: IncomingMessage, response: Server
     const allowedToolNames = new Set(body.tools.map((tool) => tool.name));
     const model = process.env.XIAOZHUOBAN_TEXT_TOOL_MODEL || XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL;
     let selection: TextToolSelection | null = body.selection && allowedToolNames.has(body.selection.name) ? body.selection : null;
+
+    if (body.phase === "plan_select") {
+      const planSelectionResponse = await requestOpenAI(apiKey, createPlanSelectionPayload(body, model));
+      if (!planSelectionResponse.ok) {
+        let upstream: unknown = null;
+        try {
+          upstream = await planSelectionResponse.json();
+        } catch {
+          // Keep the structured status without leaking raw text.
+        }
+        sendJson(response, 200, {
+          plan: null,
+          planSelection: null,
+          error: "TEXT_PLAN_SELECTION_FAILED",
+          model,
+          status: planSelectionResponse.status,
+          upstream
+        });
+        return;
+      }
+      sendJson(response, 200, {
+        plan: null,
+        planSelection: extractPlanSelection(await planSelectionResponse.json(), allowedToolNames)
+      });
+      return;
+    }
+
+    if (body.phase === "plan_execute") {
+      if (!body.planSelection?.steps.length) {
+        sendJson(response, 200, { plan: null, planSelection: null, error: "TEXT_PLAN_SELECTION_MISSING" });
+        return;
+      }
+      const commandPlanResponse = await requestOpenAI(apiKey, createCommandPlanPayload(body, model));
+      if (!commandPlanResponse.ok) {
+        let upstream: unknown = null;
+        try {
+          upstream = await commandPlanResponse.json();
+        } catch {
+          // Keep the structured status without leaking raw text.
+        }
+        sendJson(response, 200, {
+          plan: null,
+          planSelection: body.planSelection,
+          error: "TEXT_COMMAND_PLAN_FAILED",
+          model,
+          status: commandPlanResponse.status,
+          upstream
+        });
+        return;
+      }
+      sendJson(response, 200, {
+        planSelection: body.planSelection,
+        plan: extractCommandPlan(await commandPlanResponse.json(), body, allowedToolNames)
+      });
+      return;
+    }
 
     if (body.phase === "execute" && !selection) {
       sendJson(response, 200, { call: null, selection: null, error: "TEXT_TOOL_SELECTION_MISSING" });

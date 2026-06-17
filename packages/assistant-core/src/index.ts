@@ -565,6 +565,8 @@ function compactShortcutInput(input: string) {
   return input.replace(/[\s，。！？、,.!?]+/g, "");
 }
 
+const CLOSE_SHORTCUT_INTENT_PATTERN = /(关闭|关掉|关上|关了|收起|删掉|删除|移除|去掉|关)/;
+
 function shortcutCall(name: string, args: unknown, source: AssistantToolSource, transcript: string): AssistantToolCall {
   return {
     id: `shortcut_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -1366,6 +1368,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
       name: "open_weather",
       match(normalized, raw, context) {
         if (!/(天气|weather)/i.test(normalized)) return { matched: false, reason: "not_weather" };
+        if (CLOSE_SHORTCUT_INTENT_PATTERN.test(normalized)) return { matched: false, reason: "weather_close_deferred" };
         const cityName = inferCityName(raw);
         const widget = findWidgetByType(context, "weather");
         if (widget && cityName) {

@@ -288,6 +288,129 @@ describe("realtime text tool-call API", () => {
     });
   });
 
+  it("selects a multi-tool command plan without desktop context", async () => {
+    stubSupabaseEnv();
+    vi.stubEnv("OPENAI_API_KEY", "sk-test");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createSupabaseUserResponse())
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            output: [
+              {
+                type: "function_call",
+                name: "assistant__dot__select_command_plan",
+                call_id: "select_plan_1",
+                arguments: JSON.stringify({
+                  steps: [
+                    { id: "step_music", name: "music.play", selectedModule: "music", targetHint: "周杰伦", connector: "start", confidence: 0.86 },
+                    { id: "step_weather", name: "weather.set_city", selectedModule: "weather", targetHint: "北京", connector: "parallel", confidence: 0.84 }
+                  ]
+                })
+              }
+            ]
+          }),
+          { status: 200 }
+        )
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await callHandler({
+      input: "打开音乐，同时查北京天气",
+      phase: "plan_select",
+      tools: [
+        { name: "music.play", description: "播放音乐", scope: "widget-detail", widgetType: "music", requiresTarget: true },
+        { name: "weather.set_city", description: "设置天气城市", scope: "widget-detail", widgetType: "weather", requiresTarget: true }
+      ],
+      moduleCatalog: [
+        { type: "music", displayName: "音乐", aliases: ["音乐"], capabilities: ["播放"], shortcutExamples: [], riskSummary: [] },
+        { type: "weather", displayName: "天气", aliases: ["天气"], capabilities: ["查询"], shortcutExamples: [], riskSummary: [] }
+      ]
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body).planSelection.steps).toHaveLength(2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const body = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+    const serialized = JSON.stringify(body);
+    expect(serialized).toContain("assistant__dot__select_command_plan");
+    expect(serialized).toContain("music.play");
+    expect(serialized).not.toContain("wi_music");
+  });
+
+  it("returns a harness-validated command plan from scoped selected modules", async () => {
+    stubSupabaseEnv();
+    vi.stubEnv("OPENAI_API_KEY", "sk-test");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createSupabaseUserResponse())
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            output: [
+              {
+                type: "function_call",
+                name: "assistant__dot__submit_command_plan",
+                call_id: "submit_plan_1",
+                arguments: JSON.stringify({
+                  commands: [
+                    { id: "cmd_music", module: "music", tool: "music.play", args: { widgetId: "wi_music", query: "周杰伦" }, risk: "safe", confidence: 0.86 },
+                    { id: "cmd_weather", module: "weather", tool: "weather.set_city", args: { widgetId: "wi_weather", city: "北京" }, risk: "safe", confidence: 0.84 }
+                  ],
+                  executionGroups: [{ id: "group_1", mode: "parallel", commandIds: ["cmd_music", "cmd_weather"] }],
+                  confidence: 0.84,
+                  needsConfirmation: false
+                })
+              }
+            ]
+          }),
+          { status: 200 }
+        )
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await callHandler({
+      input: "打开音乐，同时查北京天气",
+      phase: "plan_execute",
+      tools: [
+        { name: "music.play", description: "播放音乐", scope: "widget-detail", widgetType: "music", requiresTarget: true },
+        { name: "weather.set_city", description: "设置天气城市", scope: "widget-detail", widgetType: "weather", requiresTarget: true }
+      ],
+      planSelection: {
+        steps: [
+          { id: "step_music", name: "music.play", selectedModule: "music", targetHint: "周杰伦", connector: "start" },
+          { id: "step_weather", name: "weather.set_city", selectedModule: "weather", targetHint: "北京", connector: "parallel" }
+        ]
+      },
+      moduleContexts: [
+        { moduleType: "music", instances: [], stateSummary: { instanceCount: 1 }, shortcutExamples: [], executionPolicy: { defaultMode: "parallel" }, riskPolicy: { safe: [], confirm: [], destructive: [] } },
+        { moduleType: "weather", instances: [], stateSummary: { instanceCount: 1 }, shortcutExamples: [], executionPolicy: { defaultMode: "latest-wins" }, riskPolicy: { safe: [], confirm: [], destructive: [] } }
+      ],
+      context: {
+        boardId: "board_1",
+        boardName: "默认桌板",
+        widgetCountsByType: { music: 1, weather: 1, note: 1 },
+        widgets: [
+          { widgetId: "wi_music", definitionId: "wd_music", type: "music", name: "音乐", order: 1, summary: "idle" },
+          { widgetId: "wi_weather", definitionId: "wd_weather", type: "weather", name: "天气", order: 2, summary: "上海" },
+          { widgetId: "wi_note", definitionId: "wd_note", type: "note", name: "便签", order: 3, summary: "private note" }
+        ]
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const parsed = JSON.parse(response.body);
+    expect(parsed.plan.executionGroups[0]).toMatchObject({ mode: "parallel", commandIds: ["cmd_music", "cmd_weather"] });
+    expect(parsed.plan.commands[0]).toMatchObject({ tool: "music.play", source: "text", requiresHarnessValidation: true });
+    const body = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+    const serialized = JSON.stringify(body);
+    expect(serialized).toContain("Selected Step Scoped Contexts");
+    expect(serialized).toContain("wi_music");
+    expect(serialized).toContain("wi_weather");
+    expect(serialized).not.toContain("private note");
+  });
+
   it("requires Supabase auth before calling the Responses API", async () => {
     stubSupabaseEnv();
     vi.stubEnv("OPENAI_API_KEY", "sk-test");

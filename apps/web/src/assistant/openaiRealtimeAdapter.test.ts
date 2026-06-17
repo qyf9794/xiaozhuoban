@@ -533,4 +533,152 @@ describe("OpenAI realtime adapter helpers", () => {
       source: "text"
     });
   });
+
+  it("requests realtime command plans in two stages with module scoped context", async () => {
+    const requests: Array<{ url: string; body: unknown; headers?: HeadersInit }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      textToolCallEndpoint: "/api/realtime/tool-call",
+      getAccessToken: () => "supabase-token",
+      fetchImpl: (async (url, init) => {
+        requests.push({ url: String(url), body: JSON.parse(String(init?.body)), headers: init?.headers });
+        if (requests.length === 1) {
+          return new Response(
+            JSON.stringify({
+              planSelection: {
+                steps: [
+                  { id: "step_music", name: "music.play", selectedModule: "music", targetHint: "周杰伦", connector: "start", confidence: 0.86 },
+                  { id: "step_weather", name: "weather.set_city", selectedModule: "weather", targetHint: "北京天气", connector: "parallel", confidence: 0.84 }
+                ]
+              }
+            }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            plan: {
+              id: "plan_model",
+              sourceText: "打开音乐，同时查北京天气",
+              normalizedText: "打开音乐 同时查北京天气",
+              commands: [
+                {
+                  id: "cmd_music",
+                  module: "music",
+                  tool: "music.play",
+                  args: { widgetId: "wi_music", query: "周杰伦" },
+                  risk: "safe",
+                  confidence: 0.86,
+                  source: "text",
+                  requiresHarnessValidation: true
+                },
+                {
+                  id: "cmd_weather",
+                  module: "weather",
+                  tool: "weather.set_city",
+                  args: { widgetId: "wi_weather", city: "北京" },
+                  risk: "safe",
+                  confidence: 0.84,
+                  source: "text",
+                  requiresHarnessValidation: true
+                }
+              ],
+              dependencies: [],
+              executionGroups: [{ id: "group_1", mode: "parallel", commandIds: ["cmd_music", "cmd_weather"] }],
+              confidence: 0.84,
+              needsConfirmation: false,
+              createdBy: "text-llm",
+              requiresHarnessValidation: true
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }) as typeof fetch
+    });
+    const moduleRegistry = new WidgetAssistantRegistry();
+    for (const type of ["music", "weather"]) {
+      moduleRegistry.register({
+        type,
+        definition: { id: `wd_${type}`, type, name: type },
+        aliases: [type],
+        shortcuts: [],
+        tools: [],
+        context: {
+          getScopedContext: () => ({
+            moduleType: type,
+            tools: [],
+            toolSchemas: {},
+            instances: [],
+            stateSummary: { instanceCount: 1 },
+            shortcutExamples: [],
+            executionPolicy: { defaultMode: type === "weather" ? "latest-wins" : "parallel" },
+            riskPolicy: { safe: [], confirm: [], destructive: [] }
+          })
+        },
+        realtime: {
+          exposeCatalog: () => ({
+            type,
+            displayName: type,
+            aliases: [type],
+            capabilities: [],
+            shortcutExamples: [],
+            riskSummary: []
+          }),
+          getScopedContext: () => ({
+            moduleType: type,
+            tools: [],
+            toolSchemas: {},
+            instances: [],
+            stateSummary: { instanceCount: 1 },
+            shortcutExamples: [],
+            executionPolicy: { defaultMode: type === "weather" ? "latest-wins" : "parallel" },
+            riskPolicy: { safe: [], confirm: [], destructive: [] }
+          })
+        },
+        executionPolicy: { defaultMode: "parallel" }
+      });
+    }
+    adapter.updateModules(moduleRegistry);
+
+    const plan = await adapter.requestCommandPlan(
+      "打开音乐，同时查北京天气",
+      {
+        boardId: "board_1",
+        boardName: "默认桌板",
+        widgetCountsByType: { music: 1, weather: 1, note: 1 },
+        widgets: [
+          { widgetId: "wi_music", definitionId: "wd_music", type: "music", name: "音乐", order: 1, summary: "idle" },
+          { widgetId: "wi_weather", definitionId: "wd_weather", type: "weather", name: "天气", order: 2, summary: "上海" },
+          { widgetId: "wi_note", definitionId: "wd_note", type: "note", name: "便签", order: 3, summary: "private note" }
+        ]
+      },
+      [
+        {
+          name: "music.play",
+          description: "播放音乐",
+          parameters: createPassthroughSchema<Record<string, unknown>>(),
+          scope: "widget-detail",
+          widgetType: "music",
+          requiresTarget: true
+        },
+        {
+          name: "weather.set_city",
+          description: "设置天气城市",
+          parameters: createPassthroughSchema<Record<string, unknown>>(),
+          scope: "widget-detail",
+          widgetType: "weather",
+          requiresTarget: true
+        }
+      ]
+    );
+
+    expect(requests).toHaveLength(2);
+    expect(requests[0]?.body).toMatchObject({ input: "打开音乐，同时查北京天气", phase: "plan_select" });
+    expect(JSON.stringify(requests[0]?.body)).not.toContain("context");
+    expect(JSON.stringify(requests[0]?.body)).not.toContain("wi_music");
+    expect(requests[1]?.body).toMatchObject({ input: "打开音乐，同时查北京天气", phase: "plan_execute" });
+    expect(JSON.stringify(requests[1]?.body)).toContain("moduleContexts");
+    expect(JSON.stringify(requests[1]?.body)).toContain("music");
+    expect(JSON.stringify(requests[1]?.body)).toContain("weather");
+    expect(plan?.executionGroups[0]).toMatchObject({ mode: "parallel", commandIds: ["cmd_music", "cmd_weather"] });
+  });
 });

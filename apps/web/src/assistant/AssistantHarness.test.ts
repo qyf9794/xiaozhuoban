@@ -10,6 +10,7 @@ import {
   type AssistantToolCall,
   type AssistantToolResult,
   type AssistantToolSpec,
+  type CommandPlan,
   type CompactAssistantContext,
   type ContextSummarizerInput
 } from "@xiaozhuoban/assistant-core";
@@ -189,6 +190,7 @@ function createContextInput(): ContextSummarizerInput {
 
 function createHarness(options?: {
   modelCall?: AssistantToolCall | null;
+  modelPlan?: CommandPlan | null;
   actionTimeoutMs?: number;
   registryFactory?: () => ReturnType<typeof createRegistry>;
   getContextInput?: () => ContextSummarizerInput;
@@ -209,6 +211,9 @@ function createHarness(options?: {
     },
     sendToolResult(_call, result) {
       sentResults.push(result);
+    },
+    requestCommandPlan() {
+      return options?.modelPlan ?? null;
     },
     requestToolCall() {
       return options?.modelCall ?? null;
@@ -355,6 +360,65 @@ describe("AssistantHarness", () => {
     expect(response.route).toBe("model");
     expect(response.result.status).toBe("success");
     expect(executed).toEqual(["widget.focus:none"]);
+  });
+
+  it("executes a realtime command plan with parallel independent tools through harness validation", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_realtime_parallel",
+      sourceText: "准备一下工作台",
+      normalizedText: "准备一下工作台",
+      commands: [
+        {
+          id: "cmd_weather",
+          module: "weather",
+          tool: "weather.set_city",
+          args: { widgetId: "wi_weather", city: "北京" },
+          risk: "safe",
+          confidence: 0.9,
+          source: "text",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "cmd_headline",
+          module: "headline",
+          tool: "headline.request_refresh",
+          args: { widgetId: "wi_headline" },
+          risk: "safe",
+          confidence: 0.88,
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_parallel", mode: "parallel", commandIds: ["cmd_weather", "cmd_headline"] }],
+      confidence: 0.88,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed, operationEvents } = createHarness({
+      modelPlan,
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_weather", definitionId: "wd_weather", type: "weather", name: "天气", order: 3 },
+          { widgetId: "wi_headline", definitionId: "wd_headline", type: "headline", name: "新闻", order: 4 }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("准备一下工作台");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("weather.set_city done；headline.request_refresh done");
+    expect(executed).toEqual(["weather.set_city:wi_weather", "headline.request_refresh:wi_headline"]);
+    expect(operationEvents.filter((event) => event.phase === "running").map((event) => event.toolName)).toEqual([
+      "weather.set_city",
+      "headline.request_refresh"
+    ]);
   });
 
   it("turns successful model fallback into a confirmed learned local shortcut", async () => {
@@ -608,6 +672,48 @@ describe("AssistantHarness", () => {
     expect(response.result.message).toBe("widget.remove done；widget.remove done");
     expect(harness.getPendingConfirmation()).toBeNull();
     expect(executed).toEqual(["widget.remove:none", "widget.remove:none"]);
+  });
+
+  it("executes close music and weather as removals without weather query fallback", async () => {
+    const { harness, executed } = createHarness({
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_music", definitionId: "wd_music", type: "music", name: "音乐", order: 3 },
+          { widgetId: "wi_weather", definitionId: "wd_weather", type: "weather", name: "天气", order: 4 }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("关闭音乐和天气");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("widget.remove done；widget.remove done");
+    expect(response.result.errorCode).toBeUndefined();
+    expect(executed).toEqual(["widget.remove:none", "widget.remove:none"]);
+  });
+
+  it("keeps noisy spoken close music as a single close shortcut", async () => {
+    const { harness, executed } = createHarness({
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_music", definitionId: "wd_music", type: "music", name: "音乐", order: 3 }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("关闭，啊，这个，音乐");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("widget.remove done");
+    expect(executed).toEqual(["widget.remove:none"]);
   });
 
   it("does not leave queued confirmations after multi-close shortcut commands", async () => {

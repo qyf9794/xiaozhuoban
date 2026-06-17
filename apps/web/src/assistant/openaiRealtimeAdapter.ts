@@ -4,6 +4,7 @@ import {
   type AssistantToolCall,
   type AssistantToolResult,
   type AssistantToolSpec,
+  type CommandPlan,
   type CompactAssistantContext
 } from "@xiaozhuoban/assistant-core";
 import type { AssistantRealtimeAdapter } from "./AssistantHarness";
@@ -13,13 +14,17 @@ import {
 } from "./realtimeSessionConfig";
 import {
   REALTIME_TOOL_SELECTION_TOOL_NAME,
+  createRealtimeCommandPlanRequestBody,
+  createRealtimePlanSelectionRequestBody,
   createRealtimeScopedToolCallRequestBody,
   createRealtimeToolSelectionInstructions,
   createRealtimeToolSelectionRequestBody,
   createRealtimeToolSelectionTool,
   createScopedRealtimeContext,
   createScopedRealtimeToolUpdate,
+  parseRealtimeCommandPlanResponse,
   parseRealtimeTextToolCallResponse,
+  parseRealtimeTextPlanSelectionResponse,
   parseRealtimeTextToolSelectionResponse
 } from "./realtimeTextToolCall";
 
@@ -485,6 +490,49 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     createRealtimeToolResultEvents(call, result, { activeResponseId: this.activeResponseId }).forEach((event) =>
       this.sendEvent(event, { queueWhenClosed: false })
     );
+  }
+
+  async requestCommandPlan(
+    input: string,
+    context: CompactAssistantContext,
+    tools: AssistantToolSpec[]
+  ): Promise<CommandPlan | null> {
+    const fetchImpl = this.options.fetchImpl ?? fetch;
+    const endpoint = this.options.textToolCallEndpoint ?? "/api/realtime/tool-call";
+    const accessToken = await this.options.getAccessToken?.();
+    const selectionResponse = await fetchImpl(endpoint, {
+      method: "POST",
+      headers: createBearerHeaders(accessToken, { "content-type": "application/json" }),
+      body: createRealtimePlanSelectionRequestBody(input, tools, this.moduleRegistry?.getRealtimeCatalog())
+    });
+    if (!selectionResponse.ok) return null;
+    const planSelection = parseRealtimeTextPlanSelectionResponse(await selectionResponse.json());
+    if (!planSelection?.steps.length) return null;
+    const moduleContexts = planSelection.steps
+      .map((step) => {
+        const selectedTool = tools.find((tool) => tool.name === step.name);
+        const selectedModule =
+          step.selectedModule ??
+          selectedTool?.widgetType ??
+          (selectedTool ? this.moduleRegistry?.findModuleForTool(selectedTool.name)?.type : undefined) ??
+          selectedTool?.name.split(".")[0];
+        return selectedModule
+          ? this.moduleRegistry?.getScopedContextForModule(selectedModule, {
+              userText: input,
+              selectedToolHint: selectedTool?.name,
+              compactContext: context,
+              tools
+            })
+          : undefined;
+      })
+      .filter((moduleContext): moduleContext is NonNullable<typeof moduleContext> => Boolean(moduleContext));
+    const planResponse = await fetchImpl(endpoint, {
+      method: "POST",
+      headers: createBearerHeaders(accessToken, { "content-type": "application/json" }),
+      body: createRealtimeCommandPlanRequestBody(input, context, tools, planSelection, moduleContexts)
+    });
+    if (!planResponse.ok) return null;
+    return parseRealtimeCommandPlanResponse(await planResponse.json());
   }
 
   async requestToolCall(

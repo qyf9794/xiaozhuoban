@@ -1741,6 +1741,17 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes close weather wording to widget removal instead of weather query", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("关闭天气", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("widget.remove");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_weather" });
+    }
+  });
+
   it("does not remove the focused widget for ambiguous close wording", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("关一下", context);

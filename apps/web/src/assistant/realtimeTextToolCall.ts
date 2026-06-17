@@ -1,6 +1,7 @@
 import {
   type AssistantToolCall,
   type AssistantToolSpec,
+  type CommandPlan,
   type CompactAssistantContext,
   type RealtimeModuleCatalogItem,
   type RealtimeScopedModuleContext
@@ -19,13 +20,17 @@ export type RealtimeTextToolCallRequest = {
   tools: AssistantToolSpec[];
   moduleCatalog?: RealtimeModuleCatalogItem[];
   moduleContext?: RealtimeScopedModuleContext;
-  phase?: "select" | "execute" | "auto";
+  moduleContexts?: RealtimeScopedModuleContext[];
+  phase?: "select" | "execute" | "auto" | "plan_select" | "plan_execute";
   selection?: RealtimeTextToolSelection;
+  planSelection?: RealtimeTextPlanSelection;
 };
 
 export type RealtimeTextToolCallResponse = {
   call: AssistantToolCall | null;
   selection?: RealtimeTextToolSelection | null;
+  plan?: CommandPlan | null;
+  planSelection?: RealtimeTextPlanSelection | null;
 };
 
 export type RealtimeTextToolSelection = {
@@ -35,9 +40,22 @@ export type RealtimeTextToolSelection = {
   confidence?: number;
 };
 
+export type RealtimeTextPlanSelectionStep = RealtimeTextToolSelection & {
+  id?: string;
+  connector?: "start" | "sequential" | "parallel";
+};
+
+export type RealtimeTextPlanSelection = {
+  steps: RealtimeTextPlanSelectionStep[];
+};
+
 const SELECT_TOOL_NAME = "assistant.select_tool";
 
 export const REALTIME_TOOL_SELECTION_TOOL_NAME = SELECT_TOOL_NAME;
+
+function parsePlanConnector(value: unknown): RealtimeTextPlanSelectionStep["connector"] {
+  return value === "parallel" || value === "sequential" || value === "start" ? value : undefined;
+}
 
 const widgetAliases: Record<string, string[]> = {
   note: ["便签", "笔记"],
@@ -83,6 +101,24 @@ export function createRealtimeScopedToolCallRequestBody(
   moduleContext?: RealtimeScopedModuleContext
 ) {
   return JSON.stringify({ input, context, tools, selection, moduleContext, phase: "execute" } satisfies RealtimeTextToolCallRequest);
+}
+
+export function createRealtimePlanSelectionRequestBody(
+  input: string,
+  tools: AssistantToolSpec[],
+  moduleCatalog?: RealtimeModuleCatalogItem[]
+) {
+  return JSON.stringify({ input, tools, moduleCatalog, phase: "plan_select" } satisfies RealtimeTextToolCallRequest);
+}
+
+export function createRealtimeCommandPlanRequestBody(
+  input: string,
+  context: CompactAssistantContext,
+  tools: AssistantToolSpec[],
+  planSelection: RealtimeTextPlanSelection,
+  moduleContexts?: RealtimeScopedModuleContext[]
+) {
+  return JSON.stringify({ input, context, tools, planSelection, moduleContexts, phase: "plan_execute" } satisfies RealtimeTextToolCallRequest);
 }
 
 function toolCatalog(tools: AssistantToolSpec[]) {
@@ -494,4 +530,33 @@ export function parseRealtimeTextToolSelectionResponse(value: unknown): Realtime
     targetHint: typeof record.targetHint === "string" ? record.targetHint : undefined,
     confidence: typeof record.confidence === "number" ? record.confidence : undefined
   };
+}
+
+export function parseRealtimeTextPlanSelectionResponse(value: unknown): RealtimeTextPlanSelection | null {
+  if (!value || typeof value !== "object") return null;
+  const selection = (value as Record<string, unknown>).planSelection;
+  if (!selection || typeof selection !== "object") return null;
+  const steps = (selection as Record<string, unknown>).steps;
+  if (!Array.isArray(steps)) return null;
+  const parsed = steps
+    .filter((step): step is Record<string, unknown> => Boolean(step) && typeof step === "object" && !Array.isArray(step))
+    .map((step) => ({
+      id: typeof step.id === "string" ? step.id : undefined,
+      name: typeof step.name === "string" ? step.name : "",
+      selectedModule: typeof step.selectedModule === "string" ? step.selectedModule : undefined,
+      targetHint: typeof step.targetHint === "string" ? step.targetHint : undefined,
+      confidence: typeof step.confidence === "number" ? step.confidence : undefined,
+      connector: parsePlanConnector(step.connector)
+    }))
+    .filter((step) => step.name);
+  return parsed.length > 0 ? { steps: parsed } : null;
+}
+
+export function parseRealtimeCommandPlanResponse(value: unknown): CommandPlan | null {
+  if (!value || typeof value !== "object") return null;
+  const plan = (value as Record<string, unknown>).plan;
+  if (!plan || typeof plan !== "object" || Array.isArray(plan)) return null;
+  const record = plan as Record<string, unknown>;
+  if (!Array.isArray(record.commands)) return null;
+  return record as unknown as CommandPlan;
 }
