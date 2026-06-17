@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@xiaozhuoban/data";
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
-import { getAssistantOutboxPendingCount } from "./assistant/assistantOutbox";
+import { assistantMutationOutbox, getAssistantOutboxPendingCount } from "./assistant/assistantOutbox";
 import { createDefaultBoardWidgets, toCanvasContentPosition, useAppStore } from "./store";
 
 const now = "2026-03-11T00:00:00.000Z";
@@ -42,6 +42,12 @@ function makeWidget(type: string, zIndex: number): WidgetInstance {
 class DefinitionFailingRepository extends InMemoryRepository {
   async upsertDefinition(): Promise<void> {
     throw new Error("definition offline");
+  }
+}
+
+class InstanceFailingRepository extends InMemoryRepository {
+  async upsertInstance(): Promise<void> {
+    throw new Error("instance offline");
   }
 }
 
@@ -161,6 +167,31 @@ describe("assistant outbox store writes", () => {
     expect(useAppStore.getState().widgetDefinitions).toHaveLength(1);
     expect(useAppStore.getState().widgetInstances).toHaveLength(1);
     expect(await getAssistantOutboxPendingCount()).toBe(1);
+  });
+
+  it("links assistant-originated widget writes to the command operation id in outbox", async () => {
+    stubOutboxStorage();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    useAppStore.setState({
+      ...useAppStore.getState(),
+      repository: new InstanceFailingRepository(),
+      activeBoardId: "board_1",
+      widgetDefinitions: [makeDefinition("note")],
+      widgetInstances: [makeWidget("note", 1)]
+    });
+
+    await useAppStore
+      .getState()
+      .updateWidgetState("wi_note", { content: "assistant write" }, { operationId: "cmd_note_write" });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const mutations = await assistantMutationOutbox.list();
+    expect(mutations).toHaveLength(1);
+    expect(mutations[0]).toMatchObject({
+      type: "widget.upsert",
+      operationId: "cmd_note_write"
+    });
   });
 });
 

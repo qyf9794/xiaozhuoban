@@ -7,6 +7,7 @@ import {
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { clampTvWidgetSize } from "../widgets/tvShared";
 
+type AssistantStorePersistOptions = { operationId?: string };
 type AddWidgetArgs = {
   definitionId: string;
   mobileMode?: boolean;
@@ -28,18 +29,18 @@ export interface BoardActionStore {
   getWidgetDefinitions: () => WidgetDefinition[];
   addWidgetInstance: (
     definitionId: string,
-    options?: { mobileMode?: boolean }
+    options?: { mobileMode?: boolean; operationId?: string }
   ) => Promise<WidgetInstance | undefined | void> | WidgetInstance | undefined | void;
-  removeWidgetInstance: (widgetId: string) => Promise<void> | void;
-  updateWidgetPosition: (widgetId: string, x: number, y: number) => Promise<void> | void;
-  updateWidgetSize: (widgetId: string, w: number, h: number) => Promise<void> | void;
-  focusWidget?: (widgetId: string) => Promise<void> | void;
-  fullscreenWidget?: (widgetId: string) => Promise<void> | void;
-  bringWidgetToFront?: (widgetId: string) => Promise<void> | void;
-  autoAlignWidgets: (viewportWidth: number, options?: { mobileMode?: boolean }) => Promise<void> | void;
+  removeWidgetInstance: (widgetId: string, options?: AssistantStorePersistOptions) => Promise<void> | void;
+  updateWidgetPosition: (widgetId: string, x: number, y: number, options?: AssistantStorePersistOptions) => Promise<void> | void;
+  updateWidgetSize: (widgetId: string, w: number, h: number, options?: AssistantStorePersistOptions) => Promise<void> | void;
+  focusWidget?: (widgetId: string, options?: AssistantStorePersistOptions) => Promise<void> | void;
+  fullscreenWidget?: (widgetId: string, options?: AssistantStorePersistOptions) => Promise<void> | void;
+  bringWidgetToFront?: (widgetId: string, options?: AssistantStorePersistOptions) => Promise<void> | void;
+  autoAlignWidgets: (viewportWidth: number, options?: { mobileMode?: boolean; operationId?: string }) => Promise<void> | void;
   setActiveBoard: (boardId: string) => Promise<void> | void;
-  addBoard: (name?: string) => Promise<void> | void;
-  renameBoard: (boardId: string, name: string) => Promise<void> | void;
+  addBoard: (name?: string, options?: AssistantStorePersistOptions) => Promise<void> | void;
+  renameBoard: (boardId: string, name: string, options?: AssistantStorePersistOptions) => Promise<void> | void;
 }
 
 export interface WidgetSizePolicy {
@@ -143,6 +144,23 @@ function findWidget(store: BoardActionStore, widgetId: string) {
   return { widget, definition };
 }
 
+function persistOptions(context: { operationId?: string }): AssistantStorePersistOptions | undefined {
+  return context.operationId ? { operationId: context.operationId } : undefined;
+}
+
+async function callMaybeWithOptions(
+  fn: ((...args: any[]) => Promise<void> | void) | undefined,
+  args: unknown[],
+  options?: AssistantStorePersistOptions
+) {
+  if (!fn) return;
+  if (options) {
+    await fn(...args, options);
+    return;
+  }
+  await fn(...args);
+}
+
 function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
   const actions = [
     defineAction<AddWidgetArgs>({
@@ -153,8 +171,11 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         risk: "safe",
         scope: "desktop"
       },
-      async execute(args) {
-        const widget = await store.addWidgetInstance(args.definitionId, { mobileMode: args.mobileMode });
+      async execute(args, context) {
+        const widget = await store.addWidgetInstance(args.definitionId, {
+          mobileMode: args.mobileMode,
+          ...(context.operationId ? { operationId: context.operationId } : {})
+        });
         const definition = store.getWidgetDefinitions().find((item) => item.id === args.definitionId);
         return success("已添加小工具", {
           definitionId: args.definitionId,
@@ -171,12 +192,12 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         risk: "safe",
         scope: "desktop"
       },
-      async execute(args) {
+      async execute(args, context) {
         const target = findWidget(store, args.widgetId);
         if (!target) {
           return failed("没有找到这个小工具", "WIDGET_NOT_FOUND");
         }
-        await store.focusWidget?.(args.widgetId);
+        await callMaybeWithOptions(store.focusWidget, [args.widgetId], persistOptions(context));
         return success("已聚焦小工具", { widgetId: args.widgetId, widgetType: target.definition?.type });
       }
     }),
@@ -188,7 +209,7 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         risk: "safe",
         scope: "desktop"
       },
-      async execute(args) {
+      async execute(args, context) {
         const target = findWidget(store, args.widgetId);
         if (!target) {
           return failed("没有找到这个小工具", "WIDGET_NOT_FOUND");
@@ -196,7 +217,7 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         if (!store.fullscreenWidget) {
           return failed("当前环境还不能全屏聚焦小工具", "FULLSCREEN_UNAVAILABLE");
         }
-        await store.fullscreenWidget(args.widgetId);
+        await callMaybeWithOptions(store.fullscreenWidget, [args.widgetId], persistOptions(context));
         return success("已全屏聚焦小工具", { widgetId: args.widgetId, widgetType: target.definition?.type });
       }
     }),
@@ -208,8 +229,8 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         risk: "safe",
         scope: "desktop"
       },
-      async execute(args) {
-        await store.removeWidgetInstance(args.widgetId);
+      async execute(args, context) {
+        await callMaybeWithOptions(store.removeWidgetInstance, [args.widgetId], persistOptions(context));
         return success("已删除小工具", { widgetId: args.widgetId });
       }
     }),
@@ -221,8 +242,12 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         risk: "safe",
         scope: "desktop"
       },
-      async execute(args) {
-        await store.updateWidgetPosition(args.widgetId, Math.round(args.x), Math.round(args.y));
+      async execute(args, context) {
+        await callMaybeWithOptions(
+          store.updateWidgetPosition,
+          [args.widgetId, Math.round(args.x), Math.round(args.y)],
+          persistOptions(context)
+        );
         return success("已移动小工具", { widgetId: args.widgetId, x: Math.round(args.x), y: Math.round(args.y) });
       }
     }),
@@ -234,7 +259,7 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         risk: "safe",
         scope: "desktop"
       },
-      async execute(args) {
+      async execute(args, context) {
         const target = findWidget(store, args.widgetId);
         if (!target) {
           return failed("没有找到这个小工具", "WIDGET_NOT_FOUND");
@@ -246,7 +271,7 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         }
 
         const size = policy.clamp ? policy.clamp(args.w, args.h) : { w: Math.round(args.w), h: Math.round(args.h) };
-        await store.updateWidgetSize(args.widgetId, size.w, size.h);
+        await callMaybeWithOptions(store.updateWidgetSize, [args.widgetId, size.w, size.h], persistOptions(context));
         return success("已调整小工具大小", { widgetId: args.widgetId, size });
       }
     }),
@@ -258,11 +283,11 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         risk: "safe",
         scope: "desktop"
       },
-      async execute(args) {
+      async execute(args, context) {
         if (!store.bringWidgetToFront) {
           return failed("当前版本还不能调整小工具层级", "BRING_TO_FRONT_UNAVAILABLE");
         }
-        await store.bringWidgetToFront(args.widgetId);
+        await callMaybeWithOptions(store.bringWidgetToFront, [args.widgetId], persistOptions(context));
         return success("已置顶小工具", { widgetId: args.widgetId });
       }
     }),
@@ -274,8 +299,11 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         risk: "confirm",
         scope: "desktop"
       },
-      async execute(args) {
-        await store.autoAlignWidgets(args.viewportWidth ?? 0, { mobileMode: args.mobileMode });
+      async execute(args, context) {
+        await store.autoAlignWidgets(args.viewportWidth ?? 0, {
+          mobileMode: args.mobileMode,
+          ...(context.operationId ? { operationId: context.operationId } : {})
+        });
         return success("已整理桌面小工具");
       }
     }),
@@ -300,8 +328,8 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         risk: "safe",
         scope: "desktop"
       },
-      async execute(args) {
-        await store.addBoard(args.name);
+      async execute(args, context) {
+        await callMaybeWithOptions(store.addBoard, [args.name], persistOptions(context));
         return success("已新建桌板", { name: args.name });
       }
     }),
@@ -313,8 +341,8 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         risk: "safe",
         scope: "desktop"
       },
-      async execute(args) {
-        await store.renameBoard(args.boardId, args.name.trim());
+      async execute(args, context) {
+        await callMaybeWithOptions(store.renameBoard, [args.boardId, args.name.trim()], persistOptions(context));
         return success("已重命名桌板", { boardId: args.boardId, name: args.name.trim() });
       }
     })

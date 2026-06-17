@@ -10,7 +10,11 @@ import { normalizeWorldClockZones, WORLD_CLOCK_ZONE_OPTIONS } from "../widgets/w
 export interface WidgetStateActionStore {
   getWidgetInstances: () => WidgetInstance[];
   getWidgetDefinitions: () => WidgetDefinition[];
-  updateWidgetState: (widgetId: string, state: Record<string, unknown>) => Promise<void> | void;
+  updateWidgetState: (
+    widgetId: string,
+    state: Record<string, unknown>,
+    options?: { operationId?: string }
+  ) => Promise<void> | void;
 }
 
 type NoteWriteArgs = { content: string; mode?: "replace" | "append" };
@@ -232,9 +236,14 @@ function isToolResult(value: { widget: WidgetInstance; definition: WidgetDefinit
   return "status" in value;
 }
 
-async function patchWidgetState(store: WidgetStateActionStore, widget: WidgetInstance, patch: Record<string, unknown>) {
+async function patchWidgetState(
+  store: WidgetStateActionStore,
+  widget: WidgetInstance,
+  patch: Record<string, unknown>,
+  context: AssistantActionContext
+) {
   const nextState = { ...widget.state, ...patch };
-  await store.updateWidgetState(widget.id, nextState);
+  await store.updateWidgetState(widget.id, nextState, { operationId: context.operationId });
   return nextState;
 }
 
@@ -357,7 +366,7 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
         if (isToolResult(target)) return target;
         const current = typeof target.widget.state.content === "string" ? target.widget.state.content : "";
         const nextContent = args.mode === "append" && current ? `${current}\n${args.content}` : args.content;
-        await patchWidgetState(store, target.widget, { content: nextContent });
+        await patchWidgetState(store, target.widget, { content: nextContent }, context);
         return success("已写入便签", { widgetId: target.widget.id, characters: nextContent.length });
       }
     }),
@@ -374,7 +383,7 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
       async execute(_args, context) {
         const target = getTarget(store, context, "note");
         if (isToolResult(target)) return target;
-        await patchWidgetState(store, target.widget, { content: "" });
+        await patchWidgetState(store, target.widget, { content: "" }, context);
         return success("已清空便签", { widgetId: target.widget.id });
       }
     }),
@@ -402,7 +411,7 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
           input: "",
           inputDate: "",
           inputTime: ""
-        });
+        }, context);
         return success("已新增待办", { widgetId: target.widget.id, item: nextItem });
       }
     }),
@@ -423,7 +432,7 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
         const item = findTodoItemByText(items, args.text);
         if (!item) return failed("没有找到匹配的待办", "TODO_ITEM_NOT_FOUND");
         const nextItems = items.filter((candidate) => candidate.id !== item.id);
-        await patchWidgetState(store, target.widget, { items: nextItems });
+        await patchWidgetState(store, target.widget, { items: nextItems }, context);
         return success("已完成待办", { widgetId: target.widget.id, item });
       }
     }),
@@ -457,7 +466,7 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
           remainingSeconds: totalSeconds,
           running: start,
           targetEndsAt: start ? (Number.isFinite(nowMs) ? nowMs : Date.now()) + totalSeconds * 1000 : 0
-        });
+        }, context);
         return success(start ? "已设置并启动倒计时" : "已设置倒计时", { widgetId: target.widget.id, totalSeconds });
       }
     }),
@@ -477,7 +486,7 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
         await patchWidgetState(store, target.widget, {
           running: false,
           targetEndsAt: 0
-        });
+        }, context);
         return success("已暂停倒计时", { widgetId: target.widget.id });
       }
     }),
@@ -503,7 +512,7 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
           remainingSeconds,
           running: true,
           targetEndsAt: (Number.isFinite(nowMs) ? nowMs : Date.now()) + remainingSeconds * 1000
-        });
+        }, context);
         return success("已继续倒计时", { widgetId: target.widget.id, remainingSeconds });
       }
     }),
@@ -529,7 +538,7 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
           remainingSeconds: totalSeconds,
           running: false,
           targetEndsAt: 0
-        });
+        }, context);
         return success("已重置倒计时", { widgetId: target.widget.id, totalSeconds });
       }
     }),
@@ -554,7 +563,7 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
           cityCode,
           weatherError: "",
           weatherLoading: false
-        });
+        }, context);
         return success("已切换天气城市", { widgetId: target.widget.id, cityCode });
       }
     }),
@@ -576,7 +585,7 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
           calcAcc: null,
           calcOp: null,
           calcResetOnInput: true
-        });
+        }, context);
         return success("已更新计算器", { widgetId: target.widget.id, display: String(args.display) });
       }
     }),
@@ -597,7 +606,7 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
         await patchWidgetState(store, target.widget, {
           headlineRefreshRequestedAt: requestedAt,
           headlineError: ""
-        });
+        }, context);
         return success("已请求刷新新闻", { widgetId: target.widget.id, requestedAt });
       }
     }),
@@ -623,7 +632,7 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
           indexCodes,
           marketError: "",
           marketLoading: false
-        });
+        }, context);
         return success("已更新指数选择", { widgetId: target.widget.id, indexCodes });
       }
     }),
@@ -642,7 +651,7 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
         if (isToolResult(target)) return target;
         const aliases = new Map(WORLD_CLOCK_ZONE_OPTIONS.flatMap((item) => [[item.value, item.value], [item.label, item.value], [item.shortLabel, item.value]]));
         const zones = normalizeWorldClockZones(args.zones.map((zone) => aliases.get(zone) ?? zone));
-        await patchWidgetState(store, target.widget, { zones });
+        await patchWidgetState(store, target.widget, { zones }, context);
         return success("已更新世界时钟", { widgetId: target.widget.id, zones });
       }
     }),
@@ -660,7 +669,7 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
         const target = getTarget(store, context, "converter");
         if (isToolResult(target)) return target;
         const next = normalizeConverterArgs(args);
-        await patchWidgetState(store, target.widget, next);
+        await patchWidgetState(store, target.widget, next, context);
         return success("已更新换算器", { widgetId: target.widget.id, ...next });
       }
     }),
@@ -686,7 +695,7 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
           translatedText: "",
           translateError: "",
           translating: false
-        });
+        }, context);
         return success("已填入翻译内容", { widgetId: target.widget.id, targetLang });
       }
     }),
@@ -719,7 +728,7 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
         await patchWidgetState(store, target.widget, {
           items: [...pinned, ...unpinned],
           clipboardError: ""
-        });
+        }, context);
         return success("已加入剪贴板历史", { widgetId: target.widget.id, text: nextRecord.text });
       }
     }),
@@ -741,7 +750,7 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
         await patchWidgetState(store, target.widget, {
           items: nextRecords,
           clipboardError: ""
-        });
+        }, context);
         return success("已清理剪贴板历史", { widgetId: target.widget.id, remaining: nextRecords.length });
       }
     })

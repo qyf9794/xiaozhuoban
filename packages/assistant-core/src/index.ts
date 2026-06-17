@@ -98,6 +98,7 @@ export interface AssistantToolResult<TData = unknown> {
 
 export interface AssistantActionContext {
   now: () => string;
+  operationId?: string;
   target?: ResolvedWidgetTarget;
   signal?: AbortSignal;
 }
@@ -302,6 +303,7 @@ export class ActionRegistry {
     try {
       return (await action.execute(parsed.data, {
         now: context.now ?? defaultNow,
+        operationId: context.operationId,
         target: context.target,
         signal: context.signal
       })) as AssistantToolResult<TData>;

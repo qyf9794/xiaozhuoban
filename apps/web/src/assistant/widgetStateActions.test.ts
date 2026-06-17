@@ -65,17 +65,20 @@ function createStore(options?: { includeAiDefinition?: boolean; includeGames?: b
   widgets = widgets.map((widget) =>
     widget.id === "wi_note" ? { ...widget, state: { content: "已有内容" } } : widget
   );
+  const calls: Array<{ name: string; args: unknown[] }> = [];
 
   const store: WidgetStateActionStore = {
     getWidgetDefinitions: () => definitions,
     getWidgetInstances: () => widgets,
-    updateWidgetState(widgetId, state) {
+    updateWidgetState(widgetId, state, persistOptions) {
+      calls.push({ name: "updateWidgetState", args: [widgetId, state, persistOptions] });
       widgets = widgets.map((widget) => (widget.id === widgetId ? { ...widget, state } : widget));
     }
   };
 
   return {
     store,
+    calls,
     getWidget: (type: string) => widgets.find((widget) => widget.id === `wi_${type}`),
     getDefinition: (type: string) => definitions.find((definition) => definition.type === type)
   };
@@ -115,6 +118,27 @@ describe("widget state assistant actions", () => {
     expect(names.some((name) => name.includes("gomoku") || name.includes("monopoly") || name.includes("guandan"))).toBe(false);
     expect(names.some((name) => name.includes("ai"))).toBe(false);
     expect(actions.every((action) => action.spec.scope === "widget-detail")).toBe(true);
+  });
+
+  it("passes command operation ids to persistent widget state writes", async () => {
+    const { store, calls } = createStore();
+    const registry = createRegistry(store);
+
+    const result = await registry.execute(
+      {
+        id: "cmd_note_write",
+        name: "note.write",
+        arguments: { content: "新的内容" },
+        source: "test"
+      },
+      { target: targetFor("note"), operationId: "cmd_note_write" }
+    );
+
+    expect(result.status).toBe("success");
+    expect(calls[0]).toEqual({
+      name: "updateWidgetState",
+      args: ["wi_note", { content: "新的内容" }, { operationId: "cmd_note_write" }]
+    });
   });
 
   it("registers stage-one detail actions even before definitions are loaded", () => {

@@ -287,20 +287,27 @@ interface AppState {
   setRepository: (repository: AppRepository) => void;
   initialize: () => Promise<void>;
   toggleLayoutMode: () => Promise<void>;
-  addBoard: (name?: string) => Promise<void>;
-  renameBoard: (boardId: string, name: string) => Promise<void>;
+  addBoard: (name?: string, options?: { operationId?: string }) => Promise<void>;
+  renameBoard: (boardId: string, name: string, options?: { operationId?: string }) => Promise<void>;
   deleteBoard: (boardId: string) => Promise<void>;
   setBoardWallpaper: (imageDataUrl: string) => Promise<void>;
   setActiveBoard: (boardId: string) => Promise<void>;
-  addWidgetInstance: (definitionId: string, options?: { mobileMode?: boolean }) => Promise<WidgetInstance | undefined>;
-  removeWidgetInstance: (widgetId: string) => Promise<void>;
-  focusWidget: (widgetId: string) => Promise<void>;
-  fullscreenWidget: (widgetId: string) => Promise<void>;
-  bringWidgetToFront: (widgetId: string) => Promise<void>;
-  updateWidgetPosition: (widgetId: string, x: number, y: number) => Promise<void>;
-  updateWidgetSize: (widgetId: string, w: number, h: number) => Promise<void>;
-  updateWidgetState: (widgetId: string, state: Record<string, unknown>) => Promise<void>;
-  autoAlignWidgets: (viewportWidth: number, options?: { mobileMode?: boolean }) => Promise<void>;
+  addWidgetInstance: (
+    definitionId: string,
+    options?: { mobileMode?: boolean; operationId?: string }
+  ) => Promise<WidgetInstance | undefined>;
+  removeWidgetInstance: (widgetId: string, options?: { operationId?: string }) => Promise<void>;
+  focusWidget: (widgetId: string, options?: { operationId?: string }) => Promise<void>;
+  fullscreenWidget: (widgetId: string, options?: { operationId?: string }) => Promise<void>;
+  bringWidgetToFront: (widgetId: string, options?: { operationId?: string }) => Promise<void>;
+  updateWidgetPosition: (widgetId: string, x: number, y: number, options?: { operationId?: string }) => Promise<void>;
+  updateWidgetSize: (widgetId: string, w: number, h: number, options?: { operationId?: string }) => Promise<void>;
+  updateWidgetState: (
+    widgetId: string,
+    state: Record<string, unknown>,
+    options?: { operationId?: string }
+  ) => Promise<void>;
+  autoAlignWidgets: (viewportWidth: number, options?: { mobileMode?: boolean; operationId?: string }) => Promise<void>;
   setCommandPaletteOpen: (open: boolean) => void;
   setAiDialogOpen: (open: boolean) => void;
   generateAiWidget: (prompt: string, options?: { mobileMode?: boolean }) => Promise<void>;
@@ -323,11 +330,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
 
-function persistInBackground(task: Promise<void>, label: string, mutation?: AssistantCloudMutation) {
+function persistInBackground(
+  task: Promise<void>,
+  label: string,
+  mutation?: AssistantCloudMutation,
+  operationId?: string
+) {
   void task.catch((error) => {
     console.error(`[store] ${label} failed`, error);
     if (mutation) {
-      void enqueueAssistantCloudMutation(mutation);
+      void enqueueAssistantCloudMutation(mutation, operationId);
     }
   });
 }
@@ -778,7 +790,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       payload: { board: next }
     });
   },
-  async addBoard(name = "新桌板") {
+  async addBoard(name = "新桌板", options) {
     const { repository, boards, widgetDefinitions } = get();
     const workspaceId = boards[0]?.workspaceId ?? (await repository.list())[0]?.id;
     if (!workspaceId) return;
@@ -788,9 +800,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistInBackground(persistBoardWithWidgets(repository, board, defaultWidgets), "add board", {
       type: "backup.import",
       payload: { board, definitions: [], instances: defaultWidgets }
-    });
+    }, options?.operationId);
   },
-  async renameBoard(boardId, name) {
+  async renameBoard(boardId, name, options) {
     const { repository, boards } = get();
     const target = boards.find((board) => board.id === boardId);
     if (!target) return;
@@ -800,7 +812,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistInBackground(repository.upsertBoard(next), "rename board", {
       type: "board.upsert",
       payload: { board: next }
-    });
+    }, options?.operationId);
   },
   async deleteBoard(boardId) {
     const { repository, boards, activeBoardId, widgetInstances, widgetDefinitions } = get();
@@ -922,10 +934,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistInBackground(repository.upsertInstance(instance), "add widget", {
       type: "widget.upsert",
       payload: { instance }
-    });
+    }, options?.operationId);
     return instance;
   },
-  async removeWidgetInstance(widgetId) {
+  async removeWidgetInstance(widgetId, options) {
     const { repository, widgetInstances, focusedWidgetId } = get();
     set({
       widgetInstances: widgetInstances.filter((item) => item.id !== widgetId),
@@ -934,18 +946,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistInBackground(repository.deleteInstance(widgetId), "remove widget", {
       type: "widget.delete",
       payload: { widgetId }
-    });
+    }, options?.operationId);
   },
-  async focusWidget(widgetId) {
-    await get().bringWidgetToFront(widgetId);
+  async focusWidget(widgetId, options) {
+    await get().bringWidgetToFront(widgetId, options);
     if (get().widgetInstances.some((item) => item.id === widgetId)) {
       set({ focusedWidgetId: widgetId });
     }
   },
-  async fullscreenWidget(widgetId) {
-    await get().focusWidget(widgetId);
+  async fullscreenWidget(widgetId, options) {
+    await get().focusWidget(widgetId, options);
   },
-  async bringWidgetToFront(widgetId) {
+  async bringWidgetToFront(widgetId, options) {
     const { repository, widgetInstances } = get();
     const target = widgetInstances.find((item) => item.id === widgetId);
     if (!target) {
@@ -964,9 +976,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistInBackground(repository.upsertInstance(next), "bring widget to front", {
       type: "widget.upsert",
       payload: { instance: next }
-    });
+    }, options?.operationId);
   },
-  async updateWidgetPosition(widgetId, x, y) {
+  async updateWidgetPosition(widgetId, x, y, options) {
     const { repository, widgetInstances } = get();
     const target = widgetInstances.find((item) => item.id === widgetId);
     if (!target) {
@@ -981,9 +993,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistInBackground(repository.upsertInstance(next), "move widget", {
       type: "widget.upsert",
       payload: { instance: next }
-    });
+    }, options?.operationId);
   },
-  async updateWidgetSize(widgetId, w, h) {
+  async updateWidgetSize(widgetId, w, h, options) {
     const { repository, widgetInstances, widgetDefinitions } = get();
     const target = widgetInstances.find((item) => item.id === widgetId);
     if (!target) {
@@ -1008,9 +1020,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistInBackground(repository.upsertInstance(next), "resize widget", {
       type: "widget.upsert",
       payload: { instance: next }
-    });
+    }, options?.operationId);
   },
-  async updateWidgetState(widgetId, state) {
+  async updateWidgetState(widgetId, state, options) {
     const { repository, widgetInstances } = get();
     const target = widgetInstances.find((item) => item.id === widgetId);
     if (!target) {
@@ -1025,7 +1037,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistInBackground(repository.upsertInstance(next), "update widget state", {
       type: "widget.upsert",
       payload: { instance: next }
-    });
+    }, options?.operationId);
   },
   async autoAlignWidgets(_viewportWidth, options) {
     const { repository, widgetInstances, widgetDefinitions } = get();
@@ -1129,7 +1141,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       persistInBackground(repository.upsertInstances(nextInstances), "auto align mobile widgets", {
         type: "widget.upsert_many",
         payload: { instances: nextInstances }
-      });
+      }, options?.operationId);
       return;
     }
 
@@ -1207,7 +1219,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistInBackground(repository.upsertInstances(nextInstances), "auto align widgets", {
       type: "widget.upsert_many",
       payload: { instances: nextInstances }
-    });
+    }, options?.operationId);
   },
   setCommandPaletteOpen(open) {
     set({ commandPaletteOpen: open });

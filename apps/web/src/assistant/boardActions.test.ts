@@ -142,6 +142,29 @@ describe("registerBoardActions", () => {
     expect(calls).toEqual([{ name: "addWidgetInstance", args: ["wd_weather", { mobileMode: true }] }]);
   });
 
+  it("passes command operation ids to persistent board store writes", async () => {
+    const { store, calls } = createStore();
+    const registry = createRegistry(store);
+
+    const result = await registry.execute(
+      {
+        id: "cmd_add_weather",
+        name: "board.add_widget",
+        arguments: { definitionId: "wd_weather" },
+        source: "test"
+      },
+      { operationId: "cmd_add_weather" }
+    );
+
+    expect(result.status).toBe("success");
+    expect(calls).toEqual([
+      {
+        name: "addWidgetInstance",
+        args: ["wd_weather", { mobileMode: undefined, operationId: "cmd_add_weather" }]
+      }
+    ]);
+  });
+
   it("moves a widget with rounded coordinates", async () => {
     const { store, calls } = createStore();
     const registry = createRegistry(store);

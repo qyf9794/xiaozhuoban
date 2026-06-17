@@ -748,6 +748,7 @@ export class AssistantHarness {
     const controller = new AbortController();
     const context: Partial<AssistantActionContext> = {
       now: this.options.now,
+      operationId: call.id,
       target,
       signal: controller.signal
     };
