@@ -342,6 +342,30 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(modelInputs).toEqual([]);
   });
 
+  it("continues a queued todo command after confirming clipboard clear", async () => {
+    const { harness, modelInputs, getWidget } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const first = await harness.handleUserInput("清空剪贴板，然后添加一条待办：明天买牛奶");
+
+    expect(first.route).toBe("shortcut");
+    expect(first.result.status).toBe("needs_confirmation");
+    expect(harness.getPendingConfirmation()).toMatchObject({
+      actionName: "clipboard.clear",
+      arguments: { widgetId: "wi_clipboard", includePinned: false }
+    });
+    expect(getWidget("todo")?.state.items).toBeUndefined();
+
+    const confirmed = await harness.handleUserInput("确认");
+
+    expect(confirmed.route).toBe("shortcut");
+    expect(confirmed.result.status).toBe("success");
+    expect(confirmed.result.message).toContain("已清理剪贴板历史");
+    expect(confirmed.result.message).toContain("已新增待办");
+    expect(getWidget("todo")?.state.items).toMatchObject([{ text: "明天买牛奶" }]);
+    expect(modelInputs).toEqual([]);
+  });
+
   it("cancels a confirmation-required pending action without mutation", async () => {
     const { harness, getWidget } = createAcceptanceHarness();
     await harness.initialize();
