@@ -536,6 +536,42 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes todo add commands with natural due times", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("待办添加 明天9点交报告", {
+      ...context,
+      currentTime: new Date(2026, 5, 17, 9, 0, 0).toISOString()
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("todo.add_item");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_todo",
+        text: "交报告",
+        dueAt: new Date(2026, 5, 18, 9, 0, 0).toISOString()
+      });
+    }
+  });
+
+  it("routes reminder wording to todo add with a due time", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("今天下午三点提醒我买牛奶", {
+      ...context,
+      currentTime: new Date(2026, 5, 17, 9, 0, 0).toISOString()
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("todo.add_item");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_todo",
+        text: "买牛奶",
+        dueAt: new Date(2026, 5, 17, 15, 0, 0).toISOString()
+      });
+    }
+  });
+
   it("routes todo completion commands to the existing todo widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("完成待办买牛奶", context);

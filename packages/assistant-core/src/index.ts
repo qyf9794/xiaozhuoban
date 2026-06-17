@@ -103,6 +103,7 @@ export type IntentShortcutResult<TArgs = unknown> = IntentShortcutMatch<TArgs> |
 export interface IntentShortcutContext {
   pendingConfirmation?: ConfirmationRequest;
   source?: AssistantToolSource;
+  currentTime?: string;
   boardId?: string;
   boardName?: string;
   availableBoards?: CompactBoardSummary[];
@@ -517,6 +518,11 @@ function parseChineseInteger(input: string): number | null {
   if (normalized.includes("十五")) return 15;
   if (normalized.includes("二十") || normalized.includes("两十")) return 20;
   if (normalized.includes("三十")) return 30;
+  if (normalized === "十") return 10;
+  const tens = normalized.match(/^十([一二两三四五六七八九])$/);
+  if (tens) return 10 + (map[tens[1]!] ?? 0);
+  const compound = normalized.match(/^([一二两三四五六七八九])十([一二两三四五六七八九])?$/);
+  if (compound) return (map[compound[1]!] ?? 0) * 10 + (compound[2] ? (map[compound[2]] ?? 0) : 0);
   for (const [word, value] of Object.entries(map)) {
     if (normalized.includes(word)) return value;
   }
@@ -567,6 +573,90 @@ function inferMessageBoardText(input: string) {
     .replace(/(发一下|发一条|发一句|发送|发|说一下|说一句|说|写一条|写一句|写|发布|留一条言|留个言)/g, " ")
     .replace(/(一条|一句|一下|消息|内容)/g, " ")
     .replace(/[，。,.]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getShortcutNow(context: IntentShortcutContext) {
+  const parsed = context.currentTime ? new Date(context.currentTime) : new Date();
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function addDays(date: Date, days: number) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days, date.getHours(), date.getMinutes(), 0, 0);
+}
+
+function parseTodoHour(token: string) {
+  const value = parseChineseInteger(token);
+  return value === null || value < 0 || value > 24 ? null : value;
+}
+
+function parseTodoMinute(token: string | undefined) {
+  if (!token) return 0;
+  if (token.includes("半")) return 30;
+  if (token.includes("一刻")) return 15;
+  if (token.includes("三刻")) return 45;
+  const value = parseChineseInteger(token);
+  return value === null || value < 0 || value > 59 ? null : value;
+}
+
+function inferTodoDueAt(input: string, now: Date) {
+  const compact = input.replace(/\s+/g, "");
+  const explicitDate = compact.match(/(?:(\d{4})年)?(\d{1,2})月(\d{1,2})[日号]?/);
+  const slashDate = compact.match(/(?<!\d)(\d{1,2})[\/.-](\d{1,2})(?!\d)/);
+  const timeMatch =
+    compact.match(/(?:(凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚))?([零〇一二两三四五六七八九十\d]{1,3})点(?:(半|一刻|三刻|[零〇一二两三四五六七八九十\d]{1,3})分?)?/) ??
+    compact.match(/(?:(凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚))?(\d{1,2})[:：]([0-5]\d)/);
+
+  if (!timeMatch) return undefined;
+
+  let year = now.getFullYear();
+  let month = now.getMonth();
+  let day = now.getDate();
+
+  if (explicitDate) {
+    year = explicitDate[1] ? Number(explicitDate[1]) : year;
+    month = Number(explicitDate[2]) - 1;
+    day = Number(explicitDate[3]);
+  } else if (slashDate) {
+    month = Number(slashDate[1]) - 1;
+    day = Number(slashDate[2]);
+  } else if (/(明天|明早|明晚)/.test(compact)) {
+    const next = addDays(now, 1);
+    year = next.getFullYear();
+    month = next.getMonth();
+    day = next.getDate();
+  } else if (/后天/.test(compact)) {
+    const next = addDays(now, 2);
+    year = next.getFullYear();
+    month = next.getMonth();
+    day = next.getDate();
+  }
+
+  const period = timeMatch[1] ?? "";
+  let hour = parseTodoHour(timeMatch[2] ?? "");
+  const minute = parseTodoMinute(timeMatch[3]);
+  if (hour === null || minute === null) return undefined;
+
+  if (/(下午|晚上|今晚|傍晚|夜里|明晚)/.test(period) && hour < 12) hour += 12;
+  if (/中午/.test(period) && hour < 11) hour += 12;
+  if (hour === 24) hour = 0;
+
+  let due = new Date(year, month, day, hour, minute, 0, 0);
+  if (!explicitDate && !slashDate && !/(今天|明天|明早|明晚|后天|今晚)/.test(compact) && due.getTime() <= now.getTime()) {
+    due = addDays(due, 1);
+  }
+  return due.toISOString();
+}
+
+function stripTodoDueText(text: string) {
+  return text
+    .replace(/(?:(?:今天|明天|后天|今晚|明早|明晚)\s*)?(?:凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚)?\s*[零〇一二两三四五六七八九十\d]{1,3}\s*点\s*(?:半|一刻|三刻|[零〇一二两三四五六七八九十\d]{1,3}\s*分?)?/g, " ")
+    .replace(/(?:(?:今天|明天|后天|今晚|明早|明晚)\s*)?(?:凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚)?\s*\d{1,2}\s*[:：]\s*[0-5]\d/g, " ")
+    .replace(/(?:(?:\d{4})年)?\d{1,2}月\d{1,2}[日号]?/g, " ")
+    .replace(/(?<!\d)\d{1,2}[\/.-]\d{1,2}(?!\d)/g, " ")
+    .replace(/(今天|明天|后天|今晚|明早|明晚)/g, " ")
+    .replace(/(截止|到时候|的时候|之前|以前|前|提醒我|提醒|记得|别忘了)/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -635,14 +725,23 @@ function inferTodoText(raw: string) {
   const patterns = [
     /(?:添加|新增|记下|记录|加入)(?:一个|一条)?(?:待办|任务|清单)[：:\s]*(.+)/,
     /(?:待办|任务|清单).*(?:添加|新增|记下|记录|加入)(?:一个|一条)?[：:\s]*(.+)/,
+    /(?:提醒我|提醒|记得|别忘了)[：:\s]*(.+)/,
+    /(.+?)(?:提醒我|提醒|叫我)[：:\s]*(.+)/,
     /把(.+?)(?:添加|新增|记下|记录|加入)(?:到|进)?(?:待办|任务|清单)/
   ];
   for (const pattern of patterns) {
     const match = raw.match(pattern);
-    const text = cleanCommandContent(match?.[1] ?? "");
+    const text = cleanCommandContent([match?.[1], match?.[2]].filter(Boolean).join(" "));
     if (text) return text;
   }
   return "";
+}
+
+function inferTodoAdd(raw: string, now: Date) {
+  const text = inferTodoText(raw);
+  const dueAt = inferTodoDueAt(raw, now) ?? inferTodoDueAt(text, now);
+  const cleaned = dueAt ? stripTodoDueText(text) : text;
+  return { text: cleanCommandContent(cleaned), dueAt };
 }
 
 function inferTodoCompleteText(raw: string) {
@@ -1047,13 +1146,16 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "todo_add",
       match(normalized, raw, context) {
-        if (!/(待办|任务|清单)/.test(normalized) || !/(添加|新增|记下|记录|加入)/.test(normalized)) {
+        if (
+          (!/(待办|任务|清单)/.test(normalized) || !/(添加|新增|记下|记录|加入)/.test(normalized)) &&
+          !/(提醒我|提醒|记得|别忘了)/.test(normalized)
+        ) {
           return { matched: false, reason: "not_todo_add" };
         }
-        const text = inferTodoText(raw);
+        const { text, dueAt } = inferTodoAdd(raw, getShortcutNow(context));
         if (!text) return { matched: false, reason: "todo_text_missing" };
         return (
-          routeWidgetDetailOrAdd(context, raw, "todo", "todo.add_item", { text }, 0.9) ?? {
+          routeWidgetDetailOrAdd(context, raw, "todo", "todo.add_item", { text, ...(dueAt ? { dueAt } : {}) }, 0.9) ?? {
             matched: false,
             reason: "todo_target_missing"
           }
