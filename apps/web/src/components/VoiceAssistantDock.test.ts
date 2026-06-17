@@ -165,6 +165,15 @@ describe("VoiceAssistantDock", () => {
       "没有检测到可用麦克风，或当前浏览器不支持录音。"
     );
     expect(getVoiceAssistantErrorMessage(new Error("REALTIME_SDP_FAILED"))).toBe("Realtime 语音通道连接失败。");
+    expect(
+      getVoiceAssistantErrorMessage(
+        new Error(
+          "OPENAI_REALTIME_SESSION_CREATE_FAILED (status 400 · unknown_parameter: param session.output_modalities: Unknown parameter: session.output_modalities.)"
+        )
+      )
+    ).toBe(
+      "Realtime 会话创建失败：OPENAI_REALTIME_SESSION_CREATE_FAILED (status 400 · unknown_parameter: param session.output_modalities: Unknown parameter: session.output_modalities.)"
+    );
     expect(getVoiceAssistantErrorMessage(new Error("custom"))).toBe("custom");
   });
 });

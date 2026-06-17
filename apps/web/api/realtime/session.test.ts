@@ -154,4 +154,44 @@ describe("realtime session API", () => {
       message: "network down"
     });
   });
+
+  it("returns structured upstream details when OpenAI rejects the Realtime session", async () => {
+    stubSupabaseEnv();
+    vi.stubEnv("OPENAI_API_KEY", "sk-test");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(createSupabaseUserResponse())
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              error: {
+                type: "invalid_request_error",
+                code: "unknown_parameter",
+                param: "session.output_modalities",
+                message: "Unknown parameter: session.output_modalities."
+              }
+            }),
+            { status: 400 }
+          )
+        )
+    );
+
+    const response = await callHandler(JSON.stringify({}));
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toEqual({
+      error: "OPENAI_REALTIME_SESSION_CREATE_FAILED",
+      status: 400,
+      payload: {
+        error: {
+          type: "invalid_request_error",
+          code: "unknown_parameter",
+          param: "session.output_modalities",
+          message: "Unknown parameter: session.output_modalities."
+        }
+      }
+    });
+  });
 });

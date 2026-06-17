@@ -6,6 +6,7 @@ import {
   createRealtimeSessionRequestBody,
   createRealtimeToolResultEvents,
   extractRealtimeSessionErrorCode,
+  extractRealtimeSessionErrorMessage,
   getMicrophonePermissionState,
   handleRealtimeFunctionCallEvent,
   isCurrentRealtimeConnectAttempt,
@@ -246,8 +247,33 @@ describe("OpenAI realtime adapter helpers", () => {
 
   it("extracts server-side realtime session error codes", () => {
     expect(extractRealtimeSessionErrorCode({ error: "OPENAI_API_KEY_MISSING" })).toBe("OPENAI_API_KEY_MISSING");
+    expect(
+      extractRealtimeSessionErrorCode({
+        error: "OPENAI_REALTIME_SESSION_CREATE_FAILED",
+        payload: { error: { code: "model_not_found", message: "The model does not exist." } }
+      })
+    ).toBe("OPENAI_REALTIME_SESSION_CREATE_FAILED");
     expect(extractRealtimeSessionErrorCode({ error: 500 })).toBe("");
     expect(extractRealtimeSessionErrorCode(null)).toBe("");
+  });
+
+  it("extracts diagnostic details from nested OpenAI realtime session errors", () => {
+    expect(
+      extractRealtimeSessionErrorMessage({
+        error: "OPENAI_REALTIME_SESSION_CREATE_FAILED",
+        status: 400,
+        payload: {
+          error: {
+            type: "invalid_request_error",
+            code: "unknown_parameter",
+            param: "session.output_modalities",
+            message: "Unknown parameter: session.output_modalities."
+          }
+        }
+      })
+    ).toBe(
+      "OPENAI_REALTIME_SESSION_CREATE_FAILED (status 400 · unknown_parameter: param session.output_modalities: Unknown parameter: session.output_modalities.)"
+    );
   });
 
   it("queues session tool updates before the data channel opens", () => {

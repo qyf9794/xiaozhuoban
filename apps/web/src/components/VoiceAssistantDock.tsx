@@ -51,6 +51,9 @@ export function getVoiceAssistantConnectionMessage(status: RealtimeConnectionSta
 export function getVoiceAssistantErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : "";
   if (message === "OPENAI_API_KEY_MISSING") return "后端缺少 OPENAI_API_KEY，配置后再连接。";
+  if (message.startsWith("OPENAI_REALTIME_SESSION_CREATE_FAILED")) {
+    return `Realtime 会话创建失败：${message}`;
+  }
   if (message === "MICROPHONE_DENIED") return MICROPHONE_PERMISSION_MESSAGE;
   if (message === "MICROPHONE_UNAVAILABLE") return MICROPHONE_UNAVAILABLE_MESSAGE;
   if (message === "REALTIME_CLIENT_SECRET_MISSING") return "Realtime 临时密钥缺失。";

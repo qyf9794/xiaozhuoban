@@ -185,15 +185,45 @@ function extractClientSecret(payload: unknown): string {
   return "";
 }
 
+function getStringField(value: Record<string, unknown> | null | undefined, field: string): string {
+  const item = value?.[field];
+  return typeof item === "string" ? item : "";
+}
+
+function getNestedOpenAIError(payload: Record<string, unknown>): Record<string, unknown> | null {
+  const direct = payload.error;
+  if (isRecord(direct)) return direct;
+  const nestedPayload = payload.payload;
+  if (isRecord(nestedPayload) && isRecord(nestedPayload.error)) return nestedPayload.error;
+  return null;
+}
+
 export function extractRealtimeSessionErrorCode(payload: unknown): string {
   if (!isRecord(payload)) return "";
-  return typeof payload.error === "string" ? payload.error : "";
+  const direct = getStringField(payload, "error");
+  if (direct) return direct;
+  const openAIError = getNestedOpenAIError(payload);
+  return getStringField(openAIError, "code") || getStringField(openAIError, "type");
+}
+
+export function extractRealtimeSessionErrorMessage(payload: unknown, fallback = "REALTIME_SESSION_FAILED"): string {
+  if (!isRecord(payload)) return fallback;
+  const code = extractRealtimeSessionErrorCode(payload);
+  const status = typeof payload.status === "number" ? payload.status : undefined;
+  const openAIError = getNestedOpenAIError(payload);
+  const upstreamCode = getStringField(openAIError, "code") || getStringField(openAIError, "type");
+  const upstreamMessage = getStringField(openAIError, "message");
+  const upstreamParam = getStringField(openAIError, "param");
+  const statusText = status ? `status ${status}` : "";
+  const upstreamParts = [upstreamCode, upstreamParam ? `param ${upstreamParam}` : "", upstreamMessage].filter(Boolean);
+  const detail = [statusText, upstreamParts.join(": ")].filter(Boolean).join(" · ");
+  if (code && detail) return `${code} (${detail})`;
+  return code || detail || fallback;
 }
 
 async function readRealtimeEndpointError(response: Response, fallback: string): Promise<Error> {
   try {
-    const errorCode = extractRealtimeSessionErrorCode(await response.json());
-    return new Error(errorCode || fallback);
+    return new Error(extractRealtimeSessionErrorMessage(await response.json(), fallback));
   } catch {
     return new Error(fallback);
   }
@@ -358,13 +388,13 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         body: createRealtimeSessionRequestBody(this.options.getSafetyIdentifier?.())
       });
       if (!sessionResponse.ok) {
-        let errorCode = "";
+        let errorMessage = "";
         try {
-          errorCode = extractRealtimeSessionErrorCode(await sessionResponse.json());
+          errorMessage = extractRealtimeSessionErrorMessage(await sessionResponse.json(), "REALTIME_SESSION_FAILED");
         } catch {
           // Keep the generic session failure if the endpoint returns a non-JSON error.
         }
-        throw new Error(errorCode || "REALTIME_SESSION_FAILED");
+        throw new Error(errorMessage || "REALTIME_SESSION_FAILED");
       }
       const secret = extractClientSecret(await sessionResponse.json());
       if (!secret) {
