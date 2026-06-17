@@ -465,6 +465,7 @@ export class AssistantHarness {
       })) ?? context.widgets;
     return {
       source: "shortcut",
+      currentTime: this.options.now?.() ?? new Date().toISOString(),
       pendingConfirmation: this.pendingConfirmation ?? undefined,
       boardId: context.boardId,
       boardName: context.boardName,

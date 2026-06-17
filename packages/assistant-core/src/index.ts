@@ -711,6 +711,9 @@ function resolveWeekdayDate(now: Date, token: string, nextWeek: boolean) {
 
 function inferTodoDueAt(input: string, now: Date) {
   const compact = input.replace(/\s+/g, "");
+  if (/一会儿后?|待会儿后?|等会儿后?/.test(compact)) {
+    return new Date(now.getTime() + 10 * 60 * 1000).toISOString();
+  }
   const explicitDate = compact.match(/(?:(\d{4})年)?(\d{1,2})月(\d{1,2})[日号]?/);
   const slashDate = compact.match(/(?<!\d)(\d{1,2})[\/.-](\d{1,2})(?!\d)/);
   const daysLater = compact.match(/([零〇一二两三四五六七八九十\d]{1,3})天后/);
@@ -781,6 +784,7 @@ function stripTodoDueText(text: string) {
   return text
     .replace(/(?:[零〇一二两三四五六七八九十\d]+|半)(?:个)?(?:小时|钟头)(?:(?:[零〇一二两三四五六七八九十\d]+|半)(?:分钟|分))?后/g, " ")
     .replace(/(?:[零〇一二两三四五六七八九十\d]+|半)(?:个)?(?:分钟|分|秒)后/g, " ")
+    .replace(/(一会儿后?|待会儿后?|等会儿后?)/g, " ")
     .replace(/(?:(?:今天|明天|后天|今晚|明早|明晚|[零〇一二两三四五六七八九十\d]{1,3}天后|(?:(?:下)?(?:周|星期|礼拜)[日天一二两三四五六]))\s*)?(?:凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚)?\s*[零〇一二两三四五六七八九十\d]{1,3}\s*点\s*(?:半|一刻|三刻|[零〇一二两三四五六七八九十\d]{1,3}\s*分?)?\s*(?:之前|以前|前(?!端))/g, " ")
     .replace(/(?:(?:今天|明天|后天|今晚|明早|明晚|[零〇一二两三四五六七八九十\d]{1,3}天后|(?:(?:下)?(?:周|星期|礼拜)[日天一二两三四五六]))\s*)?(?:凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚)?\s*\d{1,2}\s*[:：]\s*[0-5]\d\s*(?:之前|以前|前(?!端))/g, " ")
     .replace(/(?:(?:今天|明天|后天|今晚|明早|明晚|[零〇一二两三四五六七八九十\d]{1,3}天后|(?:(?:下)?(?:周|星期|礼拜)[日天一二两三四五六]))\s*)?(?:凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚)?\s*[零〇一二两三四五六七八九十\d]{1,3}\s*点\s*(?:半|一刻|三刻|[零〇一二两三四五六七八九十\d]{1,3}\s*分?)?/g, " ")
@@ -961,7 +965,7 @@ function inferTranslateDraft(raw: string) {
   return null;
 }
 
-const UNIT_ALIASES: Record<string, { category: string; unit: string }> = {
+const UNIT_ALIASES: Record<string, { category: string; unit: string; scale?: number }> = {
   米: { category: "length", unit: "m" },
   m: { category: "length", unit: "m" },
   公里: { category: "length", unit: "km" },
@@ -975,8 +979,10 @@ const UNIT_ALIASES: Record<string, { category: string; unit: string }> = {
   ft: { category: "length", unit: "ft" },
   公斤: { category: "weight", unit: "kg" },
   千克: { category: "weight", unit: "kg" },
+  斤: { category: "weight", unit: "kg", scale: 0.5 },
   kg: { category: "weight", unit: "kg" },
   克: { category: "weight", unit: "g" },
+  两: { category: "weight", unit: "g", scale: 50 },
   g: { category: "weight", unit: "g" },
   磅: { category: "weight", unit: "lb" },
   lb: { category: "weight", unit: "lb" },
@@ -990,7 +996,7 @@ const UNIT_ALIASES: Record<string, { category: string; unit: string }> = {
 };
 
 function inferConverterArgs(raw: string) {
-  const unitPattern = "(摄氏度|华氏度|开尔文|摄氏|华氏|公里|千米|厘米|英寸|英尺|公斤|千克|盎司|米|克|磅|km|cm|inch|ft|kg|lb|oz|m|g)";
+  const unitPattern = "(摄氏度|华氏度|开尔文|摄氏|华氏|公里|千米|厘米|英寸|英尺|公斤|千克|盎司|斤|两|米|克|磅|km|cm|inch|ft|kg|lb|oz|m|g)";
   const patterns = [
     new RegExp(`([+-]?\\d+(?:\\.\\d+)?)\\s*${unitPattern}.*(?:换算|转换|转|到|成)\\s*${unitPattern}`, "i"),
     new RegExp(`([+-]?\\d+(?:\\.\\d+)?)\\s*${unitPattern}\\s*(?:等于多少|是多少|有多少|等于|多少|是)\\s*${unitPattern}`, "i"),
@@ -1003,7 +1009,14 @@ function inferConverterArgs(raw: string) {
     const from = UNIT_ALIASES[match[2]] ?? UNIT_ALIASES[match[2]?.toLowerCase() ?? ""];
     const to = UNIT_ALIASES[match[3]] ?? UNIT_ALIASES[match[3]?.toLowerCase() ?? ""];
     if (value && from && to && from.category === to.category) {
-      return { category: from.category, value, fromUnit: from.unit, toUnit: to.unit };
+      if (to.scale && to.scale !== 1) continue;
+      const scaledValue = from.scale ? Number(value) * from.scale : Number(value);
+      return {
+        category: from.category,
+        value: Number.isFinite(scaledValue) ? String(Number(scaledValue.toFixed(8))) : value,
+        fromUnit: from.unit,
+        toUnit: to.unit
+      };
     }
   }
   return null;

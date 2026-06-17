@@ -371,6 +371,20 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(modelInputs).toEqual([]);
   });
 
+  it("adds soon reminders through shortcut-first Harness without model fallback", async () => {
+    const { harness, modelInputs, getWidget } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("一会儿提醒我喝水");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(getWidget("todo")?.state.items).toMatchObject([
+      { text: "喝水", dueAt: new Date(Date.parse(NOW) + 10 * 60 * 1000).toISOString() }
+    ]);
+    expect(modelInputs).toEqual([]);
+  });
+
   it("completes a todo from shorthand wording without model fallback", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness();
     await harness.initialize();
@@ -455,6 +469,18 @@ describe("stage-one assistant acceptance scenarios", () => {
       expect.arrayContaining(["Asia/Shanghai", "Europe/London", "America/New_York"])
     );
     expect(getWidget("headline")?.state.headlineRefreshRequestedAt).toBe(NOW);
+    expect(modelInputs).toEqual([]);
+  });
+
+  it("sets everyday Chinese weight conversion without model fallback", async () => {
+    const { harness, modelInputs, getWidget } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("2斤是多少克");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(getWidget("converter")?.state).toMatchObject({ inputValue: "1", fromUnit: "kg", toUnit: "g" });
     expect(modelInputs).toEqual([]);
   });
 

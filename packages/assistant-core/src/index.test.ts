@@ -853,6 +853,24 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes vague soon reminder wording to todo add", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("一会儿提醒我喝水", {
+      ...context,
+      currentTime: new Date(2026, 5, 17, 9, 0, 0).toISOString()
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("todo.add_item");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_todo",
+        text: "喝水",
+        dueAt: new Date(2026, 5, 17, 9, 10, 0).toISOString()
+      });
+    }
+  });
+
   it("routes todo completion commands to the existing todo widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("完成待办买牛奶", context);
@@ -1101,6 +1119,23 @@ describe("IntentShortcutRouter", () => {
         value: "5",
         fromUnit: "kg",
         toUnit: "lb"
+      });
+    }
+  });
+
+  it("routes everyday Chinese weight converter commands through supported base units", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("2斤是多少克", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("converter.set");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_converter",
+        category: "weight",
+        value: "1",
+        fromUnit: "kg",
+        toUnit: "g"
       });
     }
   });
