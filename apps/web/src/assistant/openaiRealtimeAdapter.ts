@@ -229,12 +229,30 @@ export function resolveRealtimeConnectFailureStatus(error: unknown): RealtimeCon
     message === "AUTH_INVALID" ||
     message === "REALTIME_CLIENT_SECRET_MISSING" ||
     message === "REALTIME_SESSION_FAILED" ||
+    message === "REALTIME_SESSION_UPDATE_TIMEOUT" ||
     message.startsWith("OPENAI_REALTIME_SESSION_CREATE_FAILED") ||
-    message.startsWith("OPENAI_REALTIME_SESSION_REQUEST_FAILED")
+    message.startsWith("OPENAI_REALTIME_SESSION_REQUEST_FAILED") ||
+    message.startsWith("REALTIME_SESSION_UPDATE_FAILED")
   ) {
     return "session_failed";
   }
   return "failed";
+}
+
+export function extractRealtimeEventErrorMessage(event: unknown): string {
+  if (!isRecord(event)) return "REALTIME_SESSION_UPDATE_FAILED";
+  const error = isRecord(event.error) ? event.error : null;
+  const code = getStringField(error, "code") || getStringField(error, "type");
+  const message = getStringField(error, "message");
+  const param = getStringField(error, "param");
+  const eventId = getStringField(event, "event_id");
+  const detail = [
+    code,
+    param ? `param ${param}` : "",
+    message,
+    eventId ? `event ${eventId}` : ""
+  ].filter(Boolean).join(": ");
+  return detail ? `REALTIME_SESSION_UPDATE_FAILED (${detail})` : "REALTIME_SESSION_UPDATE_FAILED";
 }
 
 async function readRealtimeEndpointError(response: Response, fallback: string): Promise<Error> {
@@ -335,6 +353,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private connectionAttemptId = 0;
   private sessionReady = false;
   private sessionUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
+  private sessionReadyResolve: (() => void) | null = null;
+  private sessionReadyReject: ((error: Error) => void) | null = null;
   private activeResponseId: string | null = null;
 
   constructor(private readonly options: OpenAIRealtimeWebRtcAdapterOptions = {}) {}
@@ -424,6 +444,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       const dataChannel = peerConnection.createDataChannel("openai-realtime-data");
       this.peerConnection = peerConnection;
       this.dataChannel = dataChannel;
+      const sessionReadyPromise = this.createSessionReadyPromise();
 
       stream.getAudioTracks().forEach((track) => peerConnection.addTrack(track, stream));
       const handlePeerStateChange = (state: string) => {
@@ -480,6 +501,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         return;
       }
       await peerConnection.setRemoteDescription({ type: "answer", sdp: await sdpResponse.text() });
+      await sessionReadyPromise;
     } catch (error) {
       if (this.isCurrentAttempt(attemptId)) {
         this.closeResources();
@@ -518,6 +540,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.peerConnection = null;
     this.mediaStream = null;
     this.clearSessionUpdateTimeout();
+    this.clearSessionReadyPromise();
   }
 
   updateTools(tools: AssistantToolSpec[]): void {
@@ -743,16 +766,49 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (event.type === "session.updated") {
       this.clearSessionUpdateTimeout();
       this.sessionReady = true;
+      this.resolveSessionReadyPromise();
       this.options.onStatusChange?.("connected");
+      return;
     }
+    if (event.type === "error") {
+      this.failSessionUpdate(extractRealtimeEventErrorMessage(event));
+    }
+  }
+
+  private createSessionReadyPromise(): Promise<void> {
+    this.clearSessionReadyPromise();
+    if (this.sessionReady) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      this.sessionReadyResolve = resolve;
+      this.sessionReadyReject = reject;
+    });
+  }
+
+  private resolveSessionReadyPromise(): void {
+    const resolve = this.sessionReadyResolve;
+    this.clearSessionReadyPromise();
+    resolve?.();
+  }
+
+  private failSessionUpdate(message: string): void {
+    if (this.sessionReady) return;
+    const reject = this.sessionReadyReject;
+    const error = new Error(message || "REALTIME_SESSION_UPDATE_FAILED");
+    this.closeResources();
+    this.options.onStatusChange?.("session_failed");
+    reject?.(error);
+  }
+
+  private clearSessionReadyPromise(): void {
+    this.sessionReadyResolve = null;
+    this.sessionReadyReject = null;
   }
 
   private armSessionUpdateTimeout(): void {
     this.clearSessionUpdateTimeout();
     this.sessionUpdateTimeout = setTimeout(() => {
       if (this.sessionReady) return;
-      this.closeResources();
-      this.options.onStatusChange?.("session_failed");
+      this.failSessionUpdate("REALTIME_SESSION_UPDATE_TIMEOUT");
     }, this.options.sessionUpdateTimeoutMs ?? 4_000);
   }
 

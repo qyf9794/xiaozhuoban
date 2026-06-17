@@ -12,6 +12,7 @@ import {
   createLearningCandidate,
   createPlanPreview,
   scoreCandidates,
+  segmentCommandText,
   normalizeText,
   type LearnedCommandStore,
   type LearningCandidate,
@@ -75,6 +76,35 @@ export interface AssistantOperationEvent {
   route: AssistantRoute;
   toolName?: string;
   message?: string;
+}
+
+export interface AssistantCommandDiagnostics {
+  rawInput: string;
+  normalizedText: string;
+  route?: AssistantRoute;
+  usedRealtime: boolean;
+  segments: Array<{ id: string; text: string; connector: string }>;
+  candidateModules: Array<{ type: string; score: number; reason: string }>;
+  commandPlan?: {
+    id: string;
+    createdBy: CommandPlan["createdBy"];
+    commands: Array<{
+      id: string;
+      module: string;
+      tool: string;
+      risk: string;
+      source: string;
+      dependsOn?: string[];
+      argKeys: string[];
+    }>;
+    executionGroups: CommandPlan["executionGroups"];
+  };
+  validationErrors?: Array<{ commandId: string; code: string; message: string }>;
+  toolResults: Array<{ id: string; tool: string; status: string; message?: string; errorCode?: string }>;
+  status?: AssistantToolResult["status"];
+  message?: string;
+  pendingConfirmation?: boolean;
+  learningCandidate?: boolean;
 }
 
 export interface AssistantHarnessOptions {
@@ -233,6 +263,7 @@ export class AssistantHarness {
   private readonly planValidator: PlanValidator;
   private readonly shortcutPlanAdapter = new ShortcutPlanAdapter();
   private readonly auditMetadataByCallId = new Map<string, Pick<AssistantAuditEvent, "normalized" | "candidateModules" | "selectedModule" | "selectedToolHint" | "selectionConfidence">>();
+  private lastDiagnostics: AssistantCommandDiagnostics | null = null;
 
   constructor(private readonly options: AssistantHarnessOptions) {
     this.planValidator =
@@ -276,8 +307,31 @@ export class AssistantHarness {
     });
   }
 
+  getLastDiagnostics(): AssistantCommandDiagnostics | null {
+    return this.lastDiagnostics ? JSON.parse(JSON.stringify(this.lastDiagnostics)) as AssistantCommandDiagnostics : null;
+  }
+
   async handleUserInput(input: string): Promise<AssistantHarnessResponse> {
     const startedAt = Date.now();
+    this.startDiagnostics(input);
+    try {
+      const response = await this.handleUserInputInternal(input, startedAt);
+      this.finishDiagnostics(response);
+      return response;
+    } catch (error) {
+      this.finishDiagnostics({
+        route: this.lastDiagnostics?.route ?? "model",
+        result: {
+          status: "failed",
+          message: error instanceof Error ? error.message : "助手执行失败",
+          errorCode: "ASSISTANT_COMMAND_FAILED"
+        }
+      });
+      throw error;
+    }
+  }
+
+  private async handleUserInputInternal(input: string, startedAt: number): Promise<AssistantHarnessResponse> {
     const learningResponse = await this.handlePendingLearningInput(input, startedAt);
     if (learningResponse) {
       return learningResponse;
@@ -320,6 +374,7 @@ export class AssistantHarness {
     }
 
     const context = this.getCurrentContext();
+    this.markRealtimeUsed();
     const modelPlan = await this.options.realtime.requestCommandPlan?.(input, context, this.currentTools, this.options.moduleRegistry);
     if (modelPlan) {
       return this.handleModelCommandPlan(input, modelPlan, startedAt);
@@ -406,6 +461,13 @@ export class AssistantHarness {
   private async handleShortcutPlan(groups: AssistantToolCall[][], startedAt: number): Promise<AssistantHarnessResponse> {
     const responses: AssistantHarnessResponse[] = [];
     let lastAddedWidget: AddedWidgetData | null = null;
+    this.recordPlanDiagnostics(
+      this.shortcutPlanAdapter.createPlan(
+        groups.flat().map((call) => call.transcript ?? call.name).join("，"),
+        groups
+      ),
+      "shortcut"
+    );
     for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
       const group = groups[groupIndex]!;
       const executableGroup: AssistantToolCall[] = lastAddedWidget
@@ -557,6 +619,7 @@ export class AssistantHarness {
       await this.options.realtime.sendToolResult(call, result);
       await this.updateRealtimeContext();
       await this.audit({ route, call, result, durationMs: Date.now() - startedAt });
+      this.recordDiagnosticsToolResult(call, result);
       return { route, call, result };
     }
 
@@ -646,6 +709,7 @@ export class AssistantHarness {
     startedAt: number
   ): Promise<AssistantHarnessResponse[]> {
     const validation = this.planValidator.validate(plan);
+    this.recordPlanDiagnostics(validation.plan, route, validation.errors);
     if (!validation.ok) {
       const firstCommand = plan.commands[0];
       const call: AssistantToolCall = {
@@ -663,6 +727,7 @@ export class AssistantHarness {
       this.emitOperation({ id: call.id, phase: "failed", route, toolName: call.name, message: result.message });
       await this.options.realtime.sendToolResult(call, result);
       await this.audit({ route, call, result, durationMs: Date.now() - startedAt });
+      this.recordDiagnosticsToolResult(call, result);
       return [{ route, call, result }];
     }
 
@@ -702,6 +767,7 @@ export class AssistantHarness {
       await this.options.realtime.sendToolResult(call, record.result);
       const learningCandidate = await this.recordLearningCandidate(validation.plan, call, record.result, route);
       await this.audit({ route, call, result: record.result, durationMs: Date.now() - startedAt, learningCandidate });
+      this.recordDiagnosticsToolResult(call, record.result, learningCandidate);
       responses.push({ route, call, result: record.result });
     }
     await this.updateRealtimeContext();
@@ -967,6 +1033,7 @@ export class AssistantHarness {
       transcript: call.transcript
     };
     const followUpResult = await this.executeCall(followUpCall);
+    this.recordDiagnosticsToolResult(followUpCall, followUpResult);
     return {
       ...followUpResult,
       message:
@@ -1051,6 +1118,87 @@ export class AssistantHarness {
 
   private emitOperation(event: AssistantOperationEvent): void {
     this.options.onOperation?.(event);
+  }
+
+  private startDiagnostics(input: string): void {
+    const candidateResult = this.options.moduleRegistry
+      ? scoreCandidates(input, this.options.moduleRegistry.list(), this.buildShortcutContext())
+      : { normalizedText: normalizeText(input), candidates: [] };
+    this.lastDiagnostics = {
+      rawInput: input,
+      normalizedText: candidateResult.normalizedText,
+      usedRealtime: false,
+      segments: segmentCommandText(input),
+      candidateModules: candidateResult.candidates.slice(0, 5),
+      toolResults: []
+    };
+  }
+
+  private markRealtimeUsed(): void {
+    if (this.lastDiagnostics) {
+      this.lastDiagnostics.usedRealtime = true;
+      this.lastDiagnostics.route = "model";
+    }
+  }
+
+  private recordPlanDiagnostics(
+    plan: CommandPlan,
+    route: AssistantRoute,
+    validationErrors: Array<{ commandId: string; code: string; message: string }> = []
+  ): void {
+    if (!this.lastDiagnostics) return;
+    this.lastDiagnostics.route = route;
+    const currentCommandCount = this.lastDiagnostics.commandPlan?.commands.length ?? 0;
+    const nextCommandCount = plan.commands.length;
+    if (nextCommandCount >= currentCommandCount) {
+      this.lastDiagnostics.commandPlan = {
+        id: plan.id,
+        createdBy: plan.createdBy,
+        commands: plan.commands.map((command) => ({
+          id: command.id,
+          module: command.module,
+          tool: command.tool,
+          risk: command.risk,
+          source: command.source,
+          dependsOn: command.dependsOn,
+          argKeys: Object.keys(command.args).sort()
+        })),
+        executionGroups: plan.executionGroups.map((group) => ({
+          id: group.id,
+          mode: group.mode,
+          commandIds: [...group.commandIds]
+        }))
+      };
+    }
+    if (validationErrors.length > 0) {
+      this.lastDiagnostics.validationErrors = validationErrors.map((error) => ({ ...error }));
+    }
+  }
+
+  private recordDiagnosticsToolResult(call: AssistantToolCall, result: AssistantToolResult, learningCandidate = false): void {
+    if (!this.lastDiagnostics) return;
+    const existingIndex = this.lastDiagnostics.toolResults.findIndex((item) => item.id === call.id);
+    const item = {
+      id: call.id,
+      tool: call.name,
+      status: result.status,
+      message: result.message,
+      errorCode: result.errorCode
+    };
+    if (existingIndex >= 0) {
+      this.lastDiagnostics.toolResults[existingIndex] = item;
+    } else {
+      this.lastDiagnostics.toolResults.push(item);
+    }
+    this.lastDiagnostics.learningCandidate = Boolean(this.lastDiagnostics.learningCandidate || learningCandidate);
+  }
+
+  private finishDiagnostics(response: AssistantHarnessResponse): void {
+    if (!this.lastDiagnostics) return;
+    this.lastDiagnostics.route = response.route;
+    this.lastDiagnostics.status = response.result.status;
+    this.lastDiagnostics.message = response.result.message;
+    this.lastDiagnostics.pendingConfirmation = response.result.status === "needs_confirmation" || Boolean(response.result.confirmation);
   }
 
   private rememberAuditMetadata(call: AssistantToolCall, input: string): void {

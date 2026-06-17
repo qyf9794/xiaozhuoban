@@ -3,6 +3,12 @@ import type { AssistantHarness, AssistantRoute } from "../assistant/AssistantHar
 import type { RealtimeConnectionStatus } from "../assistant/openaiRealtimeAdapter";
 import type { ConfirmationRequest } from "@xiaozhuoban/assistant-core";
 
+declare global {
+  interface Window {
+    __xiaozhuobanAssistantDiagnostics?: unknown;
+  }
+}
+
 export type VoiceAssistantDockState =
   | "disconnected"
   | "connecting"
@@ -59,6 +65,7 @@ export function getVoiceAssistantErrorMessage(error: unknown): string {
   if (message === "REALTIME_CLIENT_SECRET_MISSING") return "Realtime 临时密钥缺失。";
   if (message === "REALTIME_SDP_FAILED") return "Realtime 语音通道连接失败。";
   if (message === "REALTIME_SESSION_FAILED") return "Realtime 会话创建失败。";
+  if (message.startsWith("REALTIME_SESSION_UPDATE_FAILED")) return `Realtime 会话配置失败：${message}`;
   if (message === "REALTIME_SESSION_UPDATE_TIMEOUT") return "Realtime 会话配置未生效。";
   return message || "语音连接失败";
 }
@@ -129,6 +136,11 @@ export function getVisibleVoiceAssistantOperation(
   externalOperation?: VoiceAssistantOperationStatus | null
 ): VoiceAssistantOperationStatus {
   return internalOperation.phase === "idle" ? externalOperation ?? internalOperation : internalOperation;
+}
+
+export function publishVoiceAssistantDiagnostics(snapshot: unknown): void {
+  if (typeof window === "undefined") return;
+  window.__xiaozhuobanAssistantDiagnostics = snapshot;
 }
 
 export function getVoiceAssistantRuntimeText(runtimeStatus: string, syncPendingCount: number, syncLastError?: string): string {
@@ -236,6 +248,7 @@ export function VoiceAssistantDock({
     setOperation({ phase: "thinking", command: input });
     try {
       const response = await harness.handleUserInput(input);
+      publishVoiceAssistantDiagnostics(harness.getLastDiagnostics());
       onCommandRoute?.(response.route);
       const nextPhase = response.result.status === "needs_confirmation" ? "waiting_confirmation" : "executing";
       setState(nextPhase);
@@ -260,6 +273,7 @@ export function VoiceAssistantDock({
         }
       }, 320);
     } catch (error) {
+      publishVoiceAssistantDiagnostics(harness.getLastDiagnostics());
       const message = error instanceof Error ? error.message : "助手执行失败";
       setLastMessage(message);
       setOperation({ phase: "error", command: input, message });

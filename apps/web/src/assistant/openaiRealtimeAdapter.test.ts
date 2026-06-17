@@ -7,6 +7,7 @@ import {
   createRealtimeToolResultEvents,
   extractRealtimeSessionErrorCode,
   extractRealtimeSessionErrorMessage,
+  extractRealtimeEventErrorMessage,
   getMicrophonePermissionState,
   handleRealtimeFunctionCallEvent,
   isCurrentRealtimeConnectAttempt,
@@ -288,7 +289,29 @@ describe("OpenAI realtime adapter helpers", () => {
       )
     ).toBe("session_failed");
     expect(resolveRealtimeConnectFailureStatus(new Error("REALTIME_CLIENT_SECRET_MISSING"))).toBe("session_failed");
+    expect(resolveRealtimeConnectFailureStatus(new Error("REALTIME_SESSION_UPDATE_TIMEOUT"))).toBe("session_failed");
+    expect(resolveRealtimeConnectFailureStatus(new Error("REALTIME_SESSION_UPDATE_FAILED (unknown_parameter: Invalid tool schema.)"))).toBe(
+      "session_failed"
+    );
     expect(resolveRealtimeConnectFailureStatus(new Error("REALTIME_SDP_FAILED"))).toBe("failed");
+  });
+
+  it("extracts realtime session.update error event details", () => {
+    expect(
+      extractRealtimeEventErrorMessage({
+        type: "error",
+        event_id: "evt_123",
+        error: {
+          type: "invalid_request_error",
+          code: "unknown_parameter",
+          param: "session.tools[0].parameters",
+          message: "Invalid tool schema."
+        }
+      })
+    ).toBe(
+      "REALTIME_SESSION_UPDATE_FAILED (unknown_parameter: param session.tools[0].parameters: Invalid tool schema.: event evt_123)"
+    );
+    expect(extractRealtimeEventErrorMessage({ type: "error" })).toBe("REALTIME_SESSION_UPDATE_FAILED");
   });
 
   it("queues session tool updates before the data channel opens", () => {

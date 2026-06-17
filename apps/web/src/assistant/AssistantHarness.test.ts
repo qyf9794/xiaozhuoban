@@ -588,6 +588,38 @@ describe("AssistantHarness", () => {
     ]);
   });
 
+  it("keeps a redacted diagnostics snapshot for real-page acceptance evidence", async () => {
+    const { harness } = createHarness();
+    await harness.initialize();
+
+    await harness.handleUserInput("打开音乐，同时查北京天气");
+
+    expect(harness.getLastDiagnostics()).toMatchObject({
+      rawInput: "打开音乐，同时查北京天气",
+      normalizedText: "打开音乐 同时查北京天气",
+      route: "shortcut",
+      usedRealtime: false,
+      status: "success",
+      segments: [
+        { text: "打开音乐", connector: "start" },
+        { text: "查北京天气", connector: "parallel" }
+      ],
+      commandPlan: {
+        createdBy: "local",
+        executionGroups: [{ mode: "parallel" }]
+      }
+    });
+    expect(harness.getLastDiagnostics()?.toolResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ tool: "board.add_widget", status: "success" }),
+        expect.objectContaining({ tool: "weather.set_city", status: "success" })
+      ])
+    );
+    expect(harness.getLastDiagnostics()?.toolResults.filter((item) => item.tool === "board.add_widget")).toHaveLength(2);
+    expect(JSON.stringify(harness.getLastDiagnostics())).toContain('"argKeys":["definitionId","followUp"]');
+    expect(JSON.stringify(harness.getLastDiagnostics())).not.toContain('"city":"北京"');
+  });
+
   it("executes simultaneous pause music and open headline shortcut segments locally", async () => {
     const { harness, executed, operationEvents } = createHarness({
       getContextInput: () => ({

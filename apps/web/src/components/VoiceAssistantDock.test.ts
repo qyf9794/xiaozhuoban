@@ -9,6 +9,7 @@ import {
   getVoiceAssistantPreviewLines,
   getVoiceAssistantOperationText,
   prependVoiceAssistantHistory,
+  publishVoiceAssistantDiagnostics,
   resolveVoiceAssistantSubmitText,
   shouldDisableVoiceAssistantSend,
   shouldSubmitVoiceAssistantOnKeyDown,
@@ -133,6 +134,10 @@ describe("VoiceAssistantDock", () => {
     ]);
   });
 
+  it("can publish redacted diagnostics when a browser window is available", () => {
+    expect(() => publishVoiceAssistantDiagnostics({ normalizedText: "打开音乐" })).not.toThrow();
+  });
+
   it("maps realtime connection status to dock state and short messages", () => {
     expect(getVoiceAssistantDockStateForRealtimeStatus("disconnected")).toBe("disconnected");
     expect(getVoiceAssistantDockStateForRealtimeStatus("connecting")).toBe("connecting");
@@ -173,6 +178,9 @@ describe("VoiceAssistantDock", () => {
       )
     ).toBe(
       "Realtime 会话创建失败：OPENAI_REALTIME_SESSION_CREATE_FAILED (status 400 · unknown_parameter: param session.output_modalities: Unknown parameter: session.output_modalities.)"
+    );
+    expect(getVoiceAssistantErrorMessage(new Error("REALTIME_SESSION_UPDATE_FAILED (unknown_parameter: Invalid tool schema.)"))).toBe(
+      "Realtime 会话配置失败：REALTIME_SESSION_UPDATE_FAILED (unknown_parameter: Invalid tool schema.)"
     );
     expect(getVoiceAssistantErrorMessage(new Error("custom"))).toBe("custom");
   });
