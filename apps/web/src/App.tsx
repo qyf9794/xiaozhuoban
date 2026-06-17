@@ -642,6 +642,7 @@ export function App() {
           runtimeStatus={getAssistantRuntimeText(assistantRuntimeBudget)}
           syncPendingCount={assistantOutboxStatus.pendingCount}
           syncLastError={assistantOutboxStatus.lastError}
+          onCommandRoute={assistantRuntime.recordCommandRoute}
           onRetrySync={async () => {
             await retryAssistantOutbox(repository);
             setAssistantOutboxStatus(await getAssistantOutboxStatus());

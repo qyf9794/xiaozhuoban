@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import type { AssistantHarness } from "../assistant/AssistantHarness";
+import type { AssistantHarness, AssistantRoute } from "../assistant/AssistantHarness";
 import type { RealtimeConnectionStatus } from "../assistant/openaiRealtimeAdapter";
 import type { ConfirmationRequest } from "@xiaozhuoban/assistant-core";
 
@@ -173,7 +173,8 @@ export function VoiceAssistantDock({
   runtimeStatus,
   syncPendingCount = 0,
   syncLastError,
-  onRetrySync
+  onRetrySync,
+  onCommandRoute
 }: {
   harness: AssistantHarness;
   voiceStatus?: RealtimeConnectionStatus;
@@ -187,6 +188,7 @@ export function VoiceAssistantDock({
   syncPendingCount?: number;
   syncLastError?: string;
   onRetrySync?: () => Promise<void> | void;
+  onCommandRoute?: (route: AssistantRoute) => void;
 }) {
   const [state, setState] = useState<VoiceAssistantDockState>("disconnected");
   const [muted, setMuted] = useState(false);
@@ -231,6 +233,7 @@ export function VoiceAssistantDock({
     setOperation({ phase: "thinking", command: input });
     try {
       const response = await harness.handleUserInput(input);
+      onCommandRoute?.(response.route);
       const nextPhase = response.result.status === "needs_confirmation" ? "waiting_confirmation" : "executing";
       setState(nextPhase);
       const resultText = getResultText(response.result.status, response.result.message);

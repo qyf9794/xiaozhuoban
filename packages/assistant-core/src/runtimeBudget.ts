@@ -14,6 +14,7 @@ export interface RealtimeBudgetConfig {
   hardLimitUsd: number;
   commandWindowIdleMs: number;
   dialogueIdleMs: number;
+  cooldownMs?: number;
   maxSingleCommandSessionMs: number;
   maxDialogueSessionMs: number;
   assistantAudioDailyLimitSeconds: number;
@@ -37,6 +38,7 @@ export const DEFAULT_REALTIME_BUDGET_CONFIG: RealtimeBudgetConfig = {
   hardLimitUsd: 1,
   commandWindowIdleMs: 12_000,
   dialogueIdleMs: 45_000,
+  cooldownMs: 8_000,
   maxSingleCommandSessionMs: 5 * 60_000,
   maxDialogueSessionMs: 15 * 60_000,
   assistantAudioDailyLimitSeconds: 8 * 60
@@ -80,6 +82,23 @@ export class RealtimeRuntimeController {
     this.metricsValue.localHitCount += 1;
   }
 
+  recordFallback(): void {
+    this.metricsValue.fallbackCount += 1;
+  }
+
+  detectLocalWake(): AssistantRuntimeMode {
+    this.refreshBudgetMode();
+    if (this.modeValue === "local_standby") {
+      this.modeValue = "local_wake_detected";
+    }
+    return this.modeValue;
+  }
+
+  standbyElapsed(_standbyMs: number): AssistantRuntimeMode {
+    this.refreshBudgetMode();
+    return this.modeValue;
+  }
+
   requestRealtime(reason: "wake" | "manual" | "fallback"): { allowed: boolean; mode: AssistantRuntimeMode; reason: string } {
     this.refreshBudgetMode();
     if (this.modeValue === "hard_limited" && reason !== "manual") {
@@ -88,9 +107,12 @@ export class RealtimeRuntimeController {
     if (this.modeValue === "saving_mode" && reason === "wake") {
       return { allowed: false, mode: this.modeValue, reason: "daily_soft_limit_reached" };
     }
+    if (reason === "fallback") {
+      this.recordFallback();
+    }
     this.metricsValue.realtimeSessionCount += 1;
     this.modeValue = reason === "manual" ? "realtime_dialogue_window" : "realtime_command_window";
-    return { allowed: true, mode: this.modeValue, reason: "allowed" };
+    return { allowed: true, mode: this.modeValue, reason: reason === "manual" ? "manual_override_allowed" : "allowed" };
   }
 
   recordRealtimeUsage(input: { activeMs?: number; userAudioSeconds?: number; assistantAudioSeconds?: number }): AssistantRuntimeMode {
@@ -102,11 +124,15 @@ export class RealtimeRuntimeController {
   }
 
   idleElapsed(idleMs: number): AssistantRuntimeMode {
-    if (this.modeValue === "realtime_command_window" && idleMs >= this.config.commandWindowIdleMs) {
+    const currentMode = this.modeValue;
+    if (currentMode === "realtime_command_window" && idleMs >= this.config.commandWindowIdleMs) {
       this.modeValue = "local_standby";
     }
-    if (this.modeValue === "realtime_dialogue_window" && idleMs >= this.config.dialogueIdleMs) {
+    if (currentMode === "realtime_dialogue_window" && idleMs >= this.config.dialogueIdleMs) {
       this.modeValue = "realtime_cooldown";
+    }
+    if (currentMode === "realtime_cooldown" && idleMs >= (this.config.cooldownMs ?? DEFAULT_REALTIME_BUDGET_CONFIG.cooldownMs ?? 0)) {
+      this.modeValue = "local_standby";
     }
     return this.modeValue;
   }

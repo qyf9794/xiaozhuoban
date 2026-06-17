@@ -2604,6 +2604,49 @@ describe("Strict schemas, preview gate, executor, budget, outbox, learning, and 
     expect(controller.requestRealtime("wake")).toMatchObject({ allowed: false, mode: "hard_limited" });
   });
 
+  it("keeps 24 hour local standby free of realtime sessions and cost", () => {
+    const controller = new RealtimeRuntimeController();
+
+    controller.standbyElapsed(24 * 60 * 60 * 1000);
+    controller.recordLocalHit();
+
+    expect(controller.mode).toBe("local_standby");
+    expect(controller.metrics).toMatchObject({
+      realtimeSessionCount: 0,
+      realtimeActiveMs: 0,
+      estimatedCostUsd: 0,
+      localHitCount: 1
+    });
+  });
+
+  it("moves through wake, command, dialogue, cooldown, and manual hard-limit override states", () => {
+    const controller = new RealtimeRuntimeController({
+      dailyBudgetUsd: 0.01,
+      softLimitUsd: 0.005,
+      hardLimitUsd: 0.01,
+      commandWindowIdleMs: 10,
+      dialogueIdleMs: 20,
+      cooldownMs: 5,
+      maxSingleCommandSessionMs: 60_000,
+      maxDialogueSessionMs: 300_000,
+      assistantAudioDailyLimitSeconds: 300
+    });
+
+    expect(controller.detectLocalWake()).toBe("local_wake_detected");
+    expect(controller.requestRealtime("wake")).toMatchObject({ allowed: true, mode: "realtime_command_window" });
+    expect(controller.idleElapsed(10)).toBe("local_standby");
+    expect(controller.requestRealtime("manual")).toMatchObject({ allowed: true, mode: "realtime_dialogue_window" });
+    expect(controller.idleElapsed(20)).toBe("realtime_cooldown");
+    expect(controller.idleElapsed(5)).toBe("local_standby");
+    controller.recordRealtimeUsage({ userAudioSeconds: 40 });
+    expect(controller.requestRealtime("wake")).toMatchObject({ allowed: false, mode: "hard_limited" });
+    expect(controller.requestRealtime("manual")).toMatchObject({
+      allowed: true,
+      mode: "realtime_dialogue_window",
+      reason: "manual_override_allowed"
+    });
+  });
+
   it("keeps failed cloud writes in the outbox for retry", async () => {
     const outbox = new MutationOutbox(undefined, { maxRetries: 2 }, () => "2026-06-17T00:00:00.000Z");
     await outbox.enqueue({ type: "widget.upsert", payload: { widgetId: "w1" }, operationId: "op1" });
