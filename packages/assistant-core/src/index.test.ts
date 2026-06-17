@@ -24,6 +24,9 @@ import {
   createDefaultIntentShortcutRouter,
   createPassthroughSchema,
   createStrictObjectSchema,
+  createAiModuleInstallSession,
+  installReviewedModule,
+  parseAiGeneratedModuleManifest,
   reviewAiGeneratedModule,
   runWidgetModuleStaticChecks,
   ContextSummarizer,
@@ -2699,7 +2702,153 @@ describe("Strict schemas, preview gate, executor, budget, outbox, learning, and 
     );
 
     expect(preview.canInstall).toBe(false);
-    expect(preview.issues.map((issue) => issue.code)).toEqual(["TOOL_CONFLICT", "ALIAS_CONFLICT", "UNSAFE_LOGIC"]);
+    expect(preview.issues.map((issue) => issue.code)).toEqual(
+      expect.arrayContaining(["TOOL_CONFLICT", "TOOL_SCOPE_INVALID", "ALIAS_CONFLICT", "UNSAFE_LOGIC", "SCHEMA_ALLOWS_EXTRA_FIELDS"])
+    );
+  });
+
+  it("parses AI generated module manifests with a strict manifest shape", () => {
+    expect(parseAiGeneratedModuleManifest("not-json").success).toBe(false);
+    expect(
+      parseAiGeneratedModuleManifest({
+        type: "focusTimer",
+        displayName: "专注计时",
+        aliases: ["专注计时"],
+        shortcuts: [{ id: "focus.start", intent: "start", examples: ["开始专注"], risk: "safe" }],
+        tools: [
+          {
+            name: "focusTimer.start",
+            description: "start focus timer",
+            argsSchema: { type: "object", additionalProperties: false, required: [], properties: {} },
+            risk: "safe"
+          }
+        ],
+        logicSpec: { kind: "static" }
+      }).success
+    ).toBe(true);
+    expect(
+      parseAiGeneratedModuleManifest({
+        type: "bad",
+        displayName: "bad",
+        aliases: ["bad"],
+        shortcuts: [],
+        tools: [{ name: "bad.run", description: "run", argsSchema: {}, risk: "safe", sourceCode: "console.log(1)" }]
+      }).success
+    ).toBe(false);
+  });
+
+  it("requires review, sandbox, and user confirmation before installing an AI generated module", () => {
+    const registry = new WidgetAssistantRegistry();
+    const manifest = {
+      type: "focusTimer",
+      displayName: "专注计时",
+      aliases: ["专注计时"],
+      shortcuts: [{ id: "focus.start", intent: "start", examples: ["开始专注"], risk: "safe" as const }],
+      tools: [
+        {
+          name: "focusTimer.start",
+          description: "start focus timer",
+          argsSchema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["minutes"],
+            properties: { minutes: { type: "number" } }
+          },
+          risk: "safe" as const
+        }
+      ],
+      logicSpec: { kind: "static" }
+    };
+    const moduleSchema = createStrictObjectSchema({ minutes: { type: "number", required: true } });
+    const module = {
+      type: "focusTimer",
+      definition: { id: "focusTimer", type: "focusTimer", name: "专注计时" },
+      aliases: manifest.aliases,
+      shortcuts: manifest.shortcuts,
+      tools: [
+        {
+          spec: {
+            name: "focusTimer.start",
+            description: "start focus timer",
+            parameters: moduleSchema,
+            argumentKeys: moduleSchema.argumentKeys,
+            resultSchema: {},
+            examples: ["开始专注"]
+          },
+          execute: () => ({ status: "success" as const, message: "ok" })
+        }
+      ],
+      context: {
+        maxRealtimeContextTokens: 120,
+        getScopedContext: () => ({
+          moduleType: "focusTimer",
+          tools: [],
+          toolSchemas: {},
+          instances: [],
+          stateSummary: {},
+          shortcutExamples: ["开始专注"],
+          executionPolicy: { defaultMode: "sequential" as const },
+          riskPolicy: { safe: ["focusTimer.start"], confirm: [], destructive: [] }
+        }),
+        redactContext: (context: RealtimeScopedModuleContext) => context
+      },
+      realtime: {
+        exposeCatalog: () => ({
+          type: "focusTimer",
+          displayName: "专注计时",
+          aliases: ["专注计时"],
+          capabilities: ["开始专注计时"],
+          shortcutExamples: ["开始专注"],
+          riskSummary: []
+        }),
+        getScopedContext: () => ({
+          moduleType: "focusTimer",
+          tools: [],
+          toolSchemas: {},
+          instances: [],
+          stateSummary: {},
+          shortcutExamples: ["开始专注"],
+          executionPolicy: { defaultMode: "sequential" as const },
+          riskPolicy: { safe: ["focusTimer.start"], confirm: [], destructive: [] }
+        })
+      },
+      executionPolicy: { defaultMode: "sequential" as const }
+    };
+
+    const session = createAiModuleInstallSession(manifest, registry);
+
+    expect(session.canRequestConfirmation).toBe(true);
+    expect(installReviewedModule(session.preview, module, registry, false, { sandbox: session.sandbox })).toBe(false);
+    expect(registry.getRealtimeCatalog()).toEqual([]);
+    expect(installReviewedModule(session.preview, module, registry, true, { sandbox: { passed: false, results: [] } })).toBe(false);
+    expect(installReviewedModule(session.preview, module, registry, true, { sandbox: session.sandbox })).toBe(true);
+    expect(registry.getRealtimeCatalog()).toEqual([
+      expect.objectContaining({ type: "focusTimer", aliases: ["专注计时"] })
+    ]);
+    expect(registry.listShortcuts()).toEqual([expect.objectContaining({ id: "focus.start" })]);
+    expect(registry.disable("focusTimer")).toBe(true);
+    expect(registry.getRealtimeCatalog()).toEqual([]);
+    expect(registry.listShortcuts()).toEqual([]);
+    expect(registry.unregister("focusTimer")).toBe(true);
+    expect(registry.list({ includeDisabled: true })).toEqual([]);
+  });
+
+  it("blocks AI module install when sandbox catches schemas that allow extra fields", () => {
+    const registry = new WidgetAssistantRegistry();
+    const manifest = {
+      type: "looseTool",
+      displayName: "Loose Tool",
+      aliases: ["loose"],
+      shortcuts: [],
+      tools: [{ name: "looseTool.run", description: "run", argsSchema: { type: "object", properties: {} }, risk: "safe" as const }],
+      logicSpec: { kind: "static" }
+    };
+
+    const session = createAiModuleInstallSession(manifest, registry);
+
+    expect(session.preview.canInstall).toBe(false);
+    expect(session.canRequestConfirmation).toBe(false);
+    expect(session.preview.issues.map((issue) => issue.code)).toContain("SCHEMA_ALLOWS_EXTRA_FIELDS");
   });
 
   it("reports module static completeness gaps", () => {
