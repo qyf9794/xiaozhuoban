@@ -136,7 +136,7 @@ describe("OpenAI realtime adapter helpers", () => {
       type: "conversation.item.create",
       item: { type: "function_call_output", call_id: "call_1" }
     });
-    expect(events[1]).toEqual({ type: "response.create" });
+    expect(events[1]).toEqual({ type: "response.create", response: { output_modalities: ["text"] } });
   });
 
   it("creates realtime text command events with text-only response output", () => {
@@ -292,7 +292,7 @@ describe("OpenAI realtime adapter helpers", () => {
     ).handleRealtimeLifecycleEvent({ type: "response.done", response: { id: "resp_1" } });
 
     expect(sent).toHaveLength(2);
-    expect(sent[1]).toEqual({ type: "response.create" });
+    expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["text"] } });
   });
 
   it("tracks active realtime responses through lifecycle events", () => {
@@ -798,7 +798,7 @@ describe("OpenAI realtime adapter helpers", () => {
     ]));
     expect(sent).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: "conversation.item.create" }),
-      { type: "response.create" }
+      { type: "response.create", response: { output_modalities: ["text"] } }
     ]));
   });
 
@@ -1211,7 +1211,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "conversation.item.create",
         item: expect.objectContaining({ type: "function_call_output", call_id: "select_music" })
       }),
-      { type: "response.create" }
+      { type: "response.create", response: { output_modalities: ["text"] } }
     ]);
     expect(diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({

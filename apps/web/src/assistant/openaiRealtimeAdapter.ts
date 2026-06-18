@@ -390,9 +390,18 @@ export function createRealtimeToolResultEvents(
     }
   ];
   if (!options.activeResponseId) {
-    events.push({ type: "response.create" });
+    events.push(createRealtimeTextOnlyResponseCreateEvent());
   }
   return events;
+}
+
+function createRealtimeTextOnlyResponseCreateEvent(): RealtimeEvent {
+  return {
+    type: "response.create",
+    response: {
+      output_modalities: ["text"]
+    }
+  };
 }
 
 export function createRealtimeTextCommandEvents(input: string): RealtimeEvent[] {
@@ -410,12 +419,7 @@ export function createRealtimeTextCommandEvents(input: string): RealtimeEvent[] 
         ]
       }
     },
-    {
-      type: "response.create",
-      response: {
-        output_modalities: ["text"]
-      }
-    }
+    createRealtimeTextOnlyResponseCreateEvent()
   ];
 }
 
@@ -1420,7 +1424,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (previousActiveResponseId && !this.activeResponseId && this.pendingResponseCreateAfterActiveToolResult) {
       this.pendingResponseCreateAfterActiveToolResult = false;
       this.emitDiagnostic({ type: "realtime.response.create_after_tool_result", status: "sent" });
-      this.sendEvent({ type: "response.create" }, { queueWhenClosed: false });
+      this.sendEvent(createRealtimeTextOnlyResponseCreateEvent(), { queueWhenClosed: false });
     }
     if (event.type === "session.updated") {
       this.clearSessionUpdateTimeout();
