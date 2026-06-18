@@ -30,6 +30,7 @@ export interface CommandExecutorOptions {
   execute: (call: AssistantToolCall, command: CommandPlanStep) => Promise<AssistantToolResult> | AssistantToolResult;
   onEvent?: (event: CommandExecutionEvent) => void;
   now?: () => number;
+  getConcurrencyKey?: (command: CommandPlanStep) => string | undefined;
 }
 
 function commandToCall(command: CommandPlanStep): AssistantToolCall {
@@ -58,7 +59,7 @@ export class CommandExecutor {
     const commandsById = new Map(plan.commands.map((command) => [command.id, command]));
     for (const group of plan.executionGroups.length ? plan.executionGroups : this.defaultGroups(plan)) {
       const groupRecords = group.mode === "parallel"
-        ? await Promise.all(group.commandIds.map((id) => this.executeCommandIfReady(commandsById.get(id), completed)))
+        ? await this.executeParallel(group, commandsById, completed)
         : await this.executeSequential(group, commandsById, completed);
       for (const record of groupRecords.filter(Boolean) as CommandExecutionRecord[]) {
         records.push(record);
@@ -85,6 +86,45 @@ export class CommandExecutor {
       if (!record) continue;
       records.push(record);
       completed.set(record.command.id, record.result);
+      if (record.result.status !== "success") break;
+    }
+    return records;
+  }
+
+  private async executeParallel(
+    group: ExecutionGroup,
+    commandsById: Map<string, CommandPlanStep>,
+    completed: Map<string, AssistantToolResult>
+  ): Promise<Array<CommandExecutionRecord | null>> {
+    const lanes = new Map<string, string[]>();
+    group.commandIds.forEach((id, index) => {
+      const command = commandsById.get(id);
+      const key = command ? this.options.getConcurrencyKey?.(command) : undefined;
+      const laneKey = key || `__independent_${index}`;
+      lanes.set(laneKey, [...(lanes.get(laneKey) ?? []), id]);
+    });
+
+    const laneRecords = await Promise.all(
+      [...lanes.values()].map((ids) => this.executeParallelLane(ids, commandsById, completed))
+    );
+    return laneRecords.flat();
+  }
+
+  private async executeParallelLane(
+    commandIds: string[],
+    commandsById: Map<string, CommandPlanStep>,
+    completed: Map<string, AssistantToolResult>
+  ): Promise<Array<CommandExecutionRecord | null>> {
+    if (commandIds.length === 1) {
+      return [await this.executeCommandIfReady(commandsById.get(commandIds[0]), completed)];
+    }
+    const laneCompleted = new Map(completed);
+    const records: Array<CommandExecutionRecord | null> = [];
+    for (const id of commandIds) {
+      const record = await this.executeCommandIfReady(commandsById.get(id), laneCompleted);
+      records.push(record);
+      if (!record) continue;
+      laneCompleted.set(record.command.id, record.result);
       if (record.result.status !== "success") break;
     }
     return records;

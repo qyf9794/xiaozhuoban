@@ -49,6 +49,9 @@ export type MusicKitInstanceLike = {
   pause: () => Promise<unknown> | void;
   skipToNextItem?: () => Promise<unknown>;
   skipToPreviousItem?: () => Promise<unknown>;
+  currentPlaybackTime?: number;
+  currentPlaybackDuration?: number;
+  currentPlaybackProgress?: number;
   isAuthorized?: boolean;
   storefrontId?: string;
   api?: MusicKitApiLike;
@@ -59,6 +62,7 @@ type MusicKitGlobal = {
     developerToken: string;
     app: { name: string; build: string };
     suppressErrorDialog?: boolean;
+    features?: string[];
   }) => MusicKitInstanceLike | undefined;
   getInstance?: () => MusicKitInstanceLike | undefined;
 };
@@ -223,7 +227,8 @@ export async function configureMusicKit(developerToken: string, windowLike: Wind
   const configured = musicKit.configure({
     developerToken: token,
     app: { name: "小桌板", build: "xiaozhuoban-web" },
-    suppressErrorDialog: true
+    suppressErrorDialog: true,
+    features: ["player-accurate-timing"]
   });
   const instance = musicKit.getInstance?.() ?? configured;
   if (!instance) {

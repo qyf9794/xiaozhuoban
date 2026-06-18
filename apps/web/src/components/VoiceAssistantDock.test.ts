@@ -12,6 +12,7 @@ import {
   publishVoiceAssistantDiagnostics,
   resolveVoiceAssistantSubmitText,
   shouldDisableVoiceAssistantSend,
+  shouldUseRealtimeTextCommand,
   shouldSubmitVoiceAssistantOnKeyDown,
   type VoiceAssistantDockState
 } from "./VoiceAssistantDock";
@@ -84,6 +85,13 @@ describe("VoiceAssistantDock", () => {
   it("keeps send available for DOM-backed command fallback", () => {
     expect(shouldDisableVoiceAssistantSend(false)).toBe(false);
     expect(shouldDisableVoiceAssistantSend(true)).toBe(true);
+  });
+
+  it("uses realtime text submission only after realtime is ready and no local confirmation is pending", () => {
+    expect(shouldUseRealtimeTextCommand("connected", true, false)).toBe(true);
+    expect(shouldUseRealtimeTextCommand("connecting", true, false)).toBe(false);
+    expect(shouldUseRealtimeTextCommand("connected", false, false)).toBe(false);
+    expect(shouldUseRealtimeTextCommand("connected", true, true)).toBe(false);
   });
 
   it("uses external tool operation only while the dock is idle", () => {
@@ -170,6 +178,9 @@ describe("VoiceAssistantDock", () => {
       "没有检测到可用麦克风，或当前浏览器不支持录音。"
     );
     expect(getVoiceAssistantErrorMessage(new Error("REALTIME_SDP_FAILED"))).toBe("Realtime 语音通道连接失败。");
+    expect(getVoiceAssistantErrorMessage(new Error("REALTIME_TEXT_CHANNEL_NOT_READY"))).toBe(
+      "Realtime 文字通道还没准备好，请稍后重试。"
+    );
     expect(
       getVoiceAssistantErrorMessage(
         new Error(

@@ -62,6 +62,7 @@ export interface LegacyCommandPlanStep {
 export const OPENAI_REALTIME_CLIENT_SECRET_URL = "https://api.openai.com/v1/realtime/client_secrets";
 export const XIAOZHUOBAN_REALTIME_MODEL = "gpt-realtime-2";
 export const XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL = "gpt-4.1-mini";
+export const XIAOZHUOBAN_REALTIME_INPUT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
 export const DEFAULT_REALTIME_CLIENT_SECRET_TTL_SECONDS = 600;
 export const REALTIME_TOOL_SELECTION_TOOL_NAME = "assistant.select_tool";
 export const REALTIME_TOOL_SELECTION_CONFIDENCE_THRESHOLD = 0.65;
@@ -145,5 +146,11 @@ export function createRealtimeTurnDetection(options: RealtimeSessionOptions = {}
     eagerness: options.turnDetectionEagerness ?? "low",
     create_response: true,
     interrupt_response: true
+  };
+}
+
+export function createRealtimeInputTranscription() {
+  return {
+    model: XIAOZHUOBAN_REALTIME_INPUT_TRANSCRIPTION_MODEL
   };
 }

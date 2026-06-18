@@ -1,7 +1,7 @@
 import { Readable } from "node:stream";
 import type { IncomingHttpHeaders } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import handler from "./tool-call.js";
+import handler from "../../../api/realtime/tool-call.js";
 
 class MockResponse {
   statusCode = 200;
@@ -286,6 +286,60 @@ describe("realtime text tool-call API", () => {
       properties: { widgetId: { type: "string" } },
       required: ["widgetId"]
     });
+  });
+
+  it("lets execute open a missing music widget with a follow-up play command", async () => {
+    stubSupabaseEnv();
+    vi.stubEnv("OPENAI_API_KEY", "sk-test");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createSupabaseUserResponse())
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            output: [
+              {
+                type: "function_call",
+                name: "board__dot__add_widget",
+                call_id: "call_add_music",
+                arguments: JSON.stringify({
+                  definitionId: "wd_music",
+                  followUp: { name: "music.play", arguments: { query: "陈奕迅 十年" } }
+                })
+              }
+            ]
+          }),
+          { status: 200 }
+        )
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await callHandler({
+      input: "播放陈奕迅的十年",
+      phase: "execute",
+      selection: { name: "music.play", selectedModule: "music", targetHint: "陈奕迅 十年" },
+      tools: [
+        { name: "board.add_widget", description: "打开小工具", scope: "desktop" },
+        { name: "music.play", description: "播放音乐", scope: "widget-detail", widgetType: "music", requiresTarget: true }
+      ],
+      context: {
+        boardId: "board_1",
+        boardName: "默认桌板",
+        widgetCountsByType: { note: 1 },
+        availableDefinitions: [{ definitionId: "wd_music", type: "music", name: "音乐" }],
+        widgets: [{ widgetId: "wi_note", definitionId: "wd_note", type: "note", name: "便签", order: 1, summary: "private note" }]
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body).call).toMatchObject({ name: "board.add_widget", arguments: { definitionId: "wd_music" } });
+    const body = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+    const serialized = JSON.stringify(body);
+    expect(serialized).toContain("board__dot__add_widget");
+    expect(serialized).toContain("music__dot__play");
+    expect(serialized).toContain("followUp");
+    expect(serialized).toContain("wd_music");
+    expect(serialized).not.toContain("private note");
   });
 
   it("selects a multi-tool command plan without desktop context", async () => {

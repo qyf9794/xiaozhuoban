@@ -1,6 +1,13 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL } from "../../src/assistant/realtimeSessionConfig";
-import { authenticateRealtimeRequest } from "./auth";
+import {
+  REALTIME_ADD_WIDGET_TOOL_NAME,
+  findRealtimeWidgetType,
+  inputMentionsRealtimeWidgetType,
+  realtimePlanSelectionPolicyLines,
+  realtimeToolSelectionPolicyLines
+} from "../../src/assistant/realtimeRoutingPolicy.js";
+import { XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL } from "../../src/api/realtime/runtime-session-config.js";
+import { authenticateRealtimeRequest } from "../../src/api/realtime/runtime-auth.js";
 
 type AssistantToolSpecLike = {
   name: string;
@@ -46,6 +53,9 @@ type RealtimeModuleCatalogItem = {
   capabilities: string[];
   shortcutExamples: string[];
   riskSummary: string[];
+  toolNames?: string[];
+  concurrencyKeys?: string[];
+  loadLevel?: string;
 };
 
 type RealtimeScopedModuleContext = {
@@ -113,6 +123,7 @@ type JsonBody = Record<string, unknown>;
 const SELECT_TOOL_NAME = "assistant.select_tool";
 const SELECT_PLAN_TOOL_NAME = "assistant.select_command_plan";
 const SUBMIT_PLAN_TOOL_NAME = "assistant.submit_command_plan";
+const ADD_WIDGET_TOOL_NAME = REALTIME_ADD_WIDGET_TOOL_NAME;
 
 function parsePlanConnector(value: unknown): TextPlanSelectionStep["connector"] {
   return value === "parallel" || value === "sequential" || value === "start" ? value : undefined;
@@ -122,25 +133,6 @@ function parsePlanRisk(value: unknown, fallback?: string): "safe" | "confirm" | 
   if (value === "confirm" || value === "destructive" || value === "safe") return value;
   return fallback === "confirm" || fallback === "destructive" ? fallback : "safe";
 }
-
-const widgetAliases: Record<string, string[]> = {
-  note: ["便签", "笔记"],
-  todo: ["待办", "任务", "清单"],
-  tv: ["电视", "直播"],
-  music: ["音乐", "歌曲", "歌", "播放器"],
-  worldClock: ["世界时钟", "时区"],
-  dialClock: ["时钟", "表盘"],
-  translate: ["翻译"],
-  converter: ["换算", "单位"],
-  clipboard: ["剪贴板"],
-  recorder: ["录音"],
-  messageBoard: ["留言板", "留言"],
-  weather: ["天气"],
-  countdown: ["倒计时", "计时器"],
-  headline: ["新闻", "头条"],
-  market: ["行情", "股票", "指数"],
-  calculator: ["计算器"]
-};
 
 function sendJson(response: ServerResponse, statusCode: number, body: JsonBody) {
   response.statusCode = statusCode;
@@ -273,6 +265,20 @@ function inferToolParameters(tool: AssistantToolSpecLike) {
       return objectSchema({ boardId: stringSchema(), name: stringSchema() }, ["boardId", "name"]);
     case "board.create":
       return objectSchema({ name: stringSchema() });
+    case "app.sidebar.set":
+      return objectSchema({
+        open: booleanSchema(),
+        mode: { type: "string", enum: ["show", "hide", "toggle"] }
+      });
+    case "app.fullscreen.set":
+      return objectSchema({
+        enabled: booleanSchema(),
+        mode: { type: "string", enum: ["enter", "exit", "toggle"] }
+      });
+    case "app.settings.open":
+    case "app.command_palette.open":
+    case "app.ai_dialog.open":
+      return objectSchema({});
     default:
       return tool.requiresTarget
         ? objectSchema({ widgetId: stringSchema() }, ["widgetId"], true)
@@ -313,6 +319,9 @@ function moduleCatalogText(moduleCatalog: RealtimeModuleCatalogItem[] | undefine
         `displayName=${module.displayName}`,
         `aliases=${module.aliases?.join("/") ?? ""}`,
         `capabilities=${module.capabilities?.join("/") ?? ""}`,
+        module.toolNames?.length ? `tools=${module.toolNames.join("/")}` : "",
+        module.concurrencyKeys?.length ? `concurrency=${module.concurrencyKeys.join("/")}` : "",
+        module.loadLevel ? `load=${module.loadLevel}` : "",
         module.riskSummary?.length ? `risk=${module.riskSummary.join("/")}` : "",
         module.shortcutExamples?.length ? `examples=${module.shortcutExamples.join("/")}` : ""
       ]
@@ -331,9 +340,7 @@ function createToolSelectionPayload(request: TextToolCallRequest, model: string)
         content: [
           "你是小桌板命令路由器。先只判断用户想使用哪个模块和已注册工具，不要生成工具参数。",
           "你只能基于模块目录、工具目录和用户命令选择；此阶段不会提供桌面上下文。",
-          "如果用户说“打开 + 小工具名”，优先添加或聚焦这个小工具。",
-          "如果用户说“关闭/关掉 + 小工具名”，优先调用 widget.remove 关闭这个小工具窗口。",
-          "如果用户说“暂停/继续/播放/下一首”等播放控制，优先调用对应媒体工具。",
+          ...realtimeToolSelectionPolicyLines,
           "没有足够把握时不要调用工具。",
           "",
           "# 模块目录",
@@ -378,6 +385,7 @@ function createPlanSelectionPayload(request: TextToolCallRequest, model: string)
           "你是小桌板 Realtime-2 命令规划器的第一阶段。",
           "只根据模块目录、工具目录和用户命令选择一个或多个候选工具；不要生成真实参数。",
           "复杂命令可以拆成多个步骤。独立步骤标记 connector=parallel；有顺序依赖的步骤标记 connector=sequential。",
+          ...realtimePlanSelectionPolicyLines,
           "第一阶段不会提供桌面上下文、widgetId、definitionId 或用户私密状态。",
           "只能选择已注册工具；没把握时少选，不要猜。",
           "",
@@ -428,7 +436,7 @@ function createPlanSelectionPayload(request: TextToolCallRequest, model: string)
 }
 
 function inputMentionsWidgetType(input: string, type: string) {
-  return (widgetAliases[type] ?? []).some((alias) => input.includes(alias));
+  return inputMentionsRealtimeWidgetType(input, type);
 }
 
 function targetHintMentionsWidget(targetHint: string | undefined, widget: CompactWidget) {
@@ -436,19 +444,45 @@ function targetHintMentionsWidget(targetHint: string | undefined, widget: Compac
   return Boolean(hint) && (hint.includes(widget.name) || hint.includes(widget.type) || inputMentionsWidgetType(hint, widget.type));
 }
 
+function getSelectedWidgetType(tool: AssistantToolSpecLike, selection: TextToolSelection, input: string) {
+  return (
+    selection.selectedModule ||
+    tool.widgetType ||
+    findRealtimeWidgetType(input, selection.targetHint)
+  );
+}
+
+function selectScopedWidgets(context: CompactContext, selectedWidgetType: string | undefined, selection: TextToolSelection) {
+  return context.widgets.filter(
+    (widget) =>
+      widget.type === selectedWidgetType ||
+      (!selectedWidgetType && widget.focused) ||
+      targetHintMentionsWidget(selection.targetHint, widget)
+  );
+}
+
+function canAddWidgetForSelectedTool(context: CompactContext, selectedWidgetType: string | undefined) {
+  return Boolean(selectedWidgetType && context.availableDefinitions?.some((definition) => definition.type === selectedWidgetType));
+}
+
+function getExecutableToolsForSelection(
+  tools: AssistantToolSpecLike[],
+  selectedTool: AssistantToolSpecLike,
+  scopedContext: CompactContext,
+  selectedWidgetType: string | undefined
+) {
+  if (!selectedTool.requiresTarget || scopedContext.widgets.length > 0) return [selectedTool];
+  if (!canAddWidgetForSelectedTool(scopedContext, selectedWidgetType)) return [selectedTool];
+  const addWidgetTool = tools.find((tool) => tool.name === ADD_WIDGET_TOOL_NAME);
+  return addWidgetTool ? [addWidgetTool, selectedTool] : [selectedTool];
+}
+
 function createScopedContext(context: CompactContext, tool: AssistantToolSpecLike, selection: TextToolSelection, input: string): CompactContext {
-  const selectedWidgetType = tool.widgetType || Object.keys(widgetAliases).find((type) => inputMentionsWidgetType(input, type));
+  const selectedWidgetType = getSelectedWidgetType(tool, selection, input);
   const includeBoards = tool.name.startsWith("board.") || tool.name === "assistant.confirm" || tool.name === "assistant.cancel";
-  const includeDefinitions = tool.name === "board.add_widget";
   const needsWidgetContext = Boolean(tool.requiresTarget || tool.name.startsWith("widget."));
-  const widgets = needsWidgetContext
-    ? context.widgets.filter(
-        (widget) =>
-          widget.type === selectedWidgetType ||
-          (!selectedWidgetType && widget.focused) ||
-          targetHintMentionsWidget(selection.targetHint, widget)
-      )
-    : [];
+  const widgets = needsWidgetContext ? selectScopedWidgets(context, selectedWidgetType, selection) : [];
+  const includeDefinitions = tool.name === ADD_WIDGET_TOOL_NAME || (Boolean(tool.requiresTarget) && widgets.length === 0);
 
   return {
     boardId: context.boardId,
@@ -460,14 +494,7 @@ function createScopedContext(context: CompactContext, tool: AssistantToolSpecLik
         ? context.focusedWidget
         : undefined,
     widgetCountsByType: context.widgetCountsByType,
-    availableDefinitions: includeDefinitions
-      ? context.availableDefinitions?.filter(
-          (definition) =>
-            definition.type === selectedWidgetType ||
-            inputMentionsWidgetType(input, definition.type) ||
-            selection.targetHint?.includes(definition.name)
-        )
-      : undefined,
+    availableDefinitions: includeDefinitions ? context.availableDefinitions ?? [] : undefined,
     widgets
   };
 }
@@ -529,6 +556,8 @@ function createScopedToolCallPayload(request: TextToolCallRequest, selection: Te
     };
   }
   const scopedContext = createScopedContext(request.context, tool, selection, request.input);
+  const selectedWidgetType = getSelectedWidgetType(tool, selection, request.input);
+  const executableTools = getExecutableToolsForSelection(request.tools, tool, scopedContext, selectedWidgetType);
   return {
     model,
     input: [
@@ -554,6 +583,15 @@ function createScopedToolCallPayload(request: TextToolCallRequest, selection: Te
           "# Text Command Fallback",
           "现在只根据上一步选中的工具和最小必要上下文，返回可执行工具调用。",
           "不要访问未提供的桌面上下文；如果缺少目标或信息不足，不要调用工具。",
+          selection.name === ADD_WIDGET_TOOL_NAME
+            ? "如果已选工具是 board.add_widget，必须从 availableDefinitions 选择与用户命令最匹配的小工具，并用对应 definitionId 调用 board.add_widget；不要回答缺少打开小工具的方式。"
+            : "",
+          selection.name === ADD_WIDGET_TOOL_NAME
+            ? "用户只说“时钟”时默认打开 dialClock/表盘时钟；只有明确说“世界时钟、世界时间、时区、东京时间、纽约时间”等才打开 worldClock。"
+            : "",
+          executableTools.some((candidate) => candidate.name === ADD_WIDGET_TOOL_NAME) && tool.name !== ADD_WIDGET_TOOL_NAME
+            ? `如果当前没有 ${selectedWidgetType ?? "目标"} 小工具实例，但 availableDefinitions 中有对应定义，可以调用 board.add_widget，并在 followUp 中填写已选工具 ${tool.name} 及原始参数。`
+            : "",
           "",
           `已选工具：${selection.name}`,
           selection.targetHint ? `目标提示：${selection.targetHint}` : "",
@@ -563,8 +601,8 @@ function createScopedToolCallPayload(request: TextToolCallRequest, selection: Te
           .join("\n")
       }
     ],
-    tools: tool ? [serializeTool(tool)] : [],
-    tool_choice: tool ? "auto" : "none",
+    tools: executableTools.map((candidate) => serializeTool(candidate)),
+    tool_choice: executableTools.length ? "auto" : "none",
     parallel_tool_calls: false,
     max_output_tokens: 120
   };
@@ -830,7 +868,7 @@ export default async function handler(request: IncomingMessage, response: Server
     }
 
     const auth = await authenticateRealtimeRequest(request);
-    if (!auth.ok) {
+    if (auth.ok === false) {
       sendJson(response, auth.status, { error: auth.error });
       return;
     }

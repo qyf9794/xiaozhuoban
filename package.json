@@ -9,6 +9,7 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
+    "diagnostics:assistant": "node scripts/tail-assistant-diagnostics.mjs",
     "sync:worktree-env": "bash scripts/sync-worktree-env.sh",
     "setup:hooks": "git config core.hooksPath .githooks && chmod +x .githooks/post-checkout scripts/sync-worktree-env.sh"
   },

@@ -1,13 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { AssistantHarness, AssistantRoute } from "../assistant/AssistantHarness";
+import { publishAssistantHarnessDiagnostics, type AssistantDiagnosticEvent } from "../assistant/assistantDiagnostics";
 import type { RealtimeConnectionStatus } from "../assistant/openaiRealtimeAdapter";
 import type { ConfirmationRequest } from "@xiaozhuoban/assistant-core";
-
-declare global {
-  interface Window {
-    __xiaozhuobanAssistantDiagnostics?: unknown;
-  }
-}
 
 export type VoiceAssistantDockState =
   | "disconnected"
@@ -67,6 +62,10 @@ export function getVoiceAssistantErrorMessage(error: unknown): string {
   if (message === "REALTIME_SESSION_FAILED") return "Realtime 会话创建失败。";
   if (message.startsWith("REALTIME_SESSION_UPDATE_FAILED")) return `Realtime 会话配置失败：${message}`;
   if (message === "REALTIME_SESSION_UPDATE_TIMEOUT") return "Realtime 会话配置未生效。";
+  if (message === "REALTIME_TEXT_CHANNEL_NOT_READY") return "Realtime 文字通道还没准备好，请稍后重试。";
+  if (message === "REALTIME_TEXT_COMMAND_EMPTY") return "请输入要交给 Realtime 的指令。";
+  if (message === "REALTIME_TEXT_COMMAND_UNAVAILABLE") return "当前 Realtime 文字通道不可用。";
+  if (message === "REALTIME_TEXT_ONLY_UNAVAILABLE") return "当前环境不支持文字 Realtime 连接。";
   return message || "语音连接失败";
 }
 
@@ -131,6 +130,14 @@ export function shouldDisableVoiceAssistantSend(muted: boolean): boolean {
   return muted;
 }
 
+export function shouldUseRealtimeTextCommand(
+  voiceStatus: RealtimeConnectionStatus,
+  hasRealtimeTextSender: boolean,
+  hasPendingConfirmation: boolean
+): boolean {
+  return voiceStatus === "connected" && hasRealtimeTextSender && !hasPendingConfirmation;
+}
+
 export function getVisibleVoiceAssistantOperation(
   internalOperation: VoiceAssistantOperationStatus,
   externalOperation?: VoiceAssistantOperationStatus | null
@@ -139,8 +146,7 @@ export function getVisibleVoiceAssistantOperation(
 }
 
 export function publishVoiceAssistantDiagnostics(snapshot: unknown): void {
-  if (typeof window === "undefined") return;
-  window.__xiaozhuobanAssistantDiagnostics = snapshot;
+  publishAssistantHarnessDiagnostics(snapshot);
 }
 
 export function getVoiceAssistantRuntimeText(runtimeStatus: string, syncPendingCount: number, syncLastError?: string): string {
@@ -148,6 +154,13 @@ export function getVoiceAssistantRuntimeText(runtimeStatus: string, syncPendingC
   return syncLastError
     ? `${runtimeStatus} · 待同步 ${syncPendingCount} · 最近失败：${syncLastError}`
     : `${runtimeStatus} · 待同步 ${syncPendingCount}`;
+}
+
+function createCommandTraceId(prefix = "cmd") {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `${prefix}_${crypto.randomUUID()}`;
+  }
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function isPreviewRecord(value: unknown): value is {
@@ -180,6 +193,7 @@ export function VoiceAssistantDock({
   harness,
   voiceStatus = "disconnected",
   onConnectVoice,
+  onConnectTextOnly,
   onDisconnectVoice,
   isMobileMode = false,
   mobileVisible = true,
@@ -189,11 +203,14 @@ export function VoiceAssistantDock({
   syncPendingCount = 0,
   syncLastError,
   onRetrySync,
-  onCommandRoute
+  onCommandRoute,
+  onSendRealtimeTextCommand,
+  onDiagnostic
 }: {
   harness: AssistantHarness;
   voiceStatus?: RealtimeConnectionStatus;
   onConnectVoice?: () => Promise<void>;
+  onConnectTextOnly?: () => Promise<void>;
   onDisconnectVoice?: () => void;
   isMobileMode?: boolean;
   mobileVisible?: boolean;
@@ -204,6 +221,8 @@ export function VoiceAssistantDock({
   syncLastError?: string;
   onRetrySync?: () => Promise<void> | void;
   onCommandRoute?: (route: AssistantRoute) => void;
+  onSendRealtimeTextCommand?: (input: string, options?: { commandTraceId?: string }) => Promise<void>;
+  onDiagnostic?: (event: AssistantDiagnosticEvent) => void;
 }) {
   const [state, setState] = useState<VoiceAssistantDockState>("disconnected");
   const [muted, setMuted] = useState(false);
@@ -211,9 +230,10 @@ export function VoiceAssistantDock({
   const [lastMessage, setLastMessage] = useState("好了，我在。");
   const [history, setHistory] = useState<VoiceAssistantHistoryItem[]>([]);
   const [operation, setOperation] = useState<VoiceAssistantOperationStatus>({ phase: "idle" });
+  const [connectionMode, setConnectionMode] = useState<"audio" | "text" | null>(null);
   const initializedRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const voiceEnabled = Boolean(onConnectVoice);
+  const voiceEnabled = Boolean(onConnectVoice || onConnectTextOnly);
 
   useEffect(() => {
     if (initializedRef.current) return;
@@ -233,6 +253,9 @@ export function VoiceAssistantDock({
 
   useEffect(() => {
     if (!voiceEnabled) return;
+    if (voiceStatus === "disconnected" || voiceStatus === "failed" || voiceStatus === "session_failed") {
+      setConnectionMode(null);
+    }
     setState(getVoiceAssistantDockStateForRealtimeStatus(voiceStatus));
     setLastMessage(getVoiceAssistantConnectionMessage(voiceStatus));
   }, [voiceEnabled, voiceStatus]);
@@ -240,14 +263,17 @@ export function VoiceAssistantDock({
   const pending = harness.getPendingConfirmation();
   const visualState = muted ? "muted" : pending ? "waiting_confirmation" : state;
   const visibleOperation = getVisibleVoiceAssistantOperation(operation, operationStatus);
+  const useRealtimeText = shouldUseRealtimeTextCommand(voiceStatus, Boolean(onSendRealtimeTextCommand), Boolean(pending));
 
   const runCommand = async (command: string) => {
     const input = command.trim();
     if (!input || muted) return;
+    const commandTraceId = createCommandTraceId();
+    onDiagnostic?.({ type: "voice.text_command.submit", commandTraceId, status: "started", data: { input } });
     setState("thinking");
     setOperation({ phase: "thinking", command: input });
     try {
-      const response = await harness.handleUserInput(input);
+      const response = await harness.handleUserInput(input, { commandTraceId });
       publishVoiceAssistantDiagnostics(harness.getLastDiagnostics());
       onCommandRoute?.(response.route);
       const nextPhase = response.result.status === "needs_confirmation" ? "waiting_confirmation" : "executing";
@@ -257,6 +283,17 @@ export function VoiceAssistantDock({
         phase: response.result.status === "needs_confirmation" ? "waiting_confirmation" : "success",
         command: input,
         message: resultText
+      });
+      onDiagnostic?.({
+        type: "voice.text_command.result",
+        commandTraceId,
+        status: response.result.status,
+        route: response.route,
+        toolName: response.call?.name,
+        operationId: response.call?.id,
+        message: response.result.message,
+        errorCode: response.result.errorCode,
+        data: { input }
       });
       setLastMessage(resultText);
       setHistory((prev) =>
@@ -275,6 +312,37 @@ export function VoiceAssistantDock({
     } catch (error) {
       publishVoiceAssistantDiagnostics(harness.getLastDiagnostics());
       const message = error instanceof Error ? error.message : "助手执行失败";
+      onDiagnostic?.({ type: "voice.text_command.error", commandTraceId, status: "failed", message, data: { input } });
+      setLastMessage(message);
+      setOperation({ phase: "error", command: input, message });
+      setState("error");
+    }
+  };
+
+  const sendRealtimeCommand = async (command: string) => {
+    const input = command.trim();
+    if (!input || muted || !onSendRealtimeTextCommand) return;
+    const commandTraceId = createCommandTraceId("text_realtime");
+    onDiagnostic?.({ type: "voice.realtime_text_command.submit", commandTraceId, status: "started", data: { input } });
+    setState("thinking");
+    setOperation({ phase: "thinking", command: input });
+    try {
+      await onSendRealtimeTextCommand(input, { commandTraceId });
+      const resultText = "已交给 Realtime 解析";
+      setLastMessage(resultText);
+      setOperation({ phase: "executing", command: input, message: resultText });
+      setHistory((prev) =>
+        prependVoiceAssistantHistory(prev, {
+          id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          text: input,
+          result: resultText,
+          route: "realtime"
+        })
+      );
+      onDiagnostic?.({ type: "voice.realtime_text_command.result", commandTraceId, status: "sent", data: { input } });
+    } catch (error) {
+      const message = getVoiceAssistantErrorMessage(error);
+      onDiagnostic?.({ type: "voice.realtime_text_command.result", commandTraceId, status: "failed", message, data: { input } });
       setLastMessage(message);
       setOperation({ phase: "error", command: input, message });
       setState("error");
@@ -287,7 +355,11 @@ export function VoiceAssistantDock({
     if (inputRef.current) {
       inputRef.current.value = "";
     }
-    void runCommand(input);
+    if (useRealtimeText) {
+      void sendRealtimeCommand(input);
+    } else {
+      void runCommand(input);
+    }
   };
 
   const onSubmit = (event: FormEvent) => {
@@ -311,22 +383,51 @@ export function VoiceAssistantDock({
 
   const connectVoice = async () => {
     if (!onConnectVoice || muted) return;
+    const commandTraceId = createCommandTraceId("voice_connect");
+    onDiagnostic?.({ type: "voice.connect.click", commandTraceId, status: "started" });
     setState("connecting");
     setLastMessage(getVoiceAssistantConnectionMessage("connecting"));
     setOperation({ phase: "thinking", command: "连接语音" });
     try {
       await onConnectVoice();
+      setConnectionMode("audio");
       setOperation({ phase: "success", command: "连接语音", message: "语音已连接" });
+      onDiagnostic?.({ type: "voice.connect.result", commandTraceId, status: "success" });
     } catch (error) {
       const message = getVoiceAssistantErrorMessage(error);
+      onDiagnostic?.({ type: "voice.connect.result", commandTraceId, status: "failed", message });
       setLastMessage(message);
       setOperation({ phase: "error", command: "连接语音", message });
       setState("error");
     }
   };
 
+  const connectTextOnly = async () => {
+    if (!onConnectTextOnly || muted) return;
+    const commandTraceId = createCommandTraceId("text_realtime_connect");
+    onDiagnostic?.({ type: "voice.text_realtime.connect.click", commandTraceId, status: "started" });
+    setState("connecting");
+    setLastMessage("正在连接文字 Realtime。");
+    setOperation({ phase: "thinking", command: "连接文字 Realtime" });
+    try {
+      await onConnectTextOnly();
+      setConnectionMode("text");
+      setLastMessage("文字 Realtime 已连接，可直接输入指令。");
+      setOperation({ phase: "success", command: "连接文字 Realtime", message: "文字 Realtime 已连接" });
+      onDiagnostic?.({ type: "voice.text_realtime.connect.result", commandTraceId, status: "success" });
+    } catch (error) {
+      const message = getVoiceAssistantErrorMessage(error);
+      onDiagnostic?.({ type: "voice.text_realtime.connect.result", commandTraceId, status: "failed", message });
+      setLastMessage(message);
+      setOperation({ phase: "error", command: "连接文字 Realtime", message });
+      setState("error");
+    }
+  };
+
   const disconnectVoice = () => {
+    onDiagnostic?.({ type: "voice.disconnect.click", commandTraceId: createCommandTraceId("voice_disconnect"), status: "started" });
     onDisconnectVoice?.();
+    setConnectionMode(null);
     setState("disconnected");
     setLastMessage(getVoiceAssistantConnectionMessage("disconnected"));
     setOperation({ phase: "idle" });
@@ -383,18 +484,32 @@ export function VoiceAssistantDock({
       {voiceEnabled ? (
         <div className="voice-assistant-dock__voice">
           {voiceStatus === "connected" || voiceStatus === "configuring" ? (
-            <button type="button" onClick={disconnectVoice} disabled={muted} aria-label="断开语音">
-              断开语音
+            <button type="button" onClick={disconnectVoice} disabled={muted} aria-label="断开 Realtime">
+              {connectionMode === "text" ? "断开文字" : "断开语音"}
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={() => void connectVoice()}
-              disabled={muted || voiceStatus === "connecting"}
-              aria-label="连接语音"
-            >
-              连接语音
-            </button>
+            <>
+              {onConnectVoice ? (
+                <button
+                  type="button"
+                  onClick={() => void connectVoice()}
+                  disabled={muted || voiceStatus === "connecting"}
+                  aria-label="连接语音"
+                >
+                  连接语音
+                </button>
+              ) : null}
+              {onConnectTextOnly ? (
+                <button
+                  type="button"
+                  onClick={() => void connectTextOnly()}
+                  disabled={muted || voiceStatus === "connecting"}
+                  aria-label="连接文字 Realtime"
+                >
+                  文字 Realtime
+                </button>
+              ) : null}
+            </>
           )}
         </div>
       ) : null}

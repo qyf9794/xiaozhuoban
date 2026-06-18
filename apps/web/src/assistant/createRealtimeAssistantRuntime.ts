@@ -7,6 +7,7 @@ import {
   type RealtimeBudgetMetrics
 } from "@xiaozhuoban/assistant-core";
 import { createLocalAssistantHarness } from "./createLocalAssistantHarness";
+import type { AppShellActionBridge } from "./appShellActions";
 import {
   OpenAIRealtimeWebRtcAdapter,
   type OpenAIRealtimeWebRtcAdapterOptions,
@@ -17,7 +18,9 @@ import type { AssistantRoute, AssistantRealtimeAdapter } from "./AssistantHarnes
 
 type RuntimeRealtimeAdapter = AssistantRealtimeAdapter & {
   connect: () => Promise<void>;
+  connectTextOnly?: () => Promise<void>;
   disconnect: () => void;
+  sendTextCommand?: (input: string, options?: { commandTraceId?: string }) => void;
 };
 
 export interface RealtimeAssistantRuntime {
@@ -25,10 +28,13 @@ export interface RealtimeAssistantRuntime {
   adapter: RuntimeRealtimeAdapter;
   runtimeController: RealtimeRuntimeController;
   connect: () => Promise<void>;
+  connectTextOnly: () => Promise<void>;
   connectForWake: () => Promise<void>;
+  sendRealtimeTextCommand: (input: string, options?: { commandTraceId?: string }) => Promise<void>;
   disconnect: () => void;
   detectLocalWake: () => void;
   handleIdleElapsed: (idleMs: number) => void;
+  handleMaxSessionElapsed: (activeMs: number) => void;
   recordCommandRoute: (route: AssistantRoute) => void;
 }
 
@@ -37,6 +43,7 @@ export function createRealtimeAssistantRuntime(options: {
   onRuntimeBudgetChange?: (status: { mode: AssistantRuntimeMode; metrics: RealtimeBudgetMetrics }) => void;
   onOperation?: (event: AssistantOperationEvent) => void;
   capabilityBridge?: WidgetCapabilityBridge;
+  appShellBridge?: AppShellActionBridge;
   adapterOptions?: Omit<OpenAIRealtimeWebRtcAdapterOptions, "onFunctionCall" | "onStatusChange">;
   adapterFactory?: (options: OpenAIRealtimeWebRtcAdapterOptions) => RuntimeRealtimeAdapter;
   runtimeBudgetConfig?: RealtimeBudgetConfig;
@@ -45,8 +52,10 @@ export function createRealtimeAssistantRuntime(options: {
   let harness: AssistantHarness;
   let connectedAt: number | null = null;
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  let maxSessionTimer: ReturnType<typeof setTimeout> | null = null;
   const now = options.now ?? (() => Date.now());
   const runtimeBudgetConfig = options.runtimeBudgetConfig ?? DEFAULT_REALTIME_BUDGET_CONFIG;
+  const emitDiagnostic = options.adapterOptions?.onDiagnostic;
   const runtimeController = new RealtimeRuntimeController(runtimeBudgetConfig);
   const notifyRuntime = () =>
     options.onRuntimeBudgetChange?.({
@@ -58,10 +67,20 @@ export function createRealtimeAssistantRuntime(options: {
     globalThis.clearTimeout(idleTimer);
     idleTimer = null;
   };
+  const clearMaxSessionTimer = () => {
+    if (!maxSessionTimer) return;
+    globalThis.clearTimeout(maxSessionTimer);
+    maxSessionTimer = null;
+  };
   const getIdleTimeoutMs = () => {
     if (runtimeController.mode === "realtime_command_window") return runtimeBudgetConfig.commandWindowIdleMs;
     if (runtimeController.mode === "realtime_dialogue_window") return runtimeBudgetConfig.dialogueIdleMs;
     if (runtimeController.mode === "realtime_cooldown") return runtimeBudgetConfig.cooldownMs ?? DEFAULT_REALTIME_BUDGET_CONFIG.cooldownMs ?? 0;
+    return 0;
+  };
+  const getMaxSessionMs = () => {
+    if (runtimeController.mode === "realtime_command_window") return runtimeBudgetConfig.maxSingleCommandSessionMs;
+    if (runtimeController.mode === "realtime_dialogue_window") return runtimeBudgetConfig.maxDialogueSessionMs;
     return 0;
   };
   const scheduleIdleTimer = (onElapsed: (idleMs: number) => void) => {
@@ -70,15 +89,23 @@ export function createRealtimeAssistantRuntime(options: {
     if (timeoutMs <= 0) return;
     idleTimer = globalThis.setTimeout(() => onElapsed(timeoutMs), timeoutMs);
   };
+  const scheduleMaxSessionTimer = (onElapsed: (activeMs: number) => void) => {
+    clearMaxSessionTimer();
+    const timeoutMs = getMaxSessionMs();
+    if (timeoutMs <= 0) return;
+    maxSessionTimer = globalThis.setTimeout(() => onElapsed(timeoutMs), timeoutMs);
+  };
   const adapterOptions: OpenAIRealtimeWebRtcAdapterOptions = {
     ...options.adapterOptions,
     onStatusChange(status) {
       if (status === "connected") {
         connectedAt = now();
         scheduleIdleTimer((idleMs) => runtimeApi.handleIdleElapsed(idleMs));
+        scheduleMaxSessionTimer((activeMs) => runtimeApi.handleMaxSessionElapsed(activeMs));
       }
       if (status === "disconnected" && connectedAt) {
         clearIdleTimer();
+        clearMaxSessionTimer();
         runtimeController.recordRealtimeUsage({ activeMs: now() - connectedAt });
         connectedAt = null;
         notifyRuntime();
@@ -92,6 +119,7 @@ export function createRealtimeAssistantRuntime(options: {
   const adapter = options.adapterFactory ? options.adapterFactory(adapterOptions) : new OpenAIRealtimeWebRtcAdapter(adapterOptions);
   harness = createLocalAssistantHarness({
     capabilityBridge: options.capabilityBridge,
+    appShellBridge: options.appShellBridge,
     realtime: adapter,
     onOperation: options.onOperation
   });
@@ -104,13 +132,33 @@ export function createRealtimeAssistantRuntime(options: {
     }
     await adapter.connect();
   };
-  const disconnectRealtime = () => {
+  const connectTextOnlyWithReason = async (reason: "manual" | "wake") => {
+    const gate = runtimeController.requestRealtime(reason);
+    notifyRuntime();
+    if (!gate.allowed) {
+      throw new Error(gate.reason);
+    }
+    if (!adapter.connectTextOnly) {
+      throw new Error("REALTIME_TEXT_ONLY_UNAVAILABLE");
+    }
+    await adapter.connectTextOnly();
+  };
+  const disconnectRealtime = (reason: "manual" | "idle_timeout" | "max_session_timeout" = "manual") => {
     clearIdleTimer();
+    clearMaxSessionTimer();
+    emitDiagnostic?.({
+      type: "realtime.runtime.disconnect",
+      status: reason,
+      data: { mode: runtimeController.mode, connected: connectedAt !== null }
+    });
     if (connectedAt) {
       runtimeController.recordRealtimeUsage({ activeMs: now() - connectedAt });
       connectedAt = null;
-      notifyRuntime();
     }
+    if (reason === "manual" || reason === "max_session_timeout") {
+      runtimeController.endRealtimeSession(reason);
+    }
+    notifyRuntime();
     adapter.disconnect();
   };
 
@@ -121,8 +169,20 @@ export function createRealtimeAssistantRuntime(options: {
     async connect() {
       await connectWithReason("manual");
     },
+    async connectTextOnly() {
+      await connectTextOnlyWithReason("manual");
+    },
     async connectForWake() {
       await connectWithReason("wake");
+    },
+    async sendRealtimeTextCommand(input, options) {
+      if (!adapter.sendTextCommand) {
+        throw new Error("REALTIME_TEXT_COMMAND_UNAVAILABLE");
+      }
+      if (!runtimeController.mode.startsWith("realtime_")) {
+        await connectTextOnlyWithReason("manual");
+      }
+      adapter.sendTextCommand(input, options);
     },
     disconnect: disconnectRealtime,
     detectLocalWake() {
@@ -136,11 +196,28 @@ export function createRealtimeAssistantRuntime(options: {
         (previousMode === "realtime_command_window" || previousMode === "realtime_dialogue_window") &&
         (nextMode === "local_standby" || nextMode === "realtime_cooldown")
       ) {
-        disconnectRealtime();
+        disconnectRealtime("idle_timeout");
       } else {
         notifyRuntime();
       }
       if (nextMode === "realtime_cooldown") {
+        scheduleIdleTimer((nextIdleMs) => runtimeApi.handleIdleElapsed(nextIdleMs));
+      }
+    },
+    handleMaxSessionElapsed(activeMs) {
+      if (runtimeController.mode !== "realtime_command_window" && runtimeController.mode !== "realtime_dialogue_window") {
+        notifyRuntime();
+        return;
+      }
+      emitDiagnostic?.({
+        type: "realtime.runtime.max_session_elapsed",
+        status: "max_session_timeout",
+        durationMs: activeMs,
+        data: { mode: runtimeController.mode }
+      });
+      disconnectRealtime("max_session_timeout");
+      const modeAfterDisconnect = runtimeController.mode as AssistantRuntimeMode;
+      if (modeAfterDisconnect === "realtime_cooldown") {
         scheduleIdleTimer((nextIdleMs) => runtimeApi.handleIdleElapsed(nextIdleMs));
       }
     },

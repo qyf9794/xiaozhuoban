@@ -12,6 +12,8 @@ const App = lazy(async () => {
 
 export function AppRouter() {
   const { ready, user, initialize } = useAuthStore();
+  const e2eAuthBypass = import.meta.env.VITE_XIAOZHUOBAN_E2E_AUTH_BYPASS === "true";
+  const authenticated = Boolean(user) || e2eAuthBypass;
 
   useEffect(() => {
     void import("../App");
@@ -32,10 +34,10 @@ export function AppRouter() {
   return (
     <Suspense fallback={<div className="loading">页面加载中...</div>}>
       <Routes>
-        <Route path="/login" element={user ? <Navigate to="/app" replace /> : <LoginPage />} />
-        <Route path="/register" element={user ? <Navigate to="/app" replace /> : <RegisterPage />} />
-        <Route path="/app" element={user ? <App /> : <Navigate to="/login" replace />} />
-        <Route path="*" element={<Navigate to={user ? "/app" : "/login"} replace />} />
+        <Route path="/login" element={authenticated ? <Navigate to="/app" replace /> : <LoginPage />} />
+        <Route path="/register" element={authenticated ? <Navigate to="/app" replace /> : <RegisterPage />} />
+        <Route path="/app" element={authenticated ? <App /> : <Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to={authenticated ? "/app" : "/login"} replace />} />
       </Routes>
     </Suspense>
   );

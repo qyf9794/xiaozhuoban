@@ -39,6 +39,31 @@ function makeWidget(type: string, zIndex: number): WidgetInstance {
   };
 }
 
+function makeWorkspace() {
+  return {
+    id: "ws_1",
+    name: "测试工作区",
+    theme: "light" as const,
+    permissions: { editable: true, shareable: false },
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+function makeBoard() {
+  return {
+    id: "board_1",
+    workspaceId: "ws_1",
+    name: "测试桌板",
+    layoutMode: "free" as const,
+    zoom: 1,
+    locked: false,
+    background: { type: "color" as const, value: "#ffffff" },
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
 class DefinitionFailingRepository extends InMemoryRepository {
   async upsertDefinition(): Promise<void> {
     throw new Error("definition offline");
@@ -102,6 +127,20 @@ describe("dial clock definition", () => {
 });
 
 describe("assistant widget focus state", () => {
+  it("focuses newly added widgets", async () => {
+    useAppStore.setState({
+      ...useAppStore.getState(),
+      activeBoardId: "board_1",
+      focusedWidgetId: undefined,
+      widgetDefinitions: [makeDefinition("music")],
+      widgetInstances: []
+    });
+
+    const widget = await useAppStore.getState().addWidgetInstance("wd_music");
+
+    expect(useAppStore.getState().focusedWidgetId).toBe(widget?.id);
+  });
+
   it("tracks the focused widget and brings it to the front", async () => {
     useAppStore.setState({
       ...useAppStore.getState(),
@@ -131,6 +170,52 @@ describe("assistant widget focus state", () => {
 
     expect(useAppStore.getState().focusedWidgetId).toBeUndefined();
     expect(useAppStore.getState().widgetInstances).toEqual([]);
+  });
+});
+
+describe("legacy default widget cleanup", () => {
+  it("removes empty legacy headline and market widgets during initialization", async () => {
+    const repository = new InMemoryRepository();
+    await repository.upsertWorkspace(makeWorkspace());
+    await repository.upsertBoard(makeBoard());
+    await repository.upsertDefinitions([makeDefinition("messageBoard"), makeDefinition("headline"), makeDefinition("market"), makeDefinition("music")]);
+    await repository.upsertInstances([makeWidget("headline", 1), makeWidget("market", 2), makeWidget("music", 3)]);
+    useAppStore.setState({
+      ...useAppStore.getState(),
+      ready: false,
+      repository,
+      boards: [],
+      activeBoardId: undefined,
+      widgetDefinitions: [],
+      widgetInstances: []
+    });
+
+    await useAppStore.getState().initialize();
+
+    expect(useAppStore.getState().widgetInstances.map((widget) => widget.definitionId)).toEqual(["wd_music"]);
+    expect((await repository.listByBoard("board_1")).map((widget) => widget.definitionId)).toEqual(["wd_music"]);
+  });
+
+  it("keeps legacy widget types that already have user state", async () => {
+    const repository = new InMemoryRepository();
+    const market = { ...makeWidget("market", 1), state: { indexCodes: ["usINX"] } };
+    await repository.upsertWorkspace(makeWorkspace());
+    await repository.upsertBoard(makeBoard());
+    await repository.upsertDefinitions([makeDefinition("messageBoard"), makeDefinition("market")]);
+    await repository.upsertInstance(market);
+    useAppStore.setState({
+      ...useAppStore.getState(),
+      ready: false,
+      repository,
+      boards: [],
+      activeBoardId: undefined,
+      widgetDefinitions: [],
+      widgetInstances: []
+    });
+
+    await useAppStore.getState().initialize();
+
+    expect(useAppStore.getState().widgetInstances).toMatchObject([{ definitionId: "wd_market", state: { indexCodes: ["usINX"] } }]);
   });
 });
 

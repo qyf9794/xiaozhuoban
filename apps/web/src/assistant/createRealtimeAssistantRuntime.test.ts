@@ -6,17 +6,24 @@ function createRuntimeWithFakeAdapter(options: {
   commandWindowIdleMs?: number;
   dialogueIdleMs?: number;
   cooldownMs?: number;
+  maxSingleCommandSessionMs?: number;
+  maxDialogueSessionMs?: number;
   now?: () => number;
 } = {}) {
   let adapterOptions: OpenAIRealtimeWebRtcAdapterOptions | null = null;
   const statuses: RealtimeConnectionStatus[] = [];
+  const diagnostics: Array<{ type: string; status?: string; durationMs?: number }> = [];
   const adapter = {
     connect: vi.fn(async () => {
+      adapterOptions?.onStatusChange?.("connected");
+    }),
+    connectTextOnly: vi.fn(async () => {
       adapterOptions?.onStatusChange?.("connected");
     }),
     disconnect: vi.fn(() => {
       adapterOptions?.onStatusChange?.("disconnected");
     }),
+    sendTextCommand: vi.fn(),
     updateTools: vi.fn(),
     updateContext: vi.fn(),
     updateModules: vi.fn(),
@@ -33,16 +40,21 @@ function createRuntimeWithFakeAdapter(options: {
       commandWindowIdleMs: options.commandWindowIdleMs ?? 10,
       dialogueIdleMs: options.dialogueIdleMs ?? 20,
       cooldownMs: options.cooldownMs ?? 5,
-      maxSingleCommandSessionMs: 60_000,
-      maxDialogueSessionMs: 300_000,
+      maxSingleCommandSessionMs: options.maxSingleCommandSessionMs ?? 60_000,
+      maxDialogueSessionMs: options.maxDialogueSessionMs ?? 300_000,
       assistantAudioDailyLimitSeconds: 300
+    },
+    adapterOptions: {
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
     },
     adapterFactory: (nextOptions) => {
       adapterOptions = nextOptions;
       return adapter;
     }
   });
-  return { runtime, adapter, statuses };
+  return { runtime, adapter, statuses, diagnostics };
 }
 
 afterEach(() => {
@@ -63,7 +75,7 @@ describe("createRealtimeAssistantRuntime", () => {
 
   it("disconnects automatically when the command window idles out", async () => {
     vi.useFakeTimers();
-    const { runtime, adapter, statuses } = createRuntimeWithFakeAdapter({ commandWindowIdleMs: 10 });
+    const { runtime, adapter, statuses, diagnostics } = createRuntimeWithFakeAdapter({ commandWindowIdleMs: 10 });
 
     await runtime.connectForWake();
     expect(runtime.runtimeController.mode).toBe("realtime_command_window");
@@ -73,6 +85,42 @@ describe("createRealtimeAssistantRuntime", () => {
     expect(adapter.disconnect).toHaveBeenCalledTimes(1);
     expect(runtime.runtimeController.mode).toBe("local_standby");
     expect(statuses).toEqual(["connected", "disconnected"]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "realtime.runtime.disconnect", status: "idle_timeout" })
+    ]));
+  });
+
+  it("disconnects dialogue sessions at the max session duration and enters cooldown", async () => {
+    vi.useFakeTimers();
+    const { runtime, adapter, diagnostics } = createRuntimeWithFakeAdapter({
+      dialogueIdleMs: 60_000,
+      maxDialogueSessionMs: 25
+    });
+
+    await runtime.connect();
+    expect(runtime.runtimeController.mode).toBe("realtime_dialogue_window");
+
+    vi.advanceTimersByTime(25);
+
+    expect(adapter.disconnect).toHaveBeenCalledTimes(1);
+    expect(runtime.runtimeController.mode).toBe("realtime_cooldown");
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "realtime.runtime.max_session_elapsed", status: "max_session_timeout", durationMs: 25 }),
+      expect.objectContaining({ type: "realtime.runtime.disconnect", status: "max_session_timeout" })
+    ]));
+  });
+
+  it("returns to local standby after a manual disconnect", async () => {
+    const { runtime, adapter, diagnostics } = createRuntimeWithFakeAdapter();
+
+    await runtime.connect();
+    runtime.disconnect();
+
+    expect(adapter.disconnect).toHaveBeenCalledTimes(1);
+    expect(runtime.runtimeController.mode).toBe("local_standby");
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "realtime.runtime.disconnect", status: "manual" })
+    ]));
   });
 
   it("blocks automatic realtime at the hard limit but allows manual continuation", async () => {
@@ -86,6 +134,27 @@ describe("createRealtimeAssistantRuntime", () => {
 
     expect(adapter.connect).toHaveBeenCalledTimes(1);
     expect(runtime.runtimeController.mode).toBe("realtime_dialogue_window");
+  });
+
+  it("can connect a text-only realtime session without calling the audio connect path", async () => {
+    const { runtime, adapter, statuses } = createRuntimeWithFakeAdapter();
+
+    await runtime.connectTextOnly();
+
+    expect(adapter.connectTextOnly).toHaveBeenCalledTimes(1);
+    expect(adapter.connect).not.toHaveBeenCalled();
+    expect(runtime.runtimeController.mode).toBe("realtime_dialogue_window");
+    expect(statuses).toEqual(["connected"]);
+  });
+
+  it("opens text-only realtime before sending a text command", async () => {
+    const { runtime, adapter } = createRuntimeWithFakeAdapter();
+
+    await runtime.sendRealtimeTextCommand("打开表盘时钟", { commandTraceId: "trace_text_1" });
+
+    expect(adapter.connectTextOnly).toHaveBeenCalledTimes(1);
+    expect(adapter.connect).not.toHaveBeenCalled();
+    expect(adapter.sendTextCommand).toHaveBeenCalledWith("打开表盘时钟", { commandTraceId: "trace_text_1" });
   });
 
   it("records local hits and model fallbacks without adding realtime cost", () => {

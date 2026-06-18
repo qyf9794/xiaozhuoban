@@ -9,6 +9,10 @@ export type RealtimeAuthResult =
   | { ok: true; token: string; user: RealtimeAuthenticatedUser }
   | { ok: false; status: 401 | 500; error: string };
 
+type SupabaseAuthWithJwt = {
+  getUser: (jwt?: string) => Promise<{ data: { user: { id?: string } | null }; error: unknown }>;
+};
+
 function readHeader(headers: IncomingHttpHeaders, name: string): string {
   const value = headers[name.toLowerCase()];
   if (Array.isArray(value)) return value[0] ?? "";
@@ -46,7 +50,7 @@ export async function authenticateRealtimeRequest(request: IncomingMessage): Pro
         autoRefreshToken: false
       }
     });
-    const { data, error } = await supabase.auth.getUser(token);
+    const { data, error } = await (supabase.auth as SupabaseAuthWithJwt).getUser(token);
     if (error || !data.user?.id) {
       return { ok: false, status: 401, error: "AUTH_INVALID" };
     }

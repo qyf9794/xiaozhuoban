@@ -16,6 +16,7 @@ import { AssistantHarness, type AssistantAuditEvent, type AssistantOperationEven
 import { createLocalAssistantAuditAdapter, createSupabaseAssistantAuditAdapter, type AssistantAuditContext } from "./assistantAudit";
 import { assistantLearnedCommandStore } from "./assistantLearning";
 import { WidgetCapabilityBridge, createWidgetCapabilityActions } from "./widgetCapabilityBridge";
+import { createAppShellActions, type AppShellActionBridge } from "./appShellActions";
 import { createWidgetStateActions } from "./widgetStateActions";
 import { createDailyWidgetAssistantModules } from "../widgets/modules/dailyWidgetAssistantModules";
 import { createCalculatorAssistantModule } from "../widgets/modules/calculator/assistant";
@@ -77,6 +78,7 @@ function createContextInput(): ContextSummarizerInput {
 
 export function createLocalAssistantHarness(options?: {
   capabilityBridge?: WidgetCapabilityBridge;
+  appShellBridge?: AppShellActionBridge;
   realtime?: AssistantRealtimeAdapter;
   onOperation?: (event: AssistantOperationEvent) => void;
 }): AssistantHarness {
@@ -126,6 +128,7 @@ export function createLocalAssistantHarness(options?: {
   };
 
   const actions: AssistantAction[] = [
+    ...createAppShellActions(options?.appShellBridge ?? {}),
     ...registerBoardActions(registry, adapter),
     ...createWidgetStateActions(adapter),
     ...createWidgetCapabilityActions(adapter, capabilityBridge)

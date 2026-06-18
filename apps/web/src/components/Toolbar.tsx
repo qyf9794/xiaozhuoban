@@ -42,7 +42,8 @@ export function Toolbar({
   onImportBackup,
   onAddWidget,
   onOpenAiDialog,
-  onEditDisplayName
+  onEditDisplayName,
+  settingsOpenRequestId
 }: {
   board: Board;
   definitions: WidgetDefinition[];
@@ -62,6 +63,7 @@ export function Toolbar({
   onAddWidget: (definitionId: string) => void;
   onOpenAiDialog: () => void;
   onEditDisplayName: () => void;
+  settingsOpenRequestId?: number;
 }) {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -76,6 +78,12 @@ export function Toolbar({
   useEffect(() => {
     onMenuOpenChange?.(addMenuOpen || menuOpen);
   }, [addMenuOpen, menuOpen, onMenuOpenChange]);
+
+  useEffect(() => {
+    if (settingsOpenRequestId === undefined) return;
+    setAddMenuOpen(false);
+    setMenuOpen(true);
+  }, [settingsOpenRequestId]);
 
   useEffect(() => {
     const onDocClick = (event: MouseEvent) => {

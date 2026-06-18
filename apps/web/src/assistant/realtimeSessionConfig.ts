@@ -5,8 +5,10 @@ import {
   ToolScopeManager,
   XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL,
   XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
+  XIAOZHUOBAN_REALTIME_INPUT_TRANSCRIPTION_MODEL,
   XIAOZHUOBAN_REALTIME_MODEL,
   clampRealtimeClientSecretTtl,
+  createRealtimeInputTranscription,
   createPassthroughSchema,
   createRealtimeTurnDetection,
   decodeRealtimeToolName,
@@ -26,8 +28,10 @@ export {
   REALTIME_TOOL_SELECTION_TOOL_NAME,
   XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL,
   XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
+  XIAOZHUOBAN_REALTIME_INPUT_TRANSCRIPTION_MODEL,
   XIAOZHUOBAN_REALTIME_MODEL,
   clampRealtimeClientSecretTtl,
+  createRealtimeInputTranscription,
   createRealtimeTurnDetection,
   decodeRealtimeToolName,
   encodeRealtimeToolName
@@ -104,6 +108,42 @@ const anyObjectSchema = createPassthroughSchema<Record<string, unknown>>((value)
 );
 
 const initialToolMetadata: InitialToolMetadata[] = [
+  {
+    name: "app.sidebar.set",
+    description: "Show, hide, or toggle the Xiaozhuoban sidebar.",
+    scope: "desktop",
+    parameters: objectSchema({
+      open: booleanSchema(),
+      mode: { type: "string", enum: ["show", "hide", "toggle"] }
+    })
+  },
+  {
+    name: "app.fullscreen.set",
+    description: "Enter, exit, or toggle Xiaozhuoban page fullscreen.",
+    scope: "desktop",
+    parameters: objectSchema({
+      enabled: booleanSchema(),
+      mode: { type: "string", enum: ["enter", "exit", "toggle"] }
+    })
+  },
+  {
+    name: "app.settings.open",
+    description: "Open the Xiaozhuoban settings menu.",
+    scope: "desktop",
+    parameters: objectSchema({})
+  },
+  {
+    name: "app.command_palette.open",
+    description: "Open the Xiaozhuoban command/search palette.",
+    scope: "desktop",
+    parameters: objectSchema({})
+  },
+  {
+    name: "app.ai_dialog.open",
+    description: "Open the AI widget creation dialog.",
+    scope: "desktop",
+    parameters: objectSchema({})
+  },
   {
     name: "board.add_widget",
     description: "Add an existing widget definition to the current Xiaozhuoban board.",
@@ -299,6 +339,20 @@ function inferAssistantToolParameters(tool: AssistantToolSpec): Record<string, u
       return objectSchema({ boardId: stringSchema(), name: stringSchema() }, ["boardId", "name"]);
     case "board.create":
       return objectSchema({ name: stringSchema() });
+    case "app.sidebar.set":
+      return objectSchema({
+        open: booleanSchema(),
+        mode: { type: "string", enum: ["show", "hide", "toggle"] }
+      });
+    case "app.fullscreen.set":
+      return objectSchema({
+        enabled: booleanSchema(),
+        mode: { type: "string", enum: ["enter", "exit", "toggle"] }
+      });
+    case "app.settings.open":
+    case "app.command_palette.open":
+    case "app.ai_dialog.open":
+      return objectSchema({});
     default:
       return tool.requiresTarget
         ? objectSchema({ widgetId: stringSchema() }, ["widgetId"], true)
@@ -319,10 +373,10 @@ export function createRealtimeClientSecretPayload(options: RealtimeSessionOption
       reasoning: {
         effort: options.reasoningEffort ?? "low"
       },
-      output_modalities: ["audio"],
       audio: {
         input: {
-          turn_detection: createRealtimeTurnDetection(options)
+          turn_detection: createRealtimeTurnDetection(options),
+          transcription: createRealtimeInputTranscription()
         },
         output: {
           voice: "marin"

@@ -8,6 +8,7 @@ import {
   createInitialRegisteredRealtimeTools,
   createInitialRealtimeToolSpecs,
   createInitialRealtimeTools,
+  createRealtimeInputTranscription,
   createRealtimeContextInstructions,
   createRealtimeClientSecretPayload,
   createRealtimeTurnDetection,
@@ -29,6 +30,8 @@ describe("realtime session config", () => {
     const names = specs.map((tool) => tool.name);
 
     expect(names).toContain("board.add_widget");
+    expect(names).toContain("app.sidebar.set");
+    expect(names).toContain("app.settings.open");
     expect(names).toContain("widget.focus");
     expect(names).toContain("widget.fullscreen_focus");
     expect(names).toContain("board.auto_align");
@@ -45,6 +48,7 @@ describe("realtime session config", () => {
     expect(tools.every((tool) => tool.type === "function")).toBe(true);
     expect(tools.every((tool) => /^[a-zA-Z0-9_-]+$/.test(tool.name))).toBe(true);
     expect(tools.map((tool) => tool.name)).toContain("board__dot__add_widget");
+    expect(tools.map((tool) => tool.name)).toContain("app__dot__sidebar__dot__set");
     expect(addWidget?.parameters).toMatchObject({
       type: "object",
       required: ["definitionId"],
@@ -85,7 +89,7 @@ describe("realtime session config", () => {
     expect(payload.session.model).toBe(XIAOZHUOBAN_REALTIME_MODEL);
     expect(payload.session.type).toBe("realtime");
     expect(payload.session.reasoning.effort).toBe("minimal");
-    expect(payload.session.output_modalities).toEqual(["audio"]);
+    expect("output_modalities" in payload.session).toBe(false);
     expect(payload.session.audio.output.voice).toBe("marin");
     expect(payload.session.audio.input.turn_detection).toEqual({
       type: "semantic_vad",
@@ -93,6 +97,7 @@ describe("realtime session config", () => {
       create_response: true,
       interrupt_response: true
     });
+    expect(payload.session.audio.input.transcription).toEqual({ model: "gpt-4o-mini-transcribe" });
     expect(payload.session.tool_choice).toBe("auto");
     expect(payload.session.parallel_tool_calls).toBe(true);
     expect(payload.session.tools.map((tool) => tool.name)).toEqual(["assistant__dot__select_tool"]);
@@ -109,6 +114,10 @@ describe("realtime session config", () => {
       type: "semantic_vad",
       eagerness: "medium"
     });
+  });
+
+  it("enables low-cost input audio transcription for user speech diagnostics", () => {
+    expect(createRealtimeInputTranscription()).toEqual({ model: "gpt-4o-mini-transcribe" });
   });
 
   it("round trips internal tool names through Realtime-safe names", () => {

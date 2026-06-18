@@ -7,7 +7,9 @@ import { CommandPalette } from "./components/CommandPalette";
 import { OnlineUsersDock } from "./components/OnlineUsersDock";
 import { VoiceAssistantDock, type VoiceAssistantOperationStatus } from "./components/VoiceAssistantDock";
 import { createRealtimeAssistantRuntime } from "./assistant/createRealtimeAssistantRuntime";
+import { recordAuthenticatedAssistantDiagnostic, type AssistantDiagnosticEvent } from "./assistant/assistantDiagnostics";
 import {
+  clearAssistantTerminalOperation,
   getAssistantOperationStatus,
   updateAssistantOperationSnapshot,
   type AssistantOperationSnapshot
@@ -20,7 +22,7 @@ import { supabase } from "./lib/supabase";
 import { resolveUserName } from "./lib/collab";
 import { showDesktopWindowWhenReady } from "./lib/desktopWindow";
 import { abandonUserMonopolyMatches } from "./lib/monopolyOnline";
-import { SupabaseRepository } from "@xiaozhuoban/data";
+import { InMemoryRepository, SupabaseRepository } from "@xiaozhuoban/data";
 import type { AssistantRuntimeMode, RealtimeBudgetMetrics } from "@xiaozhuoban/assistant-core";
 import { getAssistantOutboxStatus, retryAssistantOutbox } from "./assistant/assistantOutbox";
 
@@ -30,7 +32,9 @@ const WALLPAPER_MIN_LONG_EDGE = 1600;
 const WALLPAPER_MAX_LONG_EDGE = 2560;
 const MOBILE_CHROME_IDLE_HIDE_MS = 3000;
 const MOBILE_CHROME_SCROLL_THRESHOLD = 6;
+const ASSISTANT_TERMINAL_OPERATION_VISIBLE_MS = 8000;
 const repositoryByUserId = new Map<string, SupabaseRepository>();
+const E2E_AUTH_BYPASS = import.meta.env.VITE_XIAOZHUOBAN_E2E_AUTH_BYPASS === "true";
 
 function getAssistantRuntimeText(status: { mode: AssistantRuntimeMode; metrics: RealtimeBudgetMetrics } | null) {
   if (!status) return "本地待机 · Realtime 按需连接";
@@ -143,15 +147,19 @@ export function App() {
     importBackupSnapshot
   } = useAppStore();
   const { user, signOut, updateDisplayName } = useAuthStore();
-  const userId = user?.id;
-  const currentDisplayName = resolveUserName({
-    email: user?.email ?? null,
-    userMetadata: (user?.user_metadata as Record<string, unknown> | undefined) ?? null
-  });
+  const e2eRepositoryRef = useRef<InMemoryRepository | null>(null);
+  const userId = user?.id ?? (E2E_AUTH_BYPASS ? "e2e-local-user" : undefined);
+  const currentDisplayName = E2E_AUTH_BYPASS && !user
+    ? "E2E 测试用户"
+    : resolveUserName({
+        email: user?.email ?? null,
+        userMetadata: (user?.user_metadata as Record<string, unknown> | undefined) ?? null
+      });
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileToolbarMenuOpen, setMobileToolbarMenuOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [settingsOpenRequestId, setSettingsOpenRequestId] = useState(0);
   const [desktopViewportBottomInset, setDesktopViewportBottomInset] = useState(14);
   const [mobileChromeVisible, setMobileChromeVisible] = useState(true);
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeConnectionStatus>("disconnected");
@@ -185,19 +193,70 @@ export function App() {
   const wallpaperInputRef = useRef<HTMLInputElement | null>(null);
   const backupInputRef = useRef<HTMLInputElement | null>(null);
   const mobileChromeHideTimerRef = useRef<number | null>(null);
+  const assistantOperationClearTimerRef = useRef<number | null>(null);
   const assistantCapabilityBridgeRef = useRef(new WidgetCapabilityBridge());
+  const sidebarOpenRef = useRef(sidebarOpen);
+  const fullscreenRef = useRef(fullscreen);
+  sidebarOpenRef.current = sidebarOpen;
+  fullscreenRef.current = fullscreen;
   const isMobileUa = useMemo(() => isLikelyMobileUA(), []);
   const isMobileMode = isMobileUa || viewportWidth <= MOBILE_VIEWPORT_MAX;
+  const recordDiagnostic = (event: AssistantDiagnosticEvent) => {
+    recordAuthenticatedAssistantDiagnostic(event);
+  };
   const assistantRuntime = useMemo(
     () =>
       createRealtimeAssistantRuntime({
         capabilityBridge: assistantCapabilityBridgeRef.current,
-        adapterOptions: {
-          getAccessToken: () => useAuthStore.getState().session?.access_token
+        appShellBridge: {
+          getSidebarOpen: () => sidebarOpenRef.current,
+          setSidebarOpen: (open) => setSidebarOpen(open),
+          getFullscreen: () => fullscreenRef.current,
+          setFullscreen: async (enabled) => {
+            if (enabled && !document.fullscreenElement) {
+              await document.documentElement.requestFullscreen();
+              return;
+            }
+            if (!enabled && document.fullscreenElement) {
+              await document.exitFullscreen();
+              return;
+            }
+            setFullscreen(enabled);
+          },
+          openSettings: () => setSettingsOpenRequestId((value) => value + 1),
+          openCommandPalette: () => setCommandPaletteOpen(true),
+          openAiDialog: () => setAiDialogOpen(true)
         },
-        onStatusChange: setRealtimeStatus,
+        adapterOptions: {
+          getAccessToken: () => useAuthStore.getState().session?.access_token,
+          onDiagnostic: recordDiagnostic
+        },
+        onStatusChange: (status) => {
+          setRealtimeStatus(status);
+          recordDiagnostic({ type: "voice.status", status });
+        },
         onRuntimeBudgetChange: setAssistantRuntimeBudget,
-        onOperation: (event) => setAssistantOperationSnapshot((snapshot) => updateAssistantOperationSnapshot(snapshot, event))
+        onOperation: (event) => {
+          recordDiagnostic({
+            type: "assistant.operation",
+            commandTraceId: event.commandTraceId,
+            status: event.phase,
+            operationId: event.id,
+            route: event.route,
+            toolName: event.toolName,
+            message: event.message
+          });
+          setAssistantOperationSnapshot((snapshot) => updateAssistantOperationSnapshot(snapshot, event));
+          if (event.phase !== "running" && event.phase !== "waiting_confirmation") {
+            if (assistantOperationClearTimerRef.current !== null) {
+              window.clearTimeout(assistantOperationClearTimerRef.current);
+            }
+            assistantOperationClearTimerRef.current = window.setTimeout(() => {
+              setAssistantOperationSnapshot((snapshot) => clearAssistantTerminalOperation(snapshot, event.id));
+              assistantOperationClearTimerRef.current = null;
+            }, ASSISTANT_TERMINAL_OPERATION_VISIBLE_MS);
+          }
+        }
       }),
     []
   );
@@ -209,18 +268,34 @@ export function App() {
   const mobileChromeLockedVisible = mobileSidebarOpen || mobileToolbarMenuOpen;
 
   useEffect(() => {
+    if (E2E_AUTH_BYPASS && !user) {
+      if (!e2eRepositoryRef.current) {
+        e2eRepositoryRef.current = new InMemoryRepository();
+      }
+      setRepository(e2eRepositoryRef.current);
+      void initialize();
+      return;
+    }
     if (!userId) return;
     const repository = getRepositoryForUser(userId);
     setRepository(repository);
     void initialize();
-  }, [initialize, setRepository, userId]);
+  }, [initialize, setRepository, user, userId]);
 
   useEffect(() => {
     if (!ready || !activeBoard) return;
     void showDesktopWindowWhenReady();
   }, [activeBoard, ready]);
 
-  useEffect(() => () => assistantRuntime.disconnect(), [assistantRuntime]);
+  useEffect(
+    () => () => {
+      assistantRuntime.disconnect();
+      if (assistantOperationClearTimerRef.current !== null) {
+        window.clearTimeout(assistantOperationClearTimerRef.current);
+      }
+    },
+    [assistantRuntime]
+  );
 
   useEffect(() => {
     const refresh = () => {
@@ -233,7 +308,7 @@ export function App() {
 
   useEffect(() => {
     void assistantRuntime.harness.refreshRealtimeContext();
-  }, [assistantRuntime, activeBoardId, boards, widgetDefinitions, widgetInstances]);
+  }, [assistantRuntime, activeBoardId, boards, focusedWidgetId, widgetDefinitions, widgetInstances]);
 
 
   useEffect(() => {
@@ -487,6 +562,7 @@ export function App() {
               isMobileMode={isMobileMode}
               mobileVisible={mobileChromeVisible}
               onMenuOpenChange={setMobileToolbarMenuOpen}
+              settingsOpenRequestId={settingsOpenRequestId}
               fullscreen={fullscreen}
               onToggleFullscreen={() => {
                 if (document.fullscreenElement) {
@@ -634,6 +710,7 @@ export function App() {
           harness={assistantRuntime.harness}
           voiceStatus={realtimeStatus}
           onConnectVoice={assistantRuntime.connect}
+          onConnectTextOnly={assistantRuntime.connectTextOnly}
           onDisconnectVoice={assistantRuntime.disconnect}
           isMobileMode={isMobileMode}
           mobileVisible={mobileChromeVisible}
@@ -643,6 +720,8 @@ export function App() {
           syncPendingCount={assistantOutboxStatus.pendingCount}
           syncLastError={assistantOutboxStatus.lastError}
           onCommandRoute={assistantRuntime.recordCommandRoute}
+          onSendRealtimeTextCommand={assistantRuntime.sendRealtimeTextCommand}
+          onDiagnostic={recordDiagnostic}
           onRetrySync={async () => {
             await retryAssistantOutbox(repository);
             setAssistantOutboxStatus(await getAssistantOutboxStatus());

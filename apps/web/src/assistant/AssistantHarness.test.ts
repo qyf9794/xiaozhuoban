@@ -104,6 +104,8 @@ function createTools(): AssistantToolSpec[] {
   ];
 }
 
+const ACTIVE_TOOL_NAMES = createTools().map((tool) => tool.name);
+
 function createRegistry(resultsByTool: Record<string, AssistantToolResult> = {}) {
   const registry = new ActionRegistry();
   const schema = createPassthroughSchema<Record<string, unknown>>();
@@ -202,12 +204,16 @@ function createHarness(options?: {
   const sentResults: AssistantToolResult[] = [];
   const auditEvents: AssistantAuditEvent[] = [];
   const operationEvents: AssistantOperationEvent[] = [];
+  const activeTraceIds: Array<string | null> = [];
   const realtime: AssistantRealtimeAdapter = {
     updateTools(tools) {
       toolUpdates.push(tools.map((tool) => tool.name));
     },
     updateContext(context) {
       contextUpdates.push(context);
+    },
+    setActiveCommandTraceId(commandTraceId) {
+      activeTraceIds.push(commandTraceId);
     },
     sendToolResult(_call, result) {
       sentResults.push(result);
@@ -239,16 +245,16 @@ function createHarness(options?: {
     actionTimeoutMs: options?.actionTimeoutMs ?? 500,
     now: () => "2026-06-16T00:00:00.000Z"
   });
-  return { harness, toolUpdates, contextUpdates, sentResults, auditEvents, operationEvents, executed: registryState.executed };
+  return { harness, toolUpdates, contextUpdates, sentResults, auditEvents, activeTraceIds, operationEvents, executed: registryState.executed };
 }
 
 describe("AssistantHarness", () => {
-  it("initializes with desktop-level tools", async () => {
+  it("initializes with all active tools for realtime selection", async () => {
     const { harness, toolUpdates, contextUpdates } = createHarness();
 
     await harness.initialize();
 
-    expect(toolUpdates).toEqual([["board.auto_align", "widget.focus", "widget.remove"]]);
+    expect(toolUpdates).toEqual([ACTIVE_TOOL_NAMES]);
     expect(contextUpdates[0]).toMatchObject({
       boardName: "我的桌板",
       availableDefinitions: [
@@ -261,13 +267,13 @@ describe("AssistantHarness", () => {
     });
   });
 
-  it("updates tools when entering a widget context", async () => {
+  it("keeps all active tools when entering a widget context", async () => {
     const { harness, toolUpdates } = createHarness();
 
     await harness.initialize();
     await harness.enterWidgetContext("tv");
 
-    expect(toolUpdates[1]).toEqual(["board.auto_align", "widget.focus", "widget.remove", "tv.play", "tv.pause", "tv.fullscreen"]);
+    expect(toolUpdates[1]).toEqual(ACTIVE_TOOL_NAMES);
   });
 
   it("refreshes realtime context only after initialization", async () => {
@@ -281,6 +287,55 @@ describe("AssistantHarness", () => {
 
     expect(contextUpdates).toHaveLength(2);
     expect(contextUpdates[1].focusedWidget?.widgetId).toBe("wi_tv");
+  });
+
+  it("refreshes realtime tools with all active tools when no focus is set", async () => {
+    const { harness, toolUpdates } = createHarness({
+      getContextInput: () => ({
+        ...createContextInput(),
+        focusedWidgetId: undefined,
+        widgets: [
+          {
+            widgetId: "wi_music",
+            definitionId: "wd_music",
+            type: "music",
+            name: "音乐",
+            order: 1,
+            summary: ""
+          }
+        ]
+      })
+    });
+
+    await harness.initialize();
+    await harness.refreshRealtimeContext();
+
+    expect(toolUpdates).toEqual([ACTIVE_TOOL_NAMES]);
+  });
+
+  it("refreshes realtime tools with all active tools for multiple mounted widget types", async () => {
+    const { harness, toolUpdates } = createHarness({
+      getContextInput: () => ({
+        ...createContextInput(),
+        focusedWidgetId: "wi_tv",
+        widgets: [
+          ...createContextInput().widgets,
+          {
+            widgetId: "wi_music",
+            definitionId: "wd_music",
+            type: "music",
+            name: "音乐",
+            order: 3,
+            summary: "已搜索到红豆"
+          }
+        ]
+      })
+    });
+
+    await harness.initialize();
+    await harness.refreshRealtimeContext();
+
+    expect(toolUpdates).toEqual([ACTIVE_TOOL_NAMES]);
   });
 
   it("executes shortcut-routed commands without model fallback", async () => {
@@ -490,10 +545,7 @@ describe("AssistantHarness", () => {
 
     await harness.handleUserInput("聚焦电视");
 
-    expect(toolUpdates).toEqual([
-      ["board.auto_align", "widget.focus", "widget.remove"],
-      ["board.auto_align", "widget.focus", "widget.remove", "tv.play", "tv.pause", "tv.fullscreen"]
-    ]);
+    expect(toolUpdates).toEqual([ACTIVE_TOOL_NAMES]);
   });
 
   it("executes safe widget follow-up actions on the same target", async () => {
@@ -544,16 +596,105 @@ describe("AssistantHarness", () => {
     expect(executed).toEqual(["board.add_widget:none", "music.search:wi_added_music", "music.play:wi_added_music"]);
   });
 
-  it("executes casual music playback then countdown setup as sequential local shortcuts", async () => {
-    const { harness, executed } = createHarness();
+  it("delegates casual music playback then countdown setup to realtime planning", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_music_countdown_realtime",
+      sourceText: "帮我放点轻松的音乐，然后把倒计时设为 10 分钟",
+      normalizedText: "帮我放点轻松的音乐 然后把倒计时设为 10 分钟",
+      commands: [
+        {
+          id: "cmd_music",
+          module: "music",
+          tool: "music.play",
+          args: { widgetId: "wi_music", query: "轻松的音乐" },
+          risk: "safe",
+          confidence: 0.92,
+          source: "text",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "cmd_countdown",
+          module: "countdown",
+          tool: "countdown.set",
+          args: { widgetId: "wi_countdown", totalSeconds: 600, start: true },
+          risk: "safe",
+          confidence: 0.92,
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_music", "cmd_countdown"] }],
+      confidence: 0.92,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({
+      modelPlan,
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_music", definitionId: "wd_music", type: "music", name: "音乐", order: 3 },
+          { widgetId: "wi_countdown", definitionId: "wd_countdown", type: "countdown", name: "倒计时", order: 4 }
+        ]
+      })
+    });
     await harness.initialize();
 
     const response = await harness.handleUserInput("帮我放点轻松的音乐，然后把倒计时设为 10 分钟");
 
-    expect(response.route).toBe("shortcut");
+    expect(response.route).toBe("model");
     expect(response.result.status).toBe("success");
-    expect(response.result.message).toBe("board.add_widget done，music.play done；board.add_widget done，countdown.set done");
-    expect(executed).toEqual(["board.add_widget:none", "music.play:wi_added_music", "board.add_widget:none", "countdown.set:wi_added_countdown"]);
+    expect(response.result.message).toBe("music.play done；countdown.set done");
+    expect(executed).toEqual(["music.play:wi_music", "countdown.set:wi_countdown"]);
+  });
+
+  it("reuses a model-planned widget after board.add_widget succeeds", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_add_then_play_music",
+      sourceText: "麻烦安排王菲红豆",
+      normalizedText: "麻烦安排王菲红豆",
+      commands: [
+        {
+          id: "cmd_add_music",
+          module: "board",
+          tool: "board.add_widget",
+          args: { definitionId: "wd_music" },
+          risk: "safe",
+          confidence: 0.92,
+          source: "text",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "cmd_play_music",
+          module: "music",
+          tool: "music.play",
+          args: { widgetId: "planned_widget_music", query: "王菲 红豆" },
+          risk: "safe",
+          confidence: 0.92,
+          dependsOn: ["cmd_add_music"],
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_add_music", "cmd_play_music"] }],
+      confidence: 0.92,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({ modelPlan });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("麻烦安排王菲红豆");
+
+    expect(response.route).toBe("model");
+    expect(response.result.message).toBe("board.add_widget done；music.play done");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["board.add_widget:none", "music.play:wi_added_music"]);
   });
 
   it("executes simultaneous shortcut command segments with concurrent operation visibility", async () => {
@@ -592,9 +733,10 @@ describe("AssistantHarness", () => {
     const { harness } = createHarness();
     await harness.initialize();
 
-    await harness.handleUserInput("打开音乐，同时查北京天气");
+    await harness.handleUserInput("打开音乐，同时查北京天气", { commandTraceId: "trace_test_1" });
 
     expect(harness.getLastDiagnostics()).toMatchObject({
+      commandTraceId: "trace_test_1",
       rawInput: "打开音乐，同时查北京天气",
       normalizedText: "打开音乐 同时查北京天气",
       route: "shortcut",
@@ -618,6 +760,21 @@ describe("AssistantHarness", () => {
     expect(harness.getLastDiagnostics()?.toolResults.filter((item) => item.tool === "board.add_widget")).toHaveLength(2);
     expect(JSON.stringify(harness.getLastDiagnostics())).toContain('"argKeys":["definitionId","followUp"]');
     expect(JSON.stringify(harness.getLastDiagnostics())).not.toContain('"city":"北京"');
+  });
+
+  it("threads command trace ids through realtime trace scope and operation events", async () => {
+    const { harness, activeTraceIds, operationEvents } = createHarness();
+    await harness.initialize();
+
+    await harness.handleUserInput("打开音乐", { commandTraceId: "trace_music_1" });
+
+    expect(activeTraceIds).toEqual(["trace_music_1", null]);
+    expect(harness.getLastDiagnostics()?.commandTraceId).toBe("trace_music_1");
+    expect(operationEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ commandTraceId: "trace_music_1", toolName: "board.add_widget" })
+      ])
+    );
   });
 
   it("executes simultaneous pause music and open headline shortcut segments locally", async () => {
@@ -682,7 +839,7 @@ describe("AssistantHarness", () => {
     ]);
   });
 
-  it("continues independent shortcut groups after a failed music follow-up", async () => {
+  it("does not partially execute low-confidence casual music shortcut groups without realtime planning", async () => {
     const { harness, executed } = createHarness({
       registryFactory: () =>
         createRegistry({
@@ -698,10 +855,10 @@ describe("AssistantHarness", () => {
 
     const response = await harness.handleUserInput("帮我放点轻松的音乐，然后把倒计时设为 10 分钟");
 
-    expect(response.route).toBe("shortcut");
-    expect(response.result.status).toBe("failed");
-    expect(response.result.message).toBe("没有可播放的音乐；board.add_widget done，countdown.set done");
-    expect(executed).toEqual(["board.add_widget:none", "music.play:wi_added_music", "board.add_widget:none", "countdown.set:wi_added_countdown"]);
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("needs_clarification");
+    expect(response.result.message).toBe("我没听懂，可以再说短一点吗？");
+    expect(executed).toEqual([]);
   });
 
   it("falls back without partial execution when a segmented shortcut command is not fully local", async () => {
@@ -726,6 +883,26 @@ describe("AssistantHarness", () => {
     expect(response.result.message).toBe("widget.remove done；widget.remove done");
     expect(harness.getPendingConfirmation()).toBeNull();
     expect(executed).toEqual(["widget.remove:none", "widget.remove:none"]);
+  });
+
+  it("executes single close message board commands locally with high confidence", async () => {
+    const { harness, executed } = createHarness({
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_messageBoard", definitionId: "wd_messageBoard", type: "messageBoard", name: "留言板", order: 3 }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("关闭留言板");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("widget.remove done");
+    expect(executed).toEqual(["widget.remove:none"]);
   });
 
   it("executes close music and weather as removals without weather query fallback", async () => {
@@ -793,7 +970,7 @@ describe("AssistantHarness", () => {
       source: "test"
     });
 
-    expect(toolUpdates[1]).toEqual(["board.auto_align", "widget.focus", "widget.remove", "note.append"]);
+    expect(toolUpdates).toEqual([ACTIVE_TOOL_NAMES]);
   });
 
   it("returns clarification when no shortcut or model call exists", async () => {

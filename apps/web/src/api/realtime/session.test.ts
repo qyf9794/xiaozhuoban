@@ -1,7 +1,7 @@
 import type { IncomingHttpHeaders } from "node:http";
 import { Readable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import handler, { createOpenAISafetyIdentifier } from "./session.js";
+import handler, { createOpenAISafetyIdentifier } from "../../../api/realtime/session.js";
 
 class MockResponse {
   statusCode = 200;
@@ -107,12 +107,14 @@ describe("realtime session API", () => {
     const payload = JSON.parse(String(init?.body));
     expect(payload.session.model).toBe("gpt-realtime-2");
     expect(payload.session.parallel_tool_calls).toBe(true);
+    expect(payload.session.output_modalities).toBeUndefined();
     expect(payload.session.audio.input.turn_detection).toEqual({
       type: "semantic_vad",
       eagerness: "low",
       create_response: true,
       interrupt_response: true
     });
+    expect(payload.session.audio.input.transcription).toEqual({ model: "gpt-4o-mini-transcribe" });
     expect(payload.session.tools.every((tool: { name: string }) => /^[a-zA-Z0-9_-]+$/.test(tool.name))).toBe(true);
     expect(payload.session.tools.map((tool: { name: string }) => tool.name)).toEqual(["assistant__dot__select_tool"]);
     expect(JSON.stringify(payload.session.tools[0].parameters)).toContain("board.add_widget");

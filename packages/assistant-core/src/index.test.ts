@@ -610,7 +610,7 @@ describe("IntentShortcutRouter", () => {
     expect(result.matched).toBe(true);
     if (result.matched) {
       expect(result.toolCall.name).toBe("board.auto_align");
-      expect(result.confidence).toBeGreaterThan(0.8);
+      expect(result.confidence).toBeGreaterThan(0.9);
     }
   });
 
@@ -1238,6 +1238,18 @@ describe("IntentShortcutRouter", () => {
     if (result.matched) {
       expect(result.toolCall.name).toBe("messageBoard.send");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_messageBoard", text: "今天下午三点开会" });
+    }
+  });
+
+  it("routes close message board commands to widget removal instead of sending close text", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("关闭留言板", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("widget.remove");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_messageBoard" });
+      expect(result.confidence).toBeGreaterThanOrEqual(0.9);
     }
   });
 
@@ -1872,6 +1884,32 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("cleans artist possessive phrasing from spoken music playback queries", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const contextWithMusic = {
+      ...context,
+      availableWidgets: [
+        ...(context.availableWidgets ?? []),
+        {
+          widgetId: "wi_music",
+          definitionId: "wd_music",
+          type: "music",
+          name: "音乐播放器",
+          order: 6,
+          summary: "idle",
+          recent: true
+        }
+      ]
+    };
+    const result = router.route("播放王菲的你我经历的一刻", contextWithMusic);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("music.play");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_music", query: "王菲 你我经历的一刻" });
+    }
+  });
+
   it("cleans casual music playback filler from query text", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("帮我放点轻松的音乐", {
@@ -2398,6 +2436,28 @@ describe("ToolScopeManager", () => {
     ]);
   });
 
+  it("loads detail tools for all mounted widget types", () => {
+    const manager = new ToolScopeManager(tools);
+
+    expect(manager.getMountedWidgetDetailTools(["note", "tv"]).map((tool) => tool.name)).toEqual([
+      "board.add_widget",
+      "widget.resolve_target",
+      "tv.play",
+      "note.append"
+    ]);
+  });
+
+  it("loads every non-deferred tool for realtime selection", () => {
+    const manager = new ToolScopeManager(tools);
+
+    expect(manager.getActiveTools().map((tool) => tool.name)).toEqual([
+      "board.add_widget",
+      "widget.resolve_target",
+      "tv.play",
+      "note.append"
+    ]);
+  });
+
   it("does not expose deferred tools through active scopes", () => {
     const manager = new ToolScopeManager(tools);
 
@@ -2458,8 +2518,9 @@ describe("ContextSummarizer", () => {
       ]
     });
 
-    const serialized = JSON.stringify(result);
-    expect(result.availableDefinitions).toEqual([
+	    const serialized = JSON.stringify(result);
+	    expect(result.contextVersion).toMatch(/^ctx_/);
+	    expect(result.availableDefinitions).toEqual([
       { definitionId: "wd_note", type: "note", name: "便签" },
       { definitionId: "wd_music", type: "music", name: "音乐" }
     ]);
@@ -2476,7 +2537,7 @@ describe("ContextSummarizer", () => {
     expect(result.widgets.find((widget) => widget.widgetId === "wi_clipboard")?.summary).toBe("20 条剪贴板记录");
   });
 
-  it("limits the number of summarized widgets and orders focused/recent first", () => {
+	  it("limits the number of summarized widgets and orders focused/recent first", () => {
     const summarizer = new ContextSummarizer();
     const result = summarizer.summarize({
       focusedWidgetId: "wi_3",
@@ -2491,9 +2552,31 @@ describe("ContextSummarizer", () => {
 
     expect(result.widgets.map((widget) => widget.widgetId)).toEqual(["wi_3", "wi_2"]);
     expect(result.focusedWidget?.focused).toBe(true);
-    expect(result.widgets[1].recent).toBe(true);
-  });
-});
+	    expect(result.widgets[1].recent).toBe(true);
+	  });
+
+	  it("changes context version when compact state changes", () => {
+	    const summarizer = new ContextSummarizer();
+	    const base = summarizer.summarize({
+	      boardId: "board_1",
+	      boardName: "我的桌板",
+	      widgets: [{ widgetId: "wi_1", definitionId: "wd_note", type: "note", name: "便签", order: 1, summary: "one" }]
+	    });
+	    const same = summarizer.summarize({
+	      boardId: "board_1",
+	      boardName: "我的桌板",
+	      widgets: [{ widgetId: "wi_1", definitionId: "wd_note", type: "note", name: "便签", order: 1, summary: "one" }]
+	    });
+	    const changed = summarizer.summarize({
+	      boardId: "board_1",
+	      boardName: "我的桌板",
+	      widgets: [{ widgetId: "wi_1", definitionId: "wd_note", type: "note", name: "便签", order: 1, summary: "two" }]
+	    });
+
+	    expect(base.contextVersion).toBe(same.contextVersion);
+	    expect(changed.contextVersion).not.toBe(base.contextVersion);
+	  });
+	});
 
 describe("Strict schemas, preview gate, executor, budget, outbox, learning, and module review", () => {
   function createPlan(commands: CommandPlan["commands"]): CommandPlan {
@@ -2594,6 +2677,62 @@ describe("Strict schemas, preview gate, executor, budget, outbox, learning, and 
     expect(started).toEqual(["weather.set_city", "headline.request_refresh"]);
     expect(result.records.find((record) => record.command.id === "weather_dep")?.phase).toBe("skipped");
     expect(result.status).toBe("failed");
+  });
+
+  it("serializes parallel commands that share a concurrency key", async () => {
+    const events: string[] = [];
+    const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const executor = new CommandExecutor({
+      getConcurrencyKey(command) {
+        return command.module === "music" ? "music" : command.module;
+      },
+      async execute(call) {
+        events.push(`start:${call.id}`);
+        await delay(call.id === "music_1" ? 10 : 1);
+        events.push(`finish:${call.id}`);
+        return { status: "success", message: "ok" };
+      }
+    });
+    const plan: CommandPlan = {
+      ...createPlan([
+        {
+          id: "music_1",
+          module: "music",
+          tool: "music.play",
+          args: { widgetId: "w_music", query: "a" },
+          risk: "safe",
+          confidence: 0.9,
+          source: "realtime",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "music_2",
+          module: "music",
+          tool: "music.next",
+          args: { widgetId: "w_music" },
+          risk: "safe",
+          confidence: 0.9,
+          source: "realtime",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "weather_1",
+          module: "weather",
+          tool: "weather.set_city",
+          args: { widgetId: "w_weather", city: "北京" },
+          risk: "safe",
+          confidence: 0.9,
+          source: "realtime",
+          requiresHarnessValidation: true
+        }
+      ]),
+      executionGroups: [{ id: "group_1", mode: "parallel", commandIds: ["music_1", "music_2", "weather_1"] }]
+    };
+
+    await executor.execute(plan);
+
+    expect(events.indexOf("start:music_2")).toBeGreaterThan(events.indexOf("finish:music_1"));
+    expect(events.indexOf("start:weather_1")).toBeLessThan(events.indexOf("finish:music_1"));
   });
 
   it("tracks low-cost runtime soft and hard limits", () => {

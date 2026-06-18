@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  clearAssistantTerminalOperation,
   getAssistantOperationStatus,
   updateAssistantOperationSnapshot,
   type AssistantOperationSnapshot
@@ -107,5 +108,25 @@ describe("assistantOperationStatus", () => {
       command: "widget.focus",
       message: "没有找到这个小工具"
     });
+  });
+
+  it("clears a stale terminal operation without clearing active work", () => {
+    const terminal = updateAssistantOperationSnapshot({ active: [] }, {
+      id: "call_1",
+      phase: "failed",
+      route: "function_call",
+      toolName: "music.play",
+      message: "没有可播放的音乐"
+    });
+
+    expect(clearAssistantTerminalOperation(terminal, "call_1")).toEqual({ active: [] });
+
+    const active = updateAssistantOperationSnapshot(terminal, {
+      id: "call_2",
+      phase: "running",
+      route: "shortcut",
+      toolName: "board.add_widget"
+    });
+    expect(clearAssistantTerminalOperation(active, "call_1")).toBe(active);
   });
 });

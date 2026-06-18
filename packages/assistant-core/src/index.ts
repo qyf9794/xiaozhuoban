@@ -161,6 +161,8 @@ export interface CompactBoardSummary {
 }
 
 export interface CompactAssistantContext {
+  contextVersion?: string;
+  toolCatalogVersion?: string;
   boardId?: string;
   boardName?: string;
   availableBoards?: CompactBoardSummary[];
@@ -199,6 +201,34 @@ export interface ContextSummarizerInput {
   recentWidgetIds?: string[];
   pendingConfirmation?: ConfirmationRequest;
   maxWidgets?: number;
+}
+
+function stableAssistantContextValue(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.map(stableAssistantContextValue);
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([key]) => key !== "contextVersion" && key !== "toolCatalogVersion")
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => [key, stableAssistantContextValue(item)])
+    );
+  }
+  return value;
+}
+
+function hashStableAssistantContext(value: unknown): string {
+  const text = JSON.stringify(stableAssistantContextValue(value));
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+export function createCompactAssistantContextVersion(context: Omit<CompactAssistantContext, "contextVersion">): string {
+  return `ctx_${hashStableAssistantContext(context)}`;
 }
 
 export interface IntentShortcutRule {
@@ -333,6 +363,20 @@ export class ToolScopeManager {
     );
   }
 
+  getMountedWidgetDetailTools(widgetTypes: string[]): AssistantToolSpec[] {
+    const mountedTypes = new Set(widgetTypes.filter(Boolean));
+    return this.filterTools(
+      (tool) =>
+        tool.scope === "desktop" ||
+        tool.scope === "widget-selection" ||
+        (tool.scope === "widget-detail" && Boolean(tool.widgetType && mountedTypes.has(tool.widgetType)))
+    );
+  }
+
+  getActiveTools(): AssistantToolSpec[] {
+    return this.filterTools((tool) => tool.scope !== "deferred");
+  }
+
   getDeferredTools(): AssistantToolSpec[] {
     return this.tools.filter((tool) => tool.scope === "deferred");
   }
@@ -438,7 +482,7 @@ export class ContextSummarizer {
 
     const focusedWidget = widgets.find((widget) => widget.widgetId === input.focusedWidgetId);
 
-    return {
+    const compactContext: Omit<CompactAssistantContext, "contextVersion"> = {
       boardId: input.boardId,
       boardName: input.boardName,
       availableBoards: input.availableBoards,
@@ -453,6 +497,10 @@ export class ContextSummarizer {
             message: input.pendingConfirmation.message
           }
         : undefined
+    };
+    return {
+      contextVersion: createCompactAssistantContextVersion(compactContext),
+      ...compactContext
     };
   }
 }
@@ -706,6 +754,9 @@ function inferTvChannelName(input: string) {
 function inferMusicQuery(input: string) {
   return input
     .replace(/(播放|搜索|查找|找一下|找|来一首|放一首|放首|放点|放个|放些|听一下|听|音乐播放器|音乐|歌曲|歌单|专辑|歌手|歌|第一首|第一条|第一个|首个|一下|给我|帮我|麻烦|麻烦你)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^([^\s的]{1,24})的(.+)$/g, "$1 $2")
     .replace(/的\s*$/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -1313,7 +1364,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
       name: "auto_align",
       match(normalized, raw, context) {
         if (/(整理|排列|对齐|收拾).*(桌面|桌板|小工具)|^(整理|排列|对齐|收拾)$/.test(normalized)) {
-          return shortcutMatch("board.auto_align", {}, 0.9, context.source ?? "shortcut", raw);
+          return shortcutMatch("board.auto_align", {}, 0.94, context.source ?? "shortcut", raw);
         }
         return { matched: false, reason: "not_auto_align" };
       }
@@ -1369,8 +1420,12 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
       match(normalized, raw, context) {
         if (!/(天气|weather)/i.test(normalized)) return { matched: false, reason: "not_weather" };
         if (CLOSE_SHORTCUT_INTENT_PATTERN.test(normalized)) return { matched: false, reason: "weather_close_deferred" };
-        const cityName = inferCityName(raw);
+        const windowIntent = /(聚焦|切到|再打开|打开一个|打开天气|天气窗口|天气卡片)/.test(normalized);
         const widget = findWidgetByType(context, "weather");
+        if (windowIntent && widget) {
+          return shortcutMatch("widget.focus", { widgetId: widget.widgetId }, 0.92, context.source ?? "shortcut", raw);
+        }
+        const cityName = inferCityName(raw);
         if (widget && cityName) {
           return shortcutMatch(
             "weather.set_city",
@@ -1397,7 +1452,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
           return shortcutMatch(
             "board.add_widget",
             args,
-            cityName ? 0.82 : 0.78,
+            cityName ? 0.9 : 0.92,
             context.source ?? "shortcut",
             raw
           );
@@ -1409,6 +1464,9 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
       name: "countdown_duration",
       match(normalized, raw, context) {
         if (!/(倒计时|计时器|定时|计时)/.test(normalized)) return { matched: false, reason: "not_countdown" };
+        if (/(打开|再打开|聚焦|切到).*(倒计时|计时器)/.test(normalized) && !/[0-9一二两三四五六七八九十半\d]+\s*(秒|分钟|分|小时|钟)/.test(normalized)) {
+          return { matched: false, reason: "countdown_window_intent" };
+        }
         const totalSeconds = parseCountdownDurationSeconds(normalized);
         if (!totalSeconds || !Number.isFinite(totalSeconds) || totalSeconds <= 0) {
           return { matched: false, reason: "countdown_duration_missing" };
@@ -1434,7 +1492,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
                 arguments: { totalSeconds, start: true }
               }
             },
-            0.75,
+            0.9,
             context.source ?? "shortcut",
             raw
           );
@@ -1573,6 +1631,9 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "message_board_send",
       match(normalized, raw, context) {
+        if (CLOSE_SHORTCUT_INTENT_PATTERN.test(normalized)) {
+          return { matched: false, reason: "message_board_close_deferred" };
+        }
         if (!/(留言板|留言区|消息板|留言|给大家|跟大家|公告|通知)/.test(normalized) || !/(发|发送|说|写|发布|留言|公告|通知)/.test(normalized)) {
           return { matched: false, reason: "not_message_board_send" };
         }
@@ -1656,7 +1717,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         const zones = inferWorldClockZones(raw);
         if (zones.length === 0) return { matched: false, reason: "world_clock_zones_missing" };
         return (
-          routeWidgetDetailOrAdd(context, raw, "worldClock", "worldClock.set_zones", { zones }, 0.86) ?? {
+          routeWidgetDetailOrAdd(context, raw, "worldClock", "worldClock.set_zones", { zones }, 1) ?? {
             matched: false,
             reason: "world_clock_target_missing"
           }
@@ -1768,7 +1829,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
                   }
                 : {})
             },
-            0.87
+            0.93
           ) ?? { matched: false, reason: "tv_target_missing" }
         );
       }
@@ -1776,7 +1837,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "open_widget",
       match(normalized, raw, context) {
-        const openIntent = /(打开|打开一下|开一下|添加|新增|叫出|叫一下|唤出|调出|拉起|显示|启动|来个|来一个|放上|放一个|加一个|加个)/.test(normalized);
+        const openIntent = /(打开|打开一下|开一下|添加|新增|叫出|叫一下|唤出|调出|拉起|显示|启动|来个|来一个|放上|放一个|加一个|加个|聚焦|切到)/.test(normalized);
         if (!openIntent) return { matched: false, reason: "not_open_widget" };
         const aliasInput = `${raw}${compactShortcutInput(normalized)}`.toLowerCase();
         const knownTypes: Array<{ type: string; aliases: string[] }> = [
@@ -1801,11 +1862,42 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         if (!matchedType) return { matched: false, reason: "widget_type_missing" };
         const widget = findWidgetByType(context, matchedType);
         if (widget) {
-          return shortcutMatch("widget.focus", { widgetId: widget.widgetId }, 0.84, context.source ?? "shortcut", raw);
+          return shortcutMatch("widget.focus", { widgetId: widget.widgetId }, 0.92, context.source ?? "shortcut", raw);
         }
         const definition = findDefinitionByType(context, matchedType);
         if (!definition) return { matched: false, reason: "definition_missing" };
-        return shortcutMatch("board.add_widget", { definitionId: definition.definitionId }, 0.82, context.source ?? "shortcut", raw);
+        return shortcutMatch("board.add_widget", { definitionId: definition.definitionId }, 0.92, context.source ?? "shortcut", raw);
+      }
+    },
+    {
+      name: "bring_widget_to_front",
+      match(normalized, raw, context) {
+        if (!/(置顶|放到?最前|最前面|放前面|别被挡住|不要挡住)/.test(normalized)) {
+          return { matched: false, reason: "not_bring_widget_to_front" };
+        }
+        const aliasInput = `${raw}${compactShortcutInput(normalized)}`;
+        const knownTypes: Array<{ type: string; aliases: string[] }> = [
+          { type: "note", aliases: ["便签", "笔记", "备忘录"] },
+          { type: "todo", aliases: ["待办", "任务", "清单"] },
+          { type: "calculator", aliases: ["计算器", "计算"] },
+          { type: "countdown", aliases: ["倒计时", "计时器", "定时器"] },
+          { type: "weather", aliases: ["天气"] },
+          { type: "headline", aliases: ["新闻", "头条", "资讯"] },
+          { type: "market", aliases: ["指数", "行情", "市场", "股票", "股市"] },
+          { type: "tv", aliases: ["电视", "电视机", "直播"] },
+          { type: "music", aliases: ["音乐", "歌曲", "歌", "播放器", "音乐播放器"] },
+          { type: "worldClock", aliases: ["世界时钟", "世界时间", "时区"] },
+          { type: "dialClock", aliases: ["时钟", "钟表", "表盘"] },
+          { type: "translate", aliases: ["翻译", "翻译器"] },
+          { type: "converter", aliases: ["换算", "转换", "单位", "单位换算"] },
+          { type: "clipboard", aliases: ["剪贴板", "复制板"] },
+          { type: "recorder", aliases: ["录音", "录音机"] },
+          { type: "messageBoard", aliases: ["留言板", "留言", "消息板"] }
+        ];
+        const matchedType = knownTypes.find((entry) => entry.aliases.some((alias) => aliasInput.includes(alias)))?.type;
+        const widget = matchedType ? findWidgetByType(context, matchedType) : context.focusedWidget;
+        if (!widget) return { matched: false, reason: "bring_widget_target_missing" };
+        return shortcutMatch("widget.bring_to_front", { widgetId: widget.widgetId }, 0.92, context.source ?? "shortcut", raw);
       }
     },
     {
@@ -1819,7 +1911,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         const args = inferMusicArgs(raw);
         if (!args.query) return { matched: false, reason: "music_query_missing" };
         return (
-          routeWidgetDetailOrAdd(context, raw, "music", "music.search", args, 0.87) ?? {
+          routeWidgetDetailOrAdd(context, raw, "music", "music.search", args, 0.92) ?? {
             matched: false,
             reason: "music_target_missing"
           }
@@ -1830,7 +1922,8 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
       name: "media_play_pause",
       match(normalized, raw, context) {
         const isResume = /(继续|恢复|接着播|继续播)/.test(normalized);
-        const isPlay = /(播放|来一首|放一首|放首|听一下|听|放点|放个|放些)/.test(normalized) || isResume;
+        const suppressPlayback = /(不一定播放|先不播放|不要播放|别播放|不用播放)/.test(normalized);
+        const isPlay = !suppressPlayback && (/(播放|来一首|放一首|放首|听一下|听|放点|放个|放些)/.test(normalized) || isResume);
         const isPause = /(暂停|停一下|停止|停掉)/.test(normalized);
         const isNext = /(下一首|下首|切歌|换一首|跳过)/.test(normalized);
         const isPrevious = /(上一首|上首|前一首|返回上一首|倒回上一首)/.test(normalized);
@@ -1850,8 +1943,9 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
           targetType = "music";
         }
         if (targetType === "music" && isPlay && !isPause && !isNext && !isPrevious && !isResume) {
+          const confidence = /(播放|来一首|放一首|放首)/.test(normalized) ? 0.92 : 0.86;
           return (
-            routeWidgetDetailOrAdd(context, raw, "music", "music.play", musicArgs, 0.86) ?? {
+            routeWidgetDetailOrAdd(context, raw, "music", "music.play", musicArgs, confidence) ?? {
               matched: false,
               reason: "music_target_missing"
             }
@@ -1863,14 +1957,14 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         }
         if (isNext) {
           if (widget.type !== "music") return { matched: false, reason: "media_next_target_missing" };
-          return shortcutMatch("music.next", { widgetId: widget.widgetId }, 0.86, context.source ?? "shortcut", raw);
+          return shortcutMatch("music.next", { widgetId: widget.widgetId }, 0.92, context.source ?? "shortcut", raw);
         }
         if (isPrevious) {
           if (widget.type !== "music") return { matched: false, reason: "media_previous_target_missing" };
-          return shortcutMatch("music.previous", { widgetId: widget.widgetId }, 0.86, context.source ?? "shortcut", raw);
+          return shortcutMatch("music.previous", { widgetId: widget.widgetId }, 0.92, context.source ?? "shortcut", raw);
         }
         if (isResume && widget.type === "music") {
-          return shortcutMatch("music.resume", { widgetId: widget.widgetId }, 0.86, context.source ?? "shortcut", raw);
+          return shortcutMatch("music.resume", { widgetId: widget.widgetId }, 0.92, context.source ?? "shortcut", raw);
         }
         const args = {
           widgetId: widget.widgetId,
@@ -1888,7 +1982,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         return shortcutMatch(
           `${widget.type}.${isPause ? "pause" : "play"}`,
           args,
-          0.86,
+          widget.type === "tv" || isPause || (widget.type === "music" && /(播放|继续|恢复)/.test(normalized)) ? 0.92 : 0.86,
           context.source ?? "shortcut",
           raw
         );
@@ -1925,7 +2019,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         }
         const widget = matchedType ? findWidgetByType(context, matchedType) : context.focusedWidget;
         if (!widget) return { matched: false, reason: "close_widget_target_missing" };
-        return shortcutMatch("widget.remove", { widgetId: widget.widgetId }, 0.88, context.source ?? "shortcut", raw);
+        return shortcutMatch("widget.remove", { widgetId: widget.widgetId }, 0.95, context.source ?? "shortcut", raw);
       }
     },
     {

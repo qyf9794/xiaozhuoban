@@ -39,6 +39,16 @@ export function updateAssistantOperationSnapshot(
   };
 }
 
+export function clearAssistantTerminalOperation(
+  snapshot: AssistantOperationSnapshot,
+  operationId: string
+): AssistantOperationSnapshot {
+  if (snapshot.active.length > 0 || snapshot.last?.id !== operationId || isActiveOperation(snapshot.last)) {
+    return snapshot;
+  }
+  return { active: [] };
+}
+
 export function getAssistantOperationStatus(
   snapshot: AssistantOperationSnapshot
 ): AssistantOperationDisplayStatus | null {

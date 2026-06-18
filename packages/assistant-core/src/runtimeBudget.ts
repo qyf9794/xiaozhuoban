@@ -37,7 +37,7 @@ export const DEFAULT_REALTIME_BUDGET_CONFIG: RealtimeBudgetConfig = {
   softLimitUsd: 0.8,
   hardLimitUsd: 1,
   commandWindowIdleMs: 12_000,
-  dialogueIdleMs: 45_000,
+  dialogueIdleMs: 5 * 60_000,
   cooldownMs: 8_000,
   maxSingleCommandSessionMs: 5 * 60_000,
   maxDialogueSessionMs: 15 * 60_000,
@@ -135,6 +135,16 @@ export class RealtimeRuntimeController {
       this.modeValue = "local_standby";
     }
     return this.modeValue;
+  }
+
+  endRealtimeSession(reason: "manual" | "max_session_timeout"): AssistantRuntimeMode {
+    const currentMode = this.modeValue;
+    if (currentMode === "realtime_command_window") {
+      this.modeValue = "local_standby";
+    } else if (currentMode === "realtime_dialogue_window") {
+      this.modeValue = reason === "max_session_timeout" ? "realtime_cooldown" : "local_standby";
+    }
+    return this.refreshBudgetMode();
   }
 
   private refreshBudgetMode(): AssistantRuntimeMode {

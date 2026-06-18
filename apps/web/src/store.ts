@@ -462,6 +462,36 @@ function buildDefinitionTypeMap(definitions: WidgetDefinition[]) {
   return new Map(definitions.map((item) => [item.id, item.type]));
 }
 
+function hasWidgetState(widget: WidgetInstance): boolean {
+  return Boolean(widget.state && Object.keys(widget.state).length > 0);
+}
+
+function isLegacyDefaultWidget(widget: WidgetInstance, definitionType?: string): boolean {
+  return (definitionType === "headline" || definitionType === "market") && !hasWidgetState(widget);
+}
+
+async function removeLegacyDefaultWidgets(
+  repository: AppRepository,
+  definitions: WidgetDefinition[],
+  widgets: WidgetInstance[]
+): Promise<WidgetInstance[]> {
+  const definitionTypeById = buildDefinitionTypeMap(definitions);
+  const legacyWidgets = widgets.filter((widget) => isLegacyDefaultWidget(widget, definitionTypeById.get(widget.definitionId)));
+  if (legacyWidgets.length === 0) {
+    return widgets;
+  }
+  await Promise.all(
+    legacyWidgets.map((widget) =>
+      repository.deleteInstance(widget.id).catch((error) => {
+        console.error("[store] remove legacy default widget failed", error);
+        void enqueueAssistantCloudMutation({ type: "widget.delete", payload: { widgetId: widget.id } });
+      })
+    )
+  );
+  const legacyIds = new Set(legacyWidgets.map((widget) => widget.id));
+  return widgets.filter((widget) => !legacyIds.has(widget.id));
+}
+
 function safeWidgetWidth(widget: WidgetInstance, definitionType?: string) {
   const normalized = Math.max(120, Number(widget.size.w) || 240);
   if (definitionType === "dialClock") {
@@ -730,6 +760,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         backgroundTasks.push({ task: definitionsPersistTask, label: "persist widget definitions" });
       }
 
+      widgetInstances = await removeLegacyDefaultWidgets(repository, definitions, widgetInstances);
       if (widgetInstances.length === 0) {
         const defaultWidgets = createDefaultBoardWidgets(boardId, definitions);
         if (defaultWidgets.length > 0) {
@@ -857,7 +888,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (!deletingActiveBoard || !nextActiveBoardId) {
           return;
         }
-        const nextInstances = await repository.listByBoard(nextActiveBoardId);
+        const nextInstances = await removeLegacyDefaultWidgets(
+          repository,
+          widgetDefinitions,
+          await repository.listByBoard(nextActiveBoardId)
+        );
         const resolvedInstances = await ensureBoardDefaultWidgets(
           repository,
           nextActiveBoardId,
@@ -895,7 +930,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   async setActiveBoard(boardId) {
     const { repository, widgetDefinitions } = get();
-    const existingInstances = await repository.listByBoard(boardId);
+    const existingInstances = await removeLegacyDefaultWidgets(repository, widgetDefinitions, await repository.listByBoard(boardId));
     const widgetInstances = await ensureBoardDefaultWidgets(repository, boardId, widgetDefinitions, existingInstances);
     const definitionTypeById = buildDefinitionTypeMap(widgetDefinitions);
     const normalizedWidgets = normalizeWidgetInstances(widgetInstances, definitionTypeById);
@@ -930,7 +965,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       createdAt: now,
       updatedAt: now
     };
-    set({ widgetInstances: [...widgetInstances, instance] });
+    set({ widgetInstances: [...widgetInstances, instance], focusedWidgetId: instance.id });
     persistInBackground(repository.upsertInstance(instance), "add widget", {
       type: "widget.upsert",
       payload: { instance }

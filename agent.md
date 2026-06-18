@@ -43,6 +43,28 @@ Configuration rules:
 - Define explicit confirmation boundaries before write, destructive, overwrite, or bulk actions.
 - Treat Realtime transcription as user-facing guidance, not as the only source of truth for what the model understood.
 
+## Realtime 稳定性约束
+
+当前语音助手的首要目标是稳定、可验证、低成本，而不是继续堆叠单句提示词补丁。后续所有 Realtime、工具路由、语音测试和小工具控制改动必须遵守 `docs/realtime-stability-remediation-plan.md`。
+
+Implementation rules:
+
+- 前端、后端和 `assistant-core` 不得各自维护不同的 widget alias、工具优先级、冲突消解和 auto-open/followUp 规则；这些规则必须收敛到共享 policy。
+- Realtime-2 必须能发现小桌板自身窗口/桌面能力，以及所有非游戏、非 AI 制表小工具的已实现调节能力；发现能力用结构化 catalog，执行能力用分级加载 schema。
+- 不得为了节省上下文而让 Realtime-2 误以为“没有工具”；应提供全能力目录摘要，同时只在候选/执行阶段加载必要 function schema。
+- 所有模型输出最终必须经过 Harness、PlanValidator、确认策略和 ActionRegistry；Realtime 不得直接绕过 Harness 修改 UI 状态。
+- 本地高置信命令优先执行；本地置信度低于阈值才交给 Realtime 或 text fallback。
+- 语音和文字 fallback 必须共享同一套工具语义、上下文裁剪和执行约束。
+- 需要目标 widget 的工具在目标不存在但 definition 存在时，应形成 `board.add_widget -> followUp` 的受控顺序计划，而不是回复“没有工具”。
+- 普通“时钟”默认指向 `dialClock`；只有明确说“世界时钟、世界时间、时区、城市时间”时才指向 `worldClock`。
+- 高风险、删除、覆盖、批量整理等操作必须走 preview/confirm，不能因为来自本地 shortcut 或 Realtime 而跳过。
+- 并发策略必须基于 `concurrencyKey`、资源冲突和 `dependsOn`；独立小工具命令应并行，同一资源或布局冲突命令必须串行。
+- Realtime 测试只能短连接：测试前连接，执行指定命令矩阵，采集诊断后立即断开；不得长时间保持麦克风或 Realtime 会话。
+- Realtime runtime 必须同时具备 idle timeout 和 max-session timeout。任何断开都要记录结构化原因：`manual`、`idle_timeout` 或 `max_session_timeout`。
+- 真实语音事件必须有端到端 trace：VAD speech start/stop、用户转写、助手语音 transcript、function call、tool result 和 UI operation 需要能归到同一个 `commandTraceId`。
+- 每次部署前至少运行相关单元/契约测试；每次部署后检查 Vercel inspect、错误日志和线上包关键策略版本。
+- 稳定性问题修复必须添加回归测试，优先验证“输入 -> 计划/工具 -> Harness 执行结果”，不能只验证提示词中包含某个字符串。
+
 ## Core Architecture
 
 ### IntentShortcutRouter
@@ -169,6 +191,7 @@ It should not know how to mutate widgets.
 - Start Realtime sessions with desktop-level tools only.
 - Load widget-specific tools only after a target widget or widget type is selected.
 - Send summaries, not complete board or widget states.
+- Do not keep Realtime sessions open as a background listener. Manual sessions, wake sessions, and tests must all be bounded by idle and maximum-duration timers.
 - Keep assistant replies brief, usually one short sentence.
 - For successful commands, prefer confirmations like "好了", "已打开天气", or "倒计时开始了".
 - For unsupported commands, respond briefly and say the capability is not in this stage.
@@ -200,6 +223,8 @@ Implemented:
 - Realtime session endpoint and WebRTC adapter following the current OpenAI Realtime documentation.
 - Voice/text dock running through the same Harness with bounded command history.
 - Local and Supabase audit logging without raw audio.
+- Realtime diagnostics with local export, trace filtering, voice response trace ids, VAD/transcript events, and runtime disconnect reasons.
+- Runtime budget controls for idle disconnect, maximum single-session duration, manual disconnect, and cooldown after long dialogue windows.
 
 Still limited:
 
@@ -294,6 +319,8 @@ Audit logs should record:
 - Confirmation state.
 - Success, failure, cancellation, or timeout.
 - Duration.
+- Realtime disconnect reason when a voice session ends.
+- For live voice tests, VAD start/stop, sanitized user transcript, sanitized assistant transcript, function call, and tool result trace linkage.
 
 Do not store raw audio in the first-stage implementation.
 

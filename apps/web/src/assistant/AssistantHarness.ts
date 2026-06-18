@@ -28,6 +28,7 @@ import {
   type IntentShortcutContext,
   type ResolvedWidgetTarget
 } from "@xiaozhuoban/assistant-core";
+import { realtimeWidgetAliases } from "./realtimeRoutingPolicy";
 
 export type AssistantRoute = "shortcut" | "model" | "function_call" | "learned";
 
@@ -35,6 +36,7 @@ export interface AssistantRealtimeAdapter {
   updateTools: (tools: AssistantToolSpec[]) => Promise<void> | void;
   updateContext?: (context: CompactAssistantContext) => Promise<void> | void;
   updateModules?: (registry: WidgetAssistantRegistry) => Promise<void> | void;
+  setActiveCommandTraceId?: (commandTraceId: string | null) => Promise<void> | void;
   sendToolResult: (call: AssistantToolCall, result: AssistantToolResult) => Promise<void> | void;
   requestToolCall?: (
     input: string,
@@ -72,6 +74,7 @@ export type AssistantOperationPhase = "running" | "waiting_confirmation" | "succ
 
 export interface AssistantOperationEvent {
   id: string;
+  commandTraceId?: string;
   phase: AssistantOperationPhase;
   route: AssistantRoute;
   toolName?: string;
@@ -79,6 +82,7 @@ export interface AssistantOperationEvent {
 }
 
 export interface AssistantCommandDiagnostics {
+  commandTraceId: string;
   rawInput: string;
   normalizedText: string;
   route?: AssistantRoute;
@@ -130,11 +134,16 @@ export interface AssistantHarnessResponse {
   result: AssistantToolResult;
 }
 
+export interface AssistantHandleUserInputOptions {
+  commandTraceId?: string;
+}
+
 const CONFIRM_TOOL = "assistant.confirm";
 const CANCEL_TOOL = "assistant.cancel";
 const ADD_WIDGET_TOOL = "board.add_widget";
 const FOCUS_WIDGET_TOOL = "widget.focus";
 const PLANNED_WIDGET_PREFIX = "planned_widget_";
+const LOCAL_SHORTCUT_CONFIDENCE_THRESHOLD = 0.9;
 const SEQUENTIAL_CONNECTOR_PATTERN = /(?:，|,|。|；|;)?\s*(?:然后|接着|随后|再)\s*/;
 const PARALLEL_CONNECTOR_PATTERN = /(?:，|,|。|；|;)?\s*(?:同时|与此同时)\s*/;
 const CLOSE_MULTI_CONNECTOR_PATTERN = /(?:和|以及|还有|跟|与)/;
@@ -199,24 +208,7 @@ function splitCloseMultiTargetCommand(input: string): string[][] {
   if (!closeVerb || !CLOSE_MULTI_CONNECTOR_PATTERN.test(input)) {
     return [];
   }
-  const entries: Array<{ type: string; aliases: string[] }> = [
-    { type: "music", aliases: ["音乐", "歌曲", "歌", "播放器"] },
-    { type: "weather", aliases: ["天气"] },
-    { type: "tv", aliases: ["电视", "直播"] },
-    { type: "note", aliases: ["便签", "笔记"] },
-    { type: "todo", aliases: ["待办", "任务"] },
-    { type: "clipboard", aliases: ["剪贴板"] },
-    { type: "calculator", aliases: ["计算器", "计算"] },
-    { type: "countdown", aliases: ["倒计时", "计时器"] },
-    { type: "headline", aliases: ["新闻", "头条"] },
-    { type: "market", aliases: ["指数", "行情", "市场"] },
-    { type: "worldClock", aliases: ["世界时钟", "时区"] },
-    { type: "dialClock", aliases: ["时钟", "表盘"] },
-    { type: "translate", aliases: ["翻译"] },
-    { type: "converter", aliases: ["换算", "单位"] },
-    { type: "recorder", aliases: ["录音"] },
-    { type: "messageBoard", aliases: ["留言板", "留言"] }
-  ];
+  const entries = Object.entries(realtimeWidgetAliases).map(([type, aliases]) => ({ type, aliases }));
   const matches = entries
     .flatMap((entry) =>
       entry.aliases.map((alias) => ({
@@ -259,6 +251,7 @@ export class AssistantHarness {
   private initialized = false;
   private transientWidgetTargets = new Map<string, ResolvedWidgetTarget>();
   private queuedShortcutPlanGroups: AssistantToolCall[][] = [];
+  private queuedPostConfirmationPlan: { route: AssistantRoute; plan: CommandPlan } | null = null;
   private pendingLearningCandidate: LearningCandidate | null = null;
   private readonly planValidator: PlanValidator;
   private readonly shortcutPlanAdapter = new ShortcutPlanAdapter();
@@ -275,7 +268,7 @@ export class AssistantHarness {
   }
 
   async initialize(): Promise<void> {
-    this.currentTools = this.options.toolScopeManager.getInitialTools();
+    this.currentTools = this.options.toolScopeManager.getActiveTools();
     this.initialized = true;
     if (this.options.moduleRegistry) {
       await this.options.realtime.updateModules?.(this.options.moduleRegistry);
@@ -286,11 +279,13 @@ export class AssistantHarness {
 
   async refreshRealtimeContext(): Promise<void> {
     if (!this.initialized) return;
+    await this.syncRealtimeToolsToCurrentContext();
     await this.updateRealtimeContext();
   }
 
   async enterWidgetContext(widgetType: string): Promise<void> {
-    this.currentTools = this.options.toolScopeManager.getWidgetDetailTools(widgetType);
+    void widgetType;
+    this.currentTools = this.options.toolScopeManager.getActiveTools();
     await this.options.realtime.updateTools(this.currentTools);
     await this.updateRealtimeContext();
   }
@@ -311,9 +306,11 @@ export class AssistantHarness {
     return this.lastDiagnostics ? JSON.parse(JSON.stringify(this.lastDiagnostics)) as AssistantCommandDiagnostics : null;
   }
 
-  async handleUserInput(input: string): Promise<AssistantHarnessResponse> {
+  async handleUserInput(input: string, options: AssistantHandleUserInputOptions = {}): Promise<AssistantHarnessResponse> {
     const startedAt = Date.now();
-    this.startDiagnostics(input);
+    const commandTraceId = options.commandTraceId ?? createId("trace");
+    this.startDiagnostics(input, commandTraceId);
+    await this.options.realtime.setActiveCommandTraceId?.(commandTraceId);
     try {
       const response = await this.handleUserInputInternal(input, startedAt);
       this.finishDiagnostics(response);
@@ -328,6 +325,8 @@ export class AssistantHarness {
         }
       });
       throw error;
+    } finally {
+      await this.options.realtime.setActiveCommandTraceId?.(null);
     }
   }
 
@@ -348,29 +347,32 @@ export class AssistantHarness {
     }
 
     if (!segmentedShortcut) {
-    const shortcut = this.options.shortcutRouter.route(input, shortcutContext);
-    if (shortcut.matched) {
-      this.rememberAuditMetadata(shortcut.toolCall, input);
-      const response = await this.handleFunctionCall(shortcut.toolCall, "shortcut", startedAt);
-      if (shortcut.toolCall.name === CONFIRM_TOOL && response.result.status === "success" && this.queuedShortcutPlanGroups.length) {
-        const queued = this.queuedShortcutPlanGroups;
-        this.queuedShortcutPlanGroups = [];
-        const queuedResponse = await this.handleShortcutPlan(queued, startedAt);
-        return {
-          route: "shortcut",
-          call: response.call,
-          result: {
-            ...queuedResponse.result,
-            message: [response.result.message, queuedResponse.result.message].filter(Boolean).join("；"),
-            data: {
-              confirmed: response.result,
-              queued: queuedResponse.result
+      const shortcut = this.options.shortcutRouter.route(input, shortcutContext);
+      if (shortcut.matched && this.shouldExecuteLocalShortcut(shortcut.confidence)) {
+        this.rememberAuditMetadata(shortcut.toolCall, input);
+        const response = await this.handleFunctionCall(shortcut.toolCall, "shortcut", startedAt);
+        if (shortcut.toolCall.name === CONFIRM_TOOL && response.result.status === "success" && this.queuedShortcutPlanGroups.length) {
+          const queued = this.queuedShortcutPlanGroups;
+          this.queuedShortcutPlanGroups = [];
+          const queuedResponse = await this.handleShortcutPlan(queued, startedAt);
+          return {
+            route: "shortcut",
+            call: response.call,
+            result: {
+              ...queuedResponse.result,
+              message: [response.result.message, queuedResponse.result.message].filter(Boolean).join("；"),
+              data: {
+                confirmed: response.result,
+                queued: queuedResponse.result
+              }
             }
-          }
-        };
+          };
+        }
+        if (shortcut.toolCall.name === CONFIRM_TOOL && response.result.status === "success" && this.queuedPostConfirmationPlan) {
+          return this.continueQueuedPostConfirmationPlan(response, startedAt);
+        }
+        return response;
       }
-      return response;
-    }
     }
 
     const context = this.getCurrentContext();
@@ -444,7 +446,7 @@ export class AssistantHarness {
       const groupCalls: AssistantToolCall[] = [];
       for (const segment of group) {
         const routed = this.options.shortcutRouter.route(segment, planningContext);
-        if (!routed.matched) {
+        if (!routed.matched || !this.shouldExecuteLocalShortcut(routed.confidence)) {
           return null;
         }
         this.rememberAuditMetadata(routed.toolCall, segment);
@@ -456,6 +458,10 @@ export class AssistantHarness {
       }
     }
     return calls;
+  }
+
+  private shouldExecuteLocalShortcut(confidence: number): boolean {
+    return confidence >= LOCAL_SHORTCUT_CONFIDENCE_THRESHOLD;
   }
 
   private async handleShortcutPlan(groups: AssistantToolCall[][], startedAt: number): Promise<AssistantHarnessResponse> {
@@ -734,6 +740,7 @@ export class AssistantHarness {
     const responses: AssistantHarnessResponse[] = [];
     const executor = new CommandExecutor({
       execute: (call) => this.executeCall(call),
+      getConcurrencyKey: (command) => this.options.registry.get(command.tool)?.concurrencyKey,
       onEvent: (event) => {
         this.emitOperation({
           id: event.operationId,
@@ -756,6 +763,7 @@ export class AssistantHarness {
       }
     });
     const execution = await executor.execute(validation.plan);
+    this.queueRemainingPlanAfterConfirmation(validation.plan, route, execution.records);
     for (const record of execution.records) {
       const call: AssistantToolCall = {
         id: record.command.id,
@@ -772,6 +780,61 @@ export class AssistantHarness {
     }
     await this.updateRealtimeContext();
     return responses;
+  }
+
+  private queueRemainingPlanAfterConfirmation(
+    plan: CommandPlan,
+    route: AssistantRoute,
+    records: Array<{ command: CommandPlan["commands"][number]; result: AssistantToolResult }>
+  ): void {
+    const blocking = records.find((record) => record.result.status === "needs_confirmation");
+    if (!blocking) return;
+    const groupIndex = plan.executionGroups.findIndex((group) => group.commandIds.includes(blocking.command.id));
+    if (groupIndex < 0 || groupIndex >= plan.executionGroups.length - 1) return;
+    const remainingGroups = plan.executionGroups.slice(groupIndex + 1);
+    const remainingIds = new Set(remainingGroups.flatMap((group) => group.commandIds));
+    const remainingCommands = plan.commands
+      .filter((command) => remainingIds.has(command.id))
+      .map((command) => ({
+        ...command,
+        dependsOn: command.dependsOn?.filter((id) => remainingIds.has(id))
+      }));
+    if (!remainingCommands.length) return;
+    this.queuedPostConfirmationPlan = {
+      route,
+      plan: {
+        ...plan,
+        id: `${plan.id}_after_confirm`,
+        commands: remainingCommands,
+        executionGroups: remainingGroups,
+        dependencies: plan.dependencies.filter((dependency) => remainingIds.has(dependency.from) && remainingIds.has(dependency.to))
+      }
+    };
+  }
+
+  private async continueQueuedPostConfirmationPlan(
+    confirmationResponse: AssistantHarnessResponse,
+    startedAt: number
+  ): Promise<AssistantHarnessResponse> {
+    const queued = this.queuedPostConfirmationPlan;
+    this.queuedPostConfirmationPlan = null;
+    if (!queued) return confirmationResponse;
+    const queuedResponses = await this.executeCommandPlan(queued.plan, queued.route, startedAt);
+    const queuedResponse = this.aggregatePlanResponses(queued.route, queuedResponses);
+    return {
+      route: confirmationResponse.route,
+      call: confirmationResponse.call,
+      result: {
+        ...queuedResponse.result,
+        message: [confirmationResponse.result.message, queuedResponse.result.message].filter(Boolean).join("；"),
+        data: {
+          confirmed: confirmationResponse.result,
+          queued: queuedResponse.result
+        },
+        ...(queuedResponse.result.confirmation ? { confirmation: queuedResponse.result.confirmation } : {}),
+        ...(queuedResponse.result.errorCode ? { errorCode: queuedResponse.result.errorCode } : {})
+      }
+    };
   }
 
   private validateCallPlan(call: AssistantToolCall): { ok: true; call: AssistantToolCall } | { ok: false; errors: Array<{ code: string; message: string }> } {
@@ -865,6 +928,10 @@ export class AssistantHarness {
     }
 
     const result = await this.executeRegistryCall(call, target.target);
+    const addedWidget = call.name === ADD_WIDGET_TOOL ? extractAddedWidgetData(result) : null;
+    if (addedWidget) {
+      this.rememberTransientWidget(addedWidget);
+    }
     const followUpResult = await this.executeSafeFollowUp(call, result, target.target);
     if (followUpResult) {
       return followUpResult;
@@ -987,7 +1054,7 @@ export class AssistantHarness {
       return;
     }
 
-    const nextTools = this.options.toolScopeManager.getWidgetDetailTools(widgetType);
+    const nextTools = this.options.toolScopeManager.getActiveTools();
     if (this.sameToolList(nextTools, this.currentTools)) {
       return;
     }
@@ -1055,18 +1122,29 @@ export class AssistantHarness {
   }
 
   private rememberTransientWidget(widget: AddedWidgetData): void {
-    this.transientWidgetTargets.set(widget.widgetId, {
+    const target = {
       widgetId: widget.widgetId,
       definitionId: widget.definitionId,
       type: widget.widgetType,
       name: widget.widgetType,
       confidence: 1,
       reason: "added_in_current_plan"
-    });
+    } as const;
+    this.transientWidgetTargets.set(widget.widgetId, target);
+    this.transientWidgetTargets.set(`${PLANNED_WIDGET_PREFIX}${widget.widgetType}`, target);
   }
 
   private sameToolList(left: AssistantToolSpec[], right: AssistantToolSpec[]): boolean {
     return left.length === right.length && left.every((tool, index) => tool.name === right[index]?.name);
+  }
+
+  private async syncRealtimeToolsToCurrentContext(): Promise<void> {
+    const nextTools = this.options.toolScopeManager.getActiveTools();
+    if (this.sameToolList(nextTools, this.currentTools)) {
+      return;
+    }
+    this.currentTools = nextTools;
+    await this.options.realtime.updateTools(this.currentTools);
   }
 
   private async updateRealtimeContext(): Promise<void> {
@@ -1117,14 +1195,18 @@ export class AssistantHarness {
   }
 
   private emitOperation(event: AssistantOperationEvent): void {
-    this.options.onOperation?.(event);
+    this.options.onOperation?.({
+      ...event,
+      commandTraceId: event.commandTraceId ?? this.lastDiagnostics?.commandTraceId
+    });
   }
 
-  private startDiagnostics(input: string): void {
+  private startDiagnostics(input: string, commandTraceId: string): void {
     const candidateResult = this.options.moduleRegistry
       ? scoreCandidates(input, this.options.moduleRegistry.list(), this.buildShortcutContext())
       : { normalizedText: normalizeText(input), candidates: [] };
     this.lastDiagnostics = {
+      commandTraceId,
       rawInput: input,
       normalizedText: candidateResult.normalizedText,
       usedRealtime: false,

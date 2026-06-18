@@ -32,13 +32,34 @@ const tools: AssistantToolSpec[] = [
   }
 ];
 
+const addWidgetTool: AssistantToolSpec = {
+  name: "board.add_widget",
+  description: "Add a widget to the current board.",
+  parameters: createPassthroughSchema<Record<string, unknown>>(),
+  scope: "desktop",
+  risk: "safe"
+};
+
+const musicPlayTool: AssistantToolSpec = {
+  name: "music.play",
+  description: "Play music.",
+  parameters: createPassthroughSchema<Record<string, unknown>>(),
+  scope: "widget-detail",
+  widgetType: "music",
+  requiresTarget: true
+};
+
 const context: CompactAssistantContext = {
+  contextVersion: "ctx_test",
+  toolCatalogVersion: "cat_from_context",
   boardId: "board_1",
   boardName: "默认桌板",
   availableBoards: [{ boardId: "board_1", name: "默认桌板", active: true }],
   availableDefinitions: [
     { definitionId: "wd_music", type: "music", name: "音乐" },
-    { definitionId: "wd_note", type: "note", name: "便签" }
+    { definitionId: "wd_note", type: "note", name: "便签" },
+    { definitionId: "wd_dialClock", type: "dialClock", name: "时钟" },
+    { definitionId: "wd_worldClock", type: "worldClock", name: "世界时钟" }
   ],
   focusedWidget: {
     widgetId: "wi_note",
@@ -73,6 +94,7 @@ const context: CompactAssistantContext = {
 
 const moduleCatalog = [
   {
+    catalogVersion: "cat_test",
     type: "music",
     displayName: "音乐",
     aliases: ["音乐"],
@@ -81,6 +103,7 @@ const moduleCatalog = [
     riskSummary: []
   },
   {
+    catalogVersion: "cat_test",
     type: "weather",
     displayName: "天气",
     aliases: ["天气"],
@@ -125,8 +148,9 @@ describe("Realtime text tool call fallback", () => {
     const body = JSON.parse(createRealtimeToolSelectionRequestBody("关闭音乐", tools, moduleCatalog));
     const serialized = JSON.stringify(body);
 
-    expect(body).toMatchObject({ input: "关闭音乐", phase: "select" });
-    expect(serialized).toContain("moduleCatalog");
+	    expect(body).toMatchObject({ input: "关闭音乐", phase: "select" });
+	    expect(body.toolCatalogVersion).toBe("cat_test");
+	    expect(serialized).toContain("moduleCatalog");
     expect(serialized).toContain("weather");
     expect(serialized).toContain("widget.remove");
     expect(serialized).not.toContain("context");
@@ -141,8 +165,16 @@ describe("Realtime text tool call fallback", () => {
 
     expect(serialized).toContain("widget.remove");
     expect(serialized).toContain("music.pause");
-    expect(serialized).toContain("模块目录");
-    expect(serialized).toContain("weather");
+	    expect(serialized).toContain("模块目录");
+	    expect(serialized).toContain("toolCatalogVersion=cat_test");
+	    expect(serialized).toContain("weather");
+    expect(serialized).toContain("确认你是否在线");
+    expect(serialized).toContain("很短的中文自然回复");
+    expect(serialized).toContain("board.auto_align");
+    expect(serialized).toContain("dialClock");
+    expect(serialized).toContain("music.play");
+    expect(serialized).toContain("打开电视");
+    expect(serialized).toContain("不要传给音乐工具");
     expect(serialized).toContain("assistant__dot__select_tool");
     expect(serialized).not.toContain("wi_music");
     expect(serialized).not.toContain("private note");
@@ -183,6 +215,35 @@ describe("Realtime text tool call fallback", () => {
     expect(scoped.availableDefinitions).toBeUndefined();
   });
 
+  it("keeps add-widget definitions available when the spoken target is ambiguous", () => {
+    const scoped = createScopedRealtimeContext(context, addWidgetTool, { name: "board.add_widget", targetHint: "播放器" }, "打开播放器");
+
+    expect(scoped.availableDefinitions?.map((definition) => definition.definitionId)).toEqual([
+      "wd_music",
+      "wd_note",
+      "wd_dialClock",
+      "wd_worldClock"
+    ]);
+  });
+
+  it("allows opening a missing music widget with a follow-up play command", () => {
+    const contextWithoutMusic: CompactAssistantContext = {
+      ...context,
+      widgetCountsByType: { note: 1 },
+      widgets: context.widgets.filter((widget) => widget.type !== "music")
+    };
+    const update = createScopedRealtimeToolUpdate(
+      { input: "播放陈奕迅的十年", context: contextWithoutMusic, tools: [addWidgetTool, musicPlayTool] },
+      { name: "music.play", selectedModule: "music", targetHint: "陈奕迅 十年" }
+    );
+    const serialized = JSON.stringify(update);
+
+    expect(serialized).toContain("board__dot__add_widget");
+    expect(serialized).toContain("music__dot__play");
+    expect(serialized).toContain("followUp");
+    expect(serialized).toContain("wd_music");
+  });
+
   it("creates a second-pass payload with only the selected tool", () => {
     const payload = createScopedToolCallPayload(
       { input: "关闭音乐", context, tools },
@@ -209,7 +270,13 @@ describe("Realtime text tool call fallback", () => {
     );
     const serialized = JSON.stringify(body);
 
-    expect(body).toMatchObject({ input: "关闭音乐", phase: "execute", selection: { name: "widget.remove" } });
+	    expect(body).toMatchObject({
+	      input: "关闭音乐",
+	      phase: "execute",
+	      contextVersion: "ctx_test",
+	      toolCatalogVersion: "cat_from_context",
+	      selection: { name: "widget.remove" }
+	    });
     expect(serialized).toContain("wi_music");
     expect(serialized).toContain("moduleContext");
     expect(serialized).toContain("wi_weather");
@@ -225,9 +292,24 @@ describe("Realtime text tool call fallback", () => {
     const serialized = JSON.stringify(update);
 
     expect(update?.type).toBe("session.update");
+    expect(update?.session.type).toBe("realtime");
     expect(serialized).toContain("widget__dot__remove");
     expect(serialized).not.toContain("music__dot__pause");
     expect(serialized).toContain("wi_music");
     expect(serialized).not.toContain("private note");
+  });
+
+  it("instructs realtime to open widgets by choosing a definitionId", () => {
+    const update = createScopedRealtimeToolUpdate(
+      { input: "打开音乐", context, tools: [addWidgetTool] },
+      { name: "board.add_widget", targetHint: "音乐" }
+    );
+    const serialized = JSON.stringify(update);
+
+    expect(update?.type).toBe("session.update");
+    expect(serialized).toContain("definitionId");
+    expect(serialized).toContain("wd_music");
+    expect(serialized).toContain("不要回答缺少打开小工具的方式");
+    expect(serialized).toContain("默认打开 dialClock");
   });
 });

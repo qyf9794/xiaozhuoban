@@ -6,8 +6,8 @@ import {
   createRealtimeTurnDetection,
   type RealtimeReasoningEffort,
   type RealtimeSessionOptions
-} from "../../src/assistant/realtimeSessionConfig";
-import { authenticateRealtimeRequest } from "./auth";
+} from "../../src/api/realtime/runtime-session-config.js";
+import { authenticateRealtimeRequest } from "../../src/api/realtime/runtime-auth.js";
 
 type JsonValue = Record<string, unknown> | unknown[] | string | number | boolean | null;
 type RealtimeSessionRequestOptions = RealtimeSessionOptions & {
@@ -82,7 +82,7 @@ export default async function handler(request: IncomingMessage, response: Server
   }
 
   const auth = await authenticateRealtimeRequest(request);
-  if (!auth.ok) {
+  if (auth.ok === false) {
     sendJson(response, auth.status, { error: auth.error });
     return;
   }

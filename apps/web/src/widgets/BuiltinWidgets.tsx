@@ -3,6 +3,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { Button, Card } from "@xiaozhuoban/ui";
 import type { WidgetCapabilityBridge } from "../assistant/widgetCapabilityBridge";
+import { recordAuthenticatedAssistantDiagnostic } from "../assistant/assistantDiagnostics";
 import { WidgetShell } from "./WidgetShell";
 import {
   buildDialClockMarkStates,
@@ -53,6 +54,17 @@ import {
 
 function asString(v: unknown): string {
   return typeof v === "string" ? v : "";
+}
+
+function isLikelyNonMusicWidgetQuery(value: string): boolean {
+  return /^(世界时钟|世界时间|时区|时钟|钟表|表盘|电视|直播|留言板|天气|倒计时|计时器|计算器|剪贴板|录音机|设置)$/.test(
+    value.trim()
+  );
+}
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
 }
 
 function asArray(v: unknown): string[] {
@@ -1230,7 +1242,6 @@ function stopCountdownAlarmAudio() {
 function allSharedAudioPrimed() {
   return (
     messageBoardChimeAudioPrimed &&
-    countdownAlarmAudioPrimed &&
     dialClockHourlyAudioPrimed &&
     dialClockNightAudioPrimed
   );
@@ -1239,7 +1250,6 @@ function allSharedAudioPrimed() {
 async function primeAllSharedAudio() {
   const results = await Promise.all([
     primeMessageBoardAudio(),
-    primeCountdownAlarmAudio(),
     primeDialClockHourlyAudio(),
     primeDialClockNightAudio()
   ]);
@@ -2429,7 +2439,7 @@ export function BuiltinWidgetView({
               onClick={() => {
                 const total = inputHours * 3600 + inputMinutes * 60 + inputSeconds;
                 stopCountdownAlarm(instance.id);
-                void Promise.allSettled([primeMessageBoardAudio(), primeCountdownAlarmAudio()]);
+                void primeCountdownAlarmAudio();
                 onStateChange({
                   ...instance.state,
                   totalSeconds: total,
@@ -3039,7 +3049,8 @@ export function BuiltinWidgetView({
   }
 
   if (definition.type === "music") {
-    const query = asString(instance.state.query);
+    const rawQuery = asString(instance.state.query);
+    const query = isLikelyNonMusicWidgetQuery(rawQuery) ? "" : rawQuery;
     const musicKitDeveloperToken = getMusicKitDeveloperToken();
     const musicKitAvailable = Boolean(musicKitDeveloperToken);
     const [results, setResults] = useState<MusicSearchItem[]>([]);
@@ -3057,6 +3068,19 @@ export function BuiltinWidgetView({
     const resultsRef = useRef<MusicSearchItem[]>([]);
     const activeItemIdRef = useRef<string | null>(null);
     const latestMusicStateRef = useRef(instance.state);
+    const logMusicDiagnostic = (type: string, status: string, data: Record<string, unknown> = {}) => {
+      recordAuthenticatedAssistantDiagnostic({
+        type,
+        status,
+        toolName: "music",
+        data: {
+          widgetId: instance.id,
+          musicKitAvailable,
+          musicKitAuthorized: isMusicKitAuthorized(musicKitRef.current),
+          ...data
+        }
+      });
+    };
 
     const inputStyle: CSSProperties = {
       width: "100%",
@@ -3078,6 +3102,12 @@ export function BuiltinWidgetView({
     }, [instance.state]);
 
     useEffect(() => {
+      if (rawQuery && !query) {
+        onStateChange({ ...latestMusicStateRef.current, query: "" });
+      }
+    }, [onStateChange, query, rawQuery]);
+
+    useEffect(() => {
       resultsRef.current = results;
     }, [results]);
 
@@ -3093,7 +3123,7 @@ export function BuiltinWidgetView({
           setProgress(0);
           return;
         }
-        setProgress((audio.currentTime / audio.duration) * 100);
+        setProgress(clampPercent((audio.currentTime / audio.duration) * 100));
       };
       const onPlay = () => setIsPlaying(true);
       const onPause = () => setIsPlaying(false);
@@ -3135,6 +3165,29 @@ export function BuiltinWidgetView({
       };
     }, []);
 
+    const readMusicKitProgress = () => {
+      const music = musicKitRef.current;
+      if (!music) return null;
+      if (typeof music.currentPlaybackProgress === "number") {
+        const rawProgress = music.currentPlaybackProgress;
+        return clampPercent(rawProgress <= 1 ? rawProgress * 100 : rawProgress);
+      }
+      if (
+        typeof music.currentPlaybackTime === "number" &&
+        typeof music.currentPlaybackDuration === "number" &&
+        music.currentPlaybackDuration > 0
+      ) {
+        return clampPercent((music.currentPlaybackTime / music.currentPlaybackDuration) * 100);
+      }
+      return null;
+    };
+
+    const pausePlayback = () => {
+      audioRef.current?.pause();
+      void musicKitRef.current?.pause();
+      setIsPlaying(false);
+    };
+
     const ensureMusicKit = async () => {
       if (!musicKitAvailable) {
         throw new Error("请先配置 VITE_APPLE_MUSIC_DEVELOPER_TOKEN");
@@ -3148,13 +3201,18 @@ export function BuiltinWidgetView({
 
     const authorizeMusicKit = async () => {
       try {
+        logMusicDiagnostic("music.auth.start", "started");
         const music = await ensureMusicKit();
         await music.authorize();
         setMusicKitStatus("Apple Music 已登录");
+        logMusicDiagnostic("music.auth.result", "success");
         return music;
       } catch (authError) {
         setMusicKitStatus("Apple Music 登录失败");
         setError(authError instanceof Error ? authError.message : "Apple Music 登录失败");
+        logMusicDiagnostic("music.auth.result", "failed", {
+          message: authError instanceof Error ? authError.message : "Apple Music 登录失败"
+        });
         return null;
       }
     };
@@ -3189,6 +3247,10 @@ export function BuiltinWidgetView({
         setLoading(false);
         return [];
       }
+      logMusicDiagnostic("music.search.start", "started", {
+        query: keyword,
+        source: musicKitAvailable ? "apple" : "itunes"
+      });
       const seq = ++searchSeqRef.current;
       setLoading(true);
       setError("");
@@ -3196,6 +3258,14 @@ export function BuiltinWidgetView({
         const items = musicKitAvailable ? await searchAppleMusic(keyword) : normalizeITunesTracks(await searchITunesTracks(keyword));
         if (seq !== searchSeqRef.current) return [];
         setResults(items);
+        logMusicDiagnostic("music.search.result", items.length ? "success" : "empty", {
+          query: keyword,
+          source: musicKitAvailable ? "apple" : "itunes",
+          count: items.length,
+          firstSource: items[0]?.source,
+          firstKind: items[0]?.kind,
+          firstTitle: items[0]?.title
+        });
         if (!items.length) {
           setError(musicKitAvailable ? "未找到 Apple Music 结果" : "未找到可试听结果");
         }
@@ -3204,6 +3274,11 @@ export function BuiltinWidgetView({
         if (seq !== searchSeqRef.current) return [];
         setError(searchError instanceof Error ? searchError.message : "搜索失败");
         setResults([]);
+        logMusicDiagnostic("music.search.result", "failed", {
+          query: keyword,
+          source: musicKitAvailable ? "apple" : "itunes",
+          message: searchError instanceof Error ? searchError.message : "搜索失败"
+        });
         return [];
       } finally {
         if (seq === searchSeqRef.current) {
@@ -3229,14 +3304,73 @@ export function BuiltinWidgetView({
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [query]);
 
-    const playItem = async (item: MusicSearchItem | undefined) => {
+    const selectMusicResult = (items: MusicSearchItem[], args: Record<string, unknown>) => {
+      const requestedKind =
+        typeof args.kind === "string" && ["song", "album", "playlist"].includes(args.kind) ? args.kind : "";
+      const defaultSongs = requestedKind ? [] : items.filter((item) => item.kind === "song");
+      const candidates = requestedKind ? items.filter((item) => item.kind === requestedKind) : defaultSongs.length ? defaultSongs : items;
+      if (!candidates.length) return items[0];
+      const rawIndex = typeof args.resultIndex === "number" && Number.isFinite(args.resultIndex) ? Math.trunc(args.resultIndex) : 0;
+      const index = Math.max(0, Math.min(candidates.length - 1, rawIndex));
+      return candidates[index];
+    };
+
+    const findAppleMusicReplacement = async (
+      item: MusicSearchItem,
+      args: Record<string, unknown> = {}
+    ): Promise<MusicSearchItem | undefined> => {
+      if (!musicKitAvailable || item.source === "apple" || !isMusicKitAuthorized(musicKitRef.current)) {
+        return item;
+      }
+      const keyword = (queryDraft || query || `${item.title} ${item.subtitle}`).trim();
+      if (!keyword) return item;
+      try {
+        const appleItems = await searchAppleMusic(keyword);
+        if (!appleItems.length) return item;
+        setResults(appleItems);
+        const replacement = selectMusicResult(appleItems, args);
+        if (replacement) {
+          setActiveItemId(replacement.id);
+        }
+        return replacement ?? appleItems[0];
+      } catch {
+        return item;
+      }
+    };
+
+    const playItem = async (item: MusicSearchItem | undefined, args: Record<string, unknown> = {}) => {
       if (!item) {
+        logMusicDiagnostic("music.play.result", "failed", { errorCode: "MUSIC_TRACK_NOT_FOUND" });
         return { status: "failed" as const, message: "没有可播放的音乐", errorCode: "MUSIC_TRACK_NOT_FOUND" };
+      }
+
+      logMusicDiagnostic("music.play.start", "started", {
+        itemId: item.id,
+        title: item.title,
+        source: item.source,
+        kind: item.kind,
+        hasPreview: Boolean(item.previewUrl),
+        requestedArgs: args
+      });
+      const preferredItem = await findAppleMusicReplacement(item, args);
+      if (preferredItem && preferredItem !== item) {
+        logMusicDiagnostic("music.play.replaced_with_apple", "success", {
+          originalSource: item.source,
+          replacementId: preferredItem.id,
+          replacementTitle: preferredItem.title
+        });
+        return playItem(preferredItem, args);
       }
 
       if (item.source === "apple") {
         const music = musicKitRef.current ?? (await authorizeMusicKit());
         if (!music) {
+          logMusicDiagnostic("music.play.result", "failed", {
+            itemId: item.id,
+            title: item.title,
+            source: item.source,
+            errorCode: "MUSIC_AUTH_FAILED"
+          });
           return { status: "failed" as const, message: "Apple Music 登录失败", errorCode: "MUSIC_AUTH_FAILED" };
         }
         try {
@@ -3244,21 +3378,46 @@ export function BuiltinWidgetView({
           await music.play();
           audioRef.current?.pause();
           setActiveItemId(item.id);
-          setProgress(0);
+          setProgress(readMusicKitProgress() ?? 0);
           setIsPlaying(true);
           setMusicKitStatus("Apple Music 播放中");
+          logMusicDiagnostic("music.play.result", "success", {
+            itemId: item.id,
+            title: item.title,
+            source: item.source,
+            kind: item.kind
+          });
           return { status: "success" as const, message: "已开始播放音乐", data: { itemId: item.id, title: item.title, kind: item.kind } };
-        } catch {
+        } catch (playError) {
           setIsPlaying(false);
+          logMusicDiagnostic("music.play.result", "failed", {
+            itemId: item.id,
+            title: item.title,
+            source: item.source,
+            errorCode: "MUSIC_PLAY_FAILED",
+            message: playError instanceof Error ? playError.message : "Apple Music 播放失败"
+          });
           return { status: "failed" as const, message: "Apple Music 播放失败，请确认账号订阅和浏览器播放权限", errorCode: "MUSIC_PLAY_FAILED" };
         }
       }
 
       const audio = audioRef.current;
       if (!audio) {
+        logMusicDiagnostic("music.play.result", "failed", {
+          itemId: item.id,
+          title: item.title,
+          source: item.source,
+          errorCode: "MUSIC_PLAYER_NOT_READY"
+        });
         return { status: "failed" as const, message: "音乐播放器还没有准备好", errorCode: "MUSIC_PLAYER_NOT_READY" };
       }
       if (!item.previewUrl) {
+        logMusicDiagnostic("music.play.result", "failed", {
+          itemId: item.id,
+          title: item.title,
+          source: item.source,
+          errorCode: "MUSIC_TRACK_NOT_FOUND"
+        });
         return { status: "failed" as const, message: "没有可播放的试听结果", errorCode: "MUSIC_TRACK_NOT_FOUND" };
       }
       if (audio.src !== item.previewUrl) {
@@ -3268,24 +3427,26 @@ export function BuiltinWidgetView({
       }
       try {
         await audio.play();
-      } catch {
+      } catch (playError) {
+        logMusicDiagnostic("music.play.result", "success_blocked", {
+          itemId: item.id,
+          title: item.title,
+          source: item.source,
+          errorCode: "BROWSER_PLAYBACK_BLOCKED",
+          message: playError instanceof Error ? playError.message : "浏览器阻止播放"
+        });
         return {
           status: "success" as const,
           message: "已找到音乐，请手动点击播放",
           data: { itemId: item.id, title: item.title, playbackBlocked: true }
         };
       }
+      logMusicDiagnostic("music.play.result", "success", {
+        itemId: item.id,
+        title: item.title,
+        source: item.source
+      });
       return { status: "success" as const, message: "已开始播放音乐", data: { itemId: item.id, title: item.title } };
-    };
-
-    const selectMusicResult = (items: MusicSearchItem[], args: Record<string, unknown>) => {
-      const requestedKind =
-        typeof args.kind === "string" && ["song", "album", "playlist"].includes(args.kind) ? args.kind : "";
-      const candidates = requestedKind ? items.filter((item) => item.kind === requestedKind) : items;
-      if (!candidates.length) return items[0];
-      const rawIndex = typeof args.resultIndex === "number" && Number.isFinite(args.resultIndex) ? Math.trunc(args.resultIndex) : 0;
-      const index = Math.max(0, Math.min(candidates.length - 1, rawIndex));
-      return candidates[index];
     };
 
     const currentOrFirstTrack = () => {
@@ -3309,6 +3470,7 @@ export function BuiltinWidgetView({
         try {
           await skip.call(music);
           if (nextTrack) setActiveItemId(nextTrack.id);
+          setProgress(0);
           return { status: "success" as const, message: offset > 0 ? "已切到下一首" : "已切到上一首" };
         } catch {
           return playItem(nextTrack);
@@ -3321,111 +3483,158 @@ export function BuiltinWidgetView({
     const playPrevious = () => playOffset(-1);
 
     useEffect(() => {
+      const currentItem = results.find((item) => item.id === activeItemId) ?? results[0];
+      if (!isPlaying || currentItem?.source !== "apple") return undefined;
+      const refreshProgress = () => {
+        const nextProgress = readMusicKitProgress();
+        if (nextProgress !== null) setProgress(nextProgress);
+      };
+      refreshProgress();
+      const timer = window.setInterval(refreshProgress, 1000);
+      return () => window.clearInterval(timer);
+    }, [activeItemId, isPlaying, results]);
+
+    useEffect(() => {
       if (!assistantCapabilityBridge) return undefined;
 
       return assistantCapabilityBridge.register(instance.id, {
         async search(args) {
           const nextQuery = typeof args.query === "string" ? args.query.trim() : "";
           if (!nextQuery) {
+            logMusicDiagnostic("music.tool.search.result", "failed", { errorCode: "MUSIC_QUERY_MISSING" });
             return { status: "failed" as const, message: "请告诉我要搜索的音乐", errorCode: "MUSIC_QUERY_MISSING" };
           }
           setQueryDraft(nextQuery);
-          onStateChange({ ...latestMusicStateRef.current, query: nextQuery });
           const items = await runSearch(nextQuery);
+          onStateChange({ ...latestMusicStateRef.current, query: nextQuery });
           if (!items.length) {
+            logMusicDiagnostic("music.tool.search.result", "failed", { query: nextQuery, errorCode: "MUSIC_TRACK_NOT_FOUND" });
             return { status: "failed" as const, message: "没有找到音乐", errorCode: "MUSIC_TRACK_NOT_FOUND" };
           }
           const selected = selectMusicResult(items, args);
           if (selected) setActiveItemId(selected.id);
+          logMusicDiagnostic("music.tool.search.result", "success", { query: nextQuery, count: items.length, selectedTitle: selected?.title });
           return { status: "success" as const, message: "已搜索音乐", data: { count: items.length, itemId: selected?.id, title: selected?.title } };
         },
         async play(args) {
           const nextQuery = typeof args.query === "string" ? args.query.trim() : "";
+          logMusicDiagnostic("music.tool.play.request", "started", { query: nextQuery, args });
           if (nextQuery) {
             setQueryDraft(nextQuery);
-            onStateChange({ ...latestMusicStateRef.current, query: nextQuery });
             const items = await runSearch(nextQuery);
-            return playItem(selectMusicResult(items, args));
+            onStateChange({ ...latestMusicStateRef.current, query: nextQuery });
+            return playItem(selectMusicResult(items, args), args);
           }
-          return playItem(selectMusicResult(resultsRef.current, args) ?? currentOrFirstTrack());
+          const fallbackQuery = (queryDraft || query || asString(latestMusicStateRef.current.query)).trim();
+          if (!resultsRef.current.length && fallbackQuery) {
+            const items = await runSearch(fallbackQuery);
+            return playItem(selectMusicResult(items, args), args);
+          }
+          return playItem(selectMusicResult(resultsRef.current, args) ?? currentOrFirstTrack(), args);
         },
         pause() {
-          audioRef.current?.pause();
-          void musicKitRef.current?.pause();
-          setIsPlaying(false);
+          pausePlayback();
+          logMusicDiagnostic("music.tool.pause.result", "success");
           return { status: "success", message: "已暂停音乐" };
         },
         resume() {
+          logMusicDiagnostic("music.tool.resume.request", "started");
           return playItem(currentOrFirstTrack());
         },
         next() {
+          logMusicDiagnostic("music.tool.next.request", "started");
           return playNext();
         },
         previous() {
+          logMusicDiagnostic("music.tool.previous.request", "started");
           return playPrevious();
         }
       });
-    }, [assistantCapabilityBridge, instance.id, onStateChange, runSearch, playItem, playNext, playPrevious]);
+    }, [assistantCapabilityBridge, instance.id, onStateChange, runSearch, playItem, playNext, playPrevious, pausePlayback]);
 
     const activeItem = results.find((item) => item.id === activeItemId) ?? results[0];
     const kindLabel: Record<string, string> = { song: "歌曲", album: "专辑", playlist: "歌单" };
     const sourceLabel = musicKitAvailable ? musicKitStatus : "iTunes 试听模式";
+    const musicKitLoggedIn = musicKitStatus.includes("已登录") || musicKitStatus.includes("播放中");
+    const showMusicLogin = musicKitAvailable && !musicKitLoggedIn;
+    const visibleProgress = activeItem ? clampPercent(progress) : 0;
 
     return (
       <WidgetShell definition={definition} instance={instance}>
-        <div style={{ display: "grid", gridTemplateColumns: "74px minmax(0, 1fr)", gap: 10, alignItems: "center", marginBottom: 8 }}>
-          {activeItem?.artworkUrl ? (
-            <img
-              src={activeItem.artworkUrl}
-              alt={activeItem.title}
-              style={{ width: 74, height: 74, borderRadius: 8, objectFit: "cover", background: "rgba(226, 232, 240, 0.5)" }}
-            />
-          ) : (
-            <div
-              style={{
-                width: 74,
-                height: 74,
-                borderRadius: 8,
-                background: "linear-gradient(135deg, rgba(15,23,42,0.18), rgba(14,165,233,0.18))",
-                display: "grid",
-                placeItems: "center",
-                color: "#334155",
-                fontSize: 24
-              }}
-            >
-              ♪
+        <div style={{ marginBottom: 10 }}>
+          {showMusicLogin ? (
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+              <Button onClick={() => void authorizeMusicKit()}>登录</Button>
             </div>
-          )}
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 11, color: "#64748b", marginBottom: 3 }}>{sourceLabel}</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {activeItem?.title ?? "搜索 Apple Music"}
+          ) : null}
+          <div style={{ display: "grid", justifyItems: "center", gap: 7 }}>
+            {activeItem?.artworkUrl ? (
+              <img
+                src={activeItem.artworkUrl}
+                alt={activeItem.title}
+                style={{
+                  width: "calc(100% - 40px)",
+                  maxWidth: 240,
+                  aspectRatio: "1 / 1",
+                  borderRadius: 8,
+                  objectFit: "cover",
+                  background: "rgba(226, 232, 240, 0.5)",
+                  boxShadow: "0 10px 24px rgba(15, 23, 42, 0.12)"
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: "calc(100% - 40px)",
+                  maxWidth: 240,
+                  aspectRatio: "1 / 1",
+                  borderRadius: 8,
+                  background: "linear-gradient(135deg, rgba(15,23,42,0.18), rgba(14,165,233,0.18))",
+                  display: "grid",
+                  placeItems: "center",
+                  color: "#334155",
+                  fontSize: 34,
+                  boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)"
+                }}
+              >
+                ♪
+              </div>
+            )}
+            <div style={{ width: "100%", minWidth: 0, textAlign: "center" }}>
+              <div style={{ fontSize: 11, color: "#64748b", marginBottom: 3 }}>{sourceLabel}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {activeItem?.title ?? "搜索 Apple Music"}
+              </div>
+              <div style={{ fontSize: 12, color: "#334155", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {activeItem?.subtitle ?? "歌曲 / 专辑 / 播放列表"}
+              </div>
             </div>
-            <div style={{ fontSize: 12, color: "#334155", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {activeItem?.subtitle ?? "歌曲 / 专辑 / 播放列表"}
-            </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+            <div style={{ display: "flex", gap: 16, alignItems: "center", justifyContent: "center", marginTop: 2 }}>
               <button
                 onClick={() => {
+                  void playPrevious().then((result) => {
+                    if (result.status !== "success") setError(result.message);
+                  });
+                }}
+                style={mediaIconBtnStyle({ size: 30, fontSize: 15 })}
+                title="上一首"
+              >
+                <span style={{ fontSize: 15, lineHeight: 1 }}>⏮</span>
+              </button>
+              <button
+                onClick={() => {
+                  if (isPlaying) {
+                    pausePlayback();
+                    return;
+                  }
                   void playItem(currentOrFirstTrack()).then((result) => {
                     if (result.status !== "success") setError(result.message);
                   });
                 }}
-                style={mediaIconBtnStyle({ size: 24, fontSize: 13 })}
-                title={isPlaying ? "继续播放" : "播放"}
+                style={mediaIconBtnStyle({ size: 34, fontSize: 14 })}
+                title={isPlaying ? "暂停" : "播放"}
               >
-                {renderMediaControlIcon("play")}
-              </button>
-              <button
-                onClick={() => {
-                  audioRef.current?.pause();
-                  void musicKitRef.current?.pause();
-                  setIsPlaying(false);
-                }}
-                style={mediaIconBtnStyle({ size: 24, fontSize: 13 })}
-                title="暂停"
-              >
-                {renderMediaControlIcon("pause")}
+                {renderMediaControlIcon(isPlaying ? "pause" : "play")}
               </button>
               <button
                 onClick={() => {
@@ -3433,21 +3642,25 @@ export function BuiltinWidgetView({
                     if (result.status !== "success") setError(result.message);
                   });
                 }}
-                style={mediaIconBtnStyle({ size: 24, fontSize: 13 })}
+                style={mediaIconBtnStyle({ size: 30, fontSize: 15 })}
                 title="下一首"
               >
-                <span style={{ fontSize: 13, lineHeight: 1 }}>⏭</span>
+                <span style={{ fontSize: 15, lineHeight: 1 }}>⏭</span>
               </button>
-              {musicKitAvailable ? (
-                <Button onClick={() => void authorizeMusicKit()}>{musicKitStatus.includes("已登录") ? "已登录" : "登录"}</Button>
-              ) : null}
             </div>
-            <div style={{ marginTop: 6, height: 2, borderRadius: 2, background: "rgba(100, 116, 139, 0.25)", overflow: "hidden" }}>
+            <div
+              role="progressbar"
+              aria-label="音乐播放进度"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(visibleProgress)}
+              style={{ width: "100%", height: 4, borderRadius: 999, background: "rgba(148, 163, 184, 0.38)", overflow: "hidden" }}
+            >
               <div
                 style={{
                   height: "100%",
-                  width: activeItem?.source === "itunes" ? `${progress}%` : isPlaying ? "100%" : "0%",
-                  background: "rgba(31, 41, 55, 0.75)",
+                  width: `${visibleProgress}%`,
+                  background: "linear-gradient(90deg, rgba(14, 165, 233, 0.95), rgba(20, 184, 166, 0.95))",
                   transition: "width 120ms linear"
                 }}
               />
@@ -3456,6 +3669,15 @@ export function BuiltinWidgetView({
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 8 }}>
           <input
+            type="search"
+            name={`music-search-${instance.id}`}
+            id={`music-search-${instance.id}`}
+            aria-label="音乐搜索"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            inputMode="search"
             value={queryDraft}
             onChange={(event) => {
               const next = event.target.value;
@@ -3532,9 +3754,7 @@ export function BuiltinWidgetView({
                 <button
                   onClick={() => {
                     if (active && isPlaying) {
-                      audioRef.current?.pause();
-                      void musicKitRef.current?.pause();
-                      setIsPlaying(false);
+                      pausePlayback();
                       return;
                     }
                     void playItem(track).then((result) => {
@@ -3582,8 +3802,8 @@ export function BuiltinWidgetView({
                     <div
                       style={{
                         height: "100%",
-                        width: active ? (track.source === "itunes" ? `${progress}%` : isPlaying ? "100%" : 0) : 0,
-                        background: "rgba(31, 41, 55, 0.75)",
+                        width: active ? `${visibleProgress}%` : 0,
+                        background: "linear-gradient(90deg, rgba(14, 165, 233, 0.95), rgba(20, 184, 166, 0.95))",
                         transition: "width 120ms linear"
                       }}
                     />
