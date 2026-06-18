@@ -1108,6 +1108,91 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(serialized).not.toContain("private note");
   });
 
+  it("waits for scoped session.updated before sending tool selection results", () => {
+    const sent: unknown[] = [];
+    const diagnostics: Array<{ type: string; status?: string; operationId?: string; toolName?: string }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "music.search",
+        description: "搜索音乐",
+        parameters: createStrictObjectSchema({
+          widgetId: { type: "string", required: true },
+          query: { type: "string", required: true }
+        }),
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: { music: 1 },
+      widgets: [
+        {
+          widgetId: "wi_music",
+          definitionId: "wd_music",
+          type: "music",
+          name: "音乐播放器",
+          order: 1,
+          summary: "idle"
+        }
+      ]
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
+      }
+    });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_music",
+      name: "assistant.select_tool",
+      arguments: { name: "music.search", selectedModule: "music", targetHint: "放松", userCommand: "我想听点放松的不一定播放", confidence: 0.92 },
+      source: "realtime"
+    });
+
+    expect(sent).toEqual([
+      expect.objectContaining({ type: "session.update" })
+    ]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.tool_selection.result_deferred",
+        status: "pending_session_update",
+        operationId: "select_music",
+        toolName: "music.search"
+      })
+    ]));
+
+    (adapter as unknown as { handleRealtimeEventData: (event: unknown) => void }).handleRealtimeEventData({ type: "session.updated" });
+
+    expect(sent).toEqual([
+      expect.objectContaining({ type: "session.update" }),
+      expect.objectContaining({
+        type: "conversation.item.create",
+        item: expect.objectContaining({ type: "function_call_output", call_id: "select_music" })
+      }),
+      { type: "response.create" }
+    ]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.tool_selection.result_send_after_session_update",
+        status: "sent",
+        operationId: "select_music",
+        toolName: "assistant.select_tool"
+      })
+    ]));
+  });
+
   it("does not process realtime function calls before session.updated", () => {
     const calls: unknown[] = [];
     const adapter = new OpenAIRealtimeWebRtcAdapter({

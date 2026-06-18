@@ -70,6 +70,11 @@ type RealtimeClosableResources = {
   mediaStream?: { getTracks: () => Array<{ stop: () => void }> } | null;
 };
 type RealtimeConnectMode = "audio" | "text";
+type PendingScopedToolSelectionResult = {
+  call: AssistantToolCall;
+  result: AssistantToolResult;
+  commandTraceId?: string;
+};
 
 const PLANNED_WIDGET_PREFIX = "planned_widget_";
 
@@ -651,6 +656,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private realtimeResponseTraceIds = new Map<string, string>();
   private realtimeItemTraceIds = new Map<string, string>();
   private functionCallTraceIds = new Map<string, string>();
+  private pendingScopedToolSelectionResult: PendingScopedToolSelectionResult | null = null;
 
   constructor(private readonly options: OpenAIRealtimeWebRtcAdapterOptions = {}) {}
 
@@ -710,6 +716,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.activeResponseId = null;
     this.clearRealtimeTraceState();
     this.pendingResponseCreateAfterActiveToolResult = false;
+    this.pendingScopedToolSelectionResult = null;
 
     let stream: MediaStream | null = null;
     if (mode === "audio") {
@@ -889,6 +896,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.activeResponseId = null;
     this.clearRealtimeTraceState();
     this.pendingResponseCreateAfterActiveToolResult = false;
+    this.pendingScopedToolSelectionResult = null;
     this.options.onStatusChange?.("disconnected");
   }
 
@@ -913,6 +921,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.clearSessionUpdateTimeout();
     this.clearSessionReadyPromise();
     this.pendingResponseCreateAfterActiveToolResult = false;
+    this.pendingScopedToolSelectionResult = null;
     this.clearRealtimeTraceState();
   }
 
@@ -1042,6 +1051,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.sendEvent({ type: "response.cancel" }, { queueWhenClosed: false, commandTraceId });
       this.activeResponseId = null;
       this.pendingResponseCreateAfterActiveToolResult = false;
+      this.pendingScopedToolSelectionResult = null;
     }
     this.emitDiagnostic({
       type: "realtime.text_command.reset_selector",
@@ -1251,6 +1261,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   }
 
   private handleToolSelection(call: AssistantToolCall): void {
+    const commandTraceId = this.functionCallTraceIds.get(call.id) ?? this.activeCommandTraceId ?? this.activeRealtimeResponseTraceId ?? undefined;
     const selection = parseToolSelectionArguments(call.arguments);
     const selectedTool = selection ? this.currentTools.find((tool) => tool.name === selection.name) : undefined;
     if (!selection || !selectedTool || !this.currentContext) {
@@ -1316,6 +1327,18 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       return;
     }
 
+    this.pendingScopedToolSelectionResult = {
+      call,
+      result: {
+        status: "success",
+        message: "已选择工具，正在读取所需上下文。",
+        data: {
+          selectedTool: selectedTool.name,
+          targetHint: selection.targetHint
+        }
+      },
+      commandTraceId
+    };
     this.sendEvent(update);
     this.emitDiagnostic({
       type: "realtime.tool_selection.success",
@@ -1324,13 +1347,12 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       toolName: selectedTool.name,
       data: { targetHint: selection.targetHint, selectedModule: selection.selectedModule, confidence: selection.confidence }
     });
-    this.sendToolResult(call, {
-      status: "success",
-      message: "已选择工具，正在读取所需上下文。",
-      data: {
-        selectedTool: selectedTool.name,
-        targetHint: selection.targetHint
-      }
+    this.emitDiagnostic({
+      type: "realtime.tool_selection.result_deferred",
+      status: "pending_session_update",
+      operationId: call.id,
+      toolName: selectedTool.name,
+      commandTraceId
     });
   }
 
@@ -1394,6 +1416,18 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.resolveSessionReadyPromise();
       this.emitDiagnostic({ type: "realtime.session.updated", status: "connected" });
       this.options.onStatusChange?.("connected");
+      const pendingSelection = this.pendingScopedToolSelectionResult;
+      if (pendingSelection) {
+        this.pendingScopedToolSelectionResult = null;
+        this.emitDiagnostic({
+          type: "realtime.tool_selection.result_send_after_session_update",
+          status: "sent",
+          operationId: pendingSelection.call.id,
+          toolName: pendingSelection.call.name,
+          commandTraceId: pendingSelection.commandTraceId
+        });
+        this.sendToolResult(pendingSelection.call, pendingSelection.result);
+      }
       return;
     }
     if (event.type === "error") {
