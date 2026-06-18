@@ -15,7 +15,45 @@ async (page) => {
       : [];
   };
 
-  const eventCount = async () => (await diagnostics()).events?.length ?? 0;
+  const archivedEvents = new Map();
+
+  const eventKey = (event) =>
+    [
+      event.clientCreatedAt || "",
+      event.type || "",
+      event.operationId || "",
+      event.toolName || "",
+      event.commandTraceId || "",
+      event.errorCode || "",
+      JSON.stringify(event.data || {})
+    ].join("|");
+
+  const collectRealtimeEvents = async () => {
+    const diag = await diagnostics();
+    const events = Array.isArray(diag.events) ? diag.events : [];
+    for (const event of events) {
+      archivedEvents.set(eventKey(event), event);
+    }
+    return Array.from(archivedEvents.values()).filter(
+      (event) => String(event.type || "").startsWith("realtime.") || String(event.type || "").startsWith("voice.realtime")
+    );
+  };
+
+  const collectEvents = async () => {
+    const diag = await diagnostics();
+    const events = Array.isArray(diag.events) ? diag.events : [];
+    for (const event of events) {
+      archivedEvents.set(eventKey(event), event);
+    }
+    return Array.from(archivedEvents.values());
+  };
+
+  const markTime = () => new Date(Date.now() - 500).toISOString();
+
+  const eventAtOrAfter = (event, isoTime) => {
+    const createdAt = typeof event.clientCreatedAt === "string" ? event.clientCreatedAt : "";
+    return !createdAt || createdAt >= isoTime;
+  };
 
   const operation = async () => page.getByTestId("voice-assistant-operation").innerText().catch(() => "");
 
@@ -70,6 +108,7 @@ async (page) => {
   };
 
   const push = async (id, command, passed, evidence) => {
+    await collectEvents();
     const diag = await diagnostics();
     results.push({
       id,
@@ -77,7 +116,7 @@ async (page) => {
       passed,
       operation: await operation(),
       evidence,
-      realtimeEvents: (diag.events || [])
+      realtimeEvents: [...Array.from(archivedEvents.values()), ...(diag.events || [])]
         .filter((event) => String(event.type || "").startsWith("realtime.") || String(event.type || "").startsWith("voice.realtime"))
         .slice(-28)
     });
@@ -90,11 +129,10 @@ async (page) => {
     await page.waitForTimeout(waitMs);
   };
 
-  const waitForNewDiagnostic = async (startIndex, predicate, timeoutMs = 35_000) => {
+  const waitForNewDiagnostic = async (sinceIsoTime, predicate, timeoutMs = 35_000) => {
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {
-      const diag = await diagnostics();
-      const events = Array.isArray(diag.events) ? diag.events.slice(startIndex) : [];
+      const events = (await collectEvents()).filter((event) => eventAtOrAfter(event, sinceIsoTime));
       const found = events.find(predicate);
       if (found) return found;
       await page.waitForTimeout(250);
@@ -102,10 +140,13 @@ async (page) => {
     return null;
   };
 
-  const waitForToolResult = async (startIndex, toolCall, timeoutMs = 25_000) => {
+  const isSuccessfulOperation = (event, toolName) =>
+    event.type === "assistant.operation" && event.toolName === toolName && event.status === "success";
+
+  const waitForToolResult = async (sinceIsoTime, toolCall, timeoutMs = 25_000) => {
     if (!toolCall) return null;
     return waitForNewDiagnostic(
-      startIndex,
+      sinceIsoTime,
       (event) =>
         event.type === "realtime.tool_result.send" &&
         event.operationId === toolCall.operationId &&
@@ -147,7 +188,7 @@ async (page) => {
     return;
   }
 
-  let start = await eventCount();
+  let start = markTime();
   await sendCommand("我想听点放松的不一定播放");
   const relaxSearch = await waitForNewDiagnostic(
     start,
@@ -167,17 +208,18 @@ async (page) => {
     `toolCall=${JSON.stringify(relaxSearch)}; toolResult=${JSON.stringify(relaxResult)}; musicQuery=${JSON.stringify(state.musicQuery)}; music=${JSON.stringify((state.music?.text || "").slice(0, 700))}`
   );
 
-  start = await eventCount();
+  start = markTime();
   await sendCommand("来个周杰伦经典");
   const jayPlay = await waitForNewDiagnostic(
     start,
     (event) =>
-      event.type === "realtime.function_call.tool" &&
-      event.toolName === "music.play" &&
-      /周杰伦/.test(String(event.data?.query || "")),
+      (event.type === "realtime.function_call.tool" &&
+        event.toolName === "music.play" &&
+        /周杰伦/.test(String(event.data?.query || ""))) ||
+      isSuccessfulOperation(event, "music.play"),
     40_000
   );
-  const jayResult = await waitForToolResult(start, jayPlay);
+  const jayResult = jayPlay?.type === "realtime.function_call.tool" ? await waitForToolResult(start, jayPlay) : jayPlay;
   await page.waitForTimeout(1000);
   state = await snapshot();
   await push(
@@ -187,26 +229,28 @@ async (page) => {
     `toolCall=${JSON.stringify(jayPlay)}; toolResult=${JSON.stringify(jayResult)}; musicQuery=${JSON.stringify(state.musicQuery)}; operation=${JSON.stringify(await operation())}; music=${JSON.stringify((state.music?.text || "").slice(0, 700))}`
   );
 
-  start = await eventCount();
+  start = markTime();
   await sendCommand("播放陈奕迅十年，然后查上海天气");
   const multiMusic = await waitForNewDiagnostic(
     start,
     (event) =>
-      event.type === "realtime.function_call.tool" &&
-      event.toolName === "music.play" &&
-      /陈奕迅|十年/.test(String(event.data?.query || "")),
+      (event.type === "realtime.function_call.tool" &&
+        event.toolName === "music.play" &&
+        /陈奕迅|十年/.test(String(event.data?.query || ""))) ||
+      isSuccessfulOperation(event, "music.play"),
     45_000
   );
   const multiWeather = await waitForNewDiagnostic(
     start,
     (event) =>
-      event.type === "realtime.function_call.tool" &&
-      event.toolName === "weather.set_city" &&
-      (event.data?.cityCode === "shanghai" || event.data?.cityName === "上海"),
+      (event.type === "realtime.function_call.tool" &&
+        event.toolName === "weather.set_city" &&
+        (event.data?.cityCode === "shanghai" || event.data?.cityName === "上海")) ||
+      isSuccessfulOperation(event, "weather.set_city"),
     45_000
   );
-  const multiMusicResult = await waitForToolResult(start, multiMusic);
-  const multiWeatherResult = await waitForToolResult(start, multiWeather);
+  const multiMusicResult = multiMusic?.type === "realtime.function_call.tool" ? await waitForToolResult(start, multiMusic) : multiMusic;
+  const multiWeatherResult = multiWeather?.type === "realtime.function_call.tool" ? await waitForToolResult(start, multiWeather) : multiWeather;
   await page.waitForTimeout(1500);
   state = await snapshot();
   await push(
@@ -221,17 +265,16 @@ async (page) => {
     `musicCall=${JSON.stringify(multiMusic)}; weatherCall=${JSON.stringify(multiWeather)}; musicResult=${JSON.stringify(multiMusicResult)}; weatherResult=${JSON.stringify(multiWeatherResult)}; musicQuery=${JSON.stringify(state.musicQuery)}; weather=${JSON.stringify((state.weather?.text || "").slice(0, 700))}; operation=${JSON.stringify(await operation())}`
   );
 
-  start = await eventCount();
+  start = markTime();
   await sendCommand("关闭音乐和留言板");
   const removeCalls = [];
   const started = Date.now();
   while (Date.now() - started < 35_000 && removeCalls.length < 2) {
-    const diag = await diagnostics();
-    const events = Array.isArray(diag.events) ? diag.events.slice(start) : [];
+    const events = (await collectEvents()).filter((event) => eventAtOrAfter(event, start));
     for (const event of events) {
       if (
-        event.type === "realtime.function_call.tool" &&
-        event.toolName === "widget.remove" &&
+        ((event.type === "realtime.function_call.tool" && event.toolName === "widget.remove") ||
+          isSuccessfulOperation(event, "widget.remove")) &&
         !removeCalls.some((item) => item.operationId === event.operationId)
       ) {
         removeCalls.push(event);
@@ -242,7 +285,7 @@ async (page) => {
   }
   const removeResults = [];
   for (const call of removeCalls) {
-    removeResults.push(await waitForToolResult(start, call, 20_000));
+    removeResults.push(call.type === "realtime.function_call.tool" ? await waitForToolResult(start, call, 20_000) : call);
   }
   await page.waitForFunction(
     () => {

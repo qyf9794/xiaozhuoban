@@ -576,24 +576,24 @@ describe("AssistantHarness", () => {
     const { harness, executed } = createHarness();
     await harness.initialize();
 
-    const response = await harness.handleUserInput("打开音乐然后播放周杰伦音乐");
+    const response = await harness.handleUserInput("打开天气然后查北京天气");
 
     expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
-    expect(response.result.message).toBe("board.add_widget done；music.play done");
-    expect(executed).toEqual(["board.add_widget:none", "music.play:wi_added_music"]);
+    expect(response.result.message).toBe("board.add_widget done；weather.set_city done");
+    expect(executed).toEqual(["board.add_widget:none", "weather.set_city:wi_added_weather"]);
   });
 
-  it("carries implicit music context across sequential search and play commands", async () => {
+  it("carries implicit weather context across sequential city commands", async () => {
     const { harness, executed } = createHarness();
     await harness.initialize();
 
-    const response = await harness.handleUserInput("先打开音乐，再搜索七里香，然后播放第一首");
+    const response = await harness.handleUserInput("先打开天气，再查北京天气，然后查上海天气");
 
     expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
-    expect(response.result.message).toBe("board.add_widget done；music.search done；music.play done");
-    expect(executed).toEqual(["board.add_widget:none", "music.search:wi_added_music", "music.play:wi_added_music"]);
+    expect(response.result.message).toBe("board.add_widget done；weather.set_city done；weather.set_city done");
+    expect(executed).toEqual(["board.add_widget:none", "weather.set_city:wi_added_weather", "weather.set_city:wi_added_weather"]);
   });
 
   it("delegates casual music playback then countdown setup to realtime planning", async () => {
@@ -727,6 +727,66 @@ describe("AssistantHarness", () => {
       { phase: "running", route: "shortcut", toolName: "board.add_widget" },
       { phase: "running", route: "shortcut", toolName: "board.add_widget" }
     ]);
+  });
+
+  it("forces text-only realtime commands through model planning instead of local shortcuts", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_realtime_music_weather",
+      sourceText: "打开音乐，同时查北京天气",
+      normalizedText: "打开音乐 同时查北京天气",
+      commands: [
+        {
+          id: "cmd_music",
+          module: "music",
+          tool: "music.play",
+          args: { widgetId: "wi_music", query: "周杰伦" },
+          risk: "safe",
+          confidence: 0.92,
+          source: "text",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "cmd_weather",
+          module: "weather",
+          tool: "weather.set_city",
+          args: { widgetId: "wi_weather", city: "北京" },
+          risk: "safe",
+          confidence: 0.92,
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "parallel", commandIds: ["cmd_music", "cmd_weather"] }],
+      confidence: 0.92,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({
+      modelPlan,
+      getContextInput: () => ({
+        ...createContextInput(),
+        focusedWidgetId: "wi_music",
+        widgets: [
+          { widgetId: "wi_music", definitionId: "wd_music", type: "music", name: "音乐", order: 1 },
+          { widgetId: "wi_weather", definitionId: "wd_weather", type: "weather", name: "天气", order: 2 }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput("打开音乐，同时查北京天气", { commandTraceId: "trace_realtime_text" });
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("music.play done；weather.set_city done");
+    expect(executed).toEqual(["music.play:wi_music", "weather.set_city:wi_weather"]);
+    expect(harness.getLastDiagnostics()).toMatchObject({
+      commandTraceId: "trace_realtime_text",
+      usedRealtime: true,
+      route: "model"
+    });
   });
 
   it("keeps a redacted diagnostics snapshot for real-page acceptance evidence", async () => {

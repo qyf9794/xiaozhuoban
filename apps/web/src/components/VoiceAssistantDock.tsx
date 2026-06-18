@@ -143,6 +143,15 @@ export function shouldUseRealtimeTextCommand(
   return !/^(确认|确定|可以|同意|执行|取消|不用|不要|拒绝|算了)$/.test(normalized);
 }
 
+export function shouldUseRealtimeHarnessCommand(input: string): boolean {
+  const normalized = input.trim();
+  if (!normalized) return false;
+  if (/^(在吗|你好|您好|hello|hi|嗨|你在吗)[？?。!！\s]*$/i.test(normalized)) return false;
+  return /(播放|来个|来一首|想听|搜索|搜|查.*天气|天气|关闭|关掉|收起|打开|唤出|调出|整理|排列|对齐|全屏|侧栏|侧边栏|设置|命令面板|AI 生成|新闻|头条|行情|指数|翻译|换算|倒计时|计时|留言板|音乐|歌曲|时钟|表盘)/.test(
+    normalized
+  );
+}
+
 export function getVisibleVoiceAssistantOperation(
   internalOperation: VoiceAssistantOperationStatus,
   externalOperation?: VoiceAssistantOperationStatus | null
@@ -330,6 +339,44 @@ export function VoiceAssistantDock({
     setState("thinking");
     setOperation({ phase: "thinking", command: input });
     try {
+      if (shouldUseRealtimeHarnessCommand(input)) {
+        const response = await harness.handleRealtimeUserInput(input, { commandTraceId });
+        publishVoiceAssistantDiagnostics(harness.getLastDiagnostics());
+        onCommandRoute?.(response.route);
+        const resultText = getResultText(response.result.status, response.result.message);
+        setLastMessage(resultText);
+        setOperation({
+          phase: response.result.status === "needs_confirmation" ? "waiting_confirmation" : response.result.status === "success" ? "success" : "error",
+          command: input,
+          message: resultText
+        });
+        setState(response.result.status === "needs_confirmation" ? "waiting_confirmation" : response.result.status === "success" ? "executing" : "error");
+        setHistory((prev) =>
+          prependVoiceAssistantHistory(prev, {
+            id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            text: input,
+            result: resultText,
+            route: response.route
+          })
+        );
+        onDiagnostic?.({
+          type: "voice.realtime_text_command.result",
+          commandTraceId,
+          status: response.result.status,
+          route: response.route,
+          toolName: response.call?.name,
+          operationId: response.call?.id,
+          message: response.result.message,
+          errorCode: response.result.errorCode,
+          data: { input, execution: "harness" }
+        });
+        window.setTimeout(() => {
+          if (!harness.getPendingConfirmation()) {
+            setState("listening");
+          }
+        }, 320);
+        return;
+      }
       await onSendRealtimeTextCommand(input, { commandTraceId });
       const resultText = "已交给 Realtime 解析";
       setLastMessage(resultText);

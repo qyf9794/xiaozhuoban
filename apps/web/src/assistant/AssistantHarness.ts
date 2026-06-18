@@ -330,6 +330,30 @@ export class AssistantHarness {
     }
   }
 
+  async handleRealtimeUserInput(input: string, options: AssistantHandleUserInputOptions = {}): Promise<AssistantHarnessResponse> {
+    const startedAt = Date.now();
+    const commandTraceId = options.commandTraceId ?? createId("trace");
+    this.startDiagnostics(input, commandTraceId);
+    await this.options.realtime.setActiveCommandTraceId?.(commandTraceId);
+    try {
+      const response = await this.handleRealtimeModelInput(input, startedAt);
+      this.finishDiagnostics(response);
+      return response;
+    } catch (error) {
+      this.finishDiagnostics({
+        route: this.lastDiagnostics?.route ?? "model",
+        result: {
+          status: "failed",
+          message: error instanceof Error ? error.message : "助手执行失败",
+          errorCode: "ASSISTANT_COMMAND_FAILED"
+        }
+      });
+      throw error;
+    } finally {
+      await this.options.realtime.setActiveCommandTraceId?.(null);
+    }
+  }
+
   private async handleUserInputInternal(input: string, startedAt: number): Promise<AssistantHarnessResponse> {
     const learningResponse = await this.handlePendingLearningInput(input, startedAt);
     if (learningResponse) {
@@ -376,6 +400,14 @@ export class AssistantHarness {
     }
 
     const context = this.getCurrentContext();
+    return this.handleRealtimeModelInput(input, startedAt, context);
+  }
+
+  private async handleRealtimeModelInput(
+    input: string,
+    startedAt: number,
+    context: CompactAssistantContext = this.getCurrentContext()
+  ): Promise<AssistantHarnessResponse> {
     this.markRealtimeUsed();
     const modelPlan = await this.options.realtime.requestCommandPlan?.(input, context, this.currentTools, this.options.moduleRegistry);
     if (modelPlan) {

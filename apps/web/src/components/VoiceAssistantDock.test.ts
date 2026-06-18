@@ -12,6 +12,7 @@ import {
   publishVoiceAssistantDiagnostics,
   resolveVoiceAssistantSubmitText,
   shouldDisableVoiceAssistantSend,
+  shouldUseRealtimeHarnessCommand,
   shouldUseRealtimeTextCommand,
   shouldSubmitVoiceAssistantOnKeyDown,
   type VoiceAssistantDockState
@@ -95,6 +96,14 @@ describe("VoiceAssistantDock", () => {
     expect(shouldUseRealtimeTextCommand("connected", true, true, "确认")).toBe(false);
     expect(shouldUseRealtimeTextCommand("connected", true, true, "取消")).toBe(false);
     expect(shouldUseRealtimeTextCommand("connected", true, true, "来个周杰伦经典")).toBe(true);
+  });
+
+  it("routes command-like realtime text through Harness while leaving greetings to the data channel", () => {
+    expect(shouldUseRealtimeHarnessCommand("在吗")).toBe(false);
+    expect(shouldUseRealtimeHarnessCommand("你好")).toBe(false);
+    expect(shouldUseRealtimeHarnessCommand("来个周杰伦经典")).toBe(true);
+    expect(shouldUseRealtimeHarnessCommand("播放陈奕迅十年，然后查上海天气")).toBe(true);
+    expect(shouldUseRealtimeHarnessCommand("关闭音乐和留言板")).toBe(true);
   });
 
   it("uses external tool operation when Harness reports active tool work", () => {
