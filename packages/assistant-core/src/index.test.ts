@@ -2192,6 +2192,45 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("cleans casual music search filler and artist prefixes without crossing the local confidence threshold", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const search = router.route("搜一点轻松的音乐", context);
+    const play = router.route("来一首陈奕迅十年", {
+      ...context,
+      availableWidgets: [
+        ...(context.availableWidgets ?? []),
+        {
+          widgetId: "wi_music",
+          definitionId: "wd_music",
+          type: "music",
+          name: "音乐",
+          order: 6,
+          summary: "",
+          recent: true
+        }
+      ]
+    });
+
+    expect(search.matched).toBe(true);
+    if (search.matched) {
+      expect(search.toolCall.name).toBe("board.add_widget");
+      expect(search.confidence).toBeLessThan(0.9);
+      expect(search.toolCall.arguments).toEqual({
+        definitionId: "wd_music",
+        followUp: {
+          name: "music.search",
+          arguments: { query: "轻松" }
+        }
+      });
+    }
+    expect(play.matched).toBe(true);
+    if (play.matched) {
+      expect(play.toolCall.name).toBe("music.play");
+      expect(play.confidence).toBeLessThan(0.9);
+      expect(play.toolCall.arguments).toEqual({ widgetId: "wi_music", query: "陈奕迅 十年" });
+    }
+  });
+
   it("routes music search commands without playback", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("搜索周杰伦音乐", context);
@@ -2206,6 +2245,39 @@ describe("IntentShortcutRouter", () => {
           arguments: { query: "周杰伦" }
         }
       });
+    }
+  });
+
+  it("keeps semantic info and media commands below the local confidence threshold", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const contextWithDialClock: IntentShortcutContext = {
+      ...context,
+      availableDefinitions: [
+        ...(context.availableDefinitions ?? []),
+        { definitionId: "wd_dialClock", type: "dialClock", name: "表盘时钟" }
+      ]
+    };
+    const cases = [
+      { input: "刷新重大新闻", tool: "headline.request_refresh" },
+      { input: "今天有什么头条新闻", tool: "headline.request_refresh" },
+      { input: "看美股三大指数", tool: "market.set_indices" },
+      { input: "打开恒生和上证行情", tool: "market.set_indices" },
+      { input: "留言板发一句我在测试", tool: "messageBoard.send" },
+      { input: "搜一点轻松的音乐", tool: "board.add_widget" }
+    ];
+
+    for (const item of cases) {
+      const result = router.route(item.input, contextWithDialClock);
+      expect(result.matched, item.input).toBe(true);
+      if (result.matched) {
+        expect(result.toolCall.name, item.input).toBe(item.tool);
+        expect(result.confidence, item.input).toBeLessThan(0.9);
+      }
+    }
+
+    const naturalPlay = router.route("播放王菲的红豆", contextWithDialClock);
+    if (naturalPlay.matched) {
+      expect(naturalPlay.confidence).toBeLessThan(0.9);
     }
   });
 

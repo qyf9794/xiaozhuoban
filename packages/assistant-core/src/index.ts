@@ -759,14 +759,18 @@ function inferTvChannelName(input: string) {
 }
 
 function inferMusicQuery(input: string) {
-  return input
-    .replace(/(播放|搜索|查找|找一下|找|来一首|放一首|放首|放点|放个|放些|听一下|听|音乐播放器|音乐|歌曲|歌单|专辑|歌手|歌|第一首|第一条|第一个|首个|一下|给我|帮我|麻烦|麻烦你)/g, " ")
+  const query = input
+    .replace(/(播放|搜索|搜|查找|找一下|找|来一首|放一首|放首|放点|放个|放些|听一下|听|音乐播放器|音乐|歌曲|歌单|专辑|歌手|歌|第一首|第一条|第一个|首个|一下|给我|帮我|麻烦|麻烦你)/g, " ")
     .replace(/\s+/g, " ")
     .trim()
+    .replace(/^(一点|一些|几首|几首?|来点|来些|轻一点的|轻松一点的)\s*/g, "")
     .replace(/^([^\s的]{1,24})的(.+)$/g, "$1 $2")
     .replace(/的\s*$/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+  const artistPrefixes = ["陈奕迅", "王菲", "周杰伦", "林俊杰", "五月天", "孙燕姿", "张学友", "刘德华"];
+  const artist = artistPrefixes.find((prefix) => query.startsWith(prefix) && query.length > prefix.length && !query.startsWith(`${prefix} `));
+  return artist ? `${artist} ${query.slice(artist.length).trim()}` : query;
 }
 
 function inferMusicKind(input: string): "song" | "album" | "playlist" | undefined {
@@ -1728,7 +1732,9 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         if (CLOSE_SHORTCUT_INTENT_PATTERN.test(normalized)) {
           return { matched: false, reason: "message_board_close_deferred" };
         }
-        if (!/(留言板|留言区|消息板|留言|给大家|跟大家|公告|通知)/.test(normalized) || !/(发|发送|说|写|发布|留言|公告|通知)/.test(normalized)) {
+        const hasMessageAction =
+          /(发|发送|说|写|发布|公告|通知)/.test(normalized) || /(给大家|跟大家)?留言\s*[:：]/.test(raw) || /(给大家|跟大家)留言/.test(normalized);
+        if (!/(留言板|留言区|消息板|留言|给大家|跟大家|公告|通知)/.test(normalized) || !hasMessageAction) {
           return { matched: false, reason: "not_message_board_send" };
         }
         const text = inferMessageBoardText(raw);
@@ -1890,7 +1896,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         const wantsOff = /(关闭|关掉|退出|取消|停用|关上|关了|不要|取消)/.test(normalized);
         const wantsOn = /(打开|开启|进入|启用|切到|切换到|启动|开一下)/.test(normalized) || !wantsOff;
         return (
-          routeWidgetDetailOrAdd(context, raw, "dialClock", "dialClock.set_night_mode", { enabled: wantsOn }, 0.88) ?? {
+          routeWidgetDetailOrAdd(context, raw, "dialClock", "dialClock.set_night_mode", { enabled: wantsOn }, 1) ?? {
             matched: false,
             reason: "dial_clock_target_missing"
           }
@@ -2011,7 +2017,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         const args = inferMusicArgs(raw);
         if (!args.query) return { matched: false, reason: "music_query_missing" };
         return (
-          routeWidgetDetailOrAdd(context, raw, "music", "music.search", args, 0.92) ?? {
+          routeWidgetDetailOrAdd(context, raw, "music", "music.search", args, 0.86) ?? {
             matched: false,
             reason: "music_target_missing"
           }
@@ -2042,8 +2048,11 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         if (!targetType && isPlay && musicQuery && findWidgetByType(context, "music")) {
           targetType = "music";
         }
+        if (!targetType && isPlay && musicQuery && !channelName) {
+          return { matched: false, reason: "music_play_requires_realtime_target" };
+        }
         if (targetType === "music" && isPlay && !isPause && !isNext && !isPrevious && !isResume) {
-          const confidence = /(播放|来一首|放一首|放首)/.test(normalized) ? 0.92 : 0.86;
+          const confidence = /(播放|来一首|放一首|放首)/.test(normalized) ? 0.88 : 0.86;
           return (
             routeWidgetDetailOrAdd(context, raw, "music", "music.play", musicArgs, confidence) ?? {
               matched: false,

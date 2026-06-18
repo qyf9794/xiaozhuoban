@@ -291,6 +291,7 @@ describe("OpenAI realtime adapter helpers", () => {
     const sentEvents: unknown[] = [];
     const diagnostics: Array<{ type: string; status?: string; data?: Record<string, unknown> }> = [];
     const statuses: string[] = [];
+    const transceivers: Array<{ kind: string; init?: RTCRtpTransceiverInit }> = [];
 
     class MockDataChannel {
       readyState = "open";
@@ -328,6 +329,10 @@ describe("OpenAI realtime adapter helpers", () => {
 
       addTrack() {
         throw new Error("text-only realtime should not add audio tracks");
+      }
+
+      addTransceiver(kind: string, init?: RTCRtpTransceiverInit) {
+        transceivers.push({ kind, init });
       }
 
       async createOffer() {
@@ -386,6 +391,7 @@ describe("OpenAI realtime adapter helpers", () => {
       await adapter.connectTextOnly();
 
       expect(getUserMediaCalled).toBe(false);
+      expect(transceivers).toEqual([{ kind: "audio", init: { direction: "recvonly" } }]);
       expect(statuses).toContain("connected");
       expect(diagnostics).toEqual(expect.arrayContaining([
         expect.objectContaining({ type: "realtime.connect.start", data: { mode: "text" } }),
@@ -667,6 +673,46 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(sent).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: "conversation.item.create" }),
       { type: "response.create" }
+    ]));
+  });
+
+  it("records safe music arguments from realtime function calls before handing them to Harness", () => {
+    const diagnostics: Array<{ type: string; operationId?: string; toolName?: string; data?: unknown }> = [];
+    const calls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      },
+      onFunctionCall(call) {
+        calls.push({ id: call.id, name: call.name, arguments: call.arguments as Record<string, unknown> });
+      }
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean }, { sessionReady: true });
+
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "response.output_item.done",
+      item: {
+        type: "function_call",
+        call_id: "call_music_1",
+        name: "music__dot__play",
+        arguments: JSON.stringify({ widgetId: "wi_music", query: "陈奕迅 十年", kind: "song" })
+      }
+    });
+
+    expect(calls).toEqual([
+      { id: "call_music_1", name: "music.play", arguments: { widgetId: "wi_music", query: "陈奕迅 十年", kind: "song" } }
+    ]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.function_call.tool",
+        operationId: "call_music_1",
+        toolName: "music.play",
+        data: { query: "陈奕迅 十年", kind: "song" }
+      })
     ]));
   });
 

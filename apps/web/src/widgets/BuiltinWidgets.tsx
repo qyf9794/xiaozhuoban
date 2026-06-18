@@ -52,6 +52,8 @@ import {
   type MessageBoardItem
 } from "../lib/collab";
 
+const E2E_AUTH_BYPASS = import.meta.env.VITE_XIAOZHUOBAN_E2E_AUTH_BYPASS === "true";
+
 function asString(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
@@ -5459,11 +5461,13 @@ export function BuiltinWidgetView({
     const latestMessageIdRef = useRef("");
     const initializedMessageRef = useRef(false);
     const historyLoadedRef = useRef(false);
-    const userId = user?.id ?? "";
-    const userName = resolveUserName({
-      email: user?.email ?? null,
-      userMetadata: (user?.user_metadata as Record<string, unknown> | undefined) ?? null
-    });
+    const userId = user?.id ?? (E2E_AUTH_BYPASS ? "e2e-local-user" : "");
+    const userName = E2E_AUTH_BYPASS && !user
+      ? "E2E 测试用户"
+      : resolveUserName({
+          email: user?.email ?? null,
+          userMetadata: (user?.user_metadata as Record<string, unknown> | undefined) ?? null
+        });
 
     useEffect(() => {
       const latest = messages[0];
@@ -5645,6 +5649,9 @@ export function BuiltinWidgetView({
         setDraft("");
       }
       try {
+        if (E2E_AUTH_BYPASS && !user) {
+          return { status: "success" as const, message: "已发送留言", data: { messageId: message.id, text: message.text } };
+        }
         const { error } = await supabase.from("message_board_messages").insert({
           id: message.id,
           sender_id: message.senderId,

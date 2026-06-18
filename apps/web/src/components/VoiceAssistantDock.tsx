@@ -142,7 +142,7 @@ export function getVisibleVoiceAssistantOperation(
   internalOperation: VoiceAssistantOperationStatus,
   externalOperation?: VoiceAssistantOperationStatus | null
 ): VoiceAssistantOperationStatus {
-  return internalOperation.phase === "idle" ? externalOperation ?? internalOperation : internalOperation;
+  return externalOperation ?? internalOperation;
 }
 
 export function publishVoiceAssistantDiagnostics(snapshot: unknown): void {
@@ -330,7 +330,7 @@ export function VoiceAssistantDock({
       await onSendRealtimeTextCommand(input, { commandTraceId });
       const resultText = "已交给 Realtime 解析";
       setLastMessage(resultText);
-      setOperation({ phase: "executing", command: input, message: resultText });
+      setOperation({ phase: "idle" });
       setHistory((prev) =>
         prependVoiceAssistantHistory(prev, {
           id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,

@@ -94,14 +94,11 @@ describe("VoiceAssistantDock", () => {
     expect(shouldUseRealtimeTextCommand("connected", true, true)).toBe(false);
   });
 
-  it("uses external tool operation only while the dock is idle", () => {
+  it("uses external tool operation when Harness reports active tool work", () => {
     const external = { phase: "executing" as const, command: "board.add_widget" };
 
     expect(getVisibleVoiceAssistantOperation({ phase: "idle" }, external)).toBe(external);
-    expect(getVisibleVoiceAssistantOperation({ phase: "thinking", command: "连接语音" }, external)).toEqual({
-      phase: "thinking",
-      command: "连接语音"
-    });
+    expect(getVisibleVoiceAssistantOperation({ phase: "thinking", command: "播放陈奕迅的十年" }, external)).toBe(external);
   });
 
   it("formats runtime mode with visible outbox count", () => {

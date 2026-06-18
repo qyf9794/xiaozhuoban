@@ -10,7 +10,6 @@ import {
 import type { AssistantRealtimeAdapter } from "./AssistantHarness";
 import type { AssistantDiagnosticEvent } from "./assistantDiagnostics";
 import {
-  XIAOZHUOBAN_REALTIME_MODEL,
   createInitialRealtimeToolSpecs,
   decodeRealtimeToolName
 } from "./realtimeSessionConfig";
@@ -233,6 +232,16 @@ function parseToolSelectionArguments(value: unknown): {
     userCommand: typeof parsed.userCommand === "string" ? parsed.userCommand : undefined,
     confidence: typeof parsed.confidence === "number" ? parsed.confidence : undefined
   };
+}
+
+function createSafeRealtimeToolCallDiagnosticData(call: AssistantToolCall): Record<string, unknown> | undefined {
+  if (call.name !== "music.play" && call.name !== "music.search") return undefined;
+  const args = isRecord(call.arguments) ? call.arguments : {};
+  const data: Record<string, unknown> = {};
+  if (typeof args.query === "string") data.query = args.query;
+  if (typeof args.kind === "string") data.kind = args.kind;
+  if (typeof args.resultIndex === "number") data.resultIndex = args.resultIndex;
+  return Object.keys(data).length ? data : undefined;
 }
 
 export function parseRealtimeFunctionCallEvent(value: unknown): AssistantToolCall | null {
@@ -725,6 +734,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       const sessionReadyPromise = this.createSessionReadyPromise();
 
       stream?.getAudioTracks().forEach((track) => peerConnection.addTrack(track, stream as MediaStream));
+      if (!stream && typeof peerConnection.addTransceiver === "function") {
+        peerConnection.addTransceiver("audio", { direction: "recvonly" });
+        this.emitDiagnostic({ type: "realtime.audio_transceiver.added", status: "recvonly", data: { mode } });
+      }
       const handlePeerStateChange = (state: string) => {
         const status = resolveRealtimePeerStatus(state);
         if (!status) return;
@@ -762,30 +775,33 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
       const sdpResponse = await withTimeout(
-        fetchImpl(
-          `https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(this.options.model ?? XIAOZHUOBAN_REALTIME_MODEL)}`,
-          {
-            method: "POST",
-            headers: {
-              authorization: `Bearer ${secret}`,
-              "content-type": "application/sdp"
-            },
-            body: offer.sdp ?? ""
-          }
-        ),
+        fetchImpl("https://api.openai.com/v1/realtime/calls", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${secret}`,
+            "content-type": "application/sdp"
+          },
+          body: offer.sdp ?? ""
+        }),
         connectTimeoutMs,
         "REALTIME_CONNECT_TIMEOUT(sdp)",
         () => this.emitDiagnostic({ type: "realtime.sdp.timeout", status: "failed", errorCode: "REALTIME_CONNECT_TIMEOUT" })
       );
+      const sdpText = await sdpResponse.text();
       if (!sdpResponse.ok) {
-        this.emitDiagnostic({ type: "realtime.sdp.failed", status: String(sdpResponse.status), errorCode: "REALTIME_SDP_FAILED" });
+        this.emitDiagnostic({
+          type: "realtime.sdp.failed",
+          status: String(sdpResponse.status),
+          errorCode: "REALTIME_SDP_FAILED",
+          message: sdpText.slice(0, 240)
+        });
         throw new Error("REALTIME_SDP_FAILED");
       }
       if (!this.isCurrentAttempt(attemptId)) {
         peerConnection.close();
         return;
       }
-      await peerConnection.setRemoteDescription({ type: "answer", sdp: await sdpResponse.text() });
+      await peerConnection.setRemoteDescription({ type: "answer", sdp: sdpText });
       await sessionReadyPromise;
     } catch (error) {
       if (this.isCurrentAttempt(attemptId)) {
@@ -1116,7 +1132,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       status: "received",
       operationId: call.id,
       toolName: call.name,
-      commandTraceId
+      commandTraceId,
+      data: createSafeRealtimeToolCallDiagnosticData(call)
     });
     void this.options.onFunctionCall?.(call);
   }
