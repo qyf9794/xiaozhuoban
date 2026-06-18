@@ -274,7 +274,13 @@ function shouldSendRealtimeToolResult(call: AssistantToolCall): boolean {
 }
 
 function getDeclaredToolParameterKeys(tool: AssistantToolSpec | undefined): Set<string> | null {
+  if (Array.isArray(tool?.argumentKeys) && tool.argumentKeys.every((key) => typeof key === "string")) {
+    return new Set(tool.argumentKeys);
+  }
   const parameters = isRecord(tool?.parameters) ? tool.parameters : null;
+  if (Array.isArray(parameters?.argumentKeys) && parameters.argumentKeys.every((key) => typeof key === "string")) {
+    return new Set(parameters.argumentKeys);
+  }
   const jsonSchema = isRecord(parameters?.jsonSchema) ? parameters.jsonSchema : parameters;
   const properties = isRecord(jsonSchema?.properties) ? jsonSchema.properties : null;
   if (!jsonSchema || !properties || jsonSchema.additionalProperties !== false) return null;
@@ -912,14 +918,20 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
 
   updateTools(tools: AssistantToolSpec[]): void {
     this.currentTools = tools;
-    const capabilityCatalog = createRealtimeCapabilityCatalog(tools, this.moduleRegistry?.getRealtimeCatalog());
+    const selectorUpdate = this.createToolSelectionSessionUpdate(tools);
+    const capabilityCatalog = this.createCapabilityCatalog(tools);
     const toolCatalogVersion = capabilityCatalog[0]?.catalogVersion;
     this.emitDiagnostic({
       type: "realtime.tools.update",
       status: "queued_or_sent",
       data: { toolCount: tools.length, tools: tools.map((tool) => tool.name), toolCatalogVersion }
     });
-    this.sendEvent({
+    this.sendEvent(selectorUpdate);
+  }
+
+  private createToolSelectionSessionUpdate(tools: AssistantToolSpec[] = this.getEffectiveSessionTools()): RealtimeEvent {
+    const capabilityCatalog = this.createCapabilityCatalog(tools);
+    return {
       type: "session.update",
       session: {
         type: "realtime",
@@ -928,7 +940,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         tool_choice: "auto",
         parallel_tool_calls: false
       }
-    });
+    };
   }
 
   private getEffectiveSessionTools(): AssistantToolSpec[] {
@@ -1031,6 +1043,13 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.activeResponseId = null;
       this.pendingResponseCreateAfterActiveToolResult = false;
     }
+    this.emitDiagnostic({
+      type: "realtime.text_command.reset_selector",
+      status: "sent",
+      commandTraceId,
+      data: { toolCount: this.getEffectiveSessionTools().length }
+    });
+    this.sendEvent(this.createToolSelectionSessionUpdate(), { queueWhenClosed: false, commandTraceId });
     this.emitDiagnostic({
       type: "realtime.text_command.send",
       status: "started",
