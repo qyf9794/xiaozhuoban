@@ -75,6 +75,11 @@ type PendingScopedToolSelectionResult = {
   result: AssistantToolResult;
   commandTraceId?: string;
 };
+type PendingTextCommandAfterSelectorUpdate = {
+  events: RealtimeEvent[];
+  commandTraceId: string;
+  inputLength: number;
+};
 
 const PLANNED_WIDGET_PREFIX = "planned_widget_";
 
@@ -657,6 +662,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private realtimeItemTraceIds = new Map<string, string>();
   private functionCallTraceIds = new Map<string, string>();
   private pendingScopedToolSelectionResult: PendingScopedToolSelectionResult | null = null;
+  private pendingTextCommandAfterSelectorUpdate: PendingTextCommandAfterSelectorUpdate | null = null;
 
   constructor(private readonly options: OpenAIRealtimeWebRtcAdapterOptions = {}) {}
 
@@ -717,6 +723,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.clearRealtimeTraceState();
     this.pendingResponseCreateAfterActiveToolResult = false;
     this.pendingScopedToolSelectionResult = null;
+    this.pendingTextCommandAfterSelectorUpdate = null;
 
     let stream: MediaStream | null = null;
     if (mode === "audio") {
@@ -897,6 +904,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.clearRealtimeTraceState();
     this.pendingResponseCreateAfterActiveToolResult = false;
     this.pendingScopedToolSelectionResult = null;
+    this.pendingTextCommandAfterSelectorUpdate = null;
     this.options.onStatusChange?.("disconnected");
   }
 
@@ -922,6 +930,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.clearSessionReadyPromise();
     this.pendingResponseCreateAfterActiveToolResult = false;
     this.pendingScopedToolSelectionResult = null;
+    this.pendingTextCommandAfterSelectorUpdate = null;
     this.clearRealtimeTraceState();
   }
 
@@ -1052,6 +1061,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.activeResponseId = null;
       this.pendingResponseCreateAfterActiveToolResult = false;
       this.pendingScopedToolSelectionResult = null;
+      this.pendingTextCommandAfterSelectorUpdate = null;
     }
     this.emitDiagnostic({
       type: "realtime.text_command.reset_selector",
@@ -1060,15 +1070,17 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       data: { toolCount: this.getEffectiveSessionTools().length }
     });
     this.sendEvent(this.createToolSelectionSessionUpdate(), { queueWhenClosed: false, commandTraceId });
+    this.pendingTextCommandAfterSelectorUpdate = {
+      events: createRealtimeTextCommandEvents(text),
+      commandTraceId,
+      inputLength: text.length
+    };
     this.emitDiagnostic({
       type: "realtime.text_command.send",
-      status: "started",
+      status: "pending_session_update",
       commandTraceId,
       data: { inputLength: text.length }
     });
-    for (const event of createRealtimeTextCommandEvents(text)) {
-      this.sendEvent(event, { queueWhenClosed: false, commandTraceId });
-    }
   }
 
   async requestCommandPlan(
@@ -1427,6 +1439,19 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
           commandTraceId: pendingSelection.commandTraceId
         });
         this.sendToolResult(pendingSelection.call, pendingSelection.result);
+      }
+      const pendingTextCommand = this.pendingTextCommandAfterSelectorUpdate;
+      if (pendingTextCommand) {
+        this.pendingTextCommandAfterSelectorUpdate = null;
+        this.emitDiagnostic({
+          type: "realtime.text_command.send",
+          status: "started",
+          commandTraceId: pendingTextCommand.commandTraceId,
+          data: { inputLength: pendingTextCommand.inputLength }
+        });
+        for (const pendingEvent of pendingTextCommand.events) {
+          this.sendEvent(pendingEvent, { queueWhenClosed: false, commandTraceId: pendingTextCommand.commandTraceId });
+        }
       }
       return;
     }

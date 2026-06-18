@@ -199,6 +199,20 @@ describe("OpenAI realtime adapter helpers", () => {
           tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
           tool_choice: "auto"
         })
+      })
+    ]);
+
+    (adapter as unknown as { handleRealtimeEventData: (event: unknown) => void }).handleRealtimeEventData({ type: "session.updated" });
+
+    expect(sent).toEqual([
+      { type: "response.cancel" },
+      expect.objectContaining({
+        type: "session.update",
+        session: expect.objectContaining({
+          type: "realtime",
+          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
+          tool_choice: "auto"
+        })
       }),
       {
         type: "conversation.item.create",
@@ -228,7 +242,9 @@ describe("OpenAI realtime adapter helpers", () => {
         commandTraceId: "trace_text_2",
         data: { toolCount: expect.any(Number) }
       }),
-      expect.objectContaining({ type: "realtime.event.send", commandTraceId: "trace_text_2", data: { eventType: "session.update" } })
+      expect.objectContaining({ type: "realtime.event.send", commandTraceId: "trace_text_2", data: { eventType: "session.update" } }),
+      expect.objectContaining({ type: "realtime.text_command.send", status: "pending_session_update", commandTraceId: "trace_text_2" }),
+      expect.objectContaining({ type: "realtime.text_command.send", status: "started", commandTraceId: "trace_text_2" })
     ]));
   });
 
@@ -517,6 +533,19 @@ describe("OpenAI realtime adapter helpers", () => {
           tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
           tool_choice: "auto"
         })
+      })
+    ]);
+
+    (adapter as unknown as { handleRealtimeEventData: (event: unknown) => void }).handleRealtimeEventData({ type: "session.updated" });
+
+    expect(sent).toEqual([
+      expect.objectContaining({
+        type: "session.update",
+        session: expect.objectContaining({
+          type: "realtime",
+          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
+          tool_choice: "auto"
+        })
       }),
       {
         type: "conversation.item.create",
@@ -544,6 +573,7 @@ describe("OpenAI realtime adapter helpers", () => {
         commandTraceId: "trace_text_1",
         data: { eventType: "session.update" }
       }),
+      expect.objectContaining({ type: "realtime.text_command.send", status: "pending_session_update", commandTraceId: "trace_text_1" }),
       expect.objectContaining({ type: "realtime.text_command.send", status: "started", commandTraceId: "trace_text_1" }),
       expect.objectContaining({
         type: "realtime.event.send",
