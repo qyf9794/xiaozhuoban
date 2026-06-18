@@ -676,7 +676,7 @@ describe("OpenAI realtime adapter helpers", () => {
     ]));
   });
 
-  it("records safe music arguments from realtime function calls before handing them to Harness", () => {
+  it("records safe tool arguments from realtime function calls before handing them to Harness", () => {
     const diagnostics: Array<{ type: string; operationId?: string; toolName?: string; data?: unknown }> = [];
     const calls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
     const adapter = new OpenAIRealtimeWebRtcAdapter({
@@ -699,12 +699,26 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "function_call",
         call_id: "call_music_1",
         name: "music__dot__play",
-        arguments: JSON.stringify({ widgetId: "wi_music", query: "陈奕迅 十年", kind: "song" })
+        arguments: JSON.stringify({ widgetId: "wi_music", query: "陈奕迅 十年", kind: "song", apiKey: "secret" })
+      }
+    });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "response.output_item.done",
+      item: {
+        type: "function_call",
+        call_id: "call_weather_1",
+        name: "weather__dot__set_city",
+        arguments: JSON.stringify({ widgetId: "wi_weather", cityCode: "shanghai", cityName: "上海" })
       }
     });
 
     expect(calls).toEqual([
-      { id: "call_music_1", name: "music.play", arguments: { widgetId: "wi_music", query: "陈奕迅 十年", kind: "song" } }
+      { id: "call_music_1", name: "music.play", arguments: { widgetId: "wi_music", query: "陈奕迅 十年", kind: "song", apiKey: "secret" } },
+      { id: "call_weather_1", name: "weather.set_city", arguments: { widgetId: "wi_weather", cityCode: "shanghai", cityName: "上海" } }
     ]);
     expect(diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -712,6 +726,12 @@ describe("OpenAI realtime adapter helpers", () => {
         operationId: "call_music_1",
         toolName: "music.play",
         data: { query: "陈奕迅 十年", kind: "song" }
+      }),
+      expect.objectContaining({
+        type: "realtime.function_call.tool",
+        operationId: "call_weather_1",
+        toolName: "weather.set_city",
+        data: { cityCode: "shanghai", cityName: "上海" }
       })
     ]));
   });

@@ -50,7 +50,7 @@ const widgetTypes = [
 
 function parseSimulationReport(): CatalogCase[] {
   const text = fs.readFileSync(simulationReportPath, "utf8");
-  return [...text.matchAll(/^(\d{3})\. \[pass\] route=[^;]+; tools=([^;]+); command=(.+)$/gm)].map((match) => ({
+  return [...text.matchAll(/^(\d{3})\. \[pass\] route=[^;]+; reason=[^;]+; tools=([^;]+); command=(.+)$/gm)].map((match) => ({
     id: Number(match[1]),
     tools: match[2].split(",").map((item) => item.trim()).filter(Boolean),
     text: match[3]

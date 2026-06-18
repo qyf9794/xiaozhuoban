@@ -234,13 +234,38 @@ function parseToolSelectionArguments(value: unknown): {
   };
 }
 
+const SAFE_REALTIME_DIAGNOSTIC_ARG_KEYS = new Set([
+  "query",
+  "kind",
+  "resultIndex",
+  "cityCode",
+  "cityName",
+  "zones",
+  "channelName",
+  "indexCodes",
+  "definitionId",
+  "boardId",
+  "enabled",
+  "targetLang",
+  "display",
+  "expression",
+  "durationSeconds"
+]);
+
 function createSafeRealtimeToolCallDiagnosticData(call: AssistantToolCall): Record<string, unknown> | undefined {
-  if (call.name !== "music.play" && call.name !== "music.search") return undefined;
   const args = isRecord(call.arguments) ? call.arguments : {};
   const data: Record<string, unknown> = {};
-  if (typeof args.query === "string") data.query = args.query;
-  if (typeof args.kind === "string") data.kind = args.kind;
-  if (typeof args.resultIndex === "number") data.resultIndex = args.resultIndex;
+  for (const key of SAFE_REALTIME_DIAGNOSTIC_ARG_KEYS) {
+    const value = args[key];
+    if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean" ||
+      (Array.isArray(value) && value.every((item) => typeof item === "string" || typeof item === "number"))
+    ) {
+      data[key] = value;
+    }
+  }
   return Object.keys(data).length ? data : undefined;
 }
 

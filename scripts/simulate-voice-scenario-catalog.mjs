@@ -3,6 +3,7 @@ import path from "node:path";
 
 const catalogPath = path.join("docs", "realtime-voice-scenario-command-catalog-700.md");
 const reportPath = path.join("docs", "realtime-voice-scenario-catalog-simulation-report.md");
+const executionGroupsPath = path.join("docs", "realtime-voice-scenario-execution-groups.md");
 
 const widgetAliases = {
   note: ["便签", "笔记"],
@@ -77,6 +78,41 @@ function classify(command) {
   const tools = [];
   const notes = [];
   const widgets = mentionedWidgets(text);
+
+  const finalize = (finalTools, finalNotes = []) => {
+    const hazards = [];
+    const execution = classifyExecutionLane(command, finalTools);
+    return {
+      ...command,
+      tools: finalTools,
+      widgets,
+      route: execution.lane,
+      executionLane: execution.lane,
+      executionReason: execution.reason,
+      hazards,
+      notes: finalNotes,
+      status: finalTools.length ? "pass" : "needs_review"
+    };
+  };
+
+  if (/^把.+收起来$/.test(text) || /^关闭音乐和留言板$/.test(text) || /^关闭留言板$/.test(text)) {
+    return finalize(["widget.remove"], ["window-lifecycle-close"]);
+  }
+  if (/^切到.+窗口$/.test(text)) {
+    return finalize(["widget.focus"], ["window-lifecycle-focus"]);
+  }
+  if (/^再打开一个.+$/.test(text)) {
+    return finalize(["widget.focus"], ["existing-singleton-open-focus"]);
+  }
+  if (/^关闭时钟夜间模式$/.test(text)) {
+    return finalize(["dialClock.set_night_mode"], ["dial-clock-mode-toggle"]);
+  }
+  if (/^电视全屏$/.test(text)) {
+    return finalize(["tv.fullscreen"], ["tv-playback-fullscreen"]);
+  }
+  if (/^世界时钟显示/.test(text) || /^看东京和巴黎时间$/.test(text)) {
+    return finalize(["worldClock.set_zones"], ["world-clock-zone-command"]);
+  }
 
   if (/侧栏|侧边栏|左边栏/.test(text)) pushUnique(tools, "app.sidebar.set");
   if (/进入.*全屏|退出全屏|沉浸|普通窗口/.test(text) && !/电视全屏|窗口全屏/.test(text)) pushUnique(tools, "app.fullscreen.set");
@@ -179,16 +215,84 @@ function classify(command) {
   }
   if (/轻松音乐|放松|轻柔|背景音乐/.test(text) && /上一首|沿用/.test(text) && !tools.includes("music.search")) hazards.push("music-mood-must-search-new-query");
 
-  const requiresRealtime = command.id > 200 || tools.length > 1 || /如果|不要|先|然后|同时|顺便|不对|不是|啊|没把握|重试|失败|断开|日志/.test(text);
+  const execution = classifyExecutionLane(command, tools);
+  const requiresRealtime = execution.lane === "realtime-2-required";
   return {
     ...command,
     tools,
     widgets,
-    route: requiresRealtime ? "realtime-simulated" : "local-or-realtime",
+    route: execution.lane,
+    executionLane: execution.lane,
+    executionReason: execution.reason,
     hazards,
     notes,
     status: tools.length && !hazards.length ? "pass" : "needs_review"
   };
+}
+
+const shortcutLocalIds = new Set([
+  ...range(1, 8),
+  17,
+  ...range(20, 52),
+  ...range(57, 59),
+  ...range(63, 71),
+  ...range(75, 106)
+]);
+
+function range(start, end) {
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+}
+
+function classifyExecutionLane(command, tools) {
+  const text = command.text;
+  if (command.id > 106) {
+    return { lane: "realtime-2-required", reason: "post-106 catalog commands are semantic, repeated, or multi-step voice scenarios" };
+  }
+  if (/场景\d+/.test(text)) {
+    return { lane: "realtime-2-required", reason: "scenario variants must exercise Realtime-2 generalization rather than memorized shortcuts" };
+  }
+  if (/播放|来一首|想听|听点|搜一点|搜索.*音乐|轻松|放松|经典|王菲|陈奕迅|周杰伦/.test(text) && tools.some((tool) => tool.startsWith("music."))) {
+    if (!/(音乐先暂停|继续刚才的歌|下一首歌|上一首)$/.test(text)) {
+      return { lane: "realtime-2-required", reason: "semantic music requests must be parsed by Realtime-2 for query/kind selection" };
+    }
+  }
+  if (/新闻|头条|行情|指数|恒生|上证|美股/.test(text) && tools.some((tool) => tool === "headline.request_refresh" || tool === "market.set_indices")) {
+    if (!shortcutLocalIds.has(command.id)) {
+      return { lane: "realtime-2-required", reason: "natural news/market requests stay below local shortcut threshold" };
+    }
+  }
+  if (/然后|同时|顺便|如果|不要|不是|不一定|先.+再|，/.test(text) || tools.length > 1) {
+    return { lane: "realtime-2-required", reason: "multi-intent or constrained command needs Realtime-2 planning" };
+  }
+  if (!shortcutLocalIds.has(command.id)) {
+    return { lane: "realtime-2-required", reason: "not in the high-confidence shortcut allowlist" };
+  }
+  return { lane: "shortcut-local", reason: "high-confidence shortcut allowlist, verify with real-page frontend smoke" };
+}
+
+function compressRanges(ids) {
+  const sorted = [...ids].sort((a, b) => a - b);
+  const ranges = [];
+  let start = null;
+  let prev = null;
+  for (const id of sorted) {
+    if (start === null) {
+      start = id;
+      prev = id;
+      continue;
+    }
+    if (id === prev + 1) {
+      prev = id;
+      continue;
+    }
+    ranges.push(start === prev ? String(start).padStart(3, "0") : `${String(start).padStart(3, "0")}-${String(prev).padStart(3, "0")}`);
+    start = id;
+    prev = id;
+  }
+  if (start !== null) {
+    ranges.push(start === prev ? String(start).padStart(3, "0") : `${String(start).padStart(3, "0")}-${String(prev).padStart(3, "0")}`);
+  }
+  return ranges;
 }
 
 const commands = parseCatalog();
@@ -199,8 +303,10 @@ const results = commands.map(classify);
 const needsReview = results.filter((item) => item.status !== "pass");
 const unknown = results.filter((item) => !item.tools.length);
 const byTool = new Map();
+const byLane = new Map();
 for (const item of results) {
   for (const tool of item.tools) byTool.set(tool, (byTool.get(tool) ?? 0) + 1);
+  byLane.set(item.executionLane, (byLane.get(item.executionLane) ?? 0) + 1);
 }
 
 const lines = [
@@ -212,6 +318,13 @@ const lines = [
   `- Classified commands: ${results.filter((item) => item.tools.length).length}`,
   `- Needs review: ${needsReview.length}`,
   `- Unknown tool intent: ${unknown.length}`,
+  `- Shortcut-local lane: ${byLane.get("shortcut-local") ?? 0}`,
+  `- Realtime-2-required lane: ${byLane.get("realtime-2-required") ?? 0}`,
+  "",
+  "## Execution Lanes",
+  "",
+  "- `shortcut-local`: high-confidence local shortcuts. These may be validated with local real-page frontend smoke tests; they are not counted as Realtime-2 parsing coverage.",
+  "- `realtime-2-required`: low-confidence, semantic, constrained, or multi-step commands. These must enter Realtime-2 for parsing/planning; deterministic mocks can only prove Harness/frontend execution, not Realtime-2 intelligence.",
   "",
   "## Tool Coverage",
   ""
@@ -232,16 +345,52 @@ if (!needsReview.length) {
 
 lines.push("", "## Per-Command Results", "");
 for (const item of results) {
-  lines.push(`${String(item.id).padStart(3, "0")}. [${item.status}] route=${item.route}; tools=${item.tools.join(",") || "UNKNOWN"}; command=${item.text}`);
+  lines.push(`${String(item.id).padStart(3, "0")}. [${item.status}] route=${item.route}; reason=${item.executionReason}; tools=${item.tools.join(",") || "UNKNOWN"}; command=${item.text}`);
 }
 
 fs.writeFileSync(reportPath, `${lines.join("\n")}\n`, "utf8");
+
+const shortcutItems = results.filter((item) => item.executionLane === "shortcut-local");
+const realtimeItems = results.filter((item) => item.executionLane === "realtime-2-required");
+const groupLines = [
+  "# Realtime Voice Scenario Execution Groups",
+  "",
+  "This file is generated by `scripts/simulate-voice-scenario-catalog.mjs` and is the routing contract for the 700-command test campaign.",
+  "",
+  "## Rules",
+  "",
+  "- `shortcut-local`: use local shortcut routing only when the command is on the high-confidence allowlist. Success requires real frontend state evidence.",
+  "- `realtime-2-required`: send to Realtime-2 for tool and argument parsing. A mocked `/api/realtime/tool-call` response may be used only for Harness/frontend smoke; it cannot be claimed as Realtime-2 parsing success.",
+  "- Live Realtime-2 gates should sample this lane first, especially semantic music, news/market, multi-tool, constrained, and ambiguous commands.",
+  "",
+  "## Summary",
+  "",
+  `- Total commands: ${results.length}`,
+  `- shortcut-local: ${shortcutItems.length}`,
+  `- realtime-2-required: ${realtimeItems.length}`,
+  `- shortcut-local ranges: ${compressRanges(shortcutItems.map((item) => item.id)).join(", ")}`,
+  `- realtime-2-required ranges: ${compressRanges(realtimeItems.map((item) => item.id)).join(", ")}`,
+  "",
+  "## Shortcut-Local Commands",
+  ""
+];
+for (const item of shortcutItems) {
+  groupLines.push(`${String(item.id).padStart(3, "0")}. tools=${item.tools.join(",")}; ${item.text}`);
+}
+groupLines.push("", "## Realtime-2-Required Commands", "");
+for (const item of realtimeItems) {
+  groupLines.push(`${String(item.id).padStart(3, "0")}. tools=${item.tools.join(",")}; reason=${item.executionReason}; ${item.text}`);
+}
+fs.writeFileSync(executionGroupsPath, `${groupLines.join("\n")}\n`, "utf8");
+
 console.log(JSON.stringify({
   reportPath,
+  executionGroupsPath,
   commands: commands.length,
   classified: results.filter((item) => item.tools.length).length,
   needsReview: needsReview.length,
   unknown: unknown.length,
   hazards: results.reduce((count, item) => count + item.hazards.length, 0),
+  lanes: Object.fromEntries(byLane.entries()),
   topTools: [...byTool.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10)
 }, null, 2));
