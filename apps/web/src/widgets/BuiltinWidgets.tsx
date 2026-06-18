@@ -29,7 +29,7 @@ import {
   type MusicKitInstanceLike,
   type MusicSearchItem
 } from "./musicKitClient";
-import { DEFAULT_TV_PLAYLIST_URL, findFallbackTvChannel, findTvChannel, parseM3UPlaylist, type TvChannel } from "./tvShared";
+import { DEFAULT_TV_PLAYLIST_URL, findFallbackTvChannel, findTvChannel, parseM3UPlaylist, resolveTvPlaylistSelection, type TvChannel } from "./tvShared";
 import {
   CHINA_TIME_ZONE,
   WORLD_CLOCK_ZONE_OPTIONS,
@@ -3864,8 +3864,20 @@ export function BuiltinWidgetView({
         })
         .then((content) => {
           const parsed = parseM3UPlaylist(content);
-          setChannels(parsed);
           if (parsed.length === 0) {
+            const preferredUrl = asString(latestStateRef.current.selectedChannelUrl);
+            const preferredName = asString(latestStateRef.current.selectedChannelName);
+            const preserved = resolveTvPlaylistSelection([], preferredUrl, preferredName);
+            if (preserved.selected) {
+              setChannels(preserved.channels);
+              onStateChange({
+                ...latestStateRef.current,
+                playlistUrl: source,
+                selectedChannelUrl: preserved.selected.url,
+                selectedChannelName: preserved.selected.name
+              });
+              return;
+            }
             onStateChange({
               ...latestStateRef.current,
               playlistUrl: source,
@@ -3878,10 +3890,12 @@ export function BuiltinWidgetView({
 
           const preferredUrl = asString(latestStateRef.current.selectedChannelUrl);
           const preferredName = asString(latestStateRef.current.selectedChannelName);
-          const selected =
-            parsed.find((item) => item.url === preferredUrl) ??
-            parsed.find((item) => item.name === preferredName) ??
-            parsed[0];
+          const { channels: nextChannels, selected } = resolveTvPlaylistSelection(parsed, preferredUrl, preferredName);
+          if (!selected) {
+            setError("未解析到频道");
+            return;
+          }
+          setChannels(nextChannels);
           onStateChange({
             ...latestStateRef.current,
             playlistUrl: source,

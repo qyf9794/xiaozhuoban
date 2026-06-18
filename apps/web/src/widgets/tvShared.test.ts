@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampTvWidgetSize, findFallbackTvChannel, findTvChannel, parseM3UPlaylist } from "./tvShared";
+import { clampTvWidgetSize, findFallbackTvChannel, findTvChannel, parseM3UPlaylist, resolveTvPlaylistSelection } from "./tvShared";
 
 describe("parseM3UPlaylist", () => {
   it("parses EXTINF entries with urls", () => {
@@ -51,6 +51,21 @@ describe("findTvChannel", () => {
     expect(findFallbackTvChannel("CCTV13")?.name).toBe("CCTV-13 新闻");
     expect(findFallbackTvChannel("央视新闻")?.name).toBe("CCTV-13 新闻");
     expect(findFallbackTvChannel("中央新闻")?.name).toBe("CCTV-13 新闻");
+    expect(findFallbackTvChannel("电影频道")?.name).toBe("CCTV-6 电影");
+    expect(findFallbackTvChannel("CCTV6")?.name).toBe("CCTV-6 电影");
+  });
+});
+
+describe("resolveTvPlaylistSelection", () => {
+  it("preserves an externally selected channel url when the subscription list finishes loading", () => {
+    const parsed = [{ id: "1", name: "CNN", url: "http://example.com/cnn.m3u8" }];
+    const resolved = resolveTvPlaylistSelection(parsed, "http://example.com/cctv6.m3u8", "CCTV6");
+
+    expect(resolved.selected).toMatchObject({
+      name: "CCTV6",
+      url: "http://example.com/cctv6.m3u8"
+    });
+    expect(resolved.channels.map((channel) => channel.url)).toEqual(["http://example.com/cctv6.m3u8", "http://example.com/cnn.m3u8"]);
   });
 });
 

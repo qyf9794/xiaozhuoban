@@ -889,7 +889,7 @@ function inferTodoDueAt(input: string, now: Date) {
     compact.match(/(?:(凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚))?(\d{1,2})[:：]([0-5]\d)/);
 
   if (!timeMatch) {
-    const relativeSeconds = /(小时|钟头|分钟|分|秒)后/.test(compact) ? parseCountdownDurationSeconds(compact) : undefined;
+    const relativeSeconds = /(小时|钟头|分钟|分)(?:半)?(?:以)?后|秒(?:以)?后/.test(compact) ? parseCountdownDurationSeconds(compact) : undefined;
     if (!relativeSeconds || !Number.isFinite(relativeSeconds) || relativeSeconds <= 0) return undefined;
     return new Date(now.getTime() + relativeSeconds * 1000).toISOString();
   }
@@ -948,8 +948,9 @@ function inferTodoDueAt(input: string, now: Date) {
 
 function stripTodoDueText(text: string) {
   return text
-    .replace(/(?:[零〇一二两三四五六七八九十\d]+|半)(?:个)?(?:小时|钟头)(?:(?:[零〇一二两三四五六七八九十\d]+|半)(?:分钟|分))?后/g, " ")
-    .replace(/(?:[零〇一二两三四五六七八九十\d]+|半)(?:个)?(?:分钟|分|秒)后/g, " ")
+    .replace(/(?:[零〇一二两三四五六七八九十\d]+|半)(?:个)?(?:小时|钟头)(?:(?:[零〇一二两三四五六七八九十\d]+|半)(?:分钟|分))?(?:以)?后/g, " ")
+    .replace(/(?:[零〇一二两三四五六七八九十\d]+|半)(?:个)?(?:分钟|分)(?:半)?(?:以)?后/g, " ")
+    .replace(/(?:[零〇一二两三四五六七八九十\d]+|半)(?:个)?秒(?:以)?后/g, " ")
     .replace(/(一会儿后?|待会儿后?|等会儿后?)/g, " ")
     .replace(/(?:(?:今天|明天|后天|今晚|明早|明晚|[零〇一二两三四五六七八九十\d]{1,3}天后|(?:(?:下)?(?:周|星期|礼拜)[日天一二两三四五六]))\s*)?(?:凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚)?\s*[零〇一二两三四五六七八九十\d]{1,3}\s*点\s*(?:半|一刻|三刻|[零〇一二两三四五六七八九十\d]{1,3}\s*分?)?\s*(?:之前|以前|前(?!端))/g, " ")
     .replace(/(?:(?:今天|明天|后天|今晚|明早|明晚|[零〇一二两三四五六七八九十\d]{1,3}天后|(?:(?:下)?(?:周|星期|礼拜)[日天一二两三四五六]))\s*)?(?:凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚)?\s*\d{1,2}\s*[:：]\s*[0-5]\d\s*(?:之前|以前|前(?!端))/g, " ")
@@ -964,7 +965,7 @@ function stripTodoDueText(text: string) {
 }
 
 function parseCountdownDurationSeconds(input: string) {
-  const compact = input.replace(/\s+/g, "");
+  const compact = input.replace(/\s+/g, "").replace(/以后/g, "后");
   let totalSeconds = 0;
   const unitPattern = /([零〇一二两三四五六七八九十\d]+|半)(?:个)?(小时|钟头|分钟|分|秒)/g;
   for (const match of compact.matchAll(unitPattern)) {
@@ -977,6 +978,7 @@ function parseCountdownDurationSeconds(input: string) {
     if (unit === "秒") totalSeconds += value;
   }
   if (/(小时|钟头)半/.test(compact)) totalSeconds += 30 * 60;
+  if (/(分钟|分)半/.test(compact)) totalSeconds += 30;
   if (totalSeconds > 0) return Math.round(totalSeconds);
   const minutes = parseChineseInteger(compact);
   return minutes && Number.isFinite(minutes) && minutes > 0 ? minutes * 60 : undefined;
@@ -1024,6 +1026,7 @@ function findBoardByName(context: IntentShortcutContext, rawName: string) {
 function cleanCommandContent(value: string) {
   return value
     .replace(/^[：:，,\s]+/, "")
+    .replace(/[，,\s]*场景\d+$/i, "")
     .replace(/[。.!！\s]+$/, "")
     .trim();
 }
@@ -1067,10 +1070,10 @@ function inferTodoAdd(raw: string, now: Date) {
     inferredText = "";
   }
   const dueAt = rawDueAt ?? inferTodoDueAt(inferredText, now);
-  const fallbackReminderText = rawDueAt && /(提醒我|提醒|叫我|到点叫我|记得|别忘了)/.test(raw) ? "提醒我" : "";
+  const fallbackReminderText = rawDueAt && /叫我|到点叫我/.test(raw) ? "叫我" : rawDueAt && /(提醒我|提醒|记得|别忘了)/.test(raw) ? "提醒我" : "";
   const text = inferredText || fallbackReminderText;
   const cleaned = dueAt && inferredText ? stripTodoDueText(inferredText) : text;
-  return { text: cleanCommandContent(cleaned) || cleanCommandContent(text), dueAt };
+  return { text: cleanCommandContent(cleaned) || cleanCommandContent(fallbackReminderText) || cleanCommandContent(text), dueAt };
 }
 
 function inferTodoCompleteText(raw: string) {
@@ -1930,6 +1933,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         const wantsFullscreen = /(全屏|放大)/.test(normalized);
         const wantsPlayback = /(播放|放|看|打开|全屏|放大)/.test(normalized);
         const toolName = wantsPlayback ? "tv.play" : "tv.select_channel";
+        const confidence = /(央视|中央|CCTV)/i.test(raw) ? 0.93 : 0.88;
         return (
           routeWidgetDetailOrAdd(
             context,
@@ -1947,7 +1951,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
                   }
                 : {})
             },
-            0.93
+            confidence
           ) ?? { matched: false, reason: "tv_target_missing" }
         );
       }

@@ -1228,6 +1228,24 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes one-and-a-half minute reminder wording and ignores scenario suffixes", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("一分半以后叫我，场景1", {
+      ...context,
+      currentTime: new Date(2026, 5, 17, 9, 0, 0).toISOString()
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("todo.add_item");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_todo",
+        text: "叫我",
+        dueAt: new Date(2026, 5, 17, 9, 1, 30).toISOString()
+      });
+    }
+  });
+
   it("routes vague soon reminder wording to todo add", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("一会儿提醒我喝水", {
@@ -1857,6 +1875,21 @@ describe("IntentShortcutRouter", () => {
         widgetId: "wi_tv",
         channelName: "CCTV13"
       });
+    }
+  });
+
+  it("keeps generic TV channel aliases below the local shortcut threshold", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("电影频道打开", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("tv.play");
+      expect(result.toolCall.arguments).toEqual({
+        widgetId: "wi_tv",
+        channelName: "CCTV6"
+      });
+      expect(result.confidence).toBeLessThan(0.9);
     }
   });
 

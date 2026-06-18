@@ -46,6 +46,7 @@ function createContextInput(): ContextSummarizerInput {
   const state = useAppStore.getState();
   const activeBoard = state.boards.find((board) => board.id === state.activeBoardId);
   const definitionById = new Map(state.widgetDefinitions.map((definition) => [definition.id, definition]));
+  const activeWidgets = state.widgetInstances.filter((widget) => widget.boardId === state.activeBoardId);
 
   return {
     boardId: activeBoard?.id,
@@ -61,8 +62,9 @@ function createContextInput(): ContextSummarizerInput {
       type: definition.type,
       name: definition.name
     })),
-    recentWidgetIds: state.widgetInstances.slice(-3).map((widget) => widget.id),
-    widgets: state.widgetInstances.map((widget, index) => {
+    maxWidgets: Math.min(16, Math.max(8, activeWidgets.length)),
+    recentWidgetIds: activeWidgets.slice(-3).map((widget) => widget.id),
+    widgets: activeWidgets.map((widget, index) => {
       const definition = definitionById.get(widget.definitionId);
       return {
         widgetId: widget.id,

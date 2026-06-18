@@ -18,6 +18,11 @@ export const FALLBACK_TV_CHANNELS: TvChannel[] = [
     id: "tv_fallback_cctv13",
     name: "CCTV-13 新闻",
     url: "https://ldncctvcpudkshw.v.kcdnvip.com/ldncctvcpud/udrmldcctv13_1/index.m3u8?contentid=2820180516001&b=200-2100"
+  },
+  {
+    id: "tv_fallback_cctv6",
+    name: "CCTV-6 电影",
+    url: "http://69.30.245.50/live/cctv6.m3u8"
   }
 ];
 
@@ -40,7 +45,11 @@ export function findTvChannel(channels: TvChannel[], channelName: string): TvCha
   const normalizedQuery = normalizeTvChannelSearchName(query);
   return channels.find((channel) => {
     const normalizedName = normalizeTvChannelSearchName(channel.name);
-    return channel.name.includes(query) || query.includes(channel.name) || normalizedName.includes(normalizedQuery) || normalizedQuery.includes(normalizedName);
+    return (
+      channel.name.includes(query) ||
+      query.includes(channel.name) ||
+      (Boolean(normalizedQuery) && (normalizedName.includes(normalizedQuery) || normalizedQuery.includes(normalizedName)))
+    );
   });
 }
 
@@ -48,7 +57,45 @@ export function findFallbackTvChannel(channelName: string): TvChannel | undefine
   if (/(央视新闻|中央新闻|新闻频道|CCTV\s*-?\s*新闻)/i.test(channelName)) {
     return FALLBACK_TV_CHANNELS.find((channel) => channel.id === "tv_fallback_cctv13");
   }
+  if (/(电影频道|央视电影|中央电影|CCTV\s*-?\s*6|CCTV\s*-?\s*电影)/i.test(channelName)) {
+    return FALLBACK_TV_CHANNELS.find((channel) => channel.id === "tv_fallback_cctv6");
+  }
   return findTvChannel(FALLBACK_TV_CHANNELS, channelName);
+}
+
+export function resolveTvPlaylistSelection(
+  channels: TvChannel[],
+  preferredUrl: string,
+  preferredName: string
+): { channels: TvChannel[]; selected: TvChannel | undefined } {
+  const url = preferredUrl.trim();
+  const name = preferredName.trim();
+  const selected =
+    (url ? channels.find((channel) => channel.url === url) : undefined) ??
+    (name ? findTvChannel(channels, name) : undefined);
+
+  if (selected) {
+    return { channels, selected };
+  }
+
+  const fallback = name ? findFallbackTvChannel(name) : undefined;
+  const external = url ? { id: `tv_external_${Math.abs(hashString(url))}`, name: name || fallback?.name || "自定义频道", url } : fallback;
+  if (external) {
+    return {
+      channels: channels.some((channel) => channel.url === external.url) ? channels : [external, ...channels],
+      selected: external
+    };
+  }
+
+  return { channels, selected: channels[0] };
+}
+
+function hashString(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
+  }
+  return hash;
 }
 
 export function parseM3UPlaylist(content: string): TvChannel[] {
