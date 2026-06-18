@@ -243,6 +243,10 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         scope: "desktop"
       },
       async execute(args, context) {
+        const target = findWidget(store, args.widgetId);
+        if (!target) {
+          return failed("没有找到这个小工具", "WIDGET_NOT_FOUND");
+        }
         await callMaybeWithOptions(
           store.updateWidgetPosition,
           [args.widgetId, Math.round(args.x), Math.round(args.y)],

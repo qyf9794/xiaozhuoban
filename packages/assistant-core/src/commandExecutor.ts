@@ -31,6 +31,7 @@ export interface CommandExecutorOptions {
   onEvent?: (event: CommandExecutionEvent) => void;
   now?: () => number;
   getConcurrencyKey?: (command: CommandPlanStep) => string | undefined;
+  transformCommand?: (command: CommandPlanStep, completed: Map<string, AssistantToolResult>) => CommandPlanStep;
 }
 
 function commandToCall(command: CommandPlanStep): AssistantToolCall {
@@ -139,9 +140,10 @@ export class CommandExecutor {
     if (dependencyFailed) {
       return this.record(command, { status: "failed", message: "依赖命令未成功，已跳过", errorCode: "DEPENDENCY_FAILED" }, "skipped");
     }
-    this.emit(command, "running");
-    const result = await this.options.execute(commandToCall(command), command);
-    return this.record(command, result, phaseFromResult(result));
+    const executableCommand = this.options.transformCommand?.(command, completed) ?? command;
+    this.emit(executableCommand, "running");
+    const result = await this.options.execute(commandToCall(executableCommand), executableCommand);
+    return this.record(executableCommand, result, phaseFromResult(result));
   }
 
   private record(command: CommandPlanStep, result: AssistantToolResult, phase: CommandExecutionPhase): CommandExecutionRecord {

@@ -119,11 +119,11 @@ function createRegistry(resultsByTool: Record<string, AssistantToolResult> = {})
         scope: "desktop"
       },
       async execute(args, context) {
-        executed.push(`${name}:${context.target?.widgetId ?? "none"}`);
+        const recordArgs = args as Record<string, unknown>;
+        executed.push(`${name}:${context.target?.widgetId ?? (name === "widget.move" ? recordArgs.widgetId : undefined) ?? "none"}`);
         if (delayMs > 0) {
           await new Promise((resolve) => globalThis.setTimeout(resolve, delayMs));
         }
-        const recordArgs = args as Record<string, unknown>;
         if (name === "board.add_widget" && typeof recordArgs.definitionId === "string") {
           const widgetType = recordArgs.definitionId.replace(/^wd_/, "");
           return {
@@ -141,6 +141,7 @@ function createRegistry(resultsByTool: Record<string, AssistantToolResult> = {})
   register("board.add_widget");
   register("widget.focus");
   register("widget.remove");
+  register("widget.move");
   register("note.append");
   register("music.search");
   register("music.play");
@@ -695,6 +696,54 @@ describe("AssistantHarness", () => {
     expect(response.result.message).toBe("board.add_widget done；music.play done");
     expect(response.result.status).toBe("success");
     expect(executed).toEqual(["board.add_widget:none", "music.play:wi_added_music"]);
+  });
+
+  it("rewrites planned widget ids for window tools after board.add_widget succeeds", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_add_then_move_tv",
+      sourceText: "请执行电视布局迁移",
+      normalizedText: "请执行电视布局迁移",
+      commands: [
+        {
+          id: "cmd_add_tv",
+          module: "board",
+          tool: "board.add_widget",
+          args: { definitionId: "wd_tv" },
+          risk: "safe",
+          confidence: 0.92,
+          source: "text",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "cmd_move_tv",
+          module: "board",
+          tool: "widget.move",
+          args: { widgetId: "planned_widget_tv", x: 1080, y: 0 },
+          risk: "safe",
+          confidence: 0.92,
+          dependsOn: ["cmd_add_tv"],
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [
+        { id: "group_1", mode: "sequential", commandIds: ["cmd_add_tv"] },
+        { id: "group_2", mode: "sequential", commandIds: ["cmd_move_tv"] }
+      ],
+      confidence: 0.92,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({ modelPlan });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("请执行电视布局迁移");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["board.add_widget:none", "widget.move:wi_added_tv"]);
   });
 
   it("executes simultaneous shortcut command segments with concurrent operation visibility", async () => {

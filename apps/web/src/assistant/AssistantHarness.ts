@@ -21,6 +21,7 @@ import {
   type AssistantToolResult,
   type AssistantToolSpec,
   type CommandPlan,
+  type CommandPlanStep,
   type CompactWidgetSummary,
   type CompactAssistantContext,
   type ConfirmationRequest,
@@ -144,6 +145,14 @@ const ADD_WIDGET_TOOL = "board.add_widget";
 const FOCUS_WIDGET_TOOL = "widget.focus";
 const PLANNED_WIDGET_PREFIX = "planned_widget_";
 const LOCAL_SHORTCUT_CONFIDENCE_THRESHOLD = 0.9;
+const WIDGET_WINDOW_TOOLS = new Set([
+  "widget.focus",
+  "widget.fullscreen_focus",
+  "widget.remove",
+  "widget.move",
+  "widget.resize",
+  "widget.bring_to_front"
+]);
 const SEQUENTIAL_CONNECTOR_PATTERN = /(?:，|,|。|；|;)?\s*(?:然后|接着|随后|再)\s*/;
 const PARALLEL_CONNECTOR_PATTERN = /(?:，|,|。|；|;)?\s*(?:同时|与此同时)\s*/;
 const CLOSE_MULTI_CONNECTOR_PATTERN = /(?:和|以及|还有|跟|与)/;
@@ -243,6 +252,10 @@ function extractAddedWidgetData(result: AssistantToolResult): AddedWidgetData | 
 
 function isPlannedWidgetId(widgetId: string) {
   return widgetId.startsWith(PLANNED_WIDGET_PREFIX);
+}
+
+function plannedWidgetType(widgetId: string) {
+  return isPlannedWidgetId(widgetId) ? widgetId.slice(PLANNED_WIDGET_PREFIX.length) : "";
 }
 
 export class AssistantHarness {
@@ -503,6 +516,7 @@ export class AssistantHarness {
       /(如果|不要|别|只|仅|检查|准备|名字先叫|草稿|误触|恢复普通窗口|当前在全屏|登录音乐|语音入口|所有弹窗|只留下|不要新建)/.test(input) ||
       /输入.+(?:字|词|内容)/.test(input) ||
       /切到.+页面/.test(input) ||
+      /(?:切到|切回|回到|新开|新建|创建).{0,20}(?:后|再|然后|同时|，|,).{0,24}(?:打开|添加|把|放上|移动|调到)/.test(input) ||
       /(?:隐藏|显示|先|并|同时).{0,16}(?:整理|排列|对齐)/.test(input) ||
       /(?:整理|排列|对齐).{0,16}(?:同时|然后|再|并)/.test(input) ||
       /(?:两个|多个|所有).{0,8}窗口/.test(input) ||
@@ -577,6 +591,16 @@ export class AssistantHarness {
 
   private rewriteAfterWidgetAdd(call: AssistantToolCall, addedWidget: AddedWidgetData): AssistantToolCall {
     const spec = this.options.registry.get(call.name);
+    if (WIDGET_WINDOW_TOOLS.has(call.name) && isRecord(call.arguments)) {
+      const widgetId = typeof call.arguments.widgetId === "string" ? call.arguments.widgetId : "";
+      if (isPlannedWidgetId(widgetId) && plannedWidgetType(widgetId) === addedWidget.widgetType) {
+        this.rememberTransientWidget(addedWidget);
+        return {
+          ...call,
+          arguments: { ...call.arguments, widgetId: addedWidget.widgetId }
+        };
+      }
+    }
     if (spec?.scope === "widget-detail" && spec.widgetType === addedWidget.widgetType && isRecord(call.arguments)) {
       const widgetId = typeof call.arguments.widgetId === "string" ? call.arguments.widgetId : "";
       if (!widgetId || isPlannedWidgetId(widgetId)) {
@@ -787,6 +811,7 @@ export class AssistantHarness {
     const executor = new CommandExecutor({
       execute: (call) => this.executeCall(call),
       getConcurrencyKey: (command) => this.options.registry.get(command.tool)?.concurrencyKey,
+      transformCommand: (command, completed) => this.rewriteCommandFromCompletedAdds(command, completed),
       onEvent: (event) => {
         this.emitOperation({
           id: event.operationId,
@@ -826,6 +851,30 @@ export class AssistantHarness {
     }
     await this.updateRealtimeContext();
     return responses;
+  }
+
+  private rewriteCommandFromCompletedAdds(
+    command: CommandPlanStep,
+    completed: Map<string, AssistantToolResult>
+  ): CommandPlanStep {
+    const call: AssistantToolCall = {
+      id: command.id,
+      name: command.tool,
+      arguments: command.args,
+      source: command.source,
+      transcript: command.id
+    };
+    const addedWidgets = [...completed.values()].map((result) => extractAddedWidgetData(result)).filter(Boolean) as AddedWidgetData[];
+    for (const addedWidget of addedWidgets.reverse()) {
+      const rewritten = this.rewriteAfterWidgetAdd(call, addedWidget);
+      if (rewritten !== call) {
+        return {
+          ...command,
+          args: isRecord(rewritten.arguments) ? rewritten.arguments : command.args
+        };
+      }
+    }
+    return command;
   }
 
   private queueRemainingPlanAfterConfirmation(
