@@ -1271,11 +1271,19 @@ describe("IntentShortcutRouter", () => {
   it("routes todo completion shorthand when the item is named", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("把买牛奶勾掉", context);
+    const itemWording = router.route("把买牛奶这项勾掉", context);
 
     expect(result.matched).toBe(true);
+    expect(itemWording.matched).toBe(true);
     if (result.matched) {
       expect(result.toolCall.name).toBe("todo.complete_item");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_todo", text: "买牛奶" });
+      expect(result.confidence).toBeGreaterThanOrEqual(0.9);
+    }
+    if (itemWording.matched) {
+      expect(itemWording.toolCall.name).toBe("todo.complete_item");
+      expect(itemWording.toolCall.arguments).toEqual({ widgetId: "wi_todo", text: "买牛奶" });
+      expect(itemWording.confidence).toBeGreaterThanOrEqual(0.9);
     }
   });
 
@@ -1296,6 +1304,28 @@ describe("IntentShortcutRouter", () => {
           arguments: { text: "账号是 demo" }
         }
       });
+      expect(result.confidence).toBeGreaterThanOrEqual(0.9);
+    }
+  });
+
+  it("routes clipboard copy wording to add-and-save when clipboard is absent", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("复制演示账号到剪贴板", {
+      ...context,
+      availableWidgets: context.availableWidgets?.filter((widget) => widget.type !== "clipboard")
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("board.add_widget");
+      expect(result.toolCall.arguments).toEqual({
+        definitionId: "wd_clipboard",
+        followUp: {
+          name: "clipboard.add_text",
+          arguments: { text: "演示账号" }
+        }
+      });
+      expect(result.confidence).toBeGreaterThanOrEqual(0.9);
     }
   });
 
@@ -1307,6 +1337,7 @@ describe("IntentShortcutRouter", () => {
     if (result.matched) {
       expect(result.toolCall.name).toBe("clipboard.add_text");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_clipboard", text: "账号 demo" });
+      expect(result.confidence).toBeGreaterThanOrEqual(0.9);
     }
   });
 
@@ -1318,6 +1349,28 @@ describe("IntentShortcutRouter", () => {
     if (result.matched) {
       expect(result.toolCall.name).toBe("clipboard.add_text");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_clipboard", text: "账号是 demo", pinned: true });
+      expect(result.confidence).toBeGreaterThanOrEqual(0.9);
+    }
+  });
+
+  it("routes pinned save shorthand to clipboard even without saying clipboard", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("固定保存项目口令 demo", {
+      ...context,
+      availableWidgets: context.availableWidgets?.filter((widget) => widget.type !== "clipboard")
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("board.add_widget");
+      expect(result.toolCall.arguments).toEqual({
+        definitionId: "wd_clipboard",
+        followUp: {
+          name: "clipboard.add_text",
+          arguments: { text: "项目口令 demo", pinned: true }
+        }
+      });
+      expect(result.confidence).toBeGreaterThanOrEqual(0.9);
     }
   });
 
@@ -1331,10 +1384,12 @@ describe("IntentShortcutRouter", () => {
     if (result.matched) {
       expect(result.toolCall.name).toBe("clipboard.clear");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_clipboard", includePinned: false });
+      expect(result.confidence).toBeGreaterThanOrEqual(0.9);
     }
     if (shorthand.matched) {
       expect(shorthand.toolCall.name).toBe("clipboard.clear");
       expect(shorthand.toolCall.arguments).toEqual({ widgetId: "wi_clipboard", includePinned: false });
+      expect(shorthand.confidence).toBeGreaterThanOrEqual(0.9);
     }
   });
 
@@ -1346,6 +1401,7 @@ describe("IntentShortcutRouter", () => {
     if (result.matched) {
       expect(result.toolCall.name).toBe("clipboard.clear");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_clipboard", includePinned: true });
+      expect(result.confidence).toBeGreaterThanOrEqual(0.9);
     }
   });
 
@@ -1406,11 +1462,28 @@ describe("IntentShortcutRouter", () => {
   it("routes translate draft commands to the translate widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("把你好翻译成英文", context);
+    const absent = router.route("把 hello world 翻译成中文", {
+      ...context,
+      availableWidgets: context.availableWidgets?.filter((widget) => widget.type !== "translate")
+    });
 
     expect(result.matched).toBe(true);
+    expect(absent.matched).toBe(true);
     if (result.matched) {
       expect(result.toolCall.name).toBe("translate.set_draft");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_translate", sourceText: "你好", targetLang: "en" });
+      expect(result.confidence).toBeGreaterThanOrEqual(0.9);
+    }
+    if (absent.matched) {
+      expect(absent.toolCall.name).toBe("board.add_widget");
+      expect(absent.toolCall.arguments).toEqual({
+        definitionId: "wd_translate",
+        followUp: {
+          name: "translate.set_draft",
+          arguments: { sourceText: "hello world", targetLang: "zh-CN" }
+        }
+      });
+      expect(absent.confidence).toBeGreaterThanOrEqual(0.9);
     }
   });
 
@@ -1445,8 +1518,10 @@ describe("IntentShortcutRouter", () => {
   it("routes converter commands to the converter widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("12米换算成公里", context);
+    const chinese = router.route("十二米换算公里", context);
 
     expect(result.matched).toBe(true);
+    expect(chinese.matched).toBe(true);
     if (result.matched) {
       expect(result.toolCall.name).toBe("converter.set");
       expect(result.toolCall.arguments).toEqual({
@@ -1456,6 +1531,18 @@ describe("IntentShortcutRouter", () => {
         fromUnit: "m",
         toUnit: "km"
       });
+      expect(result.confidence).toBeGreaterThanOrEqual(0.9);
+    }
+    if (chinese.matched) {
+      expect(chinese.toolCall.name).toBe("converter.set");
+      expect(chinese.toolCall.arguments).toEqual({
+        widgetId: "wi_converter",
+        category: "length",
+        value: "12",
+        fromUnit: "m",
+        toUnit: "km"
+      });
+      expect(chinese.confidence).toBeGreaterThanOrEqual(0.9);
     }
   });
 
@@ -1513,8 +1600,13 @@ describe("IntentShortcutRouter", () => {
   it("routes everyday Chinese weight converter commands through supported base units", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("2斤是多少克", context);
+    const twoKg = router.route("两公斤换算成克", {
+      ...context,
+      availableWidgets: context.availableWidgets?.filter((widget) => widget.type !== "converter")
+    });
 
     expect(result.matched).toBe(true);
+    expect(twoKg.matched).toBe(true);
     if (result.matched) {
       expect(result.toolCall.name).toBe("converter.set");
       expect(result.toolCall.arguments).toEqual({
@@ -1524,6 +1616,23 @@ describe("IntentShortcutRouter", () => {
         fromUnit: "kg",
         toUnit: "g"
       });
+      expect(result.confidence).toBeGreaterThanOrEqual(0.9);
+    }
+    if (twoKg.matched) {
+      expect(twoKg.toolCall.name).toBe("board.add_widget");
+      expect(twoKg.toolCall.arguments).toEqual({
+        definitionId: "wd_converter",
+        followUp: {
+          name: "converter.set",
+          arguments: {
+            category: "weight",
+            value: "2",
+            fromUnit: "kg",
+            toUnit: "g"
+          }
+        }
+      });
+      expect(twoKg.confidence).toBeGreaterThanOrEqual(0.9);
     }
   });
 
@@ -1541,17 +1650,35 @@ describe("IntentShortcutRouter", () => {
   it("routes natural Chinese arithmetic questions to the calculator widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const plus = router.route("12加30是多少", context);
+    const chinesePlus = router.route("十二加三十算一下", {
+      ...context,
+      availableWidgets: context.availableWidgets?.filter((widget) => widget.type !== "calculator")
+    });
     const multiply = router.route("12乘以8", context);
 
     expect(plus.matched).toBe(true);
+    expect(chinesePlus.matched).toBe(true);
     expect(multiply.matched).toBe(true);
     if (plus.matched) {
       expect(plus.toolCall.name).toBe("calculator.set_display");
       expect(plus.toolCall.arguments).toEqual({ widgetId: "wi_calculator", display: "42" });
+      expect(plus.confidence).toBeGreaterThanOrEqual(0.9);
+    }
+    if (chinesePlus.matched) {
+      expect(chinesePlus.toolCall.name).toBe("board.add_widget");
+      expect(chinesePlus.toolCall.arguments).toEqual({
+        definitionId: "wd_calculator",
+        followUp: {
+          name: "calculator.set_display",
+          arguments: { display: "42" }
+        }
+      });
+      expect(chinesePlus.confidence).toBeGreaterThanOrEqual(0.9);
     }
     if (multiply.matched) {
       expect(multiply.toolCall.name).toBe("calculator.set_display");
       expect(multiply.toolCall.arguments).toEqual({ widgetId: "wi_calculator", display: "96" });
+      expect(multiply.confidence).toBeGreaterThanOrEqual(0.9);
     }
   });
 

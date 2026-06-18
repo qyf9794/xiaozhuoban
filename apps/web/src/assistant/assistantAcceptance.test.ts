@@ -382,7 +382,7 @@ describe("stage-one assistant acceptance scenarios", () => {
     });
   });
 
-  it("routes high-confidence timer control locally while low-confidence casual commands use Realtime planning", async () => {
+  it("routes high-confidence timer, note, and translate commands locally", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness();
     await harness.initialize();
 
@@ -391,7 +391,7 @@ describe("stage-one assistant acceptance scenarios", () => {
     const note = await harness.handleUserInput("帮我记个便签：晚上复盘");
     const translate = await harness.handleUserInput("hello 是什么意思");
 
-    expect([countdown, note, translate].map((response) => response.route)).toEqual(["shortcut", "shortcut", "model"]);
+    expect([countdown, note, translate].map((response) => response.route)).toEqual(["shortcut", "shortcut", "shortcut"]);
     expect([countdown, note, translate].map((response) => response.result)).toMatchObject([
       { status: "success" },
       { status: "success" },
@@ -400,7 +400,7 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(getWidget("countdown")?.state).toMatchObject({ running: false, targetEndsAt: 0 });
     expect(getWidget("note")?.state.content).toBe("晚上复盘");
     expect(getWidget("translate")?.state).toMatchObject({ sourceText: "hello", targetLang: "zh-CN" });
-    expect(modelInputs).toEqual(["hello 是什么意思"]);
+    expect(modelInputs).toEqual([]);
   });
 
   it("creates a named board through Realtime planning when shortcut confidence is low", async () => {
@@ -537,56 +537,56 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(modelInputs).toEqual([]);
   });
 
-  it("completes a todo from shorthand wording through Realtime planning", async () => {
+  it("completes a todo from explicit shorthand wording locally", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness();
     await harness.initialize();
     await harness.handleUserInput("添加待办买牛奶");
 
     const response = await harness.handleUserInput("把买牛奶勾掉");
 
-    expect(response.route).toBe("model");
+    expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(getWidget("todo")?.state.items).toEqual([]);
-    expect(modelInputs).toEqual(["把买牛奶勾掉"]);
+    expect(modelInputs).toEqual([]);
   });
 
-  it("adds a clipboard widget and saves text through Realtime planning when clipboard is absent", async () => {
+  it("adds a clipboard widget and saves explicit text locally when clipboard is absent", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness({ initialWidgetTypes: ["weather", "countdown", "note", "todo"] });
     await harness.initialize();
 
     const response = await harness.handleUserInput("保存到剪贴板账号是 demo");
 
-    expect(response.route).toBe("model");
+    expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(getWidget("clipboard")?.state.items).toMatchObject([{ text: "账号是 demo" }]);
-    expect(modelInputs).toEqual(["保存到剪贴板账号是 demo"]);
+    expect(modelInputs).toEqual([]);
   });
 
-  it("adds copied text to clipboard through Realtime planning", async () => {
+  it("adds copied text to clipboard locally", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness();
     await harness.initialize();
 
     const response = await harness.handleUserInput("复制账号 demo 到剪贴板");
 
-    expect(response.route).toBe("model");
+    expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(getWidget("clipboard")?.state.items).toMatchObject([{ text: "账号 demo" }]);
-    expect(modelInputs).toEqual(["复制账号 demo 到剪贴板"]);
+    expect(modelInputs).toEqual([]);
   });
 
-  it("adds pinned clipboard text through Realtime planning", async () => {
+  it("adds pinned clipboard text locally", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness();
     await harness.initialize();
 
     const response = await harness.handleUserInput("固定保存到剪贴板账号是 demo");
 
-    expect(response.route).toBe("model");
+    expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(getWidget("clipboard")?.state.items).toMatchObject([{ text: "账号是 demo", pinned: true }]);
-    expect(modelInputs).toEqual(["固定保存到剪贴板账号是 demo"]);
+    expect(modelInputs).toEqual([]);
   });
 
-  it("sets low-confidence widget controls through Realtime planning while keeping high-confidence shortcuts local", async () => {
+  it("keeps explicit daily widget controls local while lower-confidence market/news requests use Realtime planning", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness();
     await harness.initialize();
 
@@ -606,9 +606,9 @@ describe("stage-one assistant acceptance scenarios", () => {
       { status: "success" }
     ]);
     expect([translate, converter, calculator, market, clock, headline].map((response) => response.route)).toEqual([
-      "model",
-      "model",
-      "model",
+      "shortcut",
+      "shortcut",
+      "shortcut",
       "model",
       "shortcut",
       "model"
@@ -621,19 +621,19 @@ describe("stage-one assistant acceptance scenarios", () => {
       expect.arrayContaining(["Asia/Shanghai", "Europe/London", "America/New_York"])
     );
     expect(getWidget("headline")?.state.headlineRefreshRequestedAt).toBe(NOW);
-    expect(modelInputs).toEqual(["把你好翻译成英文", "12米换算成公里", "计算 12+30", "看标普和恒生行情", "刷新新闻"]);
+    expect(modelInputs).toEqual(["看标普和恒生行情", "刷新新闻"]);
   });
 
-  it("sets everyday Chinese weight conversion through Realtime planning", async () => {
+  it("sets everyday Chinese weight conversion locally", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness();
     await harness.initialize();
 
     const response = await harness.handleUserInput("2斤是多少克");
 
-    expect(response.route).toBe("model");
+    expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(getWidget("converter")?.state).toMatchObject({ inputValue: "1", fromUnit: "kg", toUnit: "g" });
-    expect(modelInputs).toEqual(["2斤是多少克"]);
+    expect(modelInputs).toEqual([]);
   });
 
   it("keeps high-confidence aliases local and routes lower-confidence aliases through Realtime", async () => {
@@ -658,28 +658,28 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(modelInputs).toEqual(["美股怎么样"]);
   });
 
-  it("sets casual translate shorthand through Realtime planning", async () => {
+  it("sets casual explicit translate shorthand locally", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness();
     await harness.initialize();
 
     const response = await harness.handleUserInput("翻译一下 hello");
 
-    expect(response.route).toBe("model");
+    expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(getWidget("translate")?.state).toMatchObject({ sourceText: "hello", targetLang: "zh-CN" });
-    expect(modelInputs).toEqual(["翻译一下 hello"]);
+    expect(modelInputs).toEqual([]);
   });
 
-  it("sets calculator from natural Chinese arithmetic through Realtime planning", async () => {
+  it("sets calculator from natural Chinese arithmetic locally", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness();
     await harness.initialize();
 
     const response = await harness.handleUserInput("12加30是多少");
 
-    expect(response.route).toBe("model");
+    expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(getWidget("calculator")?.state.calcDisplay).toBe("42");
-    expect(modelInputs).toEqual(["12加30是多少"]);
+    expect(modelInputs).toEqual([]);
   });
 
   it("refreshes headlines from natural news request through Realtime planning", async () => {
@@ -700,7 +700,7 @@ describe("stage-one assistant acceptance scenarios", () => {
 
     const first = await harness.handleUserInput("清空剪贴板，然后添加一条待办：明天买牛奶");
 
-    expect(first.route).toBe("model");
+    expect(first.route).toBe("shortcut");
     expect(first.result.status).toBe("needs_confirmation");
     expect(harness.getPendingConfirmation()).toMatchObject({
       actionName: "clipboard.clear",
@@ -715,7 +715,7 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(confirmed.result.message).toContain("已清理剪贴板历史");
     expect(confirmed.result.message).toContain("已新增待办");
     expect(getWidget("todo")?.state.items).toMatchObject([{ text: "明天买牛奶" }]);
-    expect(modelInputs).toEqual(["清空剪贴板，然后添加一条待办：明天买牛奶"]);
+    expect(modelInputs).toEqual([]);
   });
 
   it("cancels a confirmation-required pending action without mutation", async () => {

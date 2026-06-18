@@ -32,9 +32,16 @@ function getSupabaseServerConfig() {
   };
 }
 
+function isLocalE2ERealtimeAuthBypassEnabled(): boolean {
+  return process.env.NODE_ENV !== "production" && process.env.XIAOZHUOBAN_E2E_REALTIME_AUTH_BYPASS === "true";
+}
+
 export async function authenticateRealtimeRequest(request: IncomingMessage): Promise<RealtimeAuthResult> {
   const token = extractBearerToken(request.headers);
   if (!token) {
+    if (isLocalE2ERealtimeAuthBypassEnabled()) {
+      return { ok: true, token: "e2e-local-realtime-auth-bypass", user: { id: "e2e-local-user" } };
+    }
     return { ok: false, status: 401, error: "AUTH_REQUIRED" };
   }
 

@@ -423,7 +423,7 @@ function generatedScenarios(): Scenario[] {
     ["translate", "translate.set_draft", "把 hello world 翻译成中文", { sourceText: "hello world", targetLang: "zh-CN" }],
     ["translate", "translate.set_draft", "你好翻译成英文", { sourceText: "你好", targetLang: "en" }],
     ["calculator", "calculator.set_display", "十二加三十算一下", { display: "42" }],
-    ["calculator", "calculator.set_display", "2斤是多少克", { display: "1000" }],
+    ["converter", "converter.set", "2斤是多少克", { category: "weight", value: "1", fromUnit: "kg", toUnit: "g" }],
     ["converter", "converter.set", "十二米换算公里", { category: "length", value: "12", fromUnit: "m", toUnit: "km" }],
     ["converter", "converter.set", "两公斤换算成克", { category: "weight", value: "2", fromUnit: "kg", toUnit: "g" }]
   ] as const;

@@ -68,6 +68,20 @@ describe("realtime session API", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("allows local E2E Realtime auth bypass without a bearer token outside production", async () => {
+    stubSupabaseEnv();
+    vi.stubEnv("OPENAI_API_KEY", "sk-test");
+    vi.stubEnv("XIAOZHUOBAN_E2E_REALTIME_AUTH_BYPASS", "true");
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ value: "client-secret" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await callHandler("", {});
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toEqual({ value: "client-secret" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("returns 401 for expired Supabase tokens and does not call OpenAI", async () => {
     stubSupabaseEnv();
     vi.stubEnv("OPENAI_API_KEY", "sk-test");

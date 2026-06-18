@@ -39,7 +39,8 @@ function applyLocalRealtimeApiEnv(env: Record<string, string>): void {
     "SUPABASE_ANON_KEY",
     "VITE_SUPABASE_URL",
     "VITE_SUPABASE_ANON_KEY",
-    "XIAOZHUOBAN_TEXT_TOOL_MODEL"
+    "XIAOZHUOBAN_TEXT_TOOL_MODEL",
+    "XIAOZHUOBAN_E2E_REALTIME_AUTH_BYPASS"
   ];
 
   for (const key of keys) {

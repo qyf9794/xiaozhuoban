@@ -685,6 +685,13 @@ function parseChineseInteger(input: string): number | null {
   return null;
 }
 
+function parseNumberToken(input: string): number | null {
+  const normalized = input.trim();
+  if (!normalized) return null;
+  if (/^[+-]?\d+(?:\.\d+)?$/.test(normalized)) return Number(normalized);
+  return parseChineseInteger(normalized);
+}
+
 function inferCityName(input: string) {
   const normalized = input.trim();
   if (/(^|[^a-z])la(?=[^a-z]|$)/i.test(normalized)) return "los-angeles";
@@ -1071,7 +1078,7 @@ function inferTodoCompleteText(raw: string) {
   ];
   for (const pattern of patterns) {
     const match = raw.match(pattern);
-    const text = cleanCommandContent(match?.[1] ?? "");
+    const text = cleanCommandContent(match?.[1] ?? "").replace(/(?:这)?(?:一)?(?:项|条|个)$/, "").trim();
     if (text) return text;
   }
   return "";
@@ -1082,7 +1089,8 @@ function inferClipboardText(raw: string) {
     /(?:固定|置顶|钉住|pin)?\s*(?:保存|存一下|存|加入|添加|记录|复制|拷贝)(?:到|进)?(?:剪贴板|剪贴板历史)[：:\s]*(.+)/i,
     /(?:剪贴板|剪贴板历史).*(?:固定|置顶|钉住|pin)?\s*(?:保存|存一下|存|加入|添加|记录|复制|拷贝)[：:\s]*(.+)/i,
     /(?:固定|置顶|钉住|pin)?\s*(?:复制|拷贝|保存|存一下|存)\s*(.+?)(?:到|进)?(?:剪贴板|剪贴板历史)/i,
-    /把(.+?)(?:固定|置顶|钉住|pin)?\s*(?:保存|存一下|存|加入|添加|记录|复制|拷贝)(?:到|进)?(?:剪贴板|剪贴板历史)/i
+    /把(.+?)(?:固定|置顶|钉住|pin)?\s*(?:保存|存一下|存|加入|添加|记录|复制|拷贝)(?:到|进)?(?:剪贴板|剪贴板历史)/i,
+    /(?:固定|置顶|钉住|pin)\s*(?:保存|存一下|存|记录)\s*(.+)/i
   ];
   for (const pattern of patterns) {
     const match = raw.match(pattern);
@@ -1158,23 +1166,25 @@ const UNIT_ALIASES: Record<string, { category: string; unit: string; scale?: num
 
 function inferConverterArgs(raw: string) {
   const unitPattern = "(摄氏度|华氏度|开尔文|摄氏|华氏|公里|千米|厘米|英寸|英尺|公斤|千克|盎司|斤|两|米|克|磅|km|cm|inch|ft|kg|lb|oz|m|g)";
+  const numberPattern = "([+-]?(?:\\d+(?:\\.\\d+)?|[零〇一二两三四五六七八九十]+))";
   const patterns = [
-    new RegExp(`([+-]?\\d+(?:\\.\\d+)?)\\s*${unitPattern}.*(?:换算|转换|转|到|成)\\s*${unitPattern}`, "i"),
-    new RegExp(`([+-]?\\d+(?:\\.\\d+)?)\\s*${unitPattern}\\s*(?:等于多少|是多少|有多少|等于|多少|是)\\s*${unitPattern}`, "i"),
-    new RegExp(`(?:换算|转换)\\s*([+-]?\\d+(?:\\.\\d+)?)\\s*${unitPattern}\\s*(?:到|成|为)\\s*${unitPattern}`, "i")
+    new RegExp(`${numberPattern}\\s*${unitPattern}.*(?:换算|转换|转|到|成)\\s*${unitPattern}`, "i"),
+    new RegExp(`${numberPattern}\\s*${unitPattern}\\s*(?:等于多少|是多少|有多少|等于|多少|是)\\s*${unitPattern}`, "i"),
+    new RegExp(`(?:换算|转换)\\s*${numberPattern}\\s*${unitPattern}\\s*(?:到|成|为)\\s*${unitPattern}`, "i")
   ];
   for (const pattern of patterns) {
     const match = raw.match(pattern);
     if (!match) continue;
     const value = match[1];
+    const numericValue = value ? parseNumberToken(value) : null;
     const from = UNIT_ALIASES[match[2]] ?? UNIT_ALIASES[match[2]?.toLowerCase() ?? ""];
     const to = UNIT_ALIASES[match[3]] ?? UNIT_ALIASES[match[3]?.toLowerCase() ?? ""];
-    if (value && from && to && from.category === to.category) {
+    if (numericValue !== null && from && to && from.category === to.category) {
       if (to.scale && to.scale !== 1) continue;
-      const scaledValue = from.scale ? Number(value) * from.scale : Number(value);
+      const scaledValue = from.scale ? numericValue * from.scale : numericValue;
       return {
         category: from.category,
-        value: Number.isFinite(scaledValue) ? String(Number(scaledValue.toFixed(8))) : value,
+        value: Number.isFinite(scaledValue) ? String(Number(scaledValue.toFixed(8))) : String(numericValue),
         fromUnit: from.unit,
         toUnit: to.unit
       };
@@ -1203,6 +1213,21 @@ function evaluateArithmeticExpression(expression: string) {
 }
 
 function inferCalculatorDisplay(raw: string) {
+  const chineseExpression = raw.match(/([零〇一二两三四五六七八九十\d]+)\s*(加上|加|减去|减|乘以|乘|除以|除)\s*([零〇一二两三四五六七八九十\d]+)/);
+  if (chineseExpression) {
+    const left = parseNumberToken(chineseExpression[1] ?? "");
+    const right = parseNumberToken(chineseExpression[3] ?? "");
+    const op = chineseExpression[2] ?? "";
+    if (left !== null && right !== null) {
+      const value =
+        op.includes("加") ? left + right :
+        op.includes("减") ? left - right :
+        op.includes("乘") ? left * right :
+        op.includes("除") && right !== 0 ? left / right :
+        null;
+      if (value !== null && Number.isFinite(value)) return String(Number(value.toFixed(8)));
+    }
+  }
   const expression =
     raw.match(/([0-9][0-9+\-*/×÷().\s]+[0-9])/) ??
     raw.match(/([0-9][0-9+\-*/×÷().\s]*(?:加上|加|减去|减|乘以|乘|除以|除)[0-9+\-*/×÷().\s]*\d)/);
@@ -1654,7 +1679,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         return shortcutMatch(
           "todo.complete_item",
           { widgetId: widget.widgetId, text },
-          0.88,
+          0.92,
           context.source ?? "shortcut",
           raw
         );
@@ -1663,14 +1688,16 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "clipboard_add",
       match(normalized, raw, context) {
-        if (!/(剪贴板|剪贴板历史)/.test(normalized) || !/(保存|存一下|存|加入|添加|记录|复制|拷贝)/.test(normalized)) {
+        const explicitClipboard = /(剪贴板|剪贴板历史)/.test(normalized) && /(保存|存一下|存|加入|添加|记录|复制|拷贝)/.test(normalized);
+        const pinnedSave = /(固定|置顶|钉住|pin)/i.test(raw) && /(保存|存一下|存|记录)/.test(normalized);
+        if (!explicitClipboard && !pinnedSave) {
           return { matched: false, reason: "not_clipboard_add" };
         }
         const text = inferClipboardText(raw);
         if (!text) return { matched: false, reason: "clipboard_text_missing" };
         const pinned = inferClipboardPinned(raw);
         return (
-          routeWidgetDetailOrAdd(context, raw, "clipboard", "clipboard.add_text", { text, ...(pinned ? { pinned } : {}) }, 0.88) ?? {
+          routeWidgetDetailOrAdd(context, raw, "clipboard", "clipboard.add_text", { text, ...(pinned ? { pinned } : {}) }, 1) ?? {
             matched: false,
             reason: "clipboard_target_missing"
           }
@@ -1689,7 +1716,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         return shortcutMatch(
           "clipboard.clear",
           { widgetId: widget.widgetId, includePinned },
-          0.88,
+          0.92,
           context.source ?? "shortcut",
           raw
         );
@@ -1718,10 +1745,16 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
       name: "translate_set_draft",
       match(normalized, raw, context) {
         if (!/翻译|什么意思|啥意思|是什么意思/.test(normalized)) return { matched: false, reason: "not_translate" };
+        if (
+          /(打开|打开一下|开一下|添加|新增|再打开|来个|来一个|加一个|聚焦|切到|关闭|关掉|收起|收起来|隐藏).*(翻译|翻译器)/.test(normalized) ||
+          /(翻译|翻译器).*(打开|添加|新增|聚焦|切到|关闭|关掉|收起|收起来|隐藏)/.test(normalized)
+        ) {
+          return { matched: false, reason: "translate_window_intent_deferred" };
+        }
         const draft = inferTranslateDraft(raw);
         if (!draft) return { matched: false, reason: "translate_text_missing" };
         return (
-          routeWidgetDetailOrAdd(context, raw, "translate", "translate.set_draft", draft, 0.88) ?? {
+          routeWidgetDetailOrAdd(context, raw, "translate", "translate.set_draft", draft, 1) ?? {
             matched: false,
             reason: "translate_target_missing"
           }
@@ -1735,7 +1768,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         const args = inferConverterArgs(raw);
         if (!args) return { matched: false, reason: "converter_args_missing" };
         return (
-          routeWidgetDetailOrAdd(context, raw, "converter", "converter.set", args, 0.88) ?? {
+          routeWidgetDetailOrAdd(context, raw, "converter", "converter.set", args, 1) ?? {
             matched: false,
             reason: "converter_target_missing"
           }
@@ -1752,7 +1785,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         const display = inferCalculatorDisplay(raw);
         if (!display) return { matched: false, reason: "calculator_display_missing" };
         return (
-          routeWidgetDetailOrAdd(context, raw, "calculator", "calculator.set_display", { display }, 0.86) ?? {
+          routeWidgetDetailOrAdd(context, raw, "calculator", "calculator.set_display", { display }, 1) ?? {
             matched: false,
             reason: "calculator_target_missing"
           }
