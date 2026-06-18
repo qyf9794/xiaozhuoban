@@ -1,16 +1,24 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@xiaozhuoban/ui";
 
 export function AIGeneratorDialog({
   open,
   onClose,
+  initialPrompt = "",
   onGenerate
 }: {
   open: boolean;
   onClose: () => void;
+  initialPrompt?: string;
   onGenerate: (prompt: string) => Promise<void>;
 }) {
   const [prompt, setPrompt] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setPrompt(initialPrompt);
+    }
+  }, [initialPrompt, open]);
 
   if (!open) {
     return null;

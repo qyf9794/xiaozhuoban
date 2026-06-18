@@ -6,6 +6,8 @@ import {
 
 type SidebarSetArgs = { open?: boolean; mode?: "show" | "hide" | "toggle" };
 type FullscreenSetArgs = { enabled?: boolean; mode?: "enter" | "exit" | "toggle" };
+type CommandPaletteOpenArgs = { query?: string };
+type AiDialogOpenArgs = { prompt?: string };
 type EmptyArgs = Record<string, never>;
 
 export interface AppShellActionBridge {
@@ -14,8 +16,8 @@ export interface AppShellActionBridge {
   setFullscreen?: (enabled: boolean) => Promise<void> | void;
   getFullscreen?: () => boolean;
   openSettings?: () => Promise<void> | void;
-  openCommandPalette?: () => Promise<void> | void;
-  openAiDialog?: () => Promise<void> | void;
+  openCommandPalette?: (query?: string) => Promise<void> | void;
+  openAiDialog?: (prompt?: string) => Promise<void> | void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -37,6 +39,12 @@ const fullscreenSetSchema = createPassthroughSchema<FullscreenSetArgs>(
 );
 
 const emptySchema = createPassthroughSchema<EmptyArgs>((value): value is EmptyArgs => isRecord(value));
+const commandPaletteOpenSchema = createPassthroughSchema<CommandPaletteOpenArgs>(
+  (value): value is CommandPaletteOpenArgs => isRecord(value) && (value.query === undefined || typeof value.query === "string")
+);
+const aiDialogOpenSchema = createPassthroughSchema<AiDialogOpenArgs>(
+  (value): value is AiDialogOpenArgs => isRecord(value) && (value.prompt === undefined || typeof value.prompt === "string")
+);
 
 function success(message: string, data?: unknown): AssistantToolResult {
   return { status: "success", message, data };
@@ -119,38 +127,40 @@ export function createAppShellActions(bridge: AppShellActionBridge): Array<Assis
         return success("已打开设置");
       }
     }),
-    defineAction<EmptyArgs>({
+    defineAction<CommandPaletteOpenArgs>({
       spec: {
         name: "app.command_palette.open",
         description: "Open the Xiaozhuoban command/search palette.",
-        parameters: emptySchema,
+        parameters: commandPaletteOpenSchema,
         risk: "safe",
         scope: "desktop",
         idempotency: "idempotent",
         concurrencyKey: "app.shell",
         examples: ["打开搜索", "打开命令面板"]
       },
-      async execute() {
+      async execute(args) {
         if (!bridge.openCommandPalette) return failed("当前环境还不能打开搜索", "APP_COMMAND_PALETTE_UNAVAILABLE");
-        await bridge.openCommandPalette();
-        return success("已打开搜索");
+        const query = args.query?.trim() || undefined;
+        await bridge.openCommandPalette(query);
+        return success("已打开搜索", query ? { query } : undefined);
       }
     }),
-    defineAction<EmptyArgs>({
+    defineAction<AiDialogOpenArgs>({
       spec: {
         name: "app.ai_dialog.open",
         description: "Open the AI widget creation dialog.",
-        parameters: emptySchema,
+        parameters: aiDialogOpenSchema,
         risk: "safe",
         scope: "desktop",
         idempotency: "idempotent",
         concurrencyKey: "app.shell",
         examples: ["打开 AI 生成", "新建 AI 小工具"]
       },
-      async execute() {
+      async execute(args) {
         if (!bridge.openAiDialog) return failed("当前环境还不能打开 AI 生成", "APP_AI_DIALOG_UNAVAILABLE");
-        await bridge.openAiDialog();
-        return success("已打开 AI 生成");
+        const prompt = args.prompt?.trim() || undefined;
+        await bridge.openAiDialog(prompt);
+        return success("已打开 AI 生成", prompt ? { prompt } : undefined);
       }
     })
   ];

@@ -25,11 +25,11 @@ function createRegistry(options: {
     openSettings: () => {
       opened.push("settings");
     },
-    openCommandPalette: () => {
-      opened.push("command_palette");
+    openCommandPalette: (query) => {
+      opened.push(query ? `command_palette:${query}` : "command_palette");
     },
-    openAiDialog: () => {
-      opened.push("ai_dialog");
+    openAiDialog: (prompt) => {
+      opened.push(prompt ? `ai_dialog:${prompt}` : "ai_dialog");
     }
   }).forEach((action) => registry.register(action));
   return {
@@ -70,8 +70,10 @@ describe("App shell assistant actions", () => {
 
     await registry.execute({ id: "call_1", name: "app.settings.open", arguments: {}, source: "test" }, { now: () => NOW });
     await registry.execute({ id: "call_2", name: "app.command_palette.open", arguments: {}, source: "test" }, { now: () => NOW });
-    await registry.execute({ id: "call_3", name: "app.ai_dialog.open", arguments: {}, source: "test" }, { now: () => NOW });
+    await registry.execute({ id: "call_3", name: "app.command_palette.open", arguments: { query: "天气" }, source: "test" }, { now: () => NOW });
+    await registry.execute({ id: "call_4", name: "app.ai_dialog.open", arguments: {}, source: "test" }, { now: () => NOW });
+    await registry.execute({ id: "call_5", name: "app.ai_dialog.open", arguments: { prompt: "每日摘要" }, source: "test" }, { now: () => NOW });
 
-    expect(opened).toEqual(["settings", "command_palette", "ai_dialog"]);
+    expect(opened).toEqual(["settings", "command_palette", "command_palette:天气", "ai_dialog", "ai_dialog:每日摘要"]);
   });
 });

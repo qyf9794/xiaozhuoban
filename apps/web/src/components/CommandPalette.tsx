@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Board, WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 
 interface SearchResultItem {
@@ -10,6 +10,7 @@ interface SearchResultItem {
 export function CommandPalette({
   open,
   onClose,
+  initialQuery = "",
   boards,
   definitions,
   widgets,
@@ -17,12 +18,19 @@ export function CommandPalette({
 }: {
   open: boolean;
   onClose: () => void;
+  initialQuery?: string;
   boards: Board[];
   definitions: WidgetDefinition[];
   widgets: WidgetInstance[];
   onAddWidget: (definitionId: string) => void;
 }) {
   const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setQuery(initialQuery);
+    }
+  }, [initialQuery, open]);
 
   const results = useMemo<SearchResultItem[]>(() => {
     const q = query.trim().toLowerCase();

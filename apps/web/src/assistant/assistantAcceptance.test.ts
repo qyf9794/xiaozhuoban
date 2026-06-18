@@ -137,11 +137,11 @@ function createAcceptanceHarness(options?: { modelCall?: AssistantToolCall | nul
     openSettings: () => {
       appShell.opened.push("settings");
     },
-    openCommandPalette: () => {
-      appShell.opened.push("command_palette");
+    openCommandPalette: (query) => {
+      appShell.opened.push(query ? `command_palette:${query}` : "command_palette");
     },
-    openAiDialog: () => {
-      appShell.opened.push("ai_dialog");
+    openAiDialog: (prompt) => {
+      appShell.opened.push(prompt ? `ai_dialog:${prompt}` : "ai_dialog");
     }
   }).forEach((action) => registry.register(action));
   registerBoardActions(registry, adapter);
@@ -414,6 +414,24 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(getBoards()).toHaveLength(2);
     expect(getActiveBoard()?.name).toBe("测试桌板");
     expect(modelInputs).toEqual(["新建桌板叫测试桌板"]);
+  });
+
+  it("defers complex shell instructions to Realtime instead of executing a partial local shortcut", async () => {
+    const { harness, modelInputs, getAppShell } = createAcceptanceHarness({
+      modelCall: {
+        id: "model_palette",
+        name: "app.command_palette.open",
+        arguments: { query: "天气" },
+        source: "realtime"
+      }
+    });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("退出全屏，打开搜索面板，然后输入天气两个字");
+
+    expect(response.route).toBe("model");
+    expect(modelInputs).toEqual(["退出全屏，打开搜索面板，然后输入天气两个字"]);
+    expect(getAppShell().opened).toEqual(["command_palette"]);
   });
 
   it("opens widgets from casual aliases without model fallback", async () => {

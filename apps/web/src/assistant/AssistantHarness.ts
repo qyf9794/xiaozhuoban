@@ -372,7 +372,7 @@ export class AssistantHarness {
 
     if (!segmentedShortcut) {
       const shortcut = this.options.shortcutRouter.route(input, shortcutContext);
-      if (shortcut.matched && this.shouldExecuteLocalShortcut(shortcut.confidence)) {
+      if (shortcut.matched && this.shouldExecuteLocalShortcut(shortcut.confidence) && !this.shouldDeferComplexShortcutSegment(input)) {
         this.rememberAuditMetadata(shortcut.toolCall, input);
         const response = await this.handleFunctionCall(shortcut.toolCall, "shortcut", startedAt);
         if (shortcut.toolCall.name === CONFIRM_TOOL && response.result.status === "success" && this.queuedShortcutPlanGroups.length) {
@@ -478,7 +478,7 @@ export class AssistantHarness {
       const groupCalls: AssistantToolCall[] = [];
       for (const segment of group) {
         const routed = this.options.shortcutRouter.route(segment, planningContext);
-        if (!routed.matched || !this.shouldExecuteLocalShortcut(routed.confidence)) {
+        if (!routed.matched || !this.shouldExecuteLocalShortcut(routed.confidence) || this.shouldDeferComplexShortcutSegment(segment)) {
           return null;
         }
         this.rememberAuditMetadata(routed.toolCall, segment);
@@ -494,6 +494,20 @@ export class AssistantHarness {
 
   private shouldExecuteLocalShortcut(confidence: number): boolean {
     return confidence >= LOCAL_SHORTCUT_CONFIDENCE_THRESHOLD;
+  }
+
+  private shouldDeferComplexShortcutSegment(input: string): boolean {
+    const normalized = normalizeText(input);
+    if (normalized.length < 6) return false;
+    return (
+      /(如果|不要|别|只|仅|检查|准备|名字先叫|草稿|误触|恢复普通窗口|当前在全屏|登录音乐|语音入口|所有弹窗|只留下|不要新建)/.test(input) ||
+      /输入.+(?:字|词|内容)/.test(input) ||
+      /切到.+页面/.test(input) ||
+      /(?:隐藏|显示|先|并|同时).{0,16}(?:整理|排列|对齐)/.test(input) ||
+      /(?:整理|排列|对齐).{0,16}(?:同时|然后|再|并)/.test(input) ||
+      /(?:两个|多个|所有).{0,8}窗口/.test(input) ||
+      /窗口.{0,8}(?:放到|放在|置顶|最前)/.test(input)
+    );
   }
 
   private async handleShortcutPlan(groups: AssistantToolCall[][], startedAt: number): Promise<AssistantHarnessResponse> {

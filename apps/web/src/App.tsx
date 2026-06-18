@@ -159,6 +159,8 @@ export function App() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileToolbarMenuOpen, setMobileToolbarMenuOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [commandPaletteInitialQuery, setCommandPaletteInitialQuery] = useState("");
+  const [aiDialogInitialPrompt, setAiDialogInitialPrompt] = useState("");
   const [settingsOpenRequestId, setSettingsOpenRequestId] = useState(0);
   const [desktopViewportBottomInset, setDesktopViewportBottomInset] = useState(14);
   const [mobileChromeVisible, setMobileChromeVisible] = useState(true);
@@ -224,8 +226,14 @@ export function App() {
             setFullscreen(enabled);
           },
           openSettings: () => setSettingsOpenRequestId((value) => value + 1),
-          openCommandPalette: () => setCommandPaletteOpen(true),
-          openAiDialog: () => setAiDialogOpen(true)
+          openCommandPalette: (query) => {
+            setCommandPaletteInitialQuery(query ?? "");
+            setCommandPaletteOpen(true);
+          },
+          openAiDialog: (prompt) => {
+            setAiDialogInitialPrompt(prompt ?? "");
+            setAiDialogOpen(true);
+          }
         },
         adapterOptions: {
           getAccessToken: () => useAuthStore.getState().session?.access_token,
@@ -573,7 +581,10 @@ export function App() {
               }}
               onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
               onOpenMobileMenu={() => setMobileSidebarOpen(true)}
-              onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+              onOpenCommandPalette={() => {
+                setCommandPaletteInitialQuery("");
+                setCommandPaletteOpen(true);
+              }}
               onPickWallpaper={() => wallpaperInputRef.current?.click()}
               onSignOut={() => {
                 void signOut().catch((error) => {
@@ -601,7 +612,10 @@ export function App() {
               }}
               onImportBackup={() => backupInputRef.current?.click()}
               onAddWidget={(definitionId) => void addWidgetInstance(definitionId, { mobileMode: isMobileMode })}
-              onOpenAiDialog={() => setAiDialogOpen(true)}
+              onOpenAiDialog={() => {
+                setAiDialogInitialPrompt("");
+                setAiDialogOpen(true);
+              }}
               onEditDisplayName={() => {
                 const next = window.prompt("请输入新的用户名", currentDisplayName)?.trim();
                 if (!next || next === currentDisplayName) return;
@@ -687,6 +701,7 @@ export function App() {
 
       <CommandPalette
         open={commandPaletteOpen}
+        initialQuery={commandPaletteInitialQuery}
         onClose={() => setCommandPaletteOpen(false)}
         boards={boards}
         definitions={widgetDefinitions}
@@ -696,6 +711,7 @@ export function App() {
 
       <AIGeneratorDialog
         open={aiDialogOpen}
+        initialPrompt={aiDialogInitialPrompt}
         onClose={() => setAiDialogOpen(false)}
         onGenerate={(prompt) => generateAiWidget(prompt, { mobileMode: isMobileMode })}
       />
