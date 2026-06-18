@@ -817,11 +817,17 @@ describe("IntentShortcutRouter", () => {
   it("routes second-based countdown duration commands", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("90秒倒计时", context);
+    const chinese = router.route("设置二十五秒计时", context);
 
     expect(result.matched).toBe(true);
+    expect(chinese.matched).toBe(true);
     if (result.matched) {
       expect(result.toolCall.name).toBe("countdown.set");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_countdown", totalSeconds: 90, start: true });
+    }
+    if (chinese.matched) {
+      expect(chinese.toolCall.name).toBe("countdown.set");
+      expect(chinese.toolCall.arguments).toEqual({ widgetId: "wi_countdown", totalSeconds: 25, start: true });
     }
   });
 
@@ -880,14 +886,17 @@ describe("IntentShortcutRouter", () => {
     if (pause.matched) {
       expect(pause.toolCall.name).toBe("countdown.pause");
       expect(pause.toolCall.arguments).toEqual({ widgetId: "wi_countdown" });
+      expect(pause.confidence).toBeGreaterThanOrEqual(0.9);
     }
     if (resume.matched) {
       expect(resume.toolCall.name).toBe("countdown.resume");
       expect(resume.toolCall.arguments).toEqual({ widgetId: "wi_countdown" });
+      expect(resume.confidence).toBeGreaterThanOrEqual(0.9);
     }
     if (reset.matched) {
       expect(reset.toolCall.name).toBe("countdown.reset");
       expect(reset.toolCall.arguments).toEqual({ widgetId: "wi_countdown" });
+      expect(reset.confidence).toBeGreaterThanOrEqual(0.9);
     }
   });
 
@@ -955,6 +964,27 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes explicit note writing to add-and-follow-up when the note widget is absent", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("便签记下今天继续回归测试", {
+      ...context,
+      availableWidgets: context.availableWidgets?.filter((widget) => widget.type !== "note")
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("board.add_widget");
+      expect(result.toolCall.arguments).toEqual({
+        definitionId: "wd_note",
+        followUp: {
+          name: "note.write",
+          arguments: { content: "今天继续回归测试", mode: "append" }
+        }
+      });
+      expect(result.confidence).toBeGreaterThanOrEqual(0.9);
+    }
+  });
+
   it("routes casual note shorthand to the note widget", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("帮我记一下今天继续测试小桌板", context);
@@ -987,10 +1017,12 @@ describe("IntentShortcutRouter", () => {
     if (result.matched) {
       expect(result.toolCall.name).toBe("note.clear");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_note" });
+      expect(result.confidence).toBeGreaterThanOrEqual(0.9);
     }
     if (shorthand.matched) {
       expect(shorthand.toolCall.name).toBe("note.clear");
       expect(shorthand.toolCall.arguments).toEqual({ widgetId: "wi_note" });
+      expect(shorthand.confidence).toBeGreaterThanOrEqual(0.9);
     }
   });
 
@@ -1002,6 +1034,53 @@ describe("IntentShortcutRouter", () => {
     if (result.matched) {
       expect(result.toolCall.name).toBe("todo.add_item");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_todo", text: "买牛奶" });
+    }
+  });
+
+  it("routes explicit todo add commands to add-and-follow-up when the todo widget is absent", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("添加待办买咖啡豆", {
+      ...context,
+      availableWidgets: context.availableWidgets?.filter((widget) => widget.type !== "todo")
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("board.add_widget");
+      expect(result.toolCall.arguments).toEqual({
+        definitionId: "wd_todo",
+        followUp: {
+          name: "todo.add_item",
+          arguments: { text: "买咖啡豆" }
+        }
+      });
+      expect(result.confidence).toBeGreaterThanOrEqual(0.9);
+    }
+  });
+
+  it("routes reminder commands with only a due time using a default reminder text", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const now = new Date(2026, 5, 18, 12, 20, 0);
+    const result = router.route("十分钟后提醒我", {
+      ...context,
+      currentTime: now.toISOString(),
+      availableWidgets: context.availableWidgets?.filter((widget) => widget.type !== "todo")
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("board.add_widget");
+      expect(result.toolCall.arguments).toEqual({
+        definitionId: "wd_todo",
+        followUp: {
+          name: "todo.add_item",
+          arguments: {
+            text: "提醒我",
+            dueAt: new Date(2026, 5, 18, 12, 30, 0).toISOString()
+          }
+        }
+      });
+      expect(result.confidence).toBeGreaterThanOrEqual(0.9);
     }
   });
 

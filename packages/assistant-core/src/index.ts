@@ -671,14 +671,14 @@ function parseChineseInteger(input: string): number | null {
     十: 10
   };
   if (normalized.includes("半")) return 30;
-  if (normalized.includes("十五")) return 15;
-  if (normalized.includes("二十") || normalized.includes("两十")) return 20;
-  if (normalized.includes("三十")) return 30;
   if (normalized === "十") return 10;
   const tens = normalized.match(/^十([一二两三四五六七八九])$/);
   if (tens) return 10 + (map[tens[1]!] ?? 0);
   const compound = normalized.match(/^([一二两三四五六七八九])十([一二两三四五六七八九])?$/);
   if (compound) return (map[compound[1]!] ?? 0) * 10 + (compound[2] ? (map[compound[2]] ?? 0) : 0);
+  if (normalized.includes("十五")) return 15;
+  if (normalized.includes("二十") || normalized.includes("两十")) return 20;
+  if (normalized.includes("三十")) return 30;
   for (const [word, value] of Object.entries(map)) {
     if (normalized.includes(word)) return value;
   }
@@ -1050,10 +1050,16 @@ function inferTodoText(raw: string) {
 }
 
 function inferTodoAdd(raw: string, now: Date) {
-  const text = inferTodoText(raw);
-  const dueAt = inferTodoDueAt(raw, now) ?? inferTodoDueAt(text, now);
-  const cleaned = dueAt ? stripTodoDueText(text) : text;
-  return { text: cleanCommandContent(cleaned), dueAt };
+  let inferredText = inferTodoText(raw);
+  const rawDueAt = inferTodoDueAt(raw, now);
+  if (rawDueAt && /^(我|俺)$/.test(inferredText) && /(提醒我|叫我|到点叫我)/.test(raw)) {
+    inferredText = "";
+  }
+  const dueAt = rawDueAt ?? inferTodoDueAt(inferredText, now);
+  const fallbackReminderText = rawDueAt && /(提醒我|提醒|叫我|到点叫我|记得|别忘了)/.test(raw) ? "提醒我" : "";
+  const text = inferredText || fallbackReminderText;
+  const cleaned = dueAt && inferredText ? stripTodoDueText(inferredText) : text;
+  return { text: cleanCommandContent(cleaned) || cleanCommandContent(text), dueAt };
 }
 
 function inferTodoCompleteText(raw: string) {
@@ -1574,7 +1580,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         return shortcutMatch(
           `countdown.${action}`,
           { widgetId: widget.widgetId },
-          0.88,
+          0.92,
           context.source ?? "shortcut",
           raw
         );
@@ -1592,8 +1598,9 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         }
         const content = inferNoteContent(raw);
         if (!content) return { matched: false, reason: "note_content_missing" };
+        const confidence = explicitNoteWrite ? 1 : 0.9;
         return (
-          routeWidgetDetailOrAdd(context, raw, "note", "note.write", { content, mode: "append" }, 0.9) ?? {
+          routeWidgetDetailOrAdd(context, raw, "note", "note.write", { content, mode: "append" }, confidence) ?? {
             matched: false,
             reason: "note_target_missing"
           }
@@ -1608,7 +1615,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         }
         const widget = findWidgetByType(context, "note");
         if (!widget) return { matched: false, reason: "note_target_missing" };
-        return shortcutMatch("note.clear", { widgetId: widget.widgetId }, 0.88, context.source ?? "shortcut", raw);
+        return shortcutMatch("note.clear", { widgetId: widget.widgetId }, 0.92, context.source ?? "shortcut", raw);
       }
     },
     {
@@ -1623,7 +1630,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         const { text, dueAt } = inferTodoAdd(raw, getShortcutNow(context));
         if (!text) return { matched: false, reason: "todo_text_missing" };
         return (
-          routeWidgetDetailOrAdd(context, raw, "todo", "todo.add_item", { text, ...(dueAt ? { dueAt } : {}) }, 0.9) ?? {
+          routeWidgetDetailOrAdd(context, raw, "todo", "todo.add_item", { text, ...(dueAt ? { dueAt } : {}) }, 1) ?? {
             matched: false,
             reason: "todo_target_missing"
           }

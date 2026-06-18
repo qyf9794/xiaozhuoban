@@ -382,7 +382,7 @@ describe("stage-one assistant acceptance scenarios", () => {
     });
   });
 
-  it("routes low-confidence casual commands through Realtime planning and executes them", async () => {
+  it("routes high-confidence timer control locally while low-confidence casual commands use Realtime planning", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness();
     await harness.initialize();
 
@@ -391,7 +391,7 @@ describe("stage-one assistant acceptance scenarios", () => {
     const note = await harness.handleUserInput("帮我记个便签：晚上复盘");
     const translate = await harness.handleUserInput("hello 是什么意思");
 
-    expect([countdown, note, translate].map((response) => response.route)).toEqual(["model", "shortcut", "model"]);
+    expect([countdown, note, translate].map((response) => response.route)).toEqual(["shortcut", "shortcut", "model"]);
     expect([countdown, note, translate].map((response) => response.result)).toMatchObject([
       { status: "success" },
       { status: "success" },
@@ -400,7 +400,7 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(getWidget("countdown")?.state).toMatchObject({ running: false, targetEndsAt: 0 });
     expect(getWidget("note")?.state.content).toBe("晚上复盘");
     expect(getWidget("translate")?.state).toMatchObject({ sourceText: "hello", targetLang: "zh-CN" });
-    expect(modelInputs).toEqual(["暂停计时", "hello 是什么意思"]);
+    expect(modelInputs).toEqual(["hello 是什么意思"]);
   });
 
   it("creates a named board through Realtime planning when shortcut confidence is low", async () => {
