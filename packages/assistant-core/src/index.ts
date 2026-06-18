@@ -1475,14 +1475,17 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "open_weather",
       match(normalized, raw, context) {
-        if (!/(天气|weather)/i.test(normalized)) return { matched: false, reason: "not_weather" };
+        const cityName = inferCityName(raw);
+        const weatherIntent =
+          /(天气|weather)/i.test(normalized) ||
+          (Boolean(cityName) && /(冷不冷|热不热|冷吗|热吗|气温|温度|下雨|雨|风大|适合出门|出门|穿什么|冷|热)/.test(normalized));
+        if (!weatherIntent) return { matched: false, reason: "not_weather" };
         if (CLOSE_SHORTCUT_INTENT_PATTERN.test(normalized)) return { matched: false, reason: "weather_close_deferred" };
         const windowIntent = /(聚焦|切到|再打开|打开一个|打开天气|天气窗口|天气卡片)/.test(normalized);
         const widget = findWidgetByType(context, "weather");
         if (windowIntent && widget) {
           return shortcutMatch("widget.focus", { widgetId: widget.widgetId }, 0.92, context.source ?? "shortcut", raw);
         }
-        const cityName = inferCityName(raw);
         if (widget && cityName) {
           return shortcutMatch(
             "weather.set_city",

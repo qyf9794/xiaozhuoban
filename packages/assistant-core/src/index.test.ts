@@ -707,6 +707,34 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes natural weather questions without explicitly saying weather", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const withWidget = router.route("查北京今天冷不冷", context);
+    const withoutWidget = router.route("查北京今天冷不冷", {
+      ...context,
+      availableWidgets: context.availableWidgets?.filter((widget) => widget.type !== "weather")
+    });
+
+    expect(withWidget.matched).toBe(true);
+    if (withWidget.matched) {
+      expect(withWidget.toolCall.name).toBe("weather.set_city");
+      expect(withWidget.toolCall.arguments).toEqual({ widgetId: "wi_weather", city: "北京" });
+      expect(withWidget.confidence).toBeGreaterThanOrEqual(0.9);
+    }
+    expect(withoutWidget.matched).toBe(true);
+    if (withoutWidget.matched) {
+      expect(withoutWidget.toolCall.name).toBe("board.add_widget");
+      expect(withoutWidget.toolCall.arguments).toEqual({
+        definitionId: "wd_weather",
+        followUp: {
+          name: "weather.set_city",
+          arguments: { city: "北京" }
+        }
+      });
+      expect(withoutWidget.confidence).toBeGreaterThanOrEqual(0.9);
+    }
+  });
+
   it("routes supported weather city aliases", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("LA天气", context);
