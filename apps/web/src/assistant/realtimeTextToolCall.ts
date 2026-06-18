@@ -517,7 +517,7 @@ export function createScopedRealtimeToolUpdate(
       type: "realtime",
       instructions: createScopedRealtimeToolInstructions(scopedContext, selection, request.input, request.moduleContext),
       tools: executableTools.map((candidate) => serializeAssistantToolForRealtime(candidate)),
-      tool_choice: "auto",
+      tool_choice: executableTools.length ? "required" : "none",
       parallel_tool_calls: false
     }
   };

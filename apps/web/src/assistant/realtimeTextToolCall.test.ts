@@ -293,6 +293,7 @@ describe("Realtime text tool call fallback", () => {
 
     expect(update?.type).toBe("session.update");
     expect(update?.session.type).toBe("realtime");
+    expect(update?.session.tool_choice).toBe("required");
     expect(serialized).toContain("widget__dot__remove");
     expect(serialized).not.toContain("music__dot__pause");
     expect(serialized).toContain("wi_music");
