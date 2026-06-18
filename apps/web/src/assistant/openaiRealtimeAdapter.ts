@@ -273,6 +273,34 @@ function shouldSendRealtimeToolResult(call: AssistantToolCall): boolean {
   return call.source === "realtime";
 }
 
+function getDeclaredToolParameterKeys(tool: AssistantToolSpec | undefined): Set<string> | null {
+  const parameters = isRecord(tool?.parameters) ? tool.parameters : null;
+  const jsonSchema = isRecord(parameters?.jsonSchema) ? parameters.jsonSchema : parameters;
+  const properties = isRecord(jsonSchema?.properties) ? jsonSchema.properties : null;
+  if (!jsonSchema || !properties || jsonSchema.additionalProperties !== false) return null;
+  return new Set(Object.keys(properties));
+}
+
+function sanitizeRealtimeToolCallArguments(
+  call: AssistantToolCall,
+  tool: AssistantToolSpec | undefined
+): { call: AssistantToolCall; removedKeys: string[] } {
+  const args = isRecord(call.arguments) ? call.arguments : {};
+  const declaredKeys = getDeclaredToolParameterKeys(tool);
+  if (!declaredKeys) return { call, removedKeys: [] };
+  const nextArgs: Record<string, unknown> = {};
+  const removedKeys: string[] = [];
+  for (const [key, value] of Object.entries(args)) {
+    if (declaredKeys.has(key)) {
+      nextArgs[key] = value;
+    } else {
+      removedKeys.push(key);
+    }
+  }
+  if (!removedKeys.length) return { call, removedKeys };
+  return { call: { ...call, arguments: nextArgs }, removedKeys };
+}
+
 export function parseRealtimeFunctionCallEvent(value: unknown): AssistantToolCall | null {
   const event = typeof value === "string" ? (JSON.parse(value) as unknown) : value;
   if (!isRecord(event)) return null;
@@ -1180,15 +1208,27 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.handleToolSelection(call);
       return;
     }
+    const sanitized = sanitizeRealtimeToolCallArguments(call, this.currentTools.find((tool) => tool.name === call.name));
+    const toolCall = sanitized.call;
+    if (sanitized.removedKeys.length) {
+      this.emitDiagnostic({
+        type: "realtime.function_call.arguments_sanitized",
+        status: "success",
+        operationId: call.id,
+        toolName: call.name,
+        commandTraceId,
+        data: { removedKeys: sanitized.removedKeys }
+      });
+    }
     this.emitDiagnostic({
       type: "realtime.function_call.tool",
       status: "received",
-      operationId: call.id,
-      toolName: call.name,
+      operationId: toolCall.id,
+      toolName: toolCall.name,
       commandTraceId,
-      data: createSafeRealtimeToolCallDiagnosticData(call)
+      data: createSafeRealtimeToolCallDiagnosticData(toolCall)
     });
-    void this.options.onFunctionCall?.(call);
+    void this.options.onFunctionCall?.(toolCall);
   }
 
   private handleToolSelection(call: AssistantToolCall): void {

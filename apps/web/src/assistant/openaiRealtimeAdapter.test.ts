@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { WidgetAssistantRegistry, createPassthroughSchema } from "@xiaozhuoban/assistant-core";
+import { WidgetAssistantRegistry, createPassthroughSchema, createStrictObjectSchema } from "@xiaozhuoban/assistant-core";
 import {
   OpenAIRealtimeWebRtcAdapter,
   closeRealtimeConnectionResources,
@@ -787,6 +787,66 @@ describe("OpenAI realtime adapter helpers", () => {
         operationId: "call_weather_1",
         toolName: "weather.set_city",
         data: { cityCode: "shanghai", cityName: "上海" }
+      })
+    ]));
+  });
+
+  it("drops undeclared realtime tool arguments before Harness validation", () => {
+    const diagnostics: Array<{ type: string; operationId?: string; toolName?: string; data?: unknown }> = [];
+    const calls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      },
+      onFunctionCall(call) {
+        calls.push({ id: call.id, name: call.name, arguments: call.arguments as Record<string, unknown> });
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "music.search",
+        description: "搜索音乐",
+        parameters: createStrictObjectSchema({
+          widgetId: { type: "string", required: true },
+          query: { type: "string", required: true },
+          kind: { type: "string" }
+        }),
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      }
+    ]);
+    Object.assign(adapter as unknown as { sessionReady: boolean }, { sessionReady: true });
+
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "response.output_item.done",
+      item: {
+        type: "function_call",
+        call_id: "call_music_extra",
+        name: "music__dot__search",
+        arguments: JSON.stringify({ widgetId: "wi_music", query: "放松 音乐", play: true, raw: "ignored" })
+      }
+    });
+
+    expect(calls).toEqual([
+      { id: "call_music_extra", name: "music.search", arguments: { widgetId: "wi_music", query: "放松 音乐" } }
+    ]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.function_call.arguments_sanitized",
+        operationId: "call_music_extra",
+        toolName: "music.search",
+        data: { removedKeys: ["play", "raw"] }
+      }),
+      expect.objectContaining({
+        type: "realtime.function_call.tool",
+        operationId: "call_music_extra",
+        toolName: "music.search",
+        data: { query: "放松 音乐" }
       })
     ]));
   });

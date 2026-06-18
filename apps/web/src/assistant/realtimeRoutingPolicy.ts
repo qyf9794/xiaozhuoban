@@ -30,6 +30,7 @@ export const realtimeToolSelectionPolicyLines = [
   "用户说“打开设置/显示设置菜单”时，优先调用 app.settings.open。",
   "用户说“打开搜索/命令面板”时，优先调用 app.command_palette.open；用户说“打开 AI 生成”时，优先调用 app.ai_dialog.open。",
   "如果用户说“关闭/关掉 + 小工具名”，优先调用 widget.remove 关闭这个小工具窗口。",
+  "用户说“来个/来一首/想听/播放 + 歌手、歌曲或风格”时，默认调用 music.play；只有明确说搜索/找/不一定播放/先不播放/不要播放时才调用 music.search。",
   "如果用户说“暂停/继续/播放/下一首”等播放控制，优先调用对应媒体工具；点歌、歌手名加歌曲名时选择 music.play。"
 ];
 
@@ -46,11 +47,13 @@ export const realtimeToolSelectionSessionPolicyLines = [
   "用户说“打开设置/显示设置菜单”时，优先选择 app.settings.open。",
   "用户说“打开搜索/命令面板”时，优先选择 app.command_palette.open；用户说“打开 AI 生成”时，优先选择 app.ai_dialog.open。",
   "如果用户说“关闭/关掉 + 小工具名”，优先选择 widget.remove 关闭这个小工具窗口。",
+  "用户说“来个/来一首/想听/播放 + 歌手、歌曲或风格”时，默认选择 music.play；只有明确说搜索/找/不一定播放/先不播放/不要播放时才选择 music.search。",
   "如果用户说“暂停/继续/播放/下一首”等播放控制，优先选择对应媒体工具。"
 ];
 
 export const realtimePlanSelectionPolicyLines = [
   "用户要求播放某首歌、某位歌手或某张专辑，并且工具目录里有 music.play，必须选择 music.play。",
+  "用户说“来个/来一首/想听/播放 + 歌手、歌曲或风格”时，默认选择 music.play；只有明确说搜索/找/不一定播放/先不播放/不要播放时才选择 music.search。",
   "打开电视、打开钟表、打开时钟、打开世界时钟、打开留言板、打开天气等窗口类命令必须选择 board.add_widget，不要选择 music.search 或 music.play。",
   "用户只说“打开时钟”时选择 board.add_widget 且 selectedModule/targetHint 指向 dialClock/表盘；只有明确说世界时钟、世界时间、时区或城市时间时才指向 worldClock。",
   "music.search 和 music.play 只用于明确搜索/播放/暂停/切换音乐；非音乐窗口名即使当前焦点在音乐播放器，也不要传给音乐工具。",
