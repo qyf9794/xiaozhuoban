@@ -2562,6 +2562,8 @@ export function BuiltinWidgetView({
 
   if (definition.type === "weather") {
     const selectedCityCode = asString(instance.state.cityCode) || "shanghai";
+    const selectedCityCodeRef = useRef(selectedCityCode);
+    selectedCityCodeRef.current = selectedCityCode;
     const weather = instance.state.weather as
       | {
           temperature: number;
@@ -2610,7 +2612,7 @@ export function BuiltinWidgetView({
                 tempMin: payload.daily?.temperature_2m_min?.[index + 1] ?? 0
               }))
               .filter((item) => item.date) ?? [];
-          if (cancelled) return;
+          if (cancelled || selectedCityCodeRef.current !== city.value) return;
           onStateChange({
             ...instance.state,
             cityCode: city.value,
@@ -2627,7 +2629,7 @@ export function BuiltinWidgetView({
           });
         })
         .catch((fetchError) => {
-          if (cancelled) return;
+          if (cancelled || selectedCityCodeRef.current !== city.value) return;
           onStateChange({
             ...instance.state,
             cityCode: city.value,

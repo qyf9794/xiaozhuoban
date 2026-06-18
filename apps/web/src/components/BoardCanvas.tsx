@@ -18,8 +18,11 @@ interface ResizeState {
   id: string;
   pointerId: number;
   startClientX: number;
+  startClientY: number;
   startW: number;
+  startH: number;
   currentW: number;
+  currentH: number;
 }
 
 interface PendingTouchDragState {
@@ -79,6 +82,33 @@ export function BoardCanvas({
     "input, textarea, select, button, video, audio, iframe, [contenteditable='true'], [data-no-drag='true']";
   const mobileCanvasPadding = "calc(env(safe-area-inset-top) + 74px) 14px 0";
   const mobileCanvasBottomSpacerHeight = "calc(env(safe-area-inset-bottom) + 140px)";
+  const resizableDesktopWidgetTypes = new Set([
+    "note",
+    "todo",
+    "calculator",
+    "countdown",
+    "weather",
+    "headline",
+    "market",
+    "music",
+    "tv",
+    "dialClock",
+    "worldClock",
+    "translate",
+    "clipboard",
+    "converter",
+    "recorder",
+    "messageBoard"
+  ]);
+  const clampDesktopWidgetSize = (type: string, w: number, h: number) => {
+    if (type === "tv") {
+      return clampTvWidgetSize(w, h);
+    }
+    return {
+      w: Math.max(180, Math.min(640, Math.round(w))),
+      h: Math.max(160, Math.min(760, Math.round(h)))
+    };
+  };
 
   const dragPosition = useMemo(() => {
     if (!drag) return null;
@@ -100,7 +130,7 @@ export function BoardCanvas({
                 y: widget.position.y
               };
         const width = resize?.id === widget.id ? resize.currentW : widget.size.w;
-        const height = resize?.id === widget.id ? 480 : widget.size.h;
+        const height = resize?.id === widget.id ? resize.currentH : widget.size.h;
         return {
           maxX: Math.max(acc.maxX, position.x + width),
           maxY: Math.max(acc.maxY, position.y + height)
@@ -242,12 +272,16 @@ export function BoardCanvas({
               }
               if (resize && event.pointerId === resize.pointerId) {
                 const deltaX = event.clientX - resize.startClientX;
-                const next = clampTvWidgetSize(resize.startW + deltaX, 480);
+                const deltaY = event.clientY - resize.startClientY;
+                const widget = widgets.find((item) => item.id === resize.id);
+                const definitionType = widget ? byId.get(widget.definitionId)?.type : "";
+                const next = clampDesktopWidgetSize(definitionType ?? "", resize.startW + deltaX, resize.startH + deltaY);
                 setResize((prev) =>
                   prev
                     ? {
                         ...prev,
-                        currentW: next.w
+                        currentW: next.w,
+                        currentH: next.h
                       }
                     : prev
                 );
@@ -284,7 +318,7 @@ export function BoardCanvas({
                 return;
               }
               if (resize && event.pointerId === resize.pointerId) {
-                onResize(resize.id, resize.currentW, 480);
+                onResize(resize.id, resize.currentW, resize.currentH);
                 setResize(null);
                 return;
               }
@@ -321,19 +355,23 @@ export function BoardCanvas({
 
         const position = drag?.id === widget.id && dragPosition ? dragPosition : widget.position;
         const isFocusedWidget = widget.id === focusedWidgetId;
-        const isTvWidget = definition.type === "tv";
+        const isResizableDesktopWidget = !definition.kind || definition.kind === "system"
+          ? resizableDesktopWidgetTypes.has(definition.type)
+          : false;
         const isFixedHeightDesktopWidget =
           definition.type === "tv" ||
           definition.type === "worldClock" ||
           definition.type === "messageBoard" ||
           definition.type === "dialClock";
         const isDynamicHeightWidget = !isMobileMode && !isFixedHeightDesktopWidget;
-        const baseSize = isTvWidget ? clampTvWidgetSize(widget.size.w, 480) : widget.size;
+        const baseSize = isResizableDesktopWidget
+          ? clampDesktopWidgetSize(definition.type, widget.size.w, widget.size.h)
+          : widget.size;
         const size =
           resize?.id === widget.id
             ? {
                 w: resize.currentW,
-                h: 480
+                h: resize.currentH
               }
             : baseSize;
 
@@ -392,7 +430,7 @@ export function BoardCanvas({
             >
               ×
             </button>
-            {isTvWidget && !isMobileMode ? (
+            {isResizableDesktopWidget && !isMobileMode ? (
               <div
                 className="widget-resize-edge"
                 data-no-drag="true"
@@ -403,13 +441,16 @@ export function BoardCanvas({
                   event.preventDefault();
                   event.stopPropagation();
                   event.currentTarget.setPointerCapture(event.pointerId);
-                  const start = clampTvWidgetSize(baseSize.w, 480);
+                  const start = clampDesktopWidgetSize(definition.type, baseSize.w, baseSize.h);
                   setResize({
                     id: widget.id,
                     pointerId: event.pointerId,
                     startClientX: event.clientX,
+                    startClientY: event.clientY,
                     startW: start.w,
-                    currentW: start.w
+                    startH: start.h,
+                    currentW: start.w,
+                    currentH: start.h
                   });
                 }}
               />

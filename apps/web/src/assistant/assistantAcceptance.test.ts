@@ -434,6 +434,23 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(getAppShell().opened).toEqual(["command_palette"]);
   });
 
+  it("defers complex widget lifecycle instructions to Realtime before segmenting local shortcuts", async () => {
+    const { harness, modelInputs } = createAcceptanceHarness();
+    await harness.initialize();
+
+    await harness.handleUserInput("关闭留言板，然后打开一个新的便签实例");
+    await harness.handleUserInput("把翻译窗口拖到便签下面，并聚焦翻译输入框");
+    await harness.handleUserInput("关闭天气和新闻，只保留音乐、电视、待办");
+    await harness.handleUserInput("再开一个天气窗口用于对比北京和上海");
+
+    expect(modelInputs).toEqual([
+      "关闭留言板，然后打开一个新的便签实例",
+      "把翻译窗口拖到便签下面，并聚焦翻译输入框",
+      "关闭天气和新闻，只保留音乐、电视、待办",
+      "再开一个天气窗口用于对比北京和上海"
+    ]);
+  });
+
   it("opens widgets from casual aliases without model fallback", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness({ initialWidgetTypes: ["weather", "todo"] });
     await harness.initialize();

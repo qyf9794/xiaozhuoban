@@ -98,8 +98,15 @@ describe("getWidgetSizePolicy", () => {
     expect(policy.clamp?.(1000, 999)).toEqual({ w: 498, h: 480 });
   });
 
-  it("marks non-tv widgets as fixed-size for assistant resize", () => {
+  it("allows common desktop widgets to resize with generic clamping", () => {
     const policy = getWidgetSizePolicy("note");
+
+    expect(policy.resizable).toBe(true);
+    expect(policy.clamp?.(1000, 90)).toEqual({ w: 640, h: 160 });
+  });
+
+  it("marks unsupported widgets as fixed-size for assistant resize", () => {
+    const policy = getWidgetSizePolicy("gomoku");
 
     expect(policy.resizable).toBe(false);
     expect(policy.reason).toContain("固定");
@@ -210,14 +217,16 @@ describe("registerBoardActions", () => {
     });
   });
 
-  it("refuses to resize fixed-size widgets without mutating", async () => {
+  it("refuses to resize unsupported widgets without mutating", async () => {
     const { store, calls } = createStore();
+    store.getWidgetDefinitions = () => [makeDefinition("gomoku")];
+    store.getWidgetInstances = () => [makeWidget("gomoku")];
     const registry = createRegistry(store);
 
     const result = await registry.execute({
       id: "call_1",
       name: "widget.resize",
-      arguments: { widgetId: "wi_note", w: 320, h: 240 },
+      arguments: { widgetId: "wi_gomoku", w: 320, h: 240 },
       source: "test"
     });
 
@@ -226,6 +235,21 @@ describe("registerBoardActions", () => {
       errorCode: "WIDGET_SIZE_FIXED"
     });
     expect(calls).toEqual([]);
+  });
+
+  it("resizes common desktop widgets with generic clamp rules", async () => {
+    const { store, calls } = createStore();
+    const registry = createRegistry(store);
+
+    const result = await registry.execute({
+      id: "call_1",
+      name: "widget.resize",
+      arguments: { widgetId: "wi_note", w: 999, h: 120 },
+      source: "test"
+    });
+
+    expect(result.status).toBe("success");
+    expect(calls).toEqual([{ name: "updateWidgetSize", args: ["wi_note", 640, 160] }]);
   });
 
   it("resizes tv widgets with existing clamp rules", async () => {

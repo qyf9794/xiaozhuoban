@@ -117,6 +117,34 @@ export function getWidgetSizePolicy(definitionType: string): WidgetSizePolicy {
     };
   }
 
+  if (
+    [
+      "note",
+      "todo",
+      "calculator",
+      "countdown",
+      "weather",
+      "headline",
+      "market",
+      "music",
+      "dialClock",
+      "worldClock",
+      "translate",
+      "clipboard",
+      "converter",
+      "recorder",
+      "messageBoard"
+    ].includes(definitionType)
+  ) {
+    return {
+      resizable: true,
+      clamp: (w, h) => ({
+        w: Math.max(180, Math.min(640, Math.round(w))),
+        h: Math.max(160, Math.min(760, Math.round(h)))
+      })
+    };
+  }
+
   return {
     resizable: false,
     reason: "这个小工具的面板大小是固定的，不能调整"

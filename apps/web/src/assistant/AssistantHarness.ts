@@ -378,7 +378,7 @@ export class AssistantHarness {
     }
     const shortcutContext = this.buildShortcutContext();
     const segmentedShortcut = this.hasSegmentedShortcutInput(input);
-    const shortcutPlan = this.buildShortcutPlan(input, shortcutContext);
+    const shortcutPlan = this.shouldDeferComplexShortcutSegment(input) ? null : this.buildShortcutPlan(input, shortcutContext);
     if (shortcutPlan) {
       return this.handleShortcutPlan(shortcutPlan, startedAt);
     }
@@ -517,10 +517,13 @@ export class AssistantHarness {
       /输入.+(?:字|词|内容)/.test(input) ||
       /切到.+页面/.test(input) ||
       /(?:切到|切回|回到|新开|新建|创建).{0,20}(?:后|再|然后|同时|，|,).{0,24}(?:打开|添加|把|放上|移动|调到)/.test(input) ||
+      /(?:关闭|关掉|关上|删掉|删除|移除).{0,20}(?:后|再|然后|同时|，|,).{0,24}(?:打开|添加|新建|新开)/.test(input) ||
+      /(?:打开|开一下|唤出|再开).{0,20}(?:后|，|,).{0,24}(?:把|移动|固定|用于|对比)/.test(input) ||
       /(?:隐藏|显示|先|并|同时).{0,16}(?:整理|排列|对齐)/.test(input) ||
       /(?:整理|排列|对齐).{0,16}(?:同时|然后|再|并)/.test(input) ||
+      /(?:旧的|新的|另一个|再开|只保留|保留).{0,16}(?:小工具|窗口|倒计时|音乐|电视|待办|天气)/.test(input) ||
       /(?:两个|多个|所有).{0,8}窗口/.test(input) ||
-      /窗口.{0,8}(?:放到|放在|置顶|最前)/.test(input)
+      /窗口.{0,16}(?:拖到|移到|移动到|放到|放在|置顶|最前|调宽|调小|放大|退出全屏)/.test(input)
     );
   }
 

@@ -495,7 +495,7 @@ async function removeLegacyDefaultWidgets(
 function safeWidgetWidth(widget: WidgetInstance, definitionType?: string) {
   const normalized = Math.max(120, Number(widget.size.w) || 240);
   if (definitionType === "dialClock") {
-    return 240;
+    return Math.max(180, Math.min(640, normalized));
   }
   return definitionType === "tv" ? clampTvWidgetSize(normalized, 480).w : normalized;
 }
@@ -505,13 +505,13 @@ function safeWidgetHeight(widget: WidgetInstance, definitionType?: string) {
     return 480;
   }
   if (definitionType === "messageBoard") {
-    return 500;
+    return Math.max(260, Math.min(760, Number(widget.size.h) || 500));
   }
   if (definitionType === "dialClock") {
-    return 240;
+    return Math.max(160, Math.min(760, Number(widget.size.h) || 240));
   }
   if (definitionType === "weather") {
-    return Math.max(260, Number(widget.size.h) || 260);
+    return Math.max(160, Number(widget.size.h) || 260);
   }
   if (definitionType === "gomoku") {
     return Math.max(560, Number(widget.size.h) || 640);
