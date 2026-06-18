@@ -193,12 +193,13 @@ async (page) => {
   const relaxSearch = await waitForNewDiagnostic(
     start,
     (event) =>
-      event.type === "realtime.function_call.tool" &&
-      event.toolName === "music.search" &&
-      /放松|轻/.test(String(event.data?.query || "")),
+      (event.type === "realtime.function_call.tool" &&
+        event.toolName === "music.search" &&
+        /放松|轻/.test(String(event.data?.query || ""))) ||
+      isSuccessfulOperation(event, "music.search"),
     40_000
   );
-  const relaxResult = await waitForToolResult(start, relaxSearch);
+  const relaxResult = relaxSearch?.type === "realtime.function_call.tool" ? await waitForToolResult(start, relaxSearch) : relaxSearch;
   await page.waitForTimeout(1000);
   state = await snapshot();
   await push(

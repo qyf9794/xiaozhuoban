@@ -97,6 +97,44 @@ function parseArguments(value: unknown): unknown {
   }
 }
 
+function normalizeMusicToolArguments(args: Record<string, unknown>): Record<string, unknown> {
+  const nextArgs = { ...args };
+  const queryParts = [
+    nextArgs.query,
+    nextArgs.keyword,
+    nextArgs.term,
+    nextArgs.search,
+    nextArgs.artist,
+    nextArgs.artistName,
+    nextArgs.singer,
+    nextArgs.song,
+    nextArgs.songName,
+    nextArgs.title,
+    nextArgs.track
+  ]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map((value) => value.trim());
+  const query = Array.from(new Set(queryParts)).join(" ");
+  if (query) {
+    nextArgs.query = query;
+  }
+  delete nextArgs.keyword;
+  delete nextArgs.term;
+  delete nextArgs.search;
+  delete nextArgs.artist;
+  delete nextArgs.artistName;
+  delete nextArgs.singer;
+  delete nextArgs.song;
+  delete nextArgs.songName;
+  delete nextArgs.title;
+  delete nextArgs.track;
+  delete nextArgs.boardId;
+  delete nextArgs.notAutoPlay;
+  delete nextArgs.autoPlay;
+  delete nextArgs.autoplay;
+  return nextArgs;
+}
+
 function normalizeRealtimePlanArguments(
   plan: CommandPlan,
   context: CompactAssistantContext,
@@ -131,23 +169,10 @@ function normalizeRealtimePlanArguments(
       }
     }
 
-    if ((command.tool === "music.search" || command.tool === "music.play") && typeof args.query !== "string") {
-      const aliasQuery =
-        typeof args.keyword === "string"
-          ? args.keyword
-          : typeof args.term === "string"
-            ? args.term
-            : typeof args.search === "string"
-              ? args.search
-              : "";
-      if (aliasQuery) {
-        args.query = aliasQuery;
-      }
-    }
+    const normalizedArgs = command.tool === "music.search" || command.tool === "music.play" ? normalizeMusicToolArguments(args) : args;
     if (command.tool === "music.search" || command.tool === "music.play") {
-      delete args.keyword;
-      delete args.term;
-      delete args.search;
+      Object.keys(args).forEach((key) => delete args[key]);
+      Object.assign(args, normalizedArgs);
     }
 
     if (tool?.scope === "widget-detail" && tool.widgetType && typeof args.widgetId !== "string") {
@@ -301,7 +326,14 @@ function sanitizeRealtimeToolCallArguments(
   call: AssistantToolCall,
   tool: AssistantToolSpec | undefined
 ): { call: AssistantToolCall; removedKeys: string[] } {
-  const args = isRecord(call.arguments) ? call.arguments : {};
+  const originalArgs = isRecord(call.arguments) ? call.arguments : {};
+  const args =
+    (call.name === "music.search" || call.name === "music.play") && isRecord(call.arguments)
+      ? normalizeMusicToolArguments(call.arguments)
+      : isRecord(call.arguments)
+        ? call.arguments
+        : {};
+  const normalized = args !== originalArgs;
   const declaredKeys = getDeclaredToolParameterKeys(tool);
   if (!declaredKeys) return { call, removedKeys: [] };
   const nextArgs: Record<string, unknown> = {};
@@ -313,7 +345,7 @@ function sanitizeRealtimeToolCallArguments(
       removedKeys.push(key);
     }
   }
-  if (!removedKeys.length) return { call, removedKeys };
+  if (!removedKeys.length && !normalized) return { call, removedKeys };
   return { call: { ...call, arguments: nextArgs }, removedKeys };
 }
 

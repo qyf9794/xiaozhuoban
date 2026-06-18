@@ -922,6 +922,61 @@ describe("OpenAI realtime adapter helpers", () => {
     ]));
   });
 
+  it("normalizes realtime music artist and song aliases before Harness validation", () => {
+    const diagnostics: Array<{ type: string; operationId?: string; toolName?: string; data?: unknown }> = [];
+    const calls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      },
+      onFunctionCall(call) {
+        calls.push({ id: call.id, name: call.name, arguments: call.arguments as Record<string, unknown> });
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "music.play",
+        description: "播放音乐",
+        parameters: createStrictObjectSchema({
+          widgetId: { type: "string", required: true },
+          query: { type: "string" },
+          kind: { type: "string" },
+          resultIndex: { type: "number" }
+        }),
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      }
+    ]);
+    Object.assign(adapter as unknown as { sessionReady: boolean }, { sessionReady: true });
+
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "response.output_item.done",
+      item: {
+        type: "function_call",
+        call_id: "call_music_alias",
+        name: "music__dot__play",
+        arguments: JSON.stringify({ widgetId: "wi_music", artist: "陈奕迅", song: "十年", kind: "song" })
+      }
+    });
+
+    expect(calls).toEqual([
+      { id: "call_music_alias", name: "music.play", arguments: { widgetId: "wi_music", query: "陈奕迅 十年", kind: "song" } }
+    ]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.function_call.tool",
+        operationId: "call_music_alias",
+        toolName: "music.play",
+        data: { query: "陈奕迅 十年", kind: "song" }
+      })
+    ]));
+  });
+
   it("records realtime voice speech and transcript diagnostics under the same trace", () => {
     const diagnostics: Array<{ type: string; commandTraceId?: string; status?: string; data?: { eventType?: string; transcript?: string } }> = [];
     const adapter = new OpenAIRealtimeWebRtcAdapter({
@@ -1576,7 +1631,7 @@ describe("OpenAI realtime adapter helpers", () => {
                   id: "cmd_search_music",
                   module: "music",
                   tool: "music.search",
-                  args: { keyword: "王菲 红豆" },
+                  args: { keyword: "王菲 红豆", boardId: "board_1", notAutoPlay: true },
                   risk: "safe",
                   confidence: 0.75,
                   source: "text",
@@ -1586,7 +1641,7 @@ describe("OpenAI realtime adapter helpers", () => {
                   id: "cmd_play_music",
                   module: "music",
                   tool: "music.play",
-                  args: { keyword: "王菲 红豆" },
+                  args: { artist: "王菲", song: "红豆" },
                   risk: "safe",
                   confidence: 0.75,
                   source: "text",
