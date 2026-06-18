@@ -1361,6 +1361,63 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
       }
     },
     {
+      name: "app_sidebar",
+      match(normalized, raw, context) {
+        const sidebar = /(侧栏|侧边栏|左边栏|左侧栏)/.test(normalized);
+        if (!sidebar) return { matched: false, reason: "not_app_sidebar" };
+        const wantsHide =
+          /(藏|隐藏|收起|关掉|关闭).*(侧栏|侧边栏|左边栏|左侧栏)/.test(normalized) ||
+          /(侧栏|侧边栏|左边栏|左侧栏).*(藏|隐藏|收起|关掉|关闭)/.test(normalized);
+        const wantsShow =
+          /(显示|打开|展开|恢复|重新显示).*(侧栏|侧边栏|左边栏|左侧栏)/.test(normalized) ||
+          /(侧栏|侧边栏|左边栏|左侧栏).*(显示|打开|展开|恢复|重新显示)/.test(normalized);
+        if (!wantsHide && !wantsShow) return { matched: false, reason: "app_sidebar_mode_missing" };
+        return shortcutMatch("app.sidebar.set", { mode: wantsShow ? "show" : "hide" }, 0.96, context.source ?? "shortcut", raw);
+      }
+    },
+    {
+      name: "app_fullscreen",
+      match(normalized, raw, context) {
+        const fullscreen = /(沉浸|普通窗口|小桌板.*全屏|页面.*全屏|窗口.*全屏|全屏.*小桌板|全屏.*页面|全屏.*窗口)/.test(normalized);
+        if (!fullscreen) return { matched: false, reason: "not_app_fullscreen" };
+        const wantsExit =
+          /(退出|离开|关闭).*(全屏|沉浸)/.test(normalized) ||
+          /(全屏|沉浸).*(退出|离开|关闭)/.test(normalized) ||
+          /(回|恢复).*(普通窗口|普通模式)/.test(normalized);
+        const wantsEnter = /(进入|打开|开启|切到|全屏|沉浸)/.test(normalized) && !wantsExit;
+        if (!wantsExit && !wantsEnter) return { matched: false, reason: "app_fullscreen_mode_missing" };
+        return shortcutMatch("app.fullscreen.set", { mode: wantsExit ? "exit" : "enter" }, 0.96, context.source ?? "shortcut", raw);
+      }
+    },
+    {
+      name: "app_settings",
+      match(normalized, raw, context) {
+        if (!/(打开|显示|进入|调出).*(设置)|^(设置)$/.test(normalized)) {
+          return { matched: false, reason: "not_app_settings" };
+        }
+        return shortcutMatch("app.settings.open", {}, 0.96, context.source ?? "shortcut", raw);
+      }
+    },
+    {
+      name: "app_command_palette",
+      match(normalized, raw, context) {
+        const commandPalette =
+          /(打开|显示|进入|调出).*(搜索|命令面板|指令面板|命令中心)/.test(normalized) ||
+          /(搜索|命令面板|指令面板|命令中心).*(打开|显示|进入|调出)/.test(normalized);
+        if (!commandPalette) return { matched: false, reason: "not_app_command_palette" };
+        return shortcutMatch("app.command_palette.open", {}, 0.96, context.source ?? "shortcut", raw);
+      }
+    },
+    {
+      name: "app_ai_dialog",
+      match(normalized, raw, context) {
+        const aiWidget = /(ai|AI|人工智能).*(小工具|组件|widget|生成|新建|创建)/i.test(raw);
+        const createWidget = /(新建|创建|新增|生成|打开).*(ai|AI|人工智能).*(小工具|组件|widget)/i.test(raw);
+        if (!aiWidget && !createWidget) return { matched: false, reason: "not_app_ai_dialog" };
+        return shortcutMatch("app.ai_dialog.open", {}, 0.96, context.source ?? "shortcut", raw);
+      }
+    },
+    {
       name: "auto_align",
       match(normalized, raw, context) {
         if (/(整理|排列|对齐|收拾).*(桌面|桌板|小工具)|^(整理|排列|对齐|收拾)$/.test(normalized)) {

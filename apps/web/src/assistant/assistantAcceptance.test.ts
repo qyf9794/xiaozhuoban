@@ -16,6 +16,7 @@ import {
 } from "@xiaozhuoban/assistant-core";
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { AssistantHarness, type AssistantRealtimeAdapter } from "./AssistantHarness";
+import { createAppShellActions } from "./appShellActions";
 import { registerBoardActions } from "./boardActions";
 import { createWidgetStateActions } from "./widgetStateActions";
 
@@ -88,6 +89,11 @@ function createAcceptanceHarness(options?: { modelCall?: AssistantToolCall | nul
   const sentResults: AssistantToolResult[] = [];
   const modelInputs: string[] = [];
   const registry = new ActionRegistry();
+  const appShell = {
+    sidebarOpen: true,
+    fullscreen: false,
+    opened: [] as string[]
+  };
   const adapter = {
     getWidgetInstances: () => widgets,
     getWidgetDefinitions: () => definitions,
@@ -119,6 +125,25 @@ function createAcceptanceHarness(options?: { modelCall?: AssistantToolCall | nul
       boards = boards.map((board) => (board.id === boardId ? { ...board, name } : board));
     }
   };
+  createAppShellActions({
+    getSidebarOpen: () => appShell.sidebarOpen,
+    setSidebarOpen: (open) => {
+      appShell.sidebarOpen = open;
+    },
+    getFullscreen: () => appShell.fullscreen,
+    setFullscreen: (enabled) => {
+      appShell.fullscreen = enabled;
+    },
+    openSettings: () => {
+      appShell.opened.push("settings");
+    },
+    openCommandPalette: () => {
+      appShell.opened.push("command_palette");
+    },
+    openAiDialog: () => {
+      appShell.opened.push("ai_dialog");
+    }
+  }).forEach((action) => registry.register(action));
   registerBoardActions(registry, adapter);
   createWidgetStateActions(adapter).forEach((action) => registry.register(action));
   const shortcutRouter = createDefaultIntentShortcutRouter();
@@ -237,6 +262,7 @@ function createAcceptanceHarness(options?: { modelCall?: AssistantToolCall | nul
     harness,
     sentResults,
     modelInputs,
+    getAppShell: () => appShell,
     getBoards: () => boards,
     getActiveBoard: () => boards.find((board) => board.id === activeBoardId),
     getWidget: (type: string) => widgets.find((item) => item.id === `wi_${type}`)
@@ -273,6 +299,35 @@ function updatePlanningContext(context: IntentShortcutContext, call: AssistantTo
 }
 
 describe("stage-one assistant acceptance scenarios", () => {
+  it("runs app shell window controls locally without Realtime auth", async () => {
+    const { harness, modelInputs, getAppShell } = createAcceptanceHarness();
+    await harness.initialize();
+
+    const hide = await harness.handleUserInput("把左边栏先藏起来");
+    const show = await harness.handleUserInput("侧边栏重新显示");
+    const enterFullscreen = await harness.handleUserInput("进入沉浸全屏");
+    const exitFullscreen = await harness.handleUserInput("退出全屏回普通窗口");
+    const settings = await harness.handleUserInput("打开小桌板设置");
+    const palette = await harness.handleUserInput("打开搜索命令面板");
+    const aiDialog = await harness.handleUserInput("我要新建一个 AI 小工具");
+
+    expect([hide, show, enterFullscreen, exitFullscreen, settings, palette, aiDialog].map((response) => response.route)).toEqual([
+      "shortcut",
+      "shortcut",
+      "shortcut",
+      "shortcut",
+      "shortcut",
+      "shortcut",
+      "shortcut"
+    ]);
+    expect(getAppShell()).toMatchObject({
+      sidebarOpen: true,
+      fullscreen: false,
+      opened: ["settings", "command_palette", "ai_dialog"]
+    });
+    expect(modelInputs).toEqual([]);
+  });
+
   it("runs 上海天气 through shortcut-first Harness without model fallback", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness();
     await harness.initialize();

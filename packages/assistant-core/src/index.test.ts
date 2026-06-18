@@ -614,6 +614,29 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes app shell window commands locally with high confidence", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const cases = [
+      ["把左边栏先藏起来", "app.sidebar.set", { mode: "hide" }],
+      ["侧边栏重新显示", "app.sidebar.set", { mode: "show" }],
+      ["进入沉浸全屏", "app.fullscreen.set", { mode: "enter" }],
+      ["退出全屏回普通窗口", "app.fullscreen.set", { mode: "exit" }],
+      ["打开小桌板设置", "app.settings.open", {}],
+      ["打开搜索命令面板", "app.command_palette.open", {}],
+      ["我要新建一个 AI 小工具", "app.ai_dialog.open", {}]
+    ] as const;
+
+    cases.forEach(([input, toolName, args]) => {
+      const result = router.route(input, context);
+      expect(result.matched, input).toBe(true);
+      if (result.matched) {
+        expect(result.toolCall.name).toBe(toolName);
+        expect(result.toolCall.arguments).toEqual(args);
+        expect(result.confidence).toBeGreaterThanOrEqual(0.9);
+      }
+    });
+  });
+
   it("routes named board creation without model fallback", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("新建桌板叫测试桌板", context);
