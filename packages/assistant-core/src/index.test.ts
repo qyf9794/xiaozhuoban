@@ -1878,6 +1878,17 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes TV fullscreen without a channel to the TV playback fullscreen capability", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("电视全屏", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("tv.fullscreen");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_tv" });
+    }
+  });
+
   it("does not locally block deferred game commands before model fallback", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("大富翁掷骰", context);
@@ -2398,7 +2409,7 @@ describe("IntentShortcutRouter", () => {
 
   it("routes previous music commands to the music previous action", () => {
     const router = createDefaultIntentShortcutRouter();
-    const result = router.route("上一首音乐", {
+    const result = router.route("上一首", {
       ...context,
       availableWidgets: [
         ...(context.availableWidgets ?? []),

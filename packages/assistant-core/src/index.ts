@@ -1906,8 +1906,20 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "tv_channel_control",
       match(normalized, raw, context) {
+        const wantsTvPlaybackFullscreen =
+          /(电视|直播|电视频道).*(全屏|放大)/.test(normalized) ||
+          /(全屏|放大).*(播放|播).*(电视|直播|电视频道)/.test(normalized) ||
+          /(央视|中央|CCTV).*(全屏|放大).*(播放|播)?/i.test(raw);
         if (/(暂停|停一下|停止|停掉)/.test(normalized)) return { matched: false, reason: "tv_pause_deferred" };
         const channelName = inferTvChannelName(raw);
+        if (!channelName && wantsTvPlaybackFullscreen) {
+          return (
+            routeWidgetDetailOrAdd(context, raw, "tv", "tv.fullscreen", {}, 0.93) ?? {
+              matched: false,
+              reason: "tv_target_missing"
+            }
+          );
+        }
         if (!channelName) return { matched: false, reason: "tv_channel_missing" };
         const hasTvIntent =
           /(电视|直播|频道|换台|切台|台|央视|中央)/.test(normalized) ||
@@ -2046,6 +2058,9 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         const musicArgs = isPlay ? inferMusicArgs(raw) : {};
         const musicQuery = typeof musicArgs.query === "string" ? musicArgs.query : "";
         if (!targetType && isPlay && musicQuery && findWidgetByType(context, "music")) {
+          targetType = "music";
+        }
+        if (!targetType && (isNext || isPrevious) && findWidgetByType(context, "music")) {
           targetType = "music";
         }
         if (!targetType && isPlay && musicQuery && !channelName) {
