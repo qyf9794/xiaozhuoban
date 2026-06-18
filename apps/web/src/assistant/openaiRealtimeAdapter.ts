@@ -992,6 +992,17 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     }
     const commandTraceId = options.commandTraceId ?? createRealtimeVoiceCommandTraceId(`text_${Date.now()}`);
     this.activeRealtimeResponseTraceId = commandTraceId;
+    if (this.activeResponseId) {
+      this.emitDiagnostic({
+        type: "realtime.response.cancel_before_text_command",
+        status: "sent",
+        operationId: this.activeResponseId,
+        commandTraceId
+      });
+      this.sendEvent({ type: "response.cancel" }, { queueWhenClosed: false, commandTraceId });
+      this.activeResponseId = null;
+      this.pendingResponseCreateAfterActiveToolResult = false;
+    }
     this.emitDiagnostic({
       type: "realtime.text_command.send",
       status: "started",

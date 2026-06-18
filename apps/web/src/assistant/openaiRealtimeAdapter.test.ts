@@ -156,6 +156,61 @@ describe("OpenAI realtime adapter helpers", () => {
     ]);
   });
 
+  it("cancels an active response before sending a new realtime text command", () => {
+    const diagnostics: Array<{ type: string; status?: string; operationId?: string; commandTraceId?: string; data?: { eventType?: string } }> = [];
+    const sent: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    Object.assign(
+      adapter as unknown as {
+        sessionReady: boolean;
+        activeResponseId: string;
+        dataChannel: { readyState: string; send: (payload: string) => void };
+      },
+      {
+        sessionReady: true,
+        activeResponseId: "resp_active_1",
+        dataChannel: {
+          readyState: "open",
+          send(payload: string) {
+            sent.push(JSON.parse(payload) as unknown);
+          }
+        }
+      }
+    );
+
+    adapter.sendTextCommand("来个周杰伦经典", { commandTraceId: "trace_text_2" });
+
+    expect(sent).toEqual([
+      { type: "response.cancel" },
+      {
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "来个周杰伦经典" }]
+        }
+      },
+      {
+        type: "response.create",
+        response: { output_modalities: ["text"] }
+      }
+    ]);
+    expect((adapter as unknown as { activeResponseId: string | null }).activeResponseId).toBeNull();
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.response.cancel_before_text_command",
+        status: "sent",
+        operationId: "resp_active_1",
+        commandTraceId: "trace_text_2"
+      }),
+      expect.objectContaining({ type: "realtime.event.send", commandTraceId: "trace_text_2", data: { eventType: "response.cancel" } })
+    ]));
+  });
+
   it("does not trust client-side safety identifiers in session requests", () => {
     expect(JSON.parse(createRealtimeSessionRequestBody(" user_123 "))).toEqual({});
     expect(JSON.parse(createRealtimeSessionRequestBody("   "))).toEqual({});
