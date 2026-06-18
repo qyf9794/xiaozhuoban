@@ -133,9 +133,14 @@ export function shouldDisableVoiceAssistantSend(muted: boolean): boolean {
 export function shouldUseRealtimeTextCommand(
   voiceStatus: RealtimeConnectionStatus,
   hasRealtimeTextSender: boolean,
-  hasPendingConfirmation: boolean
+  hasPendingConfirmation: boolean,
+  input?: string
 ): boolean {
-  return voiceStatus === "connected" && hasRealtimeTextSender && !hasPendingConfirmation;
+  if (voiceStatus !== "connected" || !hasRealtimeTextSender) return false;
+  if (!hasPendingConfirmation) return true;
+  const normalized = input?.trim();
+  if (!normalized) return false;
+  return !/^(确认|确定|可以|同意|执行|取消|不用|不要|拒绝|算了)$/.test(normalized);
 }
 
 export function getVisibleVoiceAssistantOperation(
@@ -263,8 +268,6 @@ export function VoiceAssistantDock({
   const pending = harness.getPendingConfirmation();
   const visualState = muted ? "muted" : pending ? "waiting_confirmation" : state;
   const visibleOperation = getVisibleVoiceAssistantOperation(operation, operationStatus);
-  const useRealtimeText = shouldUseRealtimeTextCommand(voiceStatus, Boolean(onSendRealtimeTextCommand), Boolean(pending));
-
   const runCommand = async (command: string) => {
     const input = command.trim();
     if (!input || muted) return;
@@ -355,7 +358,7 @@ export function VoiceAssistantDock({
     if (inputRef.current) {
       inputRef.current.value = "";
     }
-    if (useRealtimeText) {
+    if (shouldUseRealtimeTextCommand(voiceStatus, Boolean(onSendRealtimeTextCommand), Boolean(pending), input)) {
       void sendRealtimeCommand(input);
     } else {
       void runCommand(input);

@@ -87,11 +87,14 @@ describe("VoiceAssistantDock", () => {
     expect(shouldDisableVoiceAssistantSend(true)).toBe(true);
   });
 
-  it("uses realtime text submission only after realtime is ready and no local confirmation is pending", () => {
+  it("uses realtime text submission after realtime is ready unless the input answers a local confirmation", () => {
     expect(shouldUseRealtimeTextCommand("connected", true, false)).toBe(true);
     expect(shouldUseRealtimeTextCommand("connecting", true, false)).toBe(false);
     expect(shouldUseRealtimeTextCommand("connected", false, false)).toBe(false);
     expect(shouldUseRealtimeTextCommand("connected", true, true)).toBe(false);
+    expect(shouldUseRealtimeTextCommand("connected", true, true, "确认")).toBe(false);
+    expect(shouldUseRealtimeTextCommand("connected", true, true, "取消")).toBe(false);
+    expect(shouldUseRealtimeTextCommand("connected", true, true, "来个周杰伦经典")).toBe(true);
   });
 
   it("uses external tool operation when Harness reports active tool work", () => {

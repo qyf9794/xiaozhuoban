@@ -830,6 +830,43 @@ describe("OpenAI realtime adapter helpers", () => {
     expect((adapter as unknown as { queuedEvents: unknown[] }).queuedEvents).toHaveLength(0);
   });
 
+  it("does not send local shortcut results back into the realtime conversation", () => {
+    const diagnostics: Array<{ type: string; status?: string; operationId?: string; data?: unknown }> = [];
+    const sent: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
+      }
+    });
+
+    adapter.sendToolResult(
+      { id: "shortcut_1", name: "widget.remove", arguments: {}, source: "shortcut" },
+      { status: "success", message: "已删除小工具" }
+    );
+
+    expect(sent).toEqual([]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.tool_result.skip",
+        status: "skipped",
+        operationId: "shortcut_1",
+        data: { source: "shortcut" }
+      })
+    ]));
+    expect(diagnostics).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "realtime.tool_result.send", operationId: "shortcut_1" })
+    ]));
+  });
+
   it("stores compact context locally without sending it to realtime", () => {
     const adapter = new OpenAIRealtimeWebRtcAdapter();
     const context = {

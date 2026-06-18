@@ -269,6 +269,10 @@ function createSafeRealtimeToolCallDiagnosticData(call: AssistantToolCall): Reco
   return Object.keys(data).length ? data : undefined;
 }
 
+function shouldSendRealtimeToolResult(call: AssistantToolCall): boolean {
+  return call.source === "realtime";
+}
+
 export function parseRealtimeFunctionCallEvent(value: unknown): AssistantToolCall | null {
   const event = typeof value === "string" ? (JSON.parse(value) as unknown) : value;
   if (!isRecord(event)) return null;
@@ -936,6 +940,19 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   sendToolResult(call: AssistantToolCall, result: AssistantToolResult): void {
     const hadActiveResponse = Boolean(this.activeResponseId);
     const commandTraceId = this.functionCallTraceIds.get(call.id) ?? this.activeCommandTraceId ?? this.activeRealtimeResponseTraceId ?? undefined;
+    if (!shouldSendRealtimeToolResult(call)) {
+      this.emitDiagnostic({
+        type: "realtime.tool_result.skip",
+        status: "skipped",
+        operationId: call.id,
+        toolName: call.name,
+        message: result.message,
+        errorCode: result.errorCode,
+        commandTraceId,
+        data: { source: call.source }
+      });
+      return;
+    }
     this.emitDiagnostic({
       type: "realtime.tool_result.send",
       status: result.status,
