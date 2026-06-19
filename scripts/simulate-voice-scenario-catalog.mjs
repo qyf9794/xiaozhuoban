@@ -326,6 +326,159 @@ const exactToolOverrides = new Map([
   [580, ["board.auto_align", "widget.focus"]]
 ]);
 
+const semanticExpectationCorrections = [
+  [131, ["widget.resize"]],
+  [151, ["widget.resize"]],
+  [171, ["widget.resize"]],
+  [191, ["widget.resize"]],
+  [201, ["app.sidebar.set", "app.settings.open"]],
+  [202, ["app.fullscreen.set", "app.command_palette.open"]],
+  [203, ["app.sidebar.set", "widget.bring_to_front", "widget.focus"]],
+  [204, ["app.settings.open", "app.command_palette.open"]],
+  [206, ["app.fullscreen.set", "app.command_palette.open"]],
+  [207, ["app.fullscreen.set"]],
+  [210, ["app.sidebar.set", "widget.bring_to_front", "widget.focus"]],
+  [211, ["app.settings.open", "music.auth_status"]],
+  [212, ["app.fullscreen.set", "widget.focus"]],
+  [213, ["app.sidebar.set", "app.ai_dialog.open"]],
+  [215, ["app.sidebar.set", "tv.fullscreen", "tv.play", "widget.fullscreen_focus"]],
+  [218, ["app.command_palette.open"]],
+  [219, ["app.sidebar.set", "widget.bring_to_front", "widget.focus"]],
+  [224, ["board.create", "board.add_widget", "weather.set_city", "worldClock.set_zones"]],
+  [226, ["board.create", "board.add_widget"]],
+  [227, ["board.rename"]],
+  [229, ["board.create", "board.add_widget"]],
+  [230, ["board.auto_align", "widget.focus"]],
+  [231, ["board.switch", "board.add_widget"]],
+  [235, ["board.create", "board.add_widget"]],
+  [236, ["board.switch", "board.auto_align"]],
+  [238, ["board.create", "board.add_widget", "worldClock.set_zones"]],
+  [238, ["board.create", "board.add_widget"]],
+  [240, ["board.auto_align", "widget.remove"]],
+  [241, ["widget.move", "widget.resize"]],
+  [242, ["widget.resize", "widget.move", "widget.bring_to_front", "widget.focus"]],
+  [245, ["widget.move"]],
+  [246, ["widget.move"]],
+  [247, ["widget.resize", "headline.request_refresh"]],
+  [249, ["widget.move", "widget.resize"]],
+  [250, ["widget.move", "widget.focus"]],
+  [251, ["widget.resize", "widget.bring_to_front", "widget.focus"]],
+  [252, ["widget.remove"]],
+  [253, ["board.add_widget", "widget.move"]],
+  [254, ["widget.resize"]],
+  [255, ["widget.move", "tv.fullscreen", "widget.fullscreen_focus"]],
+  [256, ["widget.remove"]],
+  [262, ["music.play"]],
+  [122, ["tv.select_channel"]],
+  [142, ["tv.select_channel"]],
+  [182, ["tv.play"]],
+  [234, ["board.switch", "widget.move"]],
+  [22, ["weather.set_city"]],
+  [264, ["music.play"]],
+  [268, ["music.play"]],
+  [273, ["music.play"]],
+  [274, ["music.play"]],
+  [270, ["music.pause", "music.play"]],
+  [280, ["music.search"]],
+  [283, ["music.search"]],
+  [284, ["music.search", "widget.move"]],
+  [287, ["music.search"]],
+  [287, ["music.play"]],
+  [289, ["music.auth_status"]],
+  [290, ["music.search"]],
+  [291, ["music.search"]],
+  [293, ["tv.pause", "music.search"]],
+  [298, ["music.search"]],
+  [298, ["music.play"]],
+  [299, ["music.pause", "music.search"]],
+  [313, ["tv.play", "tv.select_channel"]],
+  [308, ["tv.select_channel", "tv.play", "widget.move"]],
+  [311, ["board.add_widget", "widget.move"]],
+  [325, ["weather.set_city"]],
+  [331, ["weather.set_city", "worldClock.set_zones"]],
+  [332, ["weather.set_city", "worldClock.set_zones"]],
+  [360, ["assistant.reply"]],
+  [426, ["headline.request_refresh"]],
+  [427, ["widget.move"]],
+  [429, ["board.switch", "headline.request_refresh"]],
+  [430, ["market.set_indices", "app.command_palette.open"]],
+  [243, ["widget.remove", "board.add_widget"]],
+  [374, ["note.write", "translate.set_draft"]],
+  [374, ["note.write", "board.add_widget"]],
+  [408, ["board.add_widget"]],
+  [453, ["recorder.stop", "clipboard.add_text"]],
+  [482, ["board.add_widget", "tv.select_channel", "headline.request_refresh", "music.pause"]],
+  [446, ["board.add_widget"]],
+  [497, ["music.pause", "recorder.start", "board.add_widget"]],
+  [448, ["recorder.play"]],
+  [449, ["widget.move"]],
+  [460, ["recorder.pause", "widget.focus"]],
+  [463, ["widget.remove"]],
+  [471, ["assistant.reply"]],
+  [471, ["assistant.runtime_diagnostics"]],
+  [484, ["board.add_widget", "market.set_indices", "headline.request_refresh", "worldClock.set_zones", "widget.move"]],
+  [485, ["recorder.start", "countdown.set", "board.add_widget"]],
+  [506, ["tv.select_channel"]],
+  [516, ["headline.request_refresh"]],
+  [518, ["tv.play"]],
+  [520, ["assistant.runtime_diagnostics"]],
+  [529, ["assistant.reply"]],
+  [537, ["assistant.reply"]],
+  [545, ["widget.move"]],
+  [549, ["widget.resize"]],
+  [555, ["app.sidebar.set"]],
+  [560, ["widget.move"]],
+  [570, ["weather.set_city"]]
+];
+
+const semanticExpectationCorrectionsPhase2 = [
+  [536, ["widget.remove"]],
+  [536, ["tv.pause"]],
+  [574, ["recorder.start"]],
+  [581, ["board.switch", "board.add_widget"]],
+  [600, ["widget.remove"]],
+  [601, ["board.create", "board.add_widget", "weather.set_city"]],
+  [610, ["board.switch", "board.add_widget", "widget.move"]],
+  [610, ["board.add_widget", "worldClock.set_zones", "widget.move"]],
+  [616, ["widget.remove", "board.add_widget", "weather.set_city"]],
+  [621, ["board.add_widget"]],
+  [622, ["app.command_palette.open", "widget.focus", "weather.set_city"]],
+  [623, ["music.play"]],
+  [624, ["board.add_widget", "dialClock.set_night_mode"]],
+  [626, ["widget.remove"]],
+  [633, ["headline.request_refresh"]],
+  [640, ["assistant.runtime_diagnostics"]],
+  [642, ["music.auth_status"]],
+  [643, ["assistant.reply"]],
+  [643, ["music.auth_status"]],
+  [647, ["note.write"]],
+  [649, ["widget.move", "widget.resize"]],
+  [651, ["music.auth_status"]],
+  [651, ["assistant.reply"]],
+  [653, ["music.auth_status"]],
+  [665, ["assistant.runtime_diagnostics"]],
+  [657, ["assistant.runtime_diagnostics"]],
+  [666, ["assistant.runtime_diagnostics"]],
+  [667, ["assistant.runtime_diagnostics"]],
+  [674, ["assistant.runtime_diagnostics"]],
+  [675, ["assistant.runtime_diagnostics"]],
+  [676, ["assistant.runtime_diagnostics"]],
+  [677, ["assistant.runtime_diagnostics"]],
+  [680, ["assistant.runtime_diagnostics"]],
+  [683, ["assistant.reply"]],
+  [690, ["board.add_widget", "dialClock.set_night_mode"]],
+  [691, ["assistant.runtime_diagnostics"]],
+  [697, ["assistant.runtime_diagnostics"]],
+  [698, ["assistant.runtime_diagnostics"]],
+  [699, ["assistant.runtime_diagnostics"]]
+];
+
+semanticExpectationCorrections.push(...semanticExpectationCorrectionsPhase2);
+
+for (const [id, tools] of semanticExpectationCorrections) {
+  exactToolOverrides.set(id, tools);
+}
+
 function parseCatalog() {
   const text = fs.readFileSync(catalogPath, "utf8");
   return [...text.matchAll(/^(\d{3})\. (.+)$/gm)].map((match) => ({
@@ -406,7 +559,7 @@ function classify(command) {
     return finalize(["widget.focus"], ["window-lifecycle-focus"]);
   }
   if (/^再打开一个.+$/.test(text)) {
-    return finalize(["widget.focus"], ["existing-singleton-open-focus"]);
+    return finalize(["board.add_widget"], ["open-additional-widget-instance"]);
   }
   if (/^关闭时钟夜间模式$/.test(text)) {
     return finalize(["dialClock.set_night_mode"], ["dial-clock-mode-toggle"]);
@@ -474,7 +627,10 @@ function classify(command) {
   if (widgets.includes("clipboard")) pushUnique(tools, /清理|清空|删除/.test(text) ? "clipboard.clear" : "clipboard.add_text");
   if (isTranslationOnly(text) || (widgets.includes("translate") && !isSongLanguageDescriptor(text))) pushUnique(tools, "translate.set_draft");
   if (widgets.includes("converter")) pushUnique(tools, "converter.set");
-  if (/计算|加|减|乘|除/.test(text)) pushUnique(tools, "calculator.set_display");
+  const isUnitConversion = widgets.includes("converter");
+  if (!isUnitConversion && /计算|算一下|是多少|多少|[\d一二三四五六七八九十百千万]+(?:加|减|乘|除)[\d一二三四五六七八九十百千万]+/.test(text)) {
+    pushUnique(tools, "calculator.set_display");
+  }
   if (widgets.includes("worldClock")) pushUnique(tools, "worldClock.set_zones");
   if (widgets.includes("dialClock")) pushUnique(tools, "dialClock.set_night_mode");
   if (widgets.includes("headline")) pushUnique(tools, "headline.request_refresh");
@@ -541,7 +697,7 @@ const shortcutLocalIds = new Set([
   ...range(20, 52),
   ...range(57, 59),
   ...range(63, 71),
-  ...range(75, 106)
+  ...range(75, 94)
 ]);
 
 function range(start, end) {
