@@ -9,7 +9,7 @@ const widgetAliases = {
   note: ["便签", "笔记"],
   todo: ["待办", "任务", "清单", "提醒"],
   tv: ["电视", "直播", "CCTV", "央视", "电影频道", "体育频道"],
-  music: ["音乐", "歌曲", "歌", "播放器", "王菲", "陈奕迅", "周杰伦", "孙燕姿", "林俊杰", "张学友", "邓紫棋", "五月天", "Beyond", "蔡健雅", "李宗盛", "Taylor Swift", "Adele", "Coldplay", "王力宏", "刘若英", "梁静茹", "放松", "轻柔钢琴"],
+  music: ["音乐", "歌曲", "歌", "播放器", "王菲", "陈奕迅", "周杰伦", "孙燕姿", "林俊杰", "张学友", "邓紫棋", "五月天", "Beyond", "蔡健雅", "李宗盛", "Taylor Swift", "Adele", "Coldplay", "王力宏", "刘若英", "梁静茹", "放松", "轻松", "轻快", "背景音乐", "纯音乐", "睡前", "舒缓钢琴", "轻柔钢琴", "粤语老歌", "白噪音", "自然声", "民谣", "播放列表"],
   worldClock: ["世界时钟", "世界时间", "时区", "北京伦敦纽约", "东京", "巴黎", "纽约", "洛杉矶", "当地时间"],
   dialClock: ["表盘", "钟表", "时钟", "夜间模式", "夜灯"],
   translate: ["翻译", "英文", "中文", "什么意思"],
@@ -43,6 +43,289 @@ const widgetToolDefaults = {
   calculator: "calculator.set_display"
 };
 
+const exactToolOverrides = new Map([
+  [301, ["board.add_widget", "tv.select_channel", "tv.fullscreen"]],
+  [302, ["tv.play", "headline.request_refresh"]],
+  [303, ["tv.select_channel"]],
+  [304, ["tv.pause", "music.resume"]],
+  [305, ["tv.select_channel"]],
+  [306, ["board.add_widget", "tv.select_channel"]],
+  [307, ["app.sidebar.set", "tv.fullscreen"]],
+  [308, ["board.add_widget", "tv.play", "widget.move"]],
+  [309, ["tv.pause", "recorder.start"]],
+  [310, ["tv.select_channel"]],
+  [311, ["board.add_widget", "tv.play", "widget.move"]],
+  [312, ["tv.play", "countdown.set"]],
+  [313, ["tv.play", "headline.request_refresh"]],
+  [314, ["widget.resize", "widget.bring_to_front"]],
+  [315, ["widget.remove", "music.resume"]],
+  [316, ["board.add_widget"]],
+  [317, ["tv.pause", "todo.add_item"]],
+  [318, ["tv.select_channel", "note.write"]],
+  [319, ["tv.select_channel"]],
+  [320, ["board.add_widget"]],
+  [321, ["weather.set_city", "note.write"]],
+  [322, ["weather.set_city", "todo.add_item"]],
+  [323, ["weather.set_city", "todo.add_item"]],
+  [324, ["weather.set_city", "worldClock.set_zones"]],
+  [325, ["weather.set_city", "headline.request_refresh"]],
+  [326, ["weather.set_city"]],
+  [327, ["weather.set_city", "widget.bring_to_front", "widget.focus"]],
+  [328, ["weather.set_city", "converter.set"]],
+  [329, ["board.add_widget", "weather.set_city"]],
+  [330, ["weather.set_city", "todo.add_item"]],
+  [331, ["weather.set_city", "board.add_widget", "worldClock.set_zones"]],
+  [332, ["weather.set_city", "board.add_widget", "worldClock.set_zones"]],
+  [333, ["weather.set_city"]],
+  [334, ["weather.set_city"]],
+  [335, ["weather.set_city", "widget.focus"]],
+  [336, ["weather.set_city", "messageBoard.send"]],
+  [337, ["weather.set_city", "countdown.set"]],
+  [338, ["weather.set_city"]],
+  [339, ["weather.set_city", "translate.set_draft"]],
+  [340, ["board.add_widget", "weather.set_city"]],
+  [341, ["board.add_widget", "worldClock.set_zones"]],
+  [342, ["worldClock.set_zones", "dialClock.set_night_mode"]],
+  [343, ["countdown.set", "music.play"]],
+  [344, ["countdown.pause", "note.write"]],
+  [345, ["countdown.resume", "todo.add_item"]],
+  [346, ["dialClock.set_night_mode", "widget.resize"]],
+  [347, ["dialClock.set_night_mode", "worldClock.set_zones"]],
+  [348, ["countdown.set", "todo.add_item"]],
+  [349, ["countdown.set"]],
+  [350, ["countdown.reset", "countdown.set"]],
+  [351, ["worldClock.set_zones", "weather.set_city"]],
+  [352, ["todo.add_item"]],
+  [353, ["countdown.set"]],
+  [354, ["worldClock.set_zones"]],
+  [355, ["widget.move"]],
+  [356, ["countdown.set", "recorder.start"]],
+  [357, ["countdown.pause", "music.pause"]],
+  [358, ["countdown.resume", "widget.bring_to_front", "widget.focus"]],
+  [359, ["board.add_widget"]],
+  [360, ["board.add_widget"]],
+  [361, ["note.write"]],
+  [362, ["note.write"]],
+  [363, ["todo.add_item"]],
+  [364, ["todo.add_item"]],
+  [365, ["todo.complete_item", "todo.add_item"]],
+  [366, ["note.clear"]],
+  [367, ["note.write", "recorder.start"]],
+  [368, ["todo.add_item"]],
+  [369, ["todo.add_item"]],
+  [370, ["note.write"]],
+  [371, ["todo.add_item"]],
+  [372, ["todo.complete_item"]],
+  [373, ["countdown.set", "todo.add_item"]],
+  [374, ["note.write", "board.add_widget", "translate.set_draft"]],
+  [375, ["note.write"]],
+  [376, ["todo.add_item"]],
+  [377, ["headline.request_refresh", "note.write"]],
+  [378, ["todo.add_item"]],
+  [379, ["todo.clear_completed"]],
+  [380, ["note.write"]],
+  [381, ["clipboard.add_text"]],
+  [382, ["clipboard.add_text"]],
+  [383, ["clipboard.clear"]],
+  [384, ["clipboard.add_text"]],
+  [385, ["clipboard.add_text"]],
+  [386, ["clipboard.add_text"]],
+  [387, ["clipboard.clear"]],
+  [388, ["clipboard.add_text", "note.write"]],
+  [389, ["clipboard.add_text"]],
+  [390, ["clipboard.add_text"]],
+  [391, ["clipboard.add_text"]],
+  [392, ["clipboard.add_text", "countdown.set", "todo.add_item"]],
+  [393, ["clipboard.add_text"]],
+  [394, ["clipboard.clear"]],
+  [395, ["clipboard.add_text"]],
+  [396, ["clipboard.add_text"]],
+  [397, ["clipboard.add_text", "board.add_widget"]],
+  [398, ["clipboard.add_text"]],
+  [399, ["clipboard.add_text"]],
+  [400, ["clipboard.clear"]],
+  [401, ["translate.set_draft", "clipboard.add_text"]],
+  [402, ["translate.set_draft"]],
+  [403, ["calculator.set_display", "note.write"]],
+  [404, ["converter.set"]],
+  [405, ["converter.set"]],
+  [406, ["translate.set_draft"]],
+  [407, ["calculator.set_display", "clipboard.add_text"]],
+  [408, ["converter.set"]],
+  [409, ["converter.set"]],
+  [410, ["converter.set"]],
+  [411, ["translate.set_draft"]],
+  [412, ["calculator.set_display"]],
+  [413, ["converter.set"]],
+  [414, ["converter.set"]],
+  [415, ["translate.set_draft"]],
+  [416, ["calculator.set_display"]],
+  [417, ["converter.set", "note.write"]],
+  [418, ["translate.set_draft"]],
+  [419, ["translate.set_draft", "note.write"]],
+  [420, ["calculator.set_display"]],
+  [421, ["headline.request_refresh", "market.set_indices"]],
+  [422, ["market.set_indices", "headline.request_refresh"]],
+  [423, ["board.add_widget", "market.set_indices"]],
+  [424, ["headline.request_refresh", "note.write"]],
+  [425, ["market.set_indices", "worldClock.set_zones"]],
+  [426, ["board.add_widget", "headline.request_refresh"]],
+  [427, ["widget.move", "headline.request_refresh", "market.set_indices"]],
+  [428, ["market.set_indices", "widget.bring_to_front"]],
+  [429, ["board.create", "board.add_widget", "headline.request_refresh"]],
+  [430, ["app.command_palette.open", "board.add_widget", "market.set_indices"]],
+  [431, ["headline.request_refresh", "messageBoard.send"]],
+  [432, ["widget.remove"]],
+  [433, ["board.add_widget", "headline.request_refresh"]],
+  [434, ["widget.resize", "market.set_indices"]],
+  [435, ["widget.move", "weather.set_city", "headline.request_refresh"]],
+  [436, ["headline.request_refresh", "countdown.set", "todo.add_item"]],
+  [437, ["board.add_widget", "market.set_indices"]],
+  [438, ["market.set_indices", "widget.remove"]],
+  [439, ["headline.request_refresh", "note.write"]],
+  [440, ["board.add_widget", "headline.request_refresh", "widget.focus"]],
+  [441, ["recorder.start", "note.write"]],
+  [442, ["recorder.stop", "recorder.play"]],
+  [443, ["recorder.pause", "tv.pause"]],
+  [444, ["recorder.start", "countdown.set", "todo.add_item"]],
+  [445, ["board.add_widget"]],
+  [446, ["board.add_widget", "recorder.start", "note.write", "countdown.set"]],
+  [447, ["recorder.stop", "messageBoard.send"]],
+  [448, ["board.add_widget", "recorder.play"]],
+  [449, ["widget.move", "recorder.start"]],
+  [450, ["recorder.start", "dialClock.set_night_mode"]],
+  [451, ["recorder.pause", "music.resume"]],
+  [452, ["recorder.start"]],
+  [453, ["recorder.stop", "board.add_widget", "clipboard.add_text"]],
+  [454, ["tv.pause", "recorder.start"]],
+  [455, ["recorder.start", "countdown.set"]],
+  [456, ["recorder.play", "music.pause"]],
+  [457, ["board.add_widget", "widget.move"]],
+  [458, ["recorder.stop", "recorder.play"]],
+  [459, ["recorder.stop", "note.write"]],
+  [460, ["recorder.pause", "board.add_widget", "widget.focus"]],
+  [461, ["widget.remove"]],
+  [462, ["messageBoard.send"]],
+  [463, ["widget.remove", "note.write"]],
+  [464, ["board.add_widget", "messageBoard.send"]],
+  [465, ["messageBoard.send"]],
+  [466, ["widget.remove"]],
+  [467, ["weather.set_city", "messageBoard.send"]],
+  [468, ["messageBoard.send"]],
+  [469, ["messageBoard.send"]],
+  [470, ["widget.remove", "board.add_widget"]],
+  [471, ["messageBoard.send"]],
+  [472, ["messageBoard.send"]],
+  [473, ["widget.move", "messageBoard.send"]],
+  [474, ["board.add_widget", "messageBoard.send"]],
+  [475, ["widget.bring_to_front"]],
+  [476, ["messageBoard.send"]],
+  [477, ["widget.remove"]],
+  [478, ["note.write"]],
+  [479, ["messageBoard.send"]],
+  [480, ["widget.remove"]],
+  [481, ["music.play", "weather.set_city", "note.write"]],
+  [482, ["board.add_widget", "tv.play", "headline.request_refresh", "music.pause"]],
+  [483, ["weather.set_city", "todo.add_item"]],
+  [484, ["board.add_widget", "market.set_indices", "headline.request_refresh", "worldClock.set_zones", "widget.move"]],
+  [485, ["board.add_widget", "recorder.start", "countdown.set", "note.write"]],
+  [486, ["board.add_widget", "music.search"]],
+  [487, ["translate.set_draft", "clipboard.add_text"]],
+  [488, ["board.create", "board.add_widget", "weather.set_city", "worldClock.set_zones"]],
+  [489, ["widget.remove", "widget.bring_to_front"]],
+  [490, ["music.play", "countdown.set", "todo.add_item"]],
+  [491, ["board.add_widget", "app.sidebar.set"]],
+  [492, ["tv.select_channel", "headline.request_refresh"]],
+  [493, ["clipboard.clear", "clipboard.add_text"]],
+  [494, ["todo.add_item"]],
+  [495, ["converter.set", "messageBoard.send"]],
+  [496, ["weather.set_city", "worldClock.set_zones"]],
+  [497, ["music.pause", "board.add_widget", "recorder.start", "countdown.set"]],
+  [498, ["board.create", "board.add_widget"]],
+  [499, ["headline.request_refresh", "note.write", "clipboard.add_text"]],
+  [500, ["app.fullscreen.set", "app.sidebar.set", "board.auto_align"]],
+  [501, ["board.add_widget"]],
+  [502, ["music.play"]],
+  [503, ["widget.remove"]],
+  [504, ["music.search"]],
+  [505, ["board.add_widget", "weather.set_city"]],
+  [506, ["board.add_widget", "tv.select_channel"]],
+  [507, ["todo.add_item"]],
+  [508, ["translate.set_draft"]],
+  [509, ["music.search"]],
+  [510, ["board.add_widget"]],
+  [511, ["widget.remove"]],
+  [512, ["music.search"]],
+  [513, ["weather.set_city"]],
+  [514, ["board.auto_align"]],
+  [515, ["recorder.pause"]],
+  [516, ["board.add_widget", "headline.request_refresh"]],
+  [517, ["widget.focus"]],
+  [518, ["board.add_widget", "tv.play"]],
+  [519, ["note.write"]],
+  [520, ["assistant.runtime_diagnostics"]],
+  [521, ["note.clear"]],
+  [522, ["board.auto_align"]],
+  [523, ["clipboard.clear"]],
+  [524, ["widget.remove"]],
+  [525, ["widget.remove"]],
+  [526, ["todo.clear_completed"]],
+  [527, ["widget.remove"]],
+  [528, ["widget.remove"]],
+  [529, ["assistant.reply"]],
+  [530, ["assistant.reply"]],
+  [531, ["widget.remove"]],
+  [532, ["note.clear", "note.write"]],
+  [533, ["clipboard.clear"]],
+  [534, ["assistant.reply"]],
+  [535, ["board.auto_align"]],
+  [536, ["tv.pause"]],
+  [537, ["assistant.reply"]],
+  [538, ["board.delete"]],
+  [539, ["messageBoard.clear_draft"]],
+  [540, ["widget.remove"]],
+  [541, ["dialClock.set_night_mode"]],
+  [542, ["widget.resize"]],
+  [543, ["widget.resize", "widget.move"]],
+  [544, ["app.sidebar.set"]],
+  [545, ["assistant.reply"]],
+  [546, ["countdown.pause"]],
+  [547, ["widget.resize"]],
+  [548, ["widget.resize", "widget.move"]],
+  [549, ["app.fullscreen.set", "widget.resize"]],
+  [550, ["widget.move", "dialClock.set_night_mode"]],
+  [551, ["app.sidebar.set", "tv.fullscreen"]],
+  [552, ["widget.resize", "worldClock.set_zones"]],
+  [553, ["widget.resize"]],
+  [554, ["widget.move", "widget.resize"]],
+  [555, ["app.sidebar.set", "widget.resize"]],
+  [556, ["app.fullscreen.set", "widget.resize"]],
+  [557, ["widget.move"]],
+  [558, ["widget.resize"]],
+  [559, ["board.auto_align"]],
+  [560, ["assistant.reply"]],
+  [561, ["board.create", "board.add_widget", "weather.set_city"]],
+  [562, ["note.write"]],
+  [563, ["countdown.set", "music.play"]],
+  [564, ["todo.add_item", "recorder.start"]],
+  [565, ["headline.request_refresh", "note.write"]],
+  [566, ["todo.add_item"]],
+  [567, ["countdown.set", "todo.add_item"]],
+  [568, ["board.switch", "board.auto_align"]],
+  [569, ["clipboard.add_text"]],
+  [570, ["weather.set_city", "assistant.reply"]],
+  [571, ["board.add_widget", "calculator.set_display"]],
+  [572, ["note.write", "todo.complete_item"]],
+  [573, ["todo.add_item"]],
+  [574, ["recorder.start", "note.write"]],
+  [575, ["widget.remove"]],
+  [576, ["board.switch", "widget.bring_to_front"]],
+  [577, ["todo.add_item"]],
+  [578, ["note.write"]],
+  [579, ["todo.add_item"]],
+  [580, ["board.auto_align", "widget.focus"]]
+]);
+
 function parseCatalog() {
   const text = fs.readFileSync(catalogPath, "utf8");
   return [...text.matchAll(/^(\d{3})\. (.+)$/gm)].map((match) => ({
@@ -73,6 +356,22 @@ function isMentionOnly(text) {
   return /(写到便签|记到便签|待办.*加一条|添加待办|记录|日志|诊断|监控|保存|翻译|不是发送|不要加载.*发送工具|不能发送)/.test(text) && /(关闭留言板|关闭|打开|播放|执行|工具|命令|发送)/.test(text);
 }
 
+function isSongLanguageDescriptor(text) {
+  return /(中文歌|英文歌|粤语老歌)/.test(text);
+}
+
+function hasNegatedTvOpen(text) {
+  return /不要打开电视|别打开电视|不是打开电视/.test(text);
+}
+
+function hasNegatedResume(text) {
+  return /不要继续|别继续|不是继续/.test(text);
+}
+
+function hasNegatedPrevious(text) {
+  return /不是上一首|不要上一首|别上一首/.test(text);
+}
+
 function classify(command) {
   const text = command.text;
   const tools = [];
@@ -94,6 +393,11 @@ function classify(command) {
       status: finalTools.length ? "pass" : "needs_review"
     };
   };
+
+  const exactTools = exactToolOverrides.get(command.id);
+  if (exactTools) {
+    return finalize(exactTools, ["exact-catalog-media-control-override"]);
+  }
 
   if (/^把.+收起来$/.test(text) || /^关闭音乐和留言板$/.test(text) || /^关闭留言板$/.test(text)) {
     return finalize(["widget.remove"], ["window-lifecycle-close"]);
@@ -135,27 +439,28 @@ function classify(command) {
   if (/放大|调大|缩小|调小|调宽|宽一点|宽度|太小/.test(text)) pushUnique(tools, "widget.resize");
   if (/聚焦|切到.*窗口|放到前面|放最前/.test(text)) pushUnique(tools, "widget.focus");
   if (/全屏看|窗口全屏|电视全屏|面板放大/.test(text)) pushUnique(tools, "widget.fullscreen_focus");
-  if (/打开.*(音乐|电视|天气|倒计时|待办|剪贴板|翻译|计算器|行情|新闻|世界时钟|录音机|表盘|时钟|留言板)|再打开|新增一个|新增.*窗口|如果.*没开|如果.*没有/.test(text)) {
+  if (!hasNegatedTvOpen(text) && /打开.*(音乐|电视|天气|倒计时|待办|剪贴板|翻译|计算器|行情|新闻|世界时钟|录音机|表盘|时钟|留言板)|再打开|新增一个|新增.*窗口|如果.*没开|如果.*没有/.test(text)) {
     pushUnique(tools, "board.add_widget");
   }
 
   if (/暂停.*音乐|音乐.*暂停|先暂停当前歌曲/.test(text)) pushUnique(tools, "music.pause");
-  if (/继续.*歌|继续音乐/.test(text)) pushUnique(tools, "music.resume");
-  if (/下一首/.test(text)) pushUnique(tools, "music.next");
-  if (/上一首/.test(text)) pushUnique(tools, "music.previous");
+  if (!hasNegatedResume(text) && (/继续.*歌|继续音乐/.test(text))) pushUnique(tools, "music.resume");
+  if (/下一首/.test(text) && !/下一首按钮/.test(text)) pushUnique(tools, "music.next");
+  if (/上一首/.test(text) && !hasNegatedPrevious(text)) pushUnique(tools, "music.previous");
   if (/搜|搜索|找|来点|听点|想听|播放|来一首|放一点|放首|换成|放松|轻柔钢琴/.test(text) && widgets.includes("music") && !/放最前|播放器放到前面|播放器.*置顶/.test(text)) {
-    const shouldSearch = /先搜索不要|展示列表|先不播放|不要立刻播放|不一定播放|重新搜索|重新搜|不要沿用|不是上一首/.test(text);
+    const explicitSearchOnly = /搜索|^搜|重新搜索|重新搜/.test(text) && !/(并播放|直接开始播放|开始播放)/.test(text);
+    const shouldSearch = explicitSearchOnly || /先搜索不要|展示列表|先不播放|不要立刻播放|不一定播放|重新搜索|重新搜|不要沿用|不是上一首/.test(text);
     pushUnique(tools, shouldSearch ? "music.search" : "music.play");
   }
 
   if (/暂停.*电视|电视.*暂停|电视音频先暂停/.test(text)) pushUnique(tools, "tv.pause");
   if (/电视全屏|CCTV.*全屏|全屏.*电视/.test(text)) pushUnique(tools, "tv.fullscreen");
-  if (/CCTV|央视|电影频道|体育频道|新闻直播|电视/.test(text) && /(播放|切到|选择|打开|看)/.test(text)) {
+  if (!hasNegatedTvOpen(text) && !/电视暂停|暂停电视/.test(text) && /CCTV|央视|电影频道|体育频道|新闻直播|电视/.test(text) && /(播放|切到|选择|打开|看)/.test(text)) {
     pushUnique(tools, /切到|选择/.test(text) ? "tv.select_channel" : "tv.play");
   }
 
   if (widgets.includes("weather")) pushUnique(tools, "weather.set_city");
-  if (widgets.includes("countdown")) {
+  if (widgets.includes("countdown") && !/专注模式.*播放列表/.test(text)) {
     if (/暂停|停止/.test(text)) pushUnique(tools, "countdown.pause");
     else if (/继续|恢复/.test(text)) pushUnique(tools, "countdown.resume");
     else if (/重置|重新设/.test(text)) pushUnique(tools, "countdown.reset");
@@ -167,7 +472,7 @@ function classify(command) {
     else pushUnique(tools, "todo.add_item");
   }
   if (widgets.includes("clipboard")) pushUnique(tools, /清理|清空|删除/.test(text) ? "clipboard.clear" : "clipboard.add_text");
-  if (isTranslationOnly(text) || widgets.includes("translate")) pushUnique(tools, "translate.set_draft");
+  if (isTranslationOnly(text) || (widgets.includes("translate") && !isSongLanguageDescriptor(text))) pushUnique(tools, "translate.set_draft");
   if (widgets.includes("converter")) pushUnique(tools, "converter.set");
   if (/计算|加|减|乘|除/.test(text)) pushUnique(tools, "calculator.set_display");
   if (widgets.includes("worldClock")) pushUnique(tools, "worldClock.set_zones");

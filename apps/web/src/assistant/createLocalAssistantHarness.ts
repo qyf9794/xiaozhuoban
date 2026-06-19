@@ -126,7 +126,8 @@ export function createLocalAssistantHarness(options?: {
     setActiveBoard: (boardId: string) => useAppStore.getState().setActiveBoard(boardId),
     addBoard: (name?: string, persistOptions?: { operationId?: string }) => useAppStore.getState().addBoard(name, persistOptions),
     renameBoard: (boardId: string, name: string, persistOptions?: { operationId?: string }) =>
-      useAppStore.getState().renameBoard(boardId, name, persistOptions)
+      useAppStore.getState().renameBoard(boardId, name, persistOptions),
+    deleteBoard: (boardId: string) => useAppStore.getState().deleteBoard(boardId)
   };
 
   const actions: AssistantAction[] = [

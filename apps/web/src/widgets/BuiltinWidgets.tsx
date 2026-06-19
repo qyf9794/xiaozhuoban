@@ -32,6 +32,7 @@ import {
 import { DEFAULT_TV_PLAYLIST_URL, findFallbackTvChannel, findTvChannel, parseM3UPlaylist, resolveTvPlaylistSelection, type TvChannel } from "./tvShared";
 import {
   CHINA_TIME_ZONE,
+  DEFAULT_WORLD_CLOCK_ZONES,
   WORLD_CLOCK_ZONE_OPTIONS,
   formatWorldClockDisplay,
   getRandomWorldClockToneClasses,
@@ -91,7 +92,10 @@ const MAJOR_CITIES = [
   { value: "nanjing", label: "南京", latitude: 32.0603, longitude: 118.7969 },
   { value: "xian", label: "西安", latitude: 34.3416, longitude: 108.9398 },
   { value: "los-angeles", label: "洛杉矶", latitude: 34.0522, longitude: -118.2437 },
-  { value: "boston", label: "波士顿", latitude: 42.3601, longitude: -71.0589 }
+  { value: "boston", label: "波士顿", latitude: 42.3601, longitude: -71.0589 },
+  { value: "new-york", label: "纽约", latitude: 40.7128, longitude: -74.006 },
+  { value: "tokyo", label: "东京", latitude: 35.6762, longitude: 139.6503 },
+  { value: "paris", label: "巴黎", latitude: 48.8566, longitude: 2.3522 }
 ] as const;
 
 const GLOBAL_INDICES = [
@@ -112,7 +116,10 @@ const TRANSLATE_LANG_OPTIONS = [
 const CONVERTER_CATEGORY_OPTIONS = [
   { value: "length", label: "长度" },
   { value: "weight", label: "重量" },
-  { value: "temperature", label: "温度" }
+  { value: "temperature", label: "温度" },
+  { value: "area", label: "面积" },
+  { value: "time", label: "时间" },
+  { value: "currency", label: "货币" }
 ] as const;
 
 const DIAL_CLOCK_NUMBERS = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
@@ -372,6 +379,20 @@ const CONVERTER_UNIT_OPTIONS: Record<string, Array<{ value: string; label: strin
     { value: "c", label: "摄氏(°C)" },
     { value: "f", label: "华氏(°F)" },
     { value: "k", label: "开尔文(K)" }
+  ],
+  area: [
+    { value: "sqm", label: "平方米" },
+    { value: "sqcm", label: "平方厘米" },
+    { value: "sqkm", label: "平方千米" }
+  ],
+  time: [
+    { value: "minute", label: "分钟" },
+    { value: "hour", label: "小时" },
+    { value: "second", label: "秒" }
+  ],
+  currency: [
+    { value: "usd", label: "美元(USD)" },
+    { value: "cny", label: "人民币(CNY)" }
   ]
 };
 
@@ -415,6 +436,32 @@ function convertUnit(value: number, category: string, from: string, to: string):
       return n;
     };
     return fromCelsius(toCelsius(value, from), to);
+  }
+
+  if (category === "area") {
+    const toSquareMeter: Record<string, number> = {
+      sqm: 1,
+      sqcm: 0.0001,
+      sqkm: 1_000_000
+    };
+    const squareMeter = value * (toSquareMeter[from] ?? 1);
+    return squareMeter / (toSquareMeter[to] ?? 1);
+  }
+
+  if (category === "time") {
+    const toMinute: Record<string, number> = {
+      minute: 1,
+      hour: 60,
+      second: 1 / 60
+    };
+    const minute = value * (toMinute[from] ?? 1);
+    return minute / (toMinute[to] ?? 1);
+  }
+
+  if (category === "currency") {
+    const usdToCnyRate = 7.2;
+    if (from === "usd" && to === "cny") return value * usdToCnyRate;
+    if (from === "cny" && to === "usd") return value / usdToCnyRate;
   }
 
   return value;
@@ -2270,6 +2317,7 @@ export function BuiltinWidgetView({
     const totalSeconds = Number(instance.state.totalSeconds ?? inputHours * 3600 + inputMinutes * 60 + inputSeconds);
     const remainingSeconds = Number(instance.state.remainingSeconds ?? totalSeconds);
     const targetEndsAt = Number(instance.state.targetEndsAt ?? 0);
+    const countdownLabel = asString(instance.state.label).trim();
     const prevRemainingSecondsRef = useRef(remainingSeconds);
     const skipInitialExpiredAlarmRef = useRef(targetEndsAt > 0 && targetEndsAt <= Date.now());
 
@@ -2552,7 +2600,10 @@ export function BuiltinWidgetView({
             }}
           >
             <div>
-              <div style={{ fontWeight: 700, fontSize: 18, transform: "translateY(15px)" }}>{`${hh}:${mm}:${ss}`}</div>
+              {countdownLabel ? (
+                <div style={{ fontSize: 11, color: "#475569", transform: "translateY(10px)" }}>{countdownLabel}</div>
+              ) : null}
+              <div style={{ fontWeight: 700, fontSize: 18, transform: countdownLabel ? "translateY(12px)" : "translateY(15px)" }}>{`${hh}:${mm}:${ss}`}</div>
             </div>
           </div>
         </div>
@@ -4750,8 +4801,9 @@ export function BuiltinWidgetView({
   }
 
   if (definition.type === "worldClock") {
-    const zones = normalizeWorldClockZones(instance.state.zones);
-    const slots = toWorldClockSlots(zones);
+    const compact = instance.state.compact === true;
+    const zones = normalizeWorldClockZones(instance.state.zones, DEFAULT_WORLD_CLOCK_ZONES, { fill: !compact });
+    const slots = toWorldClockSlots(zones, { fill: !compact });
     const [now, setNow] = useState(() => new Date());
     const [toneClasses] = useState(() => getRandomWorldClockToneClasses());
 
@@ -5178,7 +5230,9 @@ export function BuiltinWidgetView({
               background: "linear-gradient(160deg, rgba(255,255,255,0.6), rgba(255,255,255,0.3))"
             }}
           >
-            {hasNumber ? `${result?.toFixed(6).replace(/\.?0+$/, "")} ${toUnit}` : "结果会显示在这里"}
+            {hasNumber
+              ? `${result?.toFixed(6).replace(/\.?0+$/, "")} ${toUnit}${category === "currency" ? " · 待确认汇率" : ""}`
+              : "结果会显示在这里"}
           </div>
         </div>
       </WidgetShell>
@@ -5710,6 +5764,10 @@ export function BuiltinWidgetView({
         send(args) {
           const text = typeof args.text === "string" ? args.text : "";
           return sendMessage(text);
+        },
+        clearDraft() {
+          setDraft("");
+          return { status: "success" as const, message: "已清空留言输入框" };
         }
       });
       // sendMessage intentionally closes over the latest channel/user state.
@@ -5848,10 +5906,11 @@ export function BuiltinWidgetView({
   if (definition.type === "recorder") {
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
-    const chunksRef = useRef<BlobPart[]>([]);
-    const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
-    const wakeLockRef = useRef<RecorderWakeLockSentinel | null>(null);
-    const recordings = (Array.isArray(instance.state.recordings) ? instance.state.recordings : []) as RecordingItem[];
+	    const chunksRef = useRef<BlobPart[]>([]);
+	    const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
+	    const wakeLockRef = useRef<RecorderWakeLockSentinel | null>(null);
+	    const stopResolversRef = useRef<Array<(result: { status: "success"; message: string; data?: { recordingId: string } }) => void>>([]);
+	    const recordings = (Array.isArray(instance.state.recordings) ? instance.state.recordings : []) as RecordingItem[];
     const recording = instance.state.recording === true;
     const recordingsRef = useRef(recordings);
     const latestRecorderStateRef = useRef(instance.state);
@@ -5867,13 +5926,17 @@ export function BuiltinWidgetView({
       latestRecorderStateRef.current = instance.state;
     }, [instance.state]);
 
-    const stopRecording = () => {
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-        mediaRecorderRef.current.stop();
-        return { status: "success" as const, message: "已停止录音" };
-      }
-      onStateChange({ ...latestRecorderStateRef.current, recording: false });
-      return { status: "success" as const, message: "当前没有正在录音" };
+	    const stopRecording = () => {
+	      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+	        const recorder = mediaRecorderRef.current;
+	        const stopPromise = new Promise<{ status: "success"; message: string; data?: { recordingId: string } }>((resolve) => {
+	          stopResolversRef.current.push(resolve);
+	        });
+	        recorder.stop();
+	        return stopPromise;
+	      }
+	      onStateChange({ ...latestRecorderStateRef.current, recording: false });
+	      return { status: "success" as const, message: "当前没有正在录音" };
     };
 
     const startRecording = async () => {
@@ -5894,25 +5957,29 @@ export function BuiltinWidgetView({
             const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
             const dataUrl = await blobToDataUrl(blob);
             const createdAt = new Date().toISOString();
-            const nextRecordings = [
-              {
-                id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-                createdAt,
-                name: `录音 ${new Date(createdAt).toLocaleTimeString()}`,
-                dataUrl,
-                mimeType: recorder.mimeType || "audio/webm"
-              },
-              ...recordingsRef.current
-            ];
-            onStateChange({
-              ...latestRecorderStateRef.current,
-              recording: false,
-              recordings: nextRecordings
-            });
-            streamRef.current?.getTracks().forEach((track) => track.stop());
-            streamRef.current = null;
-          })();
-        };
+	            const recordingId = `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+	            const nextRecordings = [
+	              {
+	                id: recordingId,
+	                createdAt,
+	                name: `录音 ${new Date(createdAt).toLocaleTimeString()}`,
+	                dataUrl,
+	                mimeType: recorder.mimeType || "audio/webm"
+	              },
+	              ...recordingsRef.current
+	            ];
+	            recordingsRef.current = nextRecordings;
+	            onStateChange({
+	              ...latestRecorderStateRef.current,
+	              recording: false,
+	              recordings: nextRecordings
+	            });
+	            streamRef.current?.getTracks().forEach((track) => track.stop());
+	            streamRef.current = null;
+	            const resolvers = stopResolversRef.current.splice(0);
+	            resolvers.forEach((resolve) => resolve({ status: "success", message: "已停止录音", data: { recordingId } }));
+	          })();
+	        };
         recorder.start();
         onStateChange({ ...latestRecorderStateRef.current, recording: true, recordError: "" });
         return { status: "success" as const, message: "已开始录音" };
@@ -5932,10 +5999,18 @@ export function BuiltinWidgetView({
       if (!targetId) {
         return { status: "failed" as const, message: "没有可播放的录音", errorCode: "RECORDER_ITEM_NOT_FOUND" };
       }
-      const audio = audioRefs.current[targetId];
-      if (!audio) {
-        return { status: "failed" as const, message: "录音播放器还没有准备好", errorCode: "RECORDER_AUDIO_NOT_READY" };
-      }
+	      const audio = audioRefs.current[targetId];
+	      if (!audio) {
+	        const targetRecording = recordingsRef.current.find((item) => item.id === targetId);
+	        if (!targetRecording) {
+	          return { status: "failed" as const, message: "录音播放器还没有准备好", errorCode: "RECORDER_AUDIO_NOT_READY" };
+	        }
+	        setPlayingId(targetId);
+	        globalThis.setTimeout(() => {
+	          void audioRefs.current[targetId]?.play().catch(() => undefined);
+	        }, 0);
+	        return { status: "success" as const, message: "已播放录音", data: { recordingId: targetId } };
+	      }
       Object.entries(audioRefs.current).forEach(([id, target]) => {
         if (id !== targetId && target) {
           target.pause();

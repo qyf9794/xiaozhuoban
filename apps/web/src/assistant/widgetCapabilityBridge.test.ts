@@ -139,7 +139,8 @@ describe("WidgetCapabilityBridge", () => {
       "recorder.play",
       "recorder.pause",
       "dialClock.set_night_mode",
-      "messageBoard.send"
+      "messageBoard.send",
+      "messageBoard.clear_draft"
     ]);
     expect(names.some((name) => name.includes("gomoku") || name.includes("monopoly") || name.includes("guandan"))).toBe(false);
     expect(names.some((name) => name.includes("ai"))).toBe(false);
@@ -348,6 +349,30 @@ describe("WidgetCapabilityBridge", () => {
 
     expect(result.status).toBe("success");
     expect(calls).toEqual(["M9 测试留言"]);
+  });
+
+  it("clears message board draft through mounted capability without sending text", async () => {
+    const { store } = createStore();
+    const bridge = new WidgetCapabilityBridge();
+    const calls: string[] = [];
+    bridge.register("wi_messageBoard", {
+      send(args) {
+        calls.push(`send:${String(args.text ?? "")}`);
+      },
+      clearDraft() {
+        calls.push("clearDraft");
+        return { status: "success", message: "已清空留言输入框" };
+      }
+    });
+    const registry = createRegistry(store, bridge);
+
+    const result = await registry.execute(
+      { id: "call_1", name: "messageBoard.clear_draft", arguments: {}, source: "test" },
+      { target: targetFor("messageBoard"), now: () => NOW }
+    );
+
+    expect(result.status).toBe("success");
+    expect(calls).toEqual(["clearDraft"]);
   });
 
   it("refuses a capability action for a mismatched widget target", async () => {

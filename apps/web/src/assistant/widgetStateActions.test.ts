@@ -111,6 +111,7 @@ describe("widget state assistant actions", () => {
     expect(names).toContain("note.clear");
     expect(names).toContain("weather.set_city");
     expect(names).toContain("todo.complete_item");
+    expect(names).toContain("todo.clear_completed");
     expect(names).toContain("countdown.pause");
     expect(names).toContain("countdown.resume");
     expect(names).toContain("countdown.reset");
@@ -161,6 +162,11 @@ describe("widget state assistant actions", () => {
     expect(manager.getInitialTools()).toEqual([]);
     expect(manager.getWidgetDetailTools("weather").map((tool) => tool.name)).toEqual(["weather.set_city"]);
     expect(manager.getWidgetDetailTools("note").map((tool) => tool.name)).toEqual(["note.write", "note.clear"]);
+    expect(manager.getWidgetDetailTools("todo").map((tool) => tool.name)).toEqual([
+      "todo.add_item",
+      "todo.complete_item",
+      "todo.clear_completed"
+    ]);
     expect(manager.getWidgetDetailTools("countdown").map((tool) => tool.name)).toEqual([
       "countdown.set",
       "countdown.pause",
@@ -250,6 +256,27 @@ describe("widget state assistant actions", () => {
     expect(getWidget("todo")?.state.items).toEqual(items);
   });
 
+  it("clears completed todo items and marks the action destructive", async () => {
+    const { store, getWidget } = createStore();
+    const registry = createRegistry(store);
+    const clearAction = createWidgetStateActions(store).find((action) => action.spec.name === "todo.clear_completed");
+    await store.updateWidgetState("wi_todo", {
+      items: [
+        { id: "todo_1", text: "已完成任务", completed: true },
+        { id: "todo_2", text: "保留任务" }
+      ]
+    });
+
+    const result = await registry.execute(
+      { id: "call_1", name: "todo.clear_completed", arguments: {}, source: "test" },
+      { target: targetFor("todo"), now: () => NOW }
+    );
+
+    expect(clearAction?.spec.risk).toBe("destructive");
+    expect(result).toMatchObject({ status: "success", message: "已清理已完成待办" });
+    expect(getWidget("todo")?.state.items).toEqual([{ id: "todo_2", text: "保留任务" }]);
+  });
+
   it("sets and starts a countdown", async () => {
     const { store, getWidget } = createStore();
     const registry = createRegistry(store);
@@ -328,6 +355,19 @@ describe("widget state assistant actions", () => {
     expect(getWidget("weather")?.state.cityCode).toBe("shanghai");
   });
 
+  it("sets supported international weather cities", async () => {
+    const { store, getWidget } = createStore();
+    const registry = createRegistry(store);
+
+    const result = await registry.execute(
+      { id: "call_1", name: "weather.set_city", arguments: { city: "纽约" }, source: "test" },
+      { target: targetFor("weather"), now: () => NOW }
+    );
+
+    expect(result.status).toBe("success");
+    expect(getWidget("weather")?.state.cityCode).toBe("new-york");
+  });
+
   it("sets translate draft without running long text work in realtime", async () => {
     const { store, getWidget } = createStore();
     const registry = createRegistry(store);
@@ -388,6 +428,29 @@ describe("widget state assistant actions", () => {
     expect(getWidget("clipboard")?.state.items).toMatchObject([{ text: "一段剪贴板内容", pinned: true }]);
   });
 
+  it("accepts area, time, and currency converter categories", async () => {
+    const { store, getWidget } = createStore();
+    const registry = createRegistry(store);
+
+    await registry.execute(
+      { id: "call_1", name: "converter.set", arguments: { category: "area", value: 10, fromUnit: "sqm", toUnit: "sqcm" }, source: "test" },
+      { target: targetFor("converter"), now: () => NOW }
+    );
+    expect(getWidget("converter")?.state).toMatchObject({ category: "area", inputValue: "10", fromUnit: "sqm", toUnit: "sqcm" });
+
+    await registry.execute(
+      { id: "call_2", name: "converter.set", arguments: { category: "time", value: 80, fromUnit: "minute", toUnit: "hour" }, source: "test" },
+      { target: targetFor("converter"), now: () => NOW }
+    );
+    expect(getWidget("converter")?.state).toMatchObject({ category: "time", inputValue: "80", fromUnit: "minute", toUnit: "hour" });
+
+    await registry.execute(
+      { id: "call_3", name: "converter.set", arguments: { category: "currency", value: 5, fromUnit: "usd", toUnit: "cny" }, source: "test" },
+      { target: targetFor("converter"), now: () => NOW }
+    );
+    expect(getWidget("converter")?.state).toMatchObject({ category: "currency", inputValue: "5", fromUnit: "usd", toUnit: "cny" });
+  });
+
   it("marks destructive clipboard clear as confirmation-required metadata", () => {
     const { store } = createStore();
     const clearAction = createWidgetStateActions(store).find((action) => action.spec.name === "clipboard.clear");
@@ -444,5 +507,18 @@ describe("widget state assistant actions", () => {
 
     expect(result).toMatchObject({ status: "failed", errorCode: "WIDGET_TYPE_MISMATCH" });
     expect(getWidget("note")?.state.content).toBe("已有内容");
+  });
+
+  it("sets an optional countdown label", async () => {
+    const { store, getWidget } = createStore();
+    const registry = createRegistry(store);
+
+    const result = await registry.execute(
+      { id: "call_1", name: "countdown.set", arguments: { totalSeconds: 90, start: true, label: "泡茶" }, source: "test" },
+      { target: targetFor("countdown"), now: () => NOW }
+    );
+
+    expect(result.status).toBe("success");
+    expect(getWidget("countdown")?.state).toMatchObject({ totalSeconds: 90, label: "泡茶" });
   });
 });

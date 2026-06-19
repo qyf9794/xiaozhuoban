@@ -15,6 +15,7 @@ export interface WorldClockDisplay {
 export const WORLD_CLOCK_ZONE_OPTIONS: WorldClockZoneOption[] = [
   { value: CHINA_TIME_ZONE, label: "北京", shortLabel: "北京" },
   { value: "America/Los_Angeles", label: "洛杉矶", shortLabel: "洛杉矶" },
+  { value: "America/Los_Angeles|san-francisco", label: "旧金山", shortLabel: "旧金山" },
   { value: "America/New_York", label: "纽约", shortLabel: "纽约" },
   { value: "Europe/London", label: "伦敦", shortLabel: "伦敦" },
   { value: "Europe/Paris", label: "巴黎", shortLabel: "巴黎" },
@@ -42,6 +43,10 @@ export const WORLD_CLOCK_GLOW_TONES = [
 
 const VALID_ZONE_SET = new Set(WORLD_CLOCK_ZONE_OPTIONS.map((item) => item.value));
 
+export function resolveWorldClockTimeZone(timeZone: string): string {
+  return timeZone.split("|")[0] || timeZone;
+}
+
 function createFallbackPool(exclude: readonly string[] = []): string[] {
   const pool: string[] = [];
   [...DEFAULT_WORLD_CLOCK_ZONES, ...WORLD_CLOCK_ZONE_OPTIONS.map((item) => item.value)].forEach((zone) => {
@@ -53,7 +58,11 @@ function createFallbackPool(exclude: readonly string[] = []): string[] {
   return pool;
 }
 
-export function normalizeWorldClockZones(input: unknown, fallback: readonly string[] = DEFAULT_WORLD_CLOCK_ZONES): string[] {
+export function normalizeWorldClockZones(
+  input: unknown,
+  fallback: readonly string[] = DEFAULT_WORLD_CLOCK_ZONES,
+  options: { fill?: boolean } = {}
+): string[] {
   const source = Array.isArray(input) ? input : fallback;
   const cleaned = source.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
   const unique: string[] = [CHINA_TIME_ZONE];
@@ -65,19 +74,21 @@ export function normalizeWorldClockZones(input: unknown, fallback: readonly stri
     unique.push(zone);
   });
 
-  const fallbackPool = createFallbackPool(unique);
-  while (unique.length < 4 && fallbackPool.length > 0) {
-    const next = fallbackPool.shift();
-    if (next) {
-      unique.push(next);
+  if (options.fill !== false) {
+    const fallbackPool = createFallbackPool(unique);
+    while (unique.length < 4 && fallbackPool.length > 0) {
+      const next = fallbackPool.shift();
+      if (next) {
+        unique.push(next);
+      }
     }
   }
 
   return unique.slice(0, 4);
 }
 
-export function toWorldClockSlots(zones: readonly string[]): string[] {
-  return normalizeWorldClockZones(zones);
+export function toWorldClockSlots(zones: readonly string[], options: { fill?: boolean } = {}): string[] {
+  return normalizeWorldClockZones(zones, DEFAULT_WORLD_CLOCK_ZONES, options);
 }
 
 export function updateWorldClockSlot(zones: readonly string[], slotIndex: number, nextZone: string): string[] {
@@ -120,14 +131,14 @@ function formatFromParts(
 ): string {
   return new Intl.DateTimeFormat("en-US", {
     ...options,
-    timeZone
+    timeZone: resolveWorldClockTimeZone(timeZone)
   }).format(date);
 }
 
 function formatTimeZoneName(date: Date, timeZone: string, timeZoneName: "short" | "shortOffset"): string {
   return (
     new Intl.DateTimeFormat("en-US", {
-      timeZone,
+      timeZone: resolveWorldClockTimeZone(timeZone),
       timeZoneName
     })
       .formatToParts(date)

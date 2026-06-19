@@ -37,6 +37,13 @@ describe("world clock slots", () => {
     ]);
   });
 
+  it("can keep a compact explicit zone list", () => {
+    expect(toWorldClockSlots([CHINA_TIME_ZONE, "America/Los_Angeles|san-francisco"], { fill: false })).toEqual([
+      CHINA_TIME_ZONE,
+      "America/Los_Angeles|san-francisco"
+    ]);
+  });
+
   it("updates a slot and preserves unique zones", () => {
     expect(updateWorldClockSlot([CHINA_TIME_ZONE, "America/New_York"], 2, "Asia/Tokyo")).toEqual([
       CHINA_TIME_ZONE,
@@ -48,6 +55,15 @@ describe("world clock slots", () => {
       CHINA_TIME_ZONE,
       "America/New_York",
       "America/Los_Angeles",
+      "Europe/London"
+    ]);
+  });
+
+  it("supports San Francisco as a distinct display option in the Pacific time zone", () => {
+    expect(updateWorldClockSlot([CHINA_TIME_ZONE, "America/New_York"], 2, "America/Los_Angeles|san-francisco")).toEqual([
+      CHINA_TIME_ZONE,
+      "America/New_York",
+      "America/Los_Angeles|san-francisco",
       "Europe/London"
     ]);
   });

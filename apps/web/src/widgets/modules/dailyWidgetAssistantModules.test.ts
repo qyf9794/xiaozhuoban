@@ -107,6 +107,7 @@ const moduleActions: AssistantAction[] = [
   action("clipboard.clear", "clipboard", "destructive"),
   action("todo.add_item", "todo"),
   action("todo.complete_item", "todo"),
+  action("todo.clear_completed", "todo", "destructive"),
   action("translate.set_draft", "translate"),
   action("calculator.set_display", "calculator"),
   action("countdown.set", "countdown"),

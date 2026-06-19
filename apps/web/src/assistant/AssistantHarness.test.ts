@@ -76,6 +76,22 @@ function createTools(): AssistantToolSpec[] {
       requiresTarget: true
     },
     {
+      name: "todo.add_item",
+      description: "添加待办",
+      parameters: schema,
+      scope: "widget-detail",
+      widgetType: "todo",
+      requiresTarget: true
+    },
+    {
+      name: "todo.complete_item",
+      description: "完成待办",
+      parameters: schema,
+      scope: "widget-detail",
+      widgetType: "todo",
+      requiresTarget: true
+    },
+    {
       name: "headline.request_refresh",
       description: "刷新新闻",
       parameters: schema,
@@ -148,6 +164,8 @@ function createRegistry(resultsByTool: Record<string, AssistantToolResult> = {})
   register("music.pause");
   register("weather.set_city");
   register("countdown.set");
+  register("todo.add_item");
+  register("todo.complete_item");
   register("headline.request_refresh");
   register("worldClock.set_zones");
   register("tv.play");
@@ -418,6 +436,95 @@ describe("AssistantHarness", () => {
     expect(executed).toEqual(["widget.focus:none"]);
   });
 
+  it("honors model plan risk overrides for otherwise safe tools", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_confirm_safe_remove",
+      sourceText: "这是一个需要模型风险覆盖的复杂说法",
+      normalizedText: "这是一个需要模型风险覆盖的复杂说法",
+      commands: [
+        {
+          id: "cmd_remove_tv",
+          module: "widget",
+          tool: "widget.remove",
+          args: { widgetId: "wi_tv" },
+          risk: "confirm",
+          confidence: 0.94,
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_remove_tv"] }],
+      confidence: 0.94,
+      needsConfirmation: true,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({ modelPlan });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("这是一个需要模型风险覆盖的复杂说法");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("needs_confirmation");
+    expect(harness.getPendingConfirmation()?.actionName).toBe("widget.remove");
+    expect(executed).toEqual([]);
+
+    const confirmed = await harness.handleUserInput("确认");
+
+    expect(confirmed.result.status).toBe("success");
+    expect(executed).toEqual(["widget.remove:none"]);
+  });
+
+  it("continues same-group commands after confirming a blocking plan step", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_confirm_then_focus",
+      sourceText: "整理桌面后聚焦待办窗口",
+      normalizedText: "整理桌面后聚焦待办窗口",
+      commands: [
+        {
+          id: "cmd_align",
+          module: "board",
+          tool: "board.auto_align",
+          args: {},
+          risk: "confirm",
+          confidence: 0.94,
+          source: "text",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "cmd_focus",
+          module: "widget",
+          tool: "widget.focus",
+          args: { widgetId: "wi_todo" },
+          risk: "safe",
+          confidence: 0.94,
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_align", "cmd_focus"] }],
+      confidence: 0.94,
+      needsConfirmation: true,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({ modelPlan });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("整理桌面后聚焦待办窗口");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("needs_confirmation");
+    expect(executed).toEqual([]);
+
+    const confirmed = await harness.handleUserInput("确认");
+
+    expect(confirmed.result.status).toBe("success");
+    expect(executed).toEqual(["board.auto_align:none", "widget.focus:none"]);
+  });
+
   it("executes a realtime command plan with parallel independent tools through harness validation", async () => {
     const modelPlan: CommandPlan = {
       id: "plan_realtime_parallel",
@@ -475,6 +582,223 @@ describe("AssistantHarness", () => {
       "weather.set_city",
       "headline.request_refresh"
     ]);
+  });
+
+  it("delegates semantic weather plus reminder commands to realtime planning", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_weather_todo",
+      sourceText: "看上海现在天气，如果冷就提醒我带外套",
+      normalizedText: "看上海现在天气，如果冷就提醒我带外套",
+      commands: [
+        {
+          id: "cmd_weather",
+          module: "weather",
+          tool: "weather.set_city",
+          args: { widgetId: "wi_weather", city: "上海" },
+          risk: "safe",
+          confidence: 0.9,
+          source: "text",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "cmd_todo",
+          module: "todo",
+          tool: "todo.add_item",
+          args: { widgetId: "wi_todo", text: "带外套" },
+          risk: "safe",
+          confidence: 0.9,
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_weather", "cmd_todo"] }],
+      confidence: 0.9,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({
+      modelPlan,
+      getContextInput: () => {
+        const base = createContextInput();
+        return {
+          ...base,
+          availableDefinitions: [...(base.availableDefinitions ?? []), { definitionId: "wd_todo", type: "todo", name: "待办" }],
+          widgets: [
+            ...(base.widgets ?? []),
+            { widgetId: "wi_weather", definitionId: "wd_weather", type: "weather", name: "天气", order: 3 },
+            { widgetId: "wi_todo", definitionId: "wd_todo", type: "todo", name: "待办", order: 4 }
+          ]
+        };
+      }
+    });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("看上海现在天气，如果冷就提醒我带外套");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("weather.set_city done；todo.add_item done");
+    expect(executed).toEqual(["weather.set_city:wi_weather", "todo.add_item:wi_todo"]);
+  });
+
+  it("delegates note content that mentions actions to realtime planning", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_note_literal_action_text",
+      sourceText: "便签写下：轻松音乐要重新搜索",
+      normalizedText: "便签写下：轻松音乐要重新搜索",
+      commands: [
+        {
+          id: "cmd_note",
+          module: "note",
+          tool: "note.append",
+          args: { widgetId: "wi_note", content: "轻松音乐要重新搜索" },
+          risk: "safe",
+          confidence: 0.9,
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_note"] }],
+      confidence: 0.9,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({ modelPlan });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("便签写下：轻松音乐要重新搜索");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["note.append:wi_note"]);
+  });
+
+  it("delegates searched-song note appends to realtime planning", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_note_searched_song",
+      sourceText: "把刚才搜索到的王菲红豆追加到便签",
+      normalizedText: "把刚才搜索到的王菲红豆追加到便签",
+      commands: [
+        {
+          id: "cmd_note",
+          module: "note",
+          tool: "note.append",
+          args: { widgetId: "wi_note", content: "王菲 红豆" },
+          risk: "safe",
+          confidence: 0.9,
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_note"] }],
+      confidence: 0.9,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({ modelPlan });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("把刚才搜索到的王菲红豆追加到便签");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["note.append:wi_note"]);
+  });
+
+  it("delegates context-sensitive todo completion to realtime planning", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_todo_context_completion",
+      sourceText: "把部署完成这项待办勾掉",
+      normalizedText: "把部署完成这项待办勾掉",
+      commands: [
+        {
+          id: "cmd_todo",
+          module: "todo",
+          tool: "todo.complete_item",
+          args: { widgetId: "wi_todo", text: "部署完成" },
+          risk: "safe",
+          confidence: 0.9,
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_todo"] }],
+      confidence: 0.9,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({
+      modelPlan,
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_todo", definitionId: "wd_todo", type: "todo", name: "待办", order: 3 }
+        ],
+        availableDefinitions: [...(createContextInput().availableDefinitions ?? []), { definitionId: "wd_todo", type: "todo", name: "待办" }]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("把部署完成这项待办勾掉");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["todo.complete_item:wi_todo"]);
+  });
+
+  it("delegates named countdown setup to realtime planning", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_named_countdown",
+      sourceText: "设置一分三十秒倒计时，名称叫泡茶",
+      normalizedText: "设置一分三十秒倒计时，名称叫泡茶",
+      commands: [
+        {
+          id: "cmd_countdown",
+          module: "countdown",
+          tool: "countdown.set",
+          args: { widgetId: "wi_countdown", totalSeconds: 90, start: true, label: "泡茶" },
+          risk: "safe",
+          confidence: 0.9,
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_countdown"] }],
+      confidence: 0.9,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({
+      modelPlan,
+      getContextInput: () => {
+        const base = createContextInput();
+        return {
+          ...base,
+          widgets: [
+            ...(base.widgets ?? []),
+            { widgetId: "wi_countdown", definitionId: "wd_countdown", type: "countdown", name: "倒计时", order: 3 }
+          ]
+        };
+      }
+    });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("设置一分三十秒倒计时，名称叫泡茶");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["countdown.set:wi_countdown"]);
   });
 
   it("turns successful model fallback into a confirmed learned local shortcut", async () => {
@@ -650,6 +974,75 @@ describe("AssistantHarness", () => {
     expect(response.result.status).toBe("success");
     expect(response.result.message).toBe("music.play done；countdown.set done");
     expect(executed).toEqual(["music.play:wi_music", "countdown.set:wi_countdown"]);
+  });
+
+  it("delegates same-sentence music playback and reminder setup to realtime planning", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_music_reminder_realtime",
+      sourceText: "播放舒缓钢琴，三分钟后提醒我休息眼睛",
+      normalizedText: "播放舒缓钢琴 三分钟后提醒我休息眼睛",
+      commands: [
+        {
+          id: "cmd_music",
+          module: "music",
+          tool: "music.play",
+          args: { widgetId: "wi_music", query: "舒缓钢琴" },
+          risk: "safe",
+          confidence: 0.92,
+          source: "realtime",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "cmd_countdown",
+          module: "countdown",
+          tool: "countdown.set",
+          args: { widgetId: "wi_countdown", totalSeconds: 180, start: true },
+          risk: "safe",
+          confidence: 0.92,
+          source: "realtime",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "cmd_todo",
+          module: "todo",
+          tool: "todo.add_item",
+          args: { widgetId: "wi_todo", text: "休息眼睛" },
+          risk: "safe",
+          confidence: 0.92,
+          source: "realtime",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_music", "cmd_countdown", "cmd_todo"] }],
+      confidence: 0.92,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({
+      modelPlan,
+      getContextInput: () => ({
+        ...createContextInput(),
+        availableDefinitions: [
+          ...createContextInput().availableDefinitions!,
+          { definitionId: "wd_todo", type: "todo", name: "待办" }
+        ],
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_music", definitionId: "wd_music", type: "music", name: "音乐", order: 3, summary: "空闲" },
+          { widgetId: "wi_countdown", definitionId: "wd_countdown", type: "countdown", name: "倒计时", order: 4, summary: "未开始" },
+          { widgetId: "wi_todo", definitionId: "wd_todo", type: "todo", name: "待办", order: 5, summary: "空" }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("播放舒缓钢琴，三分钟后提醒我休息眼睛");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["music.play:wi_music", "countdown.set:wi_countdown", "todo.add_item:wi_todo"]);
   });
 
   it("reuses a model-planned widget after board.add_widget succeeds", async () => {
@@ -978,6 +1371,183 @@ describe("AssistantHarness", () => {
 
     expect(response.route).toBe("model");
     expect(response.result.status).toBe("needs_clarification");
+    expect(executed).toEqual([]);
+  });
+
+  it("defers semantic news and market layout commands to model planning", async () => {
+    const { harness, executed } = createHarness();
+    await harness.initialize();
+
+    const layoutResponse = await harness.handleUserInput("把新闻和天气并排放，我要看今天情况");
+    const focusResponse = await harness.handleUserInput("打开重大新闻小工具后马上聚焦它");
+
+    expect(layoutResponse.route).toBe("model");
+    expect(focusResponse.route).toBe("model");
+    expect(layoutResponse.result.status).toBe("needs_clarification");
+    expect(focusResponse.result.status).toBe("needs_clarification");
+    expect(executed).toEqual([]);
+  });
+
+  it("defers semantic recorder workflow commands to model planning", async () => {
+    const { harness, executed } = createHarness();
+    await harness.initialize();
+
+    const openOnlyResponse = await harness.handleUserInput("打开录音机但先不要开始录");
+    const countdownResponse = await harness.handleUserInput("开始录音，然后三分钟倒计时");
+
+    expect(openOnlyResponse.route).toBe("model");
+    expect(countdownResponse.route).toBe("model");
+    expect(openOnlyResponse.result.status).toBe("needs_clarification");
+    expect(countdownResponse.result.status).toBe("needs_clarification");
+    expect(executed).toEqual([]);
+  });
+
+  it("defers semantic message board workflow commands to model planning", async () => {
+    const { harness, executed } = createHarness({
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_messageBoard", definitionId: "wd_messageBoard", type: "messageBoard", name: "留言板", order: 3 }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const literalSendResponse = await harness.handleUserInput("留言板发送：我在测试多轮语音");
+    const closeNotSendResponse = await harness.handleUserInput("我说关闭留言板时执行关闭，不是发送消息");
+    const tuckAwayResponse = await harness.handleUserInput("留言板窗口太碍事了，直接收起来");
+
+    expect(literalSendResponse.route).toBe("model");
+    expect(closeNotSendResponse.route).toBe("model");
+    expect(tuckAwayResponse.route).toBe("model");
+    expect(literalSendResponse.result.status).toBe("needs_clarification");
+    expect(closeNotSendResponse.result.status).toBe("needs_clarification");
+    expect(tuckAwayResponse.result.status).toBe("needs_clarification");
+    expect(executed).toEqual([]);
+  });
+
+  it("defers cross-tool workflow commands to model planning", async () => {
+    const { harness, executed } = createHarness();
+    await harness.initialize();
+
+    const marketLayoutResponse = await harness.handleUserInput("打开市场行情、重大新闻和纽约时间，排成一列");
+    const translateCopyResponse = await harness.handleUserInput("把 hello world 翻译成中文，再复制到剪贴板");
+    const todoReminderResponse = await harness.handleUserInput("添加待办提交报告，同时明早九点提醒");
+    const weatherClockResponse = await harness.handleUserInput("天气改成武汉，世界时钟改成北京伦敦纽约");
+
+    expect(marketLayoutResponse.route).toBe("model");
+    expect(translateCopyResponse.route).toBe("model");
+    expect(todoReminderResponse.route).toBe("model");
+    expect(weatherClockResponse.route).toBe("model");
+    expect(executed).toEqual([]);
+  });
+
+  it("defers correction and negation commands to model planning", async () => {
+    const { harness, executed } = createHarness();
+    await harness.initialize();
+
+    const clockCorrection = await harness.handleUserInput("打开时钟，啊不是世界时钟，是那个表盘时钟");
+    const musicCorrection = await harness.handleUserInput("我想听轻松音乐，别继续上一首，重新搜");
+    const todoCorrection = await harness.handleUserInput("添加待办买票，哦再加一条订酒店");
+    const focusCorrection = await harness.handleUserInput("把计算器放大，算了先聚焦就行");
+
+    expect(clockCorrection.route).toBe("model");
+    expect(musicCorrection.route).toBe("model");
+    expect(todoCorrection.route).toBe("model");
+    expect(focusCorrection.route).toBe("model");
+    expect(executed).toEqual([]);
+  });
+
+  it("defers confirmation and preservation commands to model planning", async () => {
+    const { harness, executed } = createHarness({
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_music", definitionId: "wd_music", type: "music", name: "音乐", order: 3 },
+          { widgetId: "wi_countdown", definitionId: "wd_countdown", type: "countdown", name: "倒计时", order: 4 },
+          { widgetId: "wi_recorder", definitionId: "wd_recorder", type: "recorder", name: "录音机", order: 5 }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const mediaClose = await harness.handleUserInput("关闭音乐和电视之前先确认一次");
+    const countdownStatus = await harness.handleUserInput("重置倒计时前先告诉我当前状态");
+    const temporaryClose = await harness.handleUserInput("关闭所有临时小工具，保留桌板");
+    const recorderStatus = await harness.handleUserInput("停止录音前确认当前是否正在录");
+
+    expect(mediaClose.route).toBe("model");
+    expect(countdownStatus.route).toBe("model");
+    expect(temporaryClose.route).toBe("model");
+    expect(recorderStatus.route).toBe("model");
+    expect(executed).toEqual([]);
+  });
+
+  it("defers window state adjustment commands to model planning", async () => {
+    const { harness, executed } = createHarness({
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_music", definitionId: "wd_music", type: "music", name: "音乐", order: 3 },
+          { widgetId: "wi_tv", definitionId: "wd_tv", type: "tv", name: "电视", order: 4 },
+          { widgetId: "wi_headline", definitionId: "wd_headline", type: "headline", name: "重大新闻", order: 5 },
+          { widgetId: "wi_recorder", definitionId: "wd_recorder", type: "recorder", name: "录音机", order: 6 },
+          { widgetId: "wi_countdown", definitionId: "wd_countdown", type: "countdown", name: "倒计时", order: 7 }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const musicPanel = await harness.handleUserInput("音乐封面太小了，把播放器面板放大");
+    const musicControls = await harness.handleUserInput("把音乐播放控件居中，登录按钮别挡封面");
+    const tvMove = await harness.handleUserInput("电视窗口太挡眼，缩小并放到右上角");
+    const recorderMove = await harness.handleUserInput("让录音机窗口别盖住倒计时");
+    const newsResize = await harness.handleUserInput("把新闻窗口缩小，避免挡住便签");
+
+    expect(musicPanel.route).toBe("model");
+    expect(musicControls.route).toBe("model");
+    expect(tvMove.route).toBe("model");
+    expect(recorderMove.route).toBe("model");
+    expect(newsResize.route).toBe("model");
+    expect(executed).toEqual([]);
+  });
+
+  it("defers productivity plan commands to model planning", async () => {
+    const { harness, executed } = createHarness({
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_todo", definitionId: "wd_todo", type: "todo", name: "待办", order: 3 },
+          { widgetId: "wi_weather", definitionId: "wd_weather", type: "weather", name: "天气", order: 4 },
+          { widgetId: "wi_music", definitionId: "wd_music", type: "music", name: "音乐", order: 5 }
+        ],
+        availableDefinitions: [
+          ...(createContextInput().availableDefinitions ?? []),
+          { definitionId: "wd_todo", type: "todo", name: "待办" },
+          { definitionId: "wd_weather", type: "weather", name: "天气" },
+          { definitionId: "wd_music", type: "music", name: "音乐" }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const todoReview = await harness.handleUserInput("把复盘 realtime 断线问题加入待办");
+    const monitorReminder = await harness.handleUserInput("十五分钟后提醒我查看监控脚本日志");
+    const weatherDecision = await harness.handleUserInput("查上海天气决定下午是否出门");
+    const calculatorTime = await harness.handleUserInput("打开计算器算今天还有多少分钟到六点");
+    const workbenchMusic = await harness.handleUserInput("打开工作台并把音乐播放器放到最前");
+    const alignFocus = await harness.handleUserInput("整理桌面后聚焦待办窗口");
+
+    expect(todoReview.route).toBe("model");
+    expect(monitorReminder.route).toBe("model");
+    expect(weatherDecision.route).toBe("model");
+    expect(calculatorTime.route).toBe("model");
+    expect(workbenchMusic.route).toBe("model");
+    expect(alignFocus.route).toBe("model");
     expect(executed).toEqual([]);
   });
 

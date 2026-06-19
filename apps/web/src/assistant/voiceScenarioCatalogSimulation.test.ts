@@ -34,6 +34,6 @@ describe("700 voice scenario catalog simulation", () => {
     const executionGroups = fs.readFileSync(executionGroupsPath, "utf8");
     expect(executionGroups).toContain("## Shortcut-Local Commands");
     expect(executionGroups).toContain("## Realtime-2-Required Commands");
-    expect(executionGroups).toContain("060. tools=music.play; reason=semantic music requests must be parsed by Realtime-2");
+    expect(executionGroups).toContain("060. tools=music.search; reason=semantic music requests must be parsed by Realtime-2");
   });
 });

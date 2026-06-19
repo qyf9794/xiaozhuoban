@@ -79,6 +79,9 @@ function createStore(seed?: { definitions?: WidgetDefinition[]; widgets?: Widget
     },
     renameBoard: (...args) => {
       calls.push({ name: "renameBoard", args });
+    },
+    deleteBoard: (...args) => {
+      calls.push({ name: "deleteBoard", args });
     }
   };
   return { store, calls };
@@ -129,7 +132,8 @@ describe("registerBoardActions", () => {
       "board.auto_align",
       "board.switch",
       "board.create",
-      "board.rename"
+      "board.rename",
+      "board.delete"
     ]);
   });
 
@@ -282,7 +286,7 @@ describe("registerBoardActions", () => {
     expect(calls).toEqual([{ name: "autoAlignWidgets", args: [390, { mobileMode: true }] }]);
   });
 
-  it("switches, creates, renames, removes, and brings widgets forward", async () => {
+  it("switches, creates, renames, deletes boards, removes, and brings widgets forward", async () => {
     const { store, calls } = createStore();
     const registry = createRegistry(store);
 
@@ -294,9 +298,10 @@ describe("registerBoardActions", () => {
       arguments: { boardId: "board_2", name: " 工作 " },
       source: "test"
     });
-    await registry.execute({ id: "4", name: "widget.remove", arguments: { widgetId: "wi_note" }, source: "test" });
+    await registry.execute({ id: "4", name: "board.delete", arguments: { boardId: "board_temp" }, source: "test" });
+    await registry.execute({ id: "5", name: "widget.remove", arguments: { widgetId: "wi_note" }, source: "test" });
     await registry.execute({
-      id: "5",
+      id: "6",
       name: "widget.bring_to_front",
       arguments: { widgetId: "wi_note" },
       source: "test"
@@ -306,6 +311,7 @@ describe("registerBoardActions", () => {
       { name: "setActiveBoard", args: ["board_2"] },
       { name: "addBoard", args: ["新桌板"] },
       { name: "renameBoard", args: ["board_2", "工作"] },
+      { name: "deleteBoard", args: ["board_temp"] },
       { name: "removeWidgetInstance", args: ["wi_note"] },
       { name: "bringWidgetToFront", args: ["wi_note"] }
     ]);

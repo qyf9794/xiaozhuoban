@@ -23,6 +23,7 @@ type AutoAlignArgs = { viewportWidth?: number; mobileMode?: boolean };
 type SwitchBoardArgs = { boardId: string };
 type CreateBoardArgs = { name?: string };
 type RenameBoardArgs = { boardId: string; name: string };
+type DeleteBoardArgs = { boardId: string };
 
 export interface BoardActionStore {
   getWidgetInstances: () => WidgetInstance[];
@@ -41,6 +42,7 @@ export interface BoardActionStore {
   setActiveBoard: (boardId: string) => Promise<void> | void;
   addBoard: (name?: string, options?: AssistantStorePersistOptions) => Promise<void> | void;
   renameBoard: (boardId: string, name: string, options?: AssistantStorePersistOptions) => Promise<void> | void;
+  deleteBoard?: (boardId: string, options?: AssistantStorePersistOptions) => Promise<void> | void;
 }
 
 export interface WidgetSizePolicy {
@@ -107,6 +109,10 @@ const createBoardSchema = parseWith<CreateBoardArgs>(
 
 const renameBoardSchema = parseWith<RenameBoardArgs>(
   (value): value is RenameBoardArgs => isRecord(value) && hasString(value, "boardId") && hasString(value, "name")
+);
+
+const deleteBoardSchema = parseWith<DeleteBoardArgs>(
+  (value): value is DeleteBoardArgs => isRecord(value) && hasString(value, "boardId")
 );
 
 export function getWidgetSizePolicy(definitionType: string): WidgetSizePolicy {
@@ -376,6 +382,22 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
       async execute(args, context) {
         await callMaybeWithOptions(store.renameBoard, [args.boardId, args.name.trim()], persistOptions(context));
         return success("已重命名桌板", { boardId: args.boardId, name: args.name.trim() });
+      }
+    }),
+    defineAction<DeleteBoardArgs>({
+      spec: {
+        name: "board.delete",
+        description: "Delete an existing board after explicit confirmation.",
+        parameters: deleteBoardSchema,
+        risk: "confirm",
+        scope: "desktop"
+      },
+      async execute(args, context) {
+        if (!store.deleteBoard) {
+          return failed("当前环境还不能删除桌板", "BOARD_DELETE_UNAVAILABLE");
+        }
+        await callMaybeWithOptions(store.deleteBoard, [args.boardId], persistOptions(context));
+        return success("已删除桌板", { boardId: args.boardId });
       }
     })
   ];

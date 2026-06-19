@@ -5,7 +5,7 @@ import {
   type AssistantToolResult
 } from "@xiaozhuoban/assistant-core";
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
-import { normalizeWorldClockZones, WORLD_CLOCK_ZONE_OPTIONS } from "../widgets/worldClockShared";
+import { DEFAULT_WORLD_CLOCK_ZONES, normalizeWorldClockZones, WORLD_CLOCK_ZONE_OPTIONS } from "../widgets/worldClockShared";
 
 export interface WidgetStateActionStore {
   getWidgetInstances: () => WidgetInstance[];
@@ -21,18 +21,19 @@ type NoteWriteArgs = { content: string; mode?: "replace" | "append" };
 type NoteClearArgs = Record<string, never>;
 type TodoAddArgs = { text: string; dueAt?: string };
 type TodoCompleteArgs = { text: string };
-type CountdownSetArgs = { hours?: number; minutes?: number; seconds?: number; totalSeconds?: number; start?: boolean };
+type TodoClearCompletedArgs = Record<string, never>;
+type CountdownSetArgs = { hours?: number; minutes?: number; seconds?: number; totalSeconds?: number; start?: boolean; label?: string };
 type CountdownControlArgs = Record<string, never>;
 type WeatherCityArgs = { city?: string; cityCode?: string };
 type CalculatorSetArgs = { display: string | number };
 type HeadlineRefreshArgs = { requestedAt?: string };
 type MarketSetArgs = { indexCode?: string; indexCodes?: string[] };
-type WorldClockSetArgs = { zones: string[] };
+type WorldClockSetArgs = { zones: string[]; compact?: boolean };
 type ConverterSetArgs = { category?: string; value: string | number; fromUnit?: string; toUnit?: string };
 type TranslateDraftArgs = { sourceText: string; sourceLang?: string; targetLang?: string };
 type ClipboardAddArgs = { text: string; pinned?: boolean };
 type ClipboardClearArgs = { includePinned?: boolean };
-type TodoStateItem = { id: string; text: string; dueAt?: string };
+type TodoStateItem = { id: string; text: string; dueAt?: string; completed?: boolean };
 type ClipboardStateItem = { id: string; text: string; pinned?: boolean; createdAt: string };
 
 const STAGE_ONE_WIDGET_TYPES = [
@@ -77,14 +78,25 @@ const WEATHER_CITY_ALIASES: Record<string, string> = {
   "los-angeles": "los-angeles",
   洛杉矶: "los-angeles",
   boston: "boston",
-  波士顿: "boston"
+  波士顿: "boston",
+  "new-york": "new-york",
+  "new york": "new-york",
+  nyc: "new-york",
+  纽约: "new-york",
+  tokyo: "tokyo",
+  东京: "tokyo",
+  paris: "paris",
+  巴黎: "paris"
 };
 
 const MARKET_CODES = new Set(["usINX", "usNDX", "usDJI", "hkHSI", "sh000001", "sz399001"]);
 const CONVERTER_UNITS: Record<string, string[]> = {
   length: ["m", "km", "cm", "inch", "ft"],
   weight: ["kg", "g", "lb", "oz"],
-  temperature: ["c", "f", "k"]
+  temperature: ["c", "f", "k"],
+  area: ["sqm", "sqcm", "sqkm"],
+  time: ["minute", "hour", "second"],
+  currency: ["usd", "cny"]
 };
 const TRANSLATE_LANGS = new Set(["auto", "zh-CN", "en"]);
 
@@ -131,6 +143,8 @@ const todoAddSchema = parseWith<TodoAddArgs>(
 
 const todoCompleteSchema = parseWith<TodoCompleteArgs>((value): value is TodoCompleteArgs => isRecord(value) && hasString(value, "text"));
 
+const todoClearCompletedSchema = parseWith<TodoClearCompletedArgs>((value): value is TodoClearCompletedArgs => isRecord(value));
+
 const countdownSetSchema = parseWith<CountdownSetArgs>(
   (value): value is CountdownSetArgs =>
     isRecord(value) &&
@@ -138,6 +152,7 @@ const countdownSetSchema = parseWith<CountdownSetArgs>(
     hasOptionalNumber(value, "minutes") &&
     hasOptionalNumber(value, "seconds") &&
     hasOptionalNumber(value, "totalSeconds") &&
+    hasOptionalString(value, "label") &&
     (value.start === undefined || typeof value.start === "boolean")
 );
 
@@ -164,7 +179,10 @@ const marketSetSchema = parseWith<MarketSetArgs>(
 
 const worldClockSetSchema = parseWith<WorldClockSetArgs>(
   (value): value is WorldClockSetArgs =>
-    isRecord(value) && Array.isArray(value.zones) && value.zones.every((item) => typeof item === "string")
+    isRecord(value) &&
+    Array.isArray(value.zones) &&
+    value.zones.every((item) => typeof item === "string") &&
+    (value.compact === undefined || typeof value.compact === "boolean")
 );
 
 const converterSetSchema = parseWith<ConverterSetArgs>(
@@ -295,7 +313,8 @@ function normalizeTodoItems(raw: unknown): TodoStateItem[] {
       return {
         id: typeof item.id === "string" && item.id.trim() ? item.id : createRecordId("todo", new Date().toISOString()),
         text: item.text,
-        dueAt: typeof item.dueAt === "string" ? item.dueAt : undefined
+        ...(typeof item.dueAt === "string" ? { dueAt: item.dueAt } : {}),
+        ...(item.completed === true ? { completed: true } : {})
       };
     })
     .filter((item): item is TodoStateItem => item !== null);
@@ -436,6 +455,25 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
         return success("已完成待办", { widgetId: target.widget.id, item });
       }
     }),
+    defineAction<TodoClearCompletedArgs>({
+      spec: {
+        name: "todo.clear_completed",
+        description: "Clear completed todo items from a todo widget.",
+        parameters: todoClearCompletedSchema,
+        risk: "destructive",
+        scope: "widget-detail",
+        widgetType: "todo",
+        requiresTarget: true
+      },
+      async execute(_args, context) {
+        const target = getTarget(store, context, "todo");
+        if (isToolResult(target)) return target;
+        const items = normalizeTodoItems(target.widget.state.items);
+        const nextItems = items.filter((item) => item.completed !== true);
+        await patchWidgetState(store, target.widget, { items: nextItems }, context);
+        return success("已清理已完成待办", { widgetId: target.widget.id, removed: items.length - nextItems.length });
+      }
+    }),
     defineAction<CountdownSetArgs>({
       spec: {
         name: "countdown.set",
@@ -465,7 +503,8 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
           totalSeconds,
           remainingSeconds: totalSeconds,
           running: start,
-          targetEndsAt: start ? (Number.isFinite(nowMs) ? nowMs : Date.now()) + totalSeconds * 1000 : 0
+          targetEndsAt: start ? (Number.isFinite(nowMs) ? nowMs : Date.now()) + totalSeconds * 1000 : 0,
+          ...(typeof args.label === "string" && args.label.trim() ? { label: args.label.trim() } : {})
         }, context);
         return success(start ? "已设置并启动倒计时" : "已设置倒计时", { widgetId: target.widget.id, totalSeconds });
       }
@@ -650,8 +689,9 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
         const target = getTarget(store, context, "worldClock");
         if (isToolResult(target)) return target;
         const aliases = new Map(WORLD_CLOCK_ZONE_OPTIONS.flatMap((item) => [[item.value, item.value], [item.label, item.value], [item.shortLabel, item.value]]));
-        const zones = normalizeWorldClockZones(args.zones.map((zone) => aliases.get(zone) ?? zone));
-        await patchWidgetState(store, target.widget, { zones }, context);
+        const compact = args.compact === true;
+        const zones = normalizeWorldClockZones(args.zones.map((zone) => aliases.get(zone) ?? zone), DEFAULT_WORLD_CLOCK_ZONES, { fill: !compact });
+        await patchWidgetState(store, target.widget, { zones, compact }, context);
         return success("已更新世界时钟", { widgetId: target.widget.id, zones });
       }
     }),

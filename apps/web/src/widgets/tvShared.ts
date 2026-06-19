@@ -23,6 +23,11 @@ export const FALLBACK_TV_CHANNELS: TvChannel[] = [
     id: "tv_fallback_cctv6",
     name: "CCTV-6 电影",
     url: "http://69.30.245.50/live/cctv6.m3u8"
+  },
+  {
+    id: "tv_fallback_cctv5",
+    name: "CCTV-5 体育",
+    url: "http://www.douzhicloud.site:35455/gaoma/cctv5.m3u8"
   }
 ];
 
@@ -59,6 +64,9 @@ export function findFallbackTvChannel(channelName: string): TvChannel | undefine
   }
   if (/(电影频道|央视电影|中央电影|CCTV\s*-?\s*6|CCTV\s*-?\s*电影)/i.test(channelName)) {
     return FALLBACK_TV_CHANNELS.find((channel) => channel.id === "tv_fallback_cctv6");
+  }
+  if (/(体育频道|央视体育|中央体育|CCTV\s*-?\s*5|CCTV\s*-?\s*体育)/i.test(channelName)) {
+    return FALLBACK_TV_CHANNELS.find((channel) => channel.id === "tv_fallback_cctv5");
   }
   return findTvChannel(FALLBACK_TV_CHANNELS, channelName);
 }

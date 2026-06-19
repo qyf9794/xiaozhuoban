@@ -30,6 +30,7 @@ export const realtimeToolSelectionPolicyLines = [
   "用户说“打开设置/显示设置菜单”时，优先调用 app.settings.open。",
   "用户说“打开搜索/命令面板”时，优先调用 app.command_palette.open；用户说“打开 AI 生成”时，优先调用 app.ai_dialog.open。",
   "如果用户说“关闭/关掉 + 小工具名”，优先调用 widget.remove 关闭这个小工具窗口。",
+  "如果用户要求调整窗口、面板、封面、文字、按钮、位置或大小，优先选择 widget.move / widget.resize / widget.focus；不要把这类界面布局请求误选成播放、搜索、刷新、写入或发送内容。",
   "用户说“来个/来一首/想听/播放 + 歌手、歌曲或风格”时，默认调用 music.play；只有明确说搜索/找/不一定播放/先不播放/不要播放时才调用 music.search。",
   "如果用户说“暂停/继续/播放/下一首”等播放控制，优先调用对应媒体工具；点歌、歌手名加歌曲名时选择 music.play。"
 ];
@@ -47,6 +48,7 @@ export const realtimeToolSelectionSessionPolicyLines = [
   "用户说“打开设置/显示设置菜单”时，优先选择 app.settings.open。",
   "用户说“打开搜索/命令面板”时，优先选择 app.command_palette.open；用户说“打开 AI 生成”时，优先选择 app.ai_dialog.open。",
   "如果用户说“关闭/关掉 + 小工具名”，优先选择 widget.remove 关闭这个小工具窗口。",
+  "如果用户要求调整窗口、面板、封面、文字、按钮、位置或大小，优先选择 widget.move / widget.resize / widget.focus；不要把这类界面布局请求误选成播放、搜索、刷新、写入或发送内容。",
   "用户说“来个/来一首/想听/播放 + 歌手、歌曲或风格”时，默认选择 music.play；只有明确说搜索/找/不一定播放/先不播放/不要播放时才选择 music.search。",
   "如果用户说“暂停/继续/播放/下一首”等播放控制，优先选择对应媒体工具。"
 ];
@@ -58,7 +60,8 @@ export const realtimePlanSelectionPolicyLines = [
   "用户只说“打开时钟”时选择 board.add_widget 且 selectedModule/targetHint 指向 dialClock/表盘；只有明确说世界时钟、世界时间、时区或城市时间时才指向 worldClock。",
   "music.search 和 music.play 只用于明确搜索/播放/暂停/切换音乐；非音乐窗口名即使当前焦点在音乐播放器，也不要传给音乐工具。",
   "用户说“整理桌面/排列桌面/对齐小工具”时，必须选择 board.auto_align。",
-  "用户说“隐藏/显示侧栏、进入/退出全屏、打开设置、打开搜索/命令面板、打开 AI 生成”时，必须选择对应 app.* 工具。"
+  "用户说“隐藏/显示侧栏、进入/退出全屏、打开设置、打开搜索/命令面板、打开 AI 生成”时，必须选择对应 app.* 工具。",
+  "用户要求调整窗口、面板、封面、文字、按钮、位置或大小时，必须选择 widget.move / widget.resize / widget.focus 或对应 app.* 工具；不要选择播放、搜索、刷新、写入、待办或留言工具。"
 ];
 
 export function inputMentionsRealtimeWidgetType(input: string | undefined, type: string): boolean {

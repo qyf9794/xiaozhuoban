@@ -53,6 +53,8 @@ describe("findTvChannel", () => {
     expect(findFallbackTvChannel("中央新闻")?.name).toBe("CCTV-13 新闻");
     expect(findFallbackTvChannel("电影频道")?.name).toBe("CCTV-6 电影");
     expect(findFallbackTvChannel("CCTV6")?.name).toBe("CCTV-6 电影");
+    expect(findFallbackTvChannel("体育频道")?.name).toBe("CCTV-5 体育");
+    expect(findFallbackTvChannel("CCTV5")?.name).toBe("CCTV-5 体育");
   });
 });
 

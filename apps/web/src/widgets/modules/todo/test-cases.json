@@ -5,7 +5,7 @@
     "expected": { "module": "todo", "tool": "todo.add_item", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
     "coverage": {
       "categories": ["singleTool", "scopedContextRedaction", "auditRedaction"],
-      "actions": ["board.add_widget", "widget.focus", "widget.fullscreen_focus", "widget.remove", "todo.add_item", "todo.complete_item"],
+      "actions": ["board.add_widget", "widget.focus", "widget.fullscreen_focus", "widget.remove", "todo.add_item", "todo.complete_item", "todo.clear_completed"],
       "risks": ["safe"],
       "contextFields": ["moduleType", "tools", "toolSchemas", "instances", "stateSummary", "shortcutExamples", "executionPolicy", "riskPolicy"]
     }
@@ -21,6 +21,12 @@
     "input": "打开待办，然后添加一条：明天买牛奶",
     "expected": { "module": "todo", "tool": "todo.add_item", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
     "coverage": { "categories": ["windowControl", "crossTool"] }
+  },
+  {
+    "id": "todo-clear-completed-001",
+    "input": "清理已完成待办前先让我确认",
+    "expected": { "module": "todo", "tool": "todo.clear_completed", "risk": "destructive", "needsRealtime": true, "needsConfirmation": true },
+    "coverage": { "categories": ["destructive", "confirmation", "realtimeFallback"] }
   },
   {
     "id": "todo-noisy-fallback-001",

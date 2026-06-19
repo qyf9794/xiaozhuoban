@@ -358,11 +358,21 @@ function createRecorderActions(store: WidgetCapabilityStore, bridge: WidgetCapab
         scope: "widget-detail",
         widgetType: "recorder",
         requiresTarget: true
-      },
-      execute(args, context) {
-        return invokeCapability(store, bridge, context, "recorder", "stop", args, "已停止录音", { recording: false });
-      }
-    }),
+	      },
+	      async execute(args, context) {
+	        const target = getTarget(store, context, "recorder");
+	        if (isToolResult(target)) return target;
+	        const result = await bridge.invoke(target.widget.id, "stop", args as Record<string, unknown>, context);
+	        const hasRecordingId = isRecord(result.data) && typeof result.data.recordingId === "string";
+	        if (isSuccess(result) && !hasRecordingId) {
+	          await patchWidgetState(store, target.widget, { recording: false });
+	        }
+	        if (result.message === "已执行小工具操作") {
+	          return success("已停止录音", { widgetId: target.widget.id, capabilityName: "stop" });
+	        }
+	        return result;
+	      }
+	    }),
     defineAction<WidgetCapabilityArgs>({
       spec: {
         name: "recorder.play",
@@ -430,6 +440,20 @@ function createMessageBoardActions(store: WidgetCapabilityStore, bridge: WidgetC
       },
       execute(args, context) {
         return invokeCapability(store, bridge, context, "messageBoard", "send", args, "已发送留言");
+      }
+    }),
+    defineAction<WidgetCapabilityArgs>({
+      spec: {
+        name: "messageBoard.clear_draft",
+        description: "Clear the message board input draft without sending a message or deleting history.",
+        parameters: genericCapabilitySchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "messageBoard",
+        requiresTarget: true
+      },
+      execute(args, context) {
+        return invokeCapability(store, bridge, context, "messageBoard", "clearDraft", args, "已清空留言输入框");
       }
     })
   ];

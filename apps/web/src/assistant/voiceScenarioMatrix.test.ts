@@ -180,6 +180,10 @@ function createScenarioHarness(scenario: Scenario) {
     },
     renameBoard(boardId: string, name: string) {
       boards = boards.map((board) => (board.id === boardId ? { ...board, name } : board));
+    },
+    deleteBoard(boardId: string) {
+      boards = boards.filter((board) => board.id !== boardId);
+      if (activeBoardId === boardId) activeBoardId = boards[0]?.id ?? "";
     }
   };
 
@@ -261,6 +265,11 @@ function createScenarioHarness(scenario: Scenario) {
         capabilityCalls.push({ widgetId: item.id, capabilityName: "send", args });
         store.updateWidgetState(item.id, { ...item.state, lastMessageText: args.text });
         return { status: "success", message: "已发送留言" };
+      },
+      clearDraft: (args) => {
+        capabilityCalls.push({ widgetId: item.id, capabilityName: "clearDraft", args });
+        store.updateWidgetState(item.id, { ...item.state, draft: "" });
+        return { status: "success", message: "已清空留言输入框" };
       }
     });
   }
@@ -371,6 +380,7 @@ function generatedScenarios(): Scenario[] {
     simpleScenario("board-create-009", "新开一个学习桌板", "board.create", { name: "学习桌板" }),
     simpleScenario("board-rename-010", "把当前桌板改名叫夜间工作", "board.rename", { boardId: "board_1", name: "夜间工作" }),
     simpleScenario("board-switch-011", "切回工作台桌板", "board.switch", { boardId: "board_2" }),
+    simpleScenario("board-delete-011b", "删除临时桌板之前先确认", "board.delete", { boardId: "board_2" }, { autoConfirm: true }),
     simpleScenario("widget-move-tv-012", "把电视拖到右上角", "widget.move", { widgetId: "wi_tv", x: 6, y: 0 }),
     simpleScenario("widget-resize-tv-013", "把电视面板调大一点", "widget.resize", { widgetId: "wi_tv", w: 520, h: 320 }),
     simpleScenario("widget-front-music-014", "把音乐播放器放最前", "widget.bring_to_front", { widgetId: "wi_music" }),
@@ -417,6 +427,7 @@ function generatedScenarios(): Scenario[] {
     ["todo", "todo.add_item", "添加待办买咖啡豆", { text: "买咖啡豆" }],
     ["todo", "todo.add_item", "明早九点提醒我提交报告", { text: "提交报告", dueAt: "2026-06-19T09:00:00.000Z" }],
     ["todo", "todo.complete_item", "把买牛奶这项勾掉", { text: "买牛奶" }],
+    ["todo", "todo.clear_completed", "清理已完成待办前先让我确认", {}, true],
     ["clipboard", "clipboard.add_text", "复制演示账号到剪贴板", { text: "演示账号" }],
     ["clipboard", "clipboard.add_text", "固定保存项目口令 demo", { text: "项目口令 demo", pinned: true }],
     ["clipboard", "clipboard.clear", "清理剪贴板普通记录", { includePinned: false }, true],
@@ -441,7 +452,8 @@ function generatedScenarios(): Scenario[] {
     ["market", "market.set_indices", "打开恒生和上证行情", { indexCodes: ["hkHSI", "sh000001"] }],
     ["dialClock", "dialClock.set_night_mode", "表盘开启夜间模式", { enabled: true }],
     ["dialClock", "dialClock.set_night_mode", "关闭时钟夜间模式", { enabled: false }],
-    ["messageBoard", "messageBoard.send", "留言板发一句我在测试", { text: "我在测试" }]
+    ["messageBoard", "messageBoard.send", "留言板发一句我在测试", { text: "我在测试" }],
+    ["messageBoard", "messageBoard.clear_draft", "清除留言板输入框不要发送", {}]
   ] as const;
   infoWidgets.forEach((item, index) => {
     const [type, tool, text, args] = item;

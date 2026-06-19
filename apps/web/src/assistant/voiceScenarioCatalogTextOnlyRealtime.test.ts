@@ -42,14 +42,23 @@ describe("700 voice scenario catalog through text-only Realtime event flow", () 
       });
 
       adapter.sendTextCommand(testCase.text, { commandTraceId: `text_only_${String(testCase.id).padStart(3, "0")}` });
+      (adapter as unknown as { handleRealtimeEventData: (data: string) => void }).handleRealtimeEventData(
+        JSON.stringify({ type: "session.updated" })
+      );
 
-      const ok =
-        sent.length === 2 &&
-        sent[0]?.type === "conversation.item.create" &&
-        sent[0]?.item?.content?.[0]?.type === "input_text" &&
-        sent[0]?.item?.content?.[0]?.text === testCase.text &&
-        sent[1]?.type === "response.create" &&
-        sent[1]?.response?.output_modalities?.includes("text");
+      const inputTextIndex = sent.findIndex(
+        (event) =>
+          event.type === "conversation.item.create" &&
+          event.item?.content?.[0]?.type === "input_text" &&
+          event.item?.content?.[0]?.text === testCase.text
+      );
+      const responseIndex = sent.findIndex(
+        (event, index) =>
+          index > inputTextIndex &&
+          event.type === "response.create" &&
+          event.response?.output_modalities?.includes("text")
+      );
+      const ok = inputTextIndex >= 0 && responseIndex > inputTextIndex;
       rows.push(`${String(testCase.id).padStart(3, "0")}. [${ok ? "pass" : "fail"}] command=${testCase.text}`);
       if (!ok) {
         failures.push(`${String(testCase.id).padStart(3, "0")} ${testCase.text}: ${JSON.stringify(sent)}`);

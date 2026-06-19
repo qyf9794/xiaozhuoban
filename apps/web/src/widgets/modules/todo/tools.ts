@@ -25,7 +25,8 @@ export const todoToolArgSchemas = {
   "todo.complete_item": createStrictObjectSchema({
     widgetId: { type: "string", required: true },
     text: { type: "string", required: true }
-  })
+  }),
+  "todo.clear_completed": widgetIdArgsSchema
 } as const;
 
 const todoWindowTools = new Set(["board.add_widget", "widget.focus", "widget.fullscreen_focus", "widget.remove"]);
@@ -36,7 +37,8 @@ const examplesByTool: Record<string, string[]> = {
   "widget.fullscreen_focus": ["全屏待办", "放大清单", "专注看任务"],
   "widget.remove": ["关闭待办", "关掉清单", "把待办收起来"],
   "todo.add_item": ["下午三点叫我开会", "一会儿提醒我喝水", "添加待办明天买牛奶"],
-  "todo.complete_item": ["把买牛奶勾掉", "把任务做完", "标记买牛奶完成"]
+  "todo.complete_item": ["把买牛奶勾掉", "把任务做完", "标记买牛奶完成"],
+  "todo.clear_completed": ["清理已完成待办", "清空做完的任务", "删除已完成事项前先确认"]
 };
 
 function isTodoTool(action: AssistantAction): boolean {
