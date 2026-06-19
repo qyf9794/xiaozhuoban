@@ -29,7 +29,7 @@ describe("700 voice scenario catalog simulation", () => {
     expect(report).toContain("061. [pass] route=realtime-2-required");
     expect(report).toContain("062. [pass] route=realtime-2-required");
     expect(report).toContain("070. [pass] route=shortcut-local");
-    expect(report).toContain("095. [pass] route=shortcut-local");
+    expect(report).toContain("095. [pass] route=realtime-2-required");
 
     const executionGroups = fs.readFileSync(executionGroupsPath, "utf8");
     expect(executionGroups).toContain("## Shortcut-Local Commands");

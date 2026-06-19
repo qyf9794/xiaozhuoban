@@ -111,6 +111,12 @@
       "tools": ["app.fullscreen.set", "widget.resize"]
     },
     {
+      "id": "restore-window-followup-repaired-equivalent",
+      "kind": "anyOf",
+      "pattern": "(?:误触|退出|取消|离开|关闭|恢复).{0,16}(?:全屏|沉浸|普通窗口).{0,24}(?:聚焦|放最前|调整|移动|恢复普通|窗口)",
+      "tools": ["app.fullscreen.set", "widget.focus", "widget.resize", "widget.move", "widget.bring_to_front"]
+    },
+    {
       "id": "tv-fullscreen-condition-sidebar-equivalent",
       "kind": "anyOf",
       "pattern": "电视全屏时隐藏侧边栏",

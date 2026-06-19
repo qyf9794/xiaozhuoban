@@ -11,6 +11,7 @@ import {
   createCommandPlanFromToolCalls,
   createLearningCandidate,
   createPlanPreview,
+  classifyShortcutDeferral,
   getForbiddenToolViolations,
   isNonActionModelTool,
   scoreCandidates,
@@ -119,6 +120,11 @@ export interface AssistantCommandDiagnostics {
     recoveredTool: string;
     violations?: CommandPolicyForbiddenViolation[];
   };
+  shortcutDeferral?: {
+    ruleId: string;
+    category: string;
+    reason: string;
+  };
   status?: AssistantToolResult["status"];
   message?: string;
   pendingConfirmation?: boolean;
@@ -157,7 +163,6 @@ const CANCEL_TOOL = "assistant.cancel";
 const ADD_WIDGET_TOOL = "board.add_widget";
 const FOCUS_WIDGET_TOOL = "widget.focus";
 const APP_FULLSCREEN_TOOL = "app.fullscreen.set";
-const WIDGET_RESIZE_TOOL = "widget.resize";
 const PLANNED_WIDGET_PREFIX = "planned_widget_";
 const LOCAL_SHORTCUT_CONFIDENCE_THRESHOLD = 0.9;
 const WIDGET_WINDOW_TOOLS = new Set([
@@ -625,80 +630,15 @@ export class AssistantHarness {
   }
 
   private shouldDeferComplexShortcutSegment(input: string): boolean {
-    const normalized = normalizeText(input);
-    if (normalized.length < 6) return false;
-    if (/(?:斤|公斤|千克|克|米|公里|摄氏|华氏).{0,12}(?:换算|多少|是多少)|(?:换算|多少|是多少).{0,12}(?:斤|公斤|千克|克|米|公里|摄氏|华氏)/.test(input)) {
-      return false;
+    const deferral = classifyShortcutDeferral(input);
+    if (deferral.defer && this.lastDiagnostics) {
+      this.lastDiagnostics.shortcutDeferral = {
+        ruleId: deferral.rule.id,
+        category: deferral.rule.category,
+        reason: deferral.rule.reason
+      };
     }
-    if (/^清空剪贴板，然后添加一条待办[:：]/.test(input)) {
-      return false;
-    }
-    return (
-	      /(如果|不要|别|只|仅|检查|准备|名字先叫|草稿|误触|恢复普通窗口|当前在全屏|登录音乐|语音入口|所有弹窗|只留下|不要新建|不对|不是|啊不是|准确说|刚才说错|哦再|算了|其实|识别成|不是我要的|没把握|需要弹确认|弹确认|先确认|等我确认|确认后执行|前先告诉|统一确认)/.test(input) ||
-      /输入.+(?:字|词|内容)/.test(input) ||
-      /切到.+页面/.test(input) ||
-      /(?:切到|切回|回到|新开|新建|创建).{0,20}(?:后|再|然后|同时|，|,).{0,24}(?:打开|添加|把|放上|移动|调到)/.test(input) ||
-      /(?:关闭|关掉|关上|删掉|删除|移除).{0,20}(?:后|再|然后|同时|，|,).{0,24}(?:打开|添加|新建|新开)/.test(input) ||
-      /(?:打开|开一下|唤出|再开).{0,20}(?:后|，|,).{0,24}(?:把|移动|固定|用于|对比)/.test(input) ||
-      /(?:打开|调出|唤出).{0,12}(?:音乐|播放器).{0,24}(?:搜索|搜|找).{0,24}(?:播放|并播放)/.test(input) ||
-      /(?:音乐|歌曲|播放|来一首|我要听|想听|给我放|找).{0,30}(?:搜到后|播放后|如果没找到|没有打开|先打开|歌词搜索|不要继续上一首|别只放试听|不要换成|找到原唱|按歌曲名|播放失败)/.test(input) ||
-      /(?:播放|放点|放一点|来点|想听|听点|找).{0,24}(?:音乐|歌|钢琴|民谣|背景|白噪音|自然声|粤语|轻松|舒缓).{0,30}(?:分钟后|小时后|提醒|倒计时|叫我)/.test(input) ||
-      (!/打开天气查.+再打开世界时钟/.test(input) &&
-        /(?:天气|冷不冷|会不会下雨|适合|带伞|体感温度|洗车).{0,36}(?:顺便|同时|再|然后|并|后|如果|先).{0,44}(?:便签|待办|提醒|世界时钟|本地时间|时间|空气|摘要|换算|华氏|摄氏|留言板|倒计时|翻译|英文|聚焦|放最前|对比)/.test(input)) ||
-      /(?:适合洗车|适合带伞|适不适合跑步|会不会下雨|体感温度)/.test(input) ||
-      /(?:时间|几点|时钟|世界时钟|表盘时钟|打开时钟|倒计时|计时器|提醒我|分钟后|半小时后|明早九点).{0,36}(?:并|同时|然后|再|后|而不是|优先|不要|别|名称叫).{0,44}(?:表盘|世界时钟|夜间模式|轻音乐|音乐|便签|原因|喝水|部署日志|泡茶|五分钟|天气|待办|录音|电视|客户回电话|休息|放最前|纽约|旧金山|缩小)/.test(input) ||
-      /(?:打开表盘而不是世界时钟|打开时钟时优先打开表盘时钟|世界时钟只保留|表盘时钟放到桌面中央|暂停计时器.*音乐|明早九点提醒我给客户回电话)/.test(input) ||
-      /(?:便签|待办|任务|提醒).{0,12}(?:记下|写下|保存|追加|新增|添加|加一条|设为|标记|勾掉|清理|清空).{0,48}(?:音乐|播放|完整歌曲|realtime|Vercel|日志|留言板|关闭|录音|翻译|新闻|摘要|天气|token|多轮|重复|当前|备注|确认|轻松|搜索|桌面问题|部署完成)/i.test(input) ||
-      /(?:记下|写下|保存|追加|新增|添加|加一条).{0,28}(?:便签|待办|任务|提醒).{0,48}(?:音乐|播放|完整歌曲|realtime|Vercel|日志|留言板|关闭|录音|翻译|新闻|摘要|天气|token|多轮|重复|当前|备注|确认|轻松|搜索|桌面问题)/i.test(input) ||
-      /(?:刚才搜索到|搜索到的).{0,24}(?:追加到便签|写到便签|记到便签)/.test(input) ||
-      /(?:把|将).{0,20}(?:这项待办|部署完成).{0,12}(?:勾掉|标记完成|完成)/.test(input) ||
-      /(?:清空便签|清理已完成待办|先弹确认|先让我确认|前先让我确认|前先弹确认|前先弹统一确认|之前先确认|先问我确认|必须先问我确认|需要弹确认)/.test(input) ||
-      /(?:关闭|关掉|关上|收起|删除|删掉|移除|清理|清空).{0,32}(?:保留|先确认|等我确认|确认后执行|前先告诉|统一确认)/.test(input) ||
-      /(?:会议纪要|hello realtime|新闻摘要|当前播放歌曲|天气城市).{0,24}(?:便签|录音|翻译|追加|保存|新增|打开)/i.test(input) ||
-      /(?:明天下午三点|今天晚上九点|五分钟后提醒我看倒计时).{0,32}(?:提醒|Vercel|复盘|声音)/i.test(input) ||
-      /(?:剪贴板|复制|固定保存|保存命令).{0,64}(?:不要|固定|保留|并|后|前先|当前|翻译|便签|表盘|提醒|完成提示|未固定|占位|部署|项目口令|本地路径|搜索关键词|今天日期|客服回复模板|演示账号|音乐登录状态)/i.test(input) ||
-      /(?:临时验证码|demo@example|demo-token|Vercel 项目名|WiFi 密码提示|搜索关键词|会议链接|客服回复模板|本地路径|当前歌曲名|翻译结果|打开表盘时钟|今天日期|部署 id|音乐登录状态检查步骤).{0,40}(?:剪贴板|复制|保存|固定|存起来|新增|添加|不要|提醒)/i.test(input) ||
-      /固定保存.{0,40}(?:Vercel 项目名|音乐登录状态|项目口令|demo-token|xiaozhuoban)/i.test(input) ||
-      /(?:清理|清空).{0,16}剪贴板.{0,32}(?:保留|固定|确认|完成提示|未固定|测试记录)/.test(input) ||
-      /(?:翻译|译成).{0,48}(?:复制结果|不要执行|关闭命令|播放轻松音乐|preview mode|0\.9|realtime|备忘|适合出门)/i.test(input) ||
-      /(?:good night realtime|今天适合出门吗|播放轻松音乐).{0,24}(?:翻译|译成)/i.test(input) ||
-      /(?:计算|算).{0,48}(?:写进便签|写到便签|添加到剪贴板|显示在计算器|部署失败次数|再乘|然后|并)/.test(input) ||
-	      /(?:换算|转成|大概是多少).{0,48}(?:平方|分钟|小时|美元|人民币|汇率|公斤半|Fahrenheit|摄氏度|公里|米|斤)/i.test(input) ||
-	      /(?:2\s*斤|两公斤半).{0,24}(?:克|换算)/.test(input) ||
-	      /(?:新闻|头条|重大新闻|财经新闻|行情|全球指数|纳指|道指|恒生|上证|深证|美股).{0,40}(?:不要|别|只|顺便|同时|然后|后|如果|并|放到|置顶|聚焦|刷新失败|发一句|追加|提醒|关闭|命令面板)/.test(input) ||
-	      /(?:把新闻和天气并排放|打开重大新闻小工具后马上聚焦|不要打开行情窗口|不要播放电视|别误开音乐|关闭港股窗口)/.test(input) ||
-	      /(?:录音|录音机|录制|录一段|回放).{0,48}(?:并|同时|然后|再|后|之前|先|如果|不要|别|避免|旁边|封面|倒计时|提醒|便签|留言板|剪贴板|电视|音乐|表盘|待办|窗口|左上角|聚焦|测试编号|会议开始|会议结束|复现过程|检查声音)/.test(input) ||
-	      /(?:开始录音后|开始录音，然后|停止录音后|停止录音并|播放录音时|录音回放暂停后|打开录音机但先不要开始录|打开录音机，窗口放到左上角)/.test(input) ||
-	      /(?:留言板|留言|消息).{0,48}(?:不要|别|不是发送|同时|然后|如果|先|再|置顶|移到底部|移到|底部|多轮|部署完成|realtime|英文|重复|确认|碍事|收起来|清空输入框|天气摘要|音乐已经重新搜索|十分钟)/i.test(input) ||
-	      /(?:把天气摘要发到留言板|关闭留言板和新闻窗口|关闭留言板时执行关闭)/.test(input) ||
-	      /(?:电视|直播|CCTV).{0,28}(?:，|,|然后|再|同时|后).{0,36}(?:音乐|录音|倒计时|提醒|侧边栏|侧栏|置顶|便签|新闻)/i.test(input) ||
-	      /(?:电视|直播|CCTV).{0,28}(?:切到|再选|重新选择).{0,16}(?:CCTV|频道)/i.test(input) ||
-	      /(?:暂停电视|电视.{0,8}暂停).{0,36}(?:继续播放音乐|开始录音|提醒|倒计时)/.test(input) ||
-	      /(?:关闭电视).{0,28}(?:同时|然后|再|，|,).{0,28}(?:音乐|继续播放)/.test(input) ||
-	      /(?:电视卡住|重新选择\s*CCTV|新闻直播.{0,16}CCTV)/i.test(input) ||
-	      /(?:市场行情|重大新闻|纽约时间).{0,40}(?:排成一列|排一列|一列)/.test(input) ||
-	      /(?:翻译成中文|翻译).{0,32}(?:复制|剪贴板)/i.test(input) ||
-	      /(?:添加待办|待办).{0,32}(?:同时|并|然后|再).{0,32}(?:明早|提醒)/.test(input) ||
-	      /(?:新建一条待办|加入待办|添加待办[:：]).{0,48}(?:realtime|语音|小工具|Apple Music|试听|断线|复盘|检查)|(?:realtime|语音|小工具|Apple Music|试听|断线|复盘|检查).{0,48}(?:加入待办|添加到待办)/i.test(input) ||
-	      /(?:十五分钟后|明早八点|明早九点|半小时后).{0,32}(?:提醒|查看|继续|检查)/i.test(input) ||
-	      /(?:查|看).{0,16}天气.{0,24}(?:决定|是否|适合|出门)/.test(input) ||
-	      /(?:打开计算器|计算器).{0,32}(?:今天|还有多少分钟|到六点)/.test(input) ||
-	      /(?:打开|切到|回到).{0,16}(?:工作台|项目冲刺).{0,32}(?:音乐播放器|放到最前|整理窗口|整理桌面)/.test(input) ||
-	      (!/打开天气查.+再打开世界时钟/.test(input) && /(?:天气改成|天气).{0,40}(?:世界时钟|伦敦|纽约|北京伦敦纽约)/.test(input)) ||
-	      /(?:隐藏|显示|先|并|同时).{0,16}(?:整理|排列|对齐)/.test(input) ||
-      /(?:整理|排列|对齐).{0,16}(?:同时|然后|再|并|后).{0,24}(?:聚焦|切到|放最前|待办|窗口)?/.test(input) ||
-      /(?:旧的|新的|另一个|再开|只保留|保留).{0,16}(?:小工具|窗口|倒计时|音乐|电视|待办|天气)/.test(input) ||
-      /(?:两个|多个|所有).{0,8}窗口/.test(input) ||
-      /(?:表盘|时钟).{0,24}(?:调暗|夜间模式|打开夜间)/.test(input) ||
-      /(?:倒计时|计时器).{0,28}(?:声音|暂停倒计时)/.test(input) ||
-      /(?:天气卡片|卡片).{0,20}(?:放大|调大|方便读)/.test(input) ||
-      /(?:电视|直播).{0,24}(?:全屏).{0,24}(?:侧栏|侧边栏)/.test(input) ||
-      /(?:退出全屏后|恢复普通窗口).{0,28}(?:音乐播放器|音乐|播放器)/.test(input) ||
-      /(?:音乐|播放器).{0,28}(?:封面|播放控件|登录按钮|恢复正常大小)/.test(input) ||
-      /窗口.{0,16}(?:拖到|移到|移动到|放到|放在|置顶|最前|调宽|调小|放大|缩小|退出全屏|盖住|挡住|压缩|恢复正常大小)/.test(input) ||
-      /(?:窗口|面板|封面|播放控件|登录按钮|按钮|文字).{0,28}(?:太小|挡|覆盖|居中|放大|缩小|调宽|调小|右上角|正常大小|不要全屏|恢复正常|压缩)/.test(input) ||
-      /(?:太小|太挡眼|挡眼|别挡|不要压缩).{0,28}(?:窗口|面板|封面|播放控件|登录按钮|按钮|文字|待办|倒计时|便签)/.test(input)
-    );
+    return deferral.defer;
   }
 
   private async handleShortcutPlan(groups: AssistantToolCall[][], startedAt: number): Promise<AssistantHarnessResponse> {
@@ -1033,12 +973,12 @@ export class AssistantHarness {
 
   private repairRealtimePlanBeforeExecution(plan: CommandPlan, route: AssistantRoute): CommandPlan {
     if (route !== "model") return plan;
-    if (!/(?:退出|取消|离开|关闭).{0,12}(?:全屏|沉浸)|(?:全屏|沉浸).{0,12}(?:退出|取消|离开|关闭)/.test(plan.sourceText)) {
+    if (!/(?:误触|退出|取消|离开|关闭).{0,12}(?:全屏|沉浸)|(?:恢复|回到).{0,8}普通窗口/.test(plan.sourceText)) {
       return plan;
     }
-    const hasResize = plan.commands.some((command) => command.tool === WIDGET_RESIZE_TOOL);
+    const hasWindowFollowUp = plan.commands.some((command) => WIDGET_WINDOW_TOOLS.has(command.tool));
     const hasFullscreenExit = plan.commands.some((command) => command.tool === APP_FULLSCREEN_TOOL);
-    if (!hasResize || hasFullscreenExit) return plan;
+    if (!hasWindowFollowUp || hasFullscreenExit) return plan;
     const exitCommand: CommandPlanStep = {
       id: createId("policy_fullscreen_exit"),
       module: "app-shell",

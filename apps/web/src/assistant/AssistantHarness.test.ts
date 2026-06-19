@@ -1133,6 +1133,40 @@ describe("AssistantHarness", () => {
     expect(executed).toEqual(["app.fullscreen.set:none", "widget.resize:none"]);
   });
 
+  it("prepends fullscreen exit when realtime only focuses after a restore-window request", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_restore_window_focus",
+      sourceText: "我刚才误触全屏了，恢复普通窗口并聚焦便签",
+      normalizedText: "误触 全屏 恢复普通窗口 聚焦便签",
+      commands: [
+        {
+          id: "cmd_focus",
+          module: "note",
+          tool: "widget.focus",
+          args: { widgetId: "wi_note" },
+          risk: "safe",
+          confidence: 0.9,
+          source: "realtime",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_focus"] }],
+      confidence: 0.9,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({ modelPlan });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("我刚才误触全屏了，恢复普通窗口并聚焦便签");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["app.fullscreen.set:none", "widget.focus:none"]);
+  });
+
   it("delegates same-sentence music playback and reminder setup to realtime planning", async () => {
     const modelPlan: CommandPlan = {
       id: "plan_music_reminder_realtime",

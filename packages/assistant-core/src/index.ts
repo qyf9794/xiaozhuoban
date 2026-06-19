@@ -9,6 +9,7 @@ export * from "./learningSystem";
 export * from "./aiModuleReview";
 export * from "./moduleTestRunner";
 export * from "./commandPolicy";
+export * from "./shortcutDeferralPolicy";
 
 export type AssistantActionRisk = "safe" | "confirm" | "destructive";
 

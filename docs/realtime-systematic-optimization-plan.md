@@ -51,6 +51,7 @@ Improve real voice control without adapting the system only to the current catal
 - The runner now evaluates semantic contracts: `must`, `anyOf`, and `forbid`.
 - The runner supports `--ids=001,002` targeted online reruns while keeping the full catalog tool directory available.
 - Shared command policy manifest exists at `packages/assistant-core/src/commandPolicyManifest.json`.
+- Structured shortcut deferral rules exist at `packages/assistant-core/src/shortcutDeferralPolicy.ts`; Harness records `ruleId`, `category`, and `reason` in diagnostics when a complex shortcut is routed to Realtime.
 - Runtime recovery and live semantic contracts now read shared policy instead of maintaining separate non-action and contract rule lists.
 - Compact Realtime prompt snippets are generated from the shared command policy manifest instead of copied long-form arrays.
 - Harness execution now verifies Realtime plans before execution, recovers high-confidence local actions after non-action or forbidden model plans, and rejects forbidden plans that cannot be recovered safely.
@@ -71,6 +72,7 @@ Improve real voice control without adapting the system only to the current catal
 
 - Done: deterministic command policy now lives in `commandPolicyManifest.json`.
 - Done: semantic contracts, runtime non-action/forbidden recovery, and prompt snippets are generated from the same policy source.
+- Done: complex local-shortcut deferral rules are categorized and observable instead of living as one opaque Harness regex block.
 - Ongoing rule: keep Realtime prompts short; do not add more long-form rules unless a failing behavior cannot be expressed in manifest policy.
 
 ### Phase 2: Plan Verification Before Execution
@@ -96,6 +98,8 @@ Improve real voice control without adapting the system only to the current catal
 - Until then, use text-only Realtime event flow as the unattended fallback.
 
 ## Current Verification Commands
+
+Canonical test instructions live in `docs/realtime-testing-methods.md`.
 
 - `pnpm --filter @xiaozhuoban/assistant-core test`
 - `pnpm vitest run apps/web/src/assistant/AssistantHarness.test.ts apps/web/src/assistant/voiceScenarioHoldout.test.ts`

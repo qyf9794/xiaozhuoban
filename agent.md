@@ -45,7 +45,7 @@ Configuration rules:
 
 ## Realtime 稳定性约束
 
-当前语音助手的首要目标是稳定、可验证、低成本，而不是继续堆叠单句提示词补丁。后续所有 Realtime、工具路由、语音测试和小工具控制改动必须遵守 `docs/realtime-stability-remediation-plan.md`。
+当前语音助手的首要目标是稳定、可验证、低成本，而不是继续堆叠单句提示词补丁。后续所有 Realtime、工具路由、语音测试和小工具控制改动必须遵守 `docs/realtime-systematic-optimization-plan.md`，测试入口以 `docs/realtime-testing-methods.md` 为准。
 
 Implementation rules:
 

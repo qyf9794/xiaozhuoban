@@ -466,6 +466,26 @@ describe("stage-one assistant acceptance scenarios", () => {
     ]);
   });
 
+  it("records structured deferral reasons across varied complex command families", async () => {
+    const { harness, modelInputs } = createAcceptanceHarness();
+    await harness.initialize();
+    const cases = [
+      ["关闭留言板时执行关闭，不是发送关闭", "correction_or_negation"],
+      ["查上海天气决定下午是否出门", "multi_step"],
+      ["电视全屏时隐藏侧边栏", "tv_workflow"],
+      ["音乐登录按钮挡住封面，放到右上角", "window_layout"],
+      ["翻译成中文后复制到剪贴板", "multi_step"]
+    ] as const;
+
+    for (const [command, category] of cases) {
+      const response = await harness.handleUserInput(command);
+      expect(response.route).toBe("model");
+      expect(harness.getLastDiagnostics()?.shortcutDeferral).toMatchObject({ category });
+    }
+
+    expect(modelInputs).toEqual(cases.map(([command]) => command));
+  });
+
   it("opens widgets from casual aliases without model fallback", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness({ initialWidgetTypes: ["weather", "todo"] });
     await harness.initialize();

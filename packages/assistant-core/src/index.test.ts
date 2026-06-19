@@ -22,6 +22,7 @@ import {
   createLearningCandidate,
   createCommandPlanFromToolCalls,
   createDefaultIntentShortcutRouter,
+  classifyShortcutDeferral,
   createPassthroughSchema,
   createStrictObjectSchema,
   createAiModuleInstallSession,
@@ -347,6 +348,31 @@ describe("WidgetAssistantRegistry and Command Planner", () => {
     expect(scoreCandidates("帮我查一下北京天气", registry.list()).candidates[0]).toMatchObject({
       type: "weather"
     });
+  });
+
+  it("classifies complex shortcut deferrals by stable categories while preserving simple local shortcuts", () => {
+    const cases = [
+      ["关闭留言板时执行关闭，不是发送关闭", "correction_or_negation"],
+      ["打开音乐播放器，搜索邓紫棋泡沫并播放", "music_semantic"],
+      ["查上海天气决定下午是否出门", "multi_step"],
+      ["把天气摘要发到留言板，然后清空输入框", "message_board_safety"],
+      ["电视全屏时隐藏侧边栏", "tv_workflow"],
+      ["音乐登录按钮挡住封面，放到右上角", "window_layout"],
+      ["翻译成中文后复制到剪贴板", "multi_step"]
+    ] as const;
+
+    for (const [input, category] of cases) {
+      const result = classifyShortcutDeferral(input);
+      expect(result).toMatchObject({ defer: true, rule: { category } });
+      if (result.defer) {
+        expect(result.rule.id).toBeTruthy();
+        expect(result.rule.reason).toBeTruthy();
+      }
+    }
+
+    expect(classifyShortcutDeferral("2斤是多少克")).toEqual({ defer: false });
+    expect(classifyShortcutDeferral("清空剪贴板，然后添加一条待办：明天买牛奶")).toEqual({ defer: false });
+    expect(classifyShortcutDeferral("打开天气查北京再打开世界时钟")).toEqual({ defer: false });
   });
 
   it("validates command plans before execution", () => {

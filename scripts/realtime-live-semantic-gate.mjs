@@ -4,9 +4,9 @@ import { dirname, resolve } from "node:path";
 import WebSocket from "ws";
 
 const ROOT = resolve(new URL("..", import.meta.url).pathname);
-const REPORT_PATH = resolve(ROOT, "docs/realtime-live-semantic-gate-report.md");
+const REPORT_PATH = resolve(ROOT, "docs/realtime-live-semantic-smoke-report.md");
 const CATALOG_REPORT_PATH = resolve(ROOT, "docs/realtime-voice-scenario-catalog-simulation-report.md");
-const LIVE_CATALOG_REPORT_PATH = resolve(ROOT, "docs/realtime-live-semantic-catalog-570-report.md");
+const LIVE_CATALOG_REPORT_PATH = resolve(ROOT, "docs/realtime-live-semantic-catalog-700-report.md");
 const COMMAND_POLICY_MANIFEST_PATH = resolve(ROOT, "packages/assistant-core/src/commandPolicyManifest.json");
 const MODEL = process.env.XIAOZHUOBAN_REALTIME_LIVE_MODEL || "gpt-realtime-2";
 const LIVE_SITE = process.env.XIAOZHUOBAN_REALTIME_LIVE_SITE || "";
@@ -1009,8 +1009,8 @@ async function main() {
 }
 
 async function runCatalogMode() {
-  const limit = Number(getArg("--limit", "570"));
-  const batchSize = Number(getArg("--batch-size", "15"));
+  const limit = Number(getArg("--limit", "700"));
+  const batchSize = Number(getArg("--batch-size", "12"));
   const idFilter = parseIdFilter(getArg("--ids", ""));
   const parseLimit = idFilter.length
     ? Math.max(limit, ...idFilter.map((id) => Number(id)).filter((id) => Number.isFinite(id)))
@@ -1059,7 +1059,7 @@ async function runCatalogMode() {
   mkdirSync(dirname(LIVE_CATALOG_REPORT_PATH), { recursive: true });
   const reportPath = idFilter.length
     ? resolve(ROOT, "docs/realtime-live-semantic-catalog-selected-report.md")
-    : (limit === 570 ? LIVE_CATALOG_REPORT_PATH : resolve(ROOT, `docs/realtime-live-semantic-catalog-${limit}-report.md`));
+    : (limit === 700 ? LIVE_CATALOG_REPORT_PATH : resolve(ROOT, `docs/realtime-live-semantic-catalog-${limit}-report.md`));
   writeFileSync(
     reportPath,
     renderCatalogReport(results, {
