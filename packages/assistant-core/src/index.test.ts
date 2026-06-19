@@ -25,7 +25,10 @@ import {
   createPassthroughSchema,
   createStrictObjectSchema,
   createAiModuleInstallSession,
+  commandPolicyManifest,
+  getNonActionModelTools,
   installReviewedModule,
+  isNonActionModelTool,
   parseAiGeneratedModuleManifest,
   reviewAiGeneratedModule,
   runWidgetModuleStaticChecks,
@@ -3471,5 +3474,29 @@ describe("Strict schemas, preview gate, executor, budget, outbox, learning, and 
     expect(report.ok).toBe(true);
     expect(report.uncoveredActions).toEqual([]);
     expect(report.scopedContextFields).toContain("stateSummary");
+  });
+
+  it("exposes shared command policy rules for runtime recovery and semantic contracts", () => {
+    expect(commandPolicyManifest.version).toBe("command_policy_v1");
+    expect(isNonActionModelTool("assistant.runtime_diagnostics")).toBe(true);
+    expect(isNonActionModelTool("widget.remove")).toBe(false);
+    expect(getNonActionModelTools()).toContain("assistant.reply");
+    expect(commandPolicyManifest.recoverableNonActionRules).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "recover-auto-align-after-diagnostics",
+          tools: ["board.auto_align"]
+        })
+      ])
+    );
+    expect(commandPolicyManifest.semanticContractRules).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "close-message-board-forbids-send",
+          kind: "forbid",
+          tools: ["messageBoard.send"]
+        })
+      ])
+    );
   });
 });

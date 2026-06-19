@@ -25,8 +25,10 @@ function createTools(): AssistantToolSpec[] {
   const schema = createPassthroughSchema<Record<string, unknown>>();
   return [
     { name: "board.auto_align", description: "整理", parameters: schema, scope: "desktop", risk: "confirm" },
+    { name: "app.fullscreen.set", description: "全屏", parameters: schema, scope: "desktop", risk: "safe" },
     { name: "widget.focus", description: "聚焦", parameters: schema, scope: "desktop" },
     { name: "widget.remove", description: "关闭小工具", parameters: schema, scope: "desktop", risk: "safe" },
+    { name: "widget.resize", description: "调整窗口", parameters: schema, scope: "desktop", risk: "safe" },
     {
       name: "note.append",
       description: "追加便签",
@@ -155,9 +157,11 @@ function createRegistry(resultsByTool: Record<string, AssistantToolResult> = {})
 
   register("board.auto_align");
   register("board.add_widget");
+  register("app.fullscreen.set");
   register("widget.focus");
   register("widget.remove");
   register("widget.move");
+  register("widget.resize");
   register("note.append");
   register("music.search");
   register("music.play");
@@ -265,6 +269,36 @@ function createHarness(options?: {
     now: () => "2026-06-16T00:00:00.000Z"
   });
   return { harness, toolUpdates, contextUpdates, sentResults, auditEvents, activeTraceIds, operationEvents, executed: registryState.executed };
+}
+
+function createNonActionRealtimePlan(sourceText: string): CommandPlan {
+  return createRealtimePlanWithTool(sourceText, "assistant.runtime_diagnostics");
+}
+
+function createRealtimePlanWithTool(sourceText: string, tool: string): CommandPlan {
+  return {
+    id: `plan_${tool.replace(/\W+/g, "_")}`,
+    sourceText,
+    normalizedText: sourceText,
+    commands: [
+      {
+        id: `cmd_${tool.replace(/\W+/g, "_")}`,
+        module: tool.split(".")[0] ?? "assistant",
+        tool,
+        args: {},
+        risk: "safe",
+        confidence: 0.91,
+        source: "realtime",
+        requiresHarnessValidation: true
+      }
+    ],
+    dependencies: [],
+    executionGroups: [{ id: "group_1", mode: "sequential", commandIds: [`cmd_${tool.replace(/\W+/g, "_")}`] }],
+    confidence: 0.91,
+    needsConfirmation: false,
+    createdBy: "realtime-2",
+    requiresHarnessValidation: true
+  };
 }
 
 describe("AssistantHarness", () => {
@@ -434,6 +468,86 @@ describe("AssistantHarness", () => {
     expect(response.route).toBe("model");
     expect(response.result.status).toBe("success");
     expect(executed).toEqual(["widget.focus:none"]);
+  });
+
+  it("recovers a close-widget shortcut when realtime returns only diagnostics", async () => {
+    const input = "我说关闭留言板时执行关闭，不是发送消息";
+    const { harness, executed } = createHarness({
+      modelPlan: createNonActionRealtimePlan(input),
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_messageBoard", definitionId: "wd_messageBoard", type: "messageBoard", name: "留言板", order: 3 }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput(input);
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["widget.remove:none"]);
+  });
+
+  it("recovers an auto-align shortcut when realtime returns only diagnostics", async () => {
+    const input = "我说整理桌面时不要回答没有工具，要触发确认";
+    const { harness, executed } = createHarness({
+      modelPlan: createNonActionRealtimePlan(input)
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput(input);
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("needs_confirmation");
+    expect(harness.getPendingConfirmation()?.actionName).toBe("board.auto_align");
+    expect(executed).toEqual([]);
+  });
+
+  it("recovers a local shortcut when realtime returns a forbidden message-board send plan", async () => {
+    const input = "我说关闭留言板时执行关闭，不是发送消息";
+    const { harness, executed } = createHarness({
+      modelPlan: createRealtimePlanWithTool(input, "messageBoard.send"),
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_messageBoard", definitionId: "wd_messageBoard", type: "messageBoard", name: "留言板", order: 3 }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput(input);
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(harness.getLastDiagnostics()?.recovery).toMatchObject({
+      reason: "forbidden_model_tools",
+      modelTools: ["messageBoard.send"],
+      recoveredTool: "widget.remove"
+    });
+    expect(executed).toEqual(["widget.remove:none"]);
+  });
+
+  it("rejects a forbidden realtime tool when local recovery would also violate policy", async () => {
+    const input = "清空搜索结果不要影响播放中的歌曲";
+    const { harness, executed } = createHarness({
+      modelPlan: createRealtimePlanWithTool(input, "music.search")
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput(input);
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("failed");
+    expect(response.result.errorCode).toBe("REALTIME_PLAN_POLICY_REJECTED");
+    expect(harness.getLastDiagnostics()?.validationErrors?.[0]).toMatchObject({
+      code: "POLICY_FORBIDDEN_TOOL"
+    });
+    expect(executed).toEqual([]);
   });
 
   it("honors model plan risk overrides for otherwise safe tools", async () => {
@@ -974,6 +1088,49 @@ describe("AssistantHarness", () => {
     expect(response.result.status).toBe("success");
     expect(response.result.message).toBe("music.play done；countdown.set done");
     expect(executed).toEqual(["music.play:wi_music", "countdown.set:wi_countdown"]);
+  });
+
+  it("prepends fullscreen exit when realtime only resizes after an exit-fullscreen request", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_exit_fullscreen_resize",
+      sourceText: "把音乐窗口退出全屏，然后调整到宽度 520",
+      normalizedText: "音乐窗口 退出全屏 调整 宽度 520",
+      commands: [
+        {
+          id: "cmd_resize",
+          module: "music",
+          tool: "widget.resize",
+          args: { widgetId: "wi_music", w: 520, h: 360 },
+          risk: "safe",
+          confidence: 0.74,
+          source: "realtime",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_resize"] }],
+      confidence: 0.74,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({
+      modelPlan,
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_music", definitionId: "wd_music", type: "music", name: "音乐", order: 3 }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("把音乐窗口退出全屏，然后调整到宽度 520");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["app.fullscreen.set:none", "widget.resize:none"]);
   });
 
   it("delegates same-sentence music playback and reminder setup to realtime planning", async () => {

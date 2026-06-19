@@ -1,0 +1,240 @@
+{
+  "version": "command_policy_v1",
+  "nonActionModelTools": ["assistant.reply", "assistant.runtime_diagnostics"],
+  "promptSnippets": {
+    "core": [
+      "明确小桌板动作优先选择动作工具；只有纯问候、闲聊、状态询问且没有可用动作时才自然回复。",
+      "诊断、日志、弱网、断线、工具目录、模块加载、前端成功状态等系统观测请求使用 assistant.runtime_diagnostics；同一句含关闭、整理、搜索、打开、播放等明确动作时动作优先。",
+      "打开或新增窗口类请求使用 board.add_widget；如果还要查询、播放、发送、写入或刷新，规划阶段同时列出内容工具。",
+      "关闭、关掉、收起小工具窗口使用 widget.remove；关闭留言板禁止使用 messageBoard.send。",
+      "确认、保留 pinned、先确认、确认后执行等是本地 Harness 的执行约束，仍返回对应动作工具。",
+      "调整窗口、位置、大小、遮挡、置顶、全屏焦点等界面请求使用 widget.move、widget.resize、widget.bring_to_front、widget.fullscreen_focus 或对应 app 工具。",
+      "播放具体歌曲、歌手、专辑使用 music.play；搜索、重新搜索、不要复用上一首、风格探索或不一定播放使用 music.search。",
+      "音乐登录、授权、试听、完整播放异常使用 music.auth_status；不要把它误判为普通搜索。",
+      "保存文本、口令、链接、检查步骤到剪贴板使用 clipboard.add_text；检查音乐登录或试听状态才用 music.auth_status。",
+      "关闭电视、音乐或小工具窗口使用 widget.remove；暂停电视直播或暂停歌曲才使用 pause 工具。",
+      "用户说退出全屏、取消全屏后再调整窗口大小时，先使用 app.fullscreen.set 退出全屏，再使用 widget.resize。",
+      "用户只说打开时钟默认 dialClock/表盘时钟；明确世界时钟、时区或城市时间才用 worldClock。",
+      "单位或货币换算使用 converter.set；普通加减乘除表达式使用 calculator.set_display。",
+      "翻译或外文看中文使用 translate.set_draft；写入便签、追加备忘使用 note.write。",
+      "不要调用未提供的工具；缺少目标时让本地上下文/验证器处理，不要编造 widgetId、definitionId 或 boardId。"
+    ],
+    "sessionOnly": [
+      "用户只是问候、确认是否在线或闲聊时，不调用工具，用一句很短的中文自然回复。"
+    ]
+  },
+  "recoveryRules": [
+    {
+      "id": "recover-local-shortcut-after-non-action-model-plan",
+      "description": "If Realtime returns only non-action assistant tools, allow the Harness to recover with a high-confidence local shortcut for the same transcript."
+    }
+  ],
+  "recoverableNonActionRules": [
+    {
+      "id": "recover-close-message-board-after-diagnostics",
+      "pattern": "我说.*关闭留言板.*(?:执行关闭|不是发送)|关闭留言板.*本地解析置信度低",
+      "tools": ["widget.remove"]
+    },
+    {
+      "id": "recover-close-widget-after-forbidden-media-pause",
+      "pattern": "关闭(?:电视|音乐|播放器|窗口)",
+      "tools": ["widget.remove"]
+    },
+    {
+      "id": "recover-auto-align-after-diagnostics",
+      "pattern": "整理桌面.*(?:加载.*工具|触发确认|不要回答没有工具)",
+      "tools": ["board.auto_align"]
+    },
+    {
+      "id": "recover-ui-actions-after-diagnostics",
+      "pattern": "(?:隐藏侧边栏|侧边栏|音乐窗口调大|小工具找不到|打开搜索命令面板|打开时钟时如果歧义|优先表盘)",
+      "tools": ["app.sidebar.set", "widget.resize", "app.command_palette.open", "board.add_widget", "dialClock.set_night_mode"]
+    },
+    {
+      "id": "recover-music-actions-after-diagnostics",
+      "pattern": "(?:登录按钮|音乐登录|试听|完整歌曲|播放轻松音乐|播放陈奕迅|搜索轻松音乐|不要复用上一条播放器状态)",
+      "tools": ["music.auth_status", "music.search", "music.play", "note.write", "assistant.reply"]
+    },
+    {
+      "id": "recover-clipboard-save-after-diagnostics",
+      "pattern": "(?:固定保存|保存).*(?:步骤|链接|口令|验证码|文本)",
+      "tools": ["clipboard.add_text"]
+    }
+  ],
+  "semanticContractRules": [
+    {
+      "id": "note-instance-open-or-write-equivalent",
+      "kind": "anyOf",
+      "pattern": "新建便签实例|打开便签实例",
+      "tools": ["board.add_widget", "note.write"]
+    },
+    {
+      "id": "unit-conversion-calculator-equivalent",
+      "kind": "anyOf",
+      "pattern": "公斤.*克|千克.*克|斤.*克|米.*公里",
+      "tools": ["converter.set", "calculator.set_display"]
+    },
+    {
+      "id": "post-pause-note-equivalent",
+      "kind": "anyOf",
+      "pattern": "倒计时暂停后.*便签",
+      "tools": ["countdown.pause", "note.write"]
+    },
+    {
+      "id": "timer-reminder-countdown-equivalent",
+      "kind": "anyOf",
+      "pattern": "分半以后叫我|以后叫我",
+      "tools": ["todo.add_item", "countdown.set"]
+    },
+    {
+      "id": "save-steps-clipboard-or-note-equivalent",
+      "kind": "anyOf",
+      "pattern": "(?:固定保存|保存).*(?:步骤|链接|口令|验证码|文本)",
+      "tools": ["clipboard.add_text", "note.write"]
+    },
+    {
+      "id": "clipboard-clear-before-unknown-fixed-save-equivalent",
+      "kind": "anyOf",
+      "pattern": "清理剪贴板普通记录，再把项目口令固定",
+      "tools": ["clipboard.clear", "clipboard.add_text"]
+    },
+    {
+      "id": "calculator-open-or-set-equivalent",
+      "kind": "anyOf",
+      "pattern": "打开计算器.*算|打开计算器算",
+      "tools": ["board.add_widget", "calculator.set_display"]
+    },
+    {
+      "id": "exit-fullscreen-resize-repaired-equivalent",
+      "kind": "anyOf",
+      "pattern": "退出全屏.*(?:调整|宽度|调宽|resize)",
+      "tools": ["app.fullscreen.set", "widget.resize"]
+    },
+    {
+      "id": "tv-fullscreen-condition-sidebar-equivalent",
+      "kind": "anyOf",
+      "pattern": "电视全屏时隐藏侧边栏",
+      "tools": ["tv.fullscreen", "app.sidebar.set"]
+    },
+    {
+      "id": "open-weather-widget-or-city-equivalent",
+      "kind": "anyOf",
+      "pattern": "打开音乐和天气|打开天气$",
+      "tools": ["board.add_widget", "weather.set_city"]
+    },
+    {
+      "id": "tv-channel-open-equivalent",
+      "kind": "anyOf",
+      "pattern": "电影频道|体育频道|CCTV|央视|电视.*打开|打开电视|播放 CCTV",
+      "tools": ["tv.play", "tv.select_channel"]
+    },
+    {
+      "id": "music-auth-diagnostics-equivalent",
+      "kind": "anyOf",
+      "pattern": "音乐登录|登录音乐|试听|完整播放|开发者 token|token 不可用|不能播放|已登录",
+      "tools": ["music.auth_status", "assistant.runtime_diagnostics"]
+    },
+    {
+      "id": "state-confirmation-reply-equivalent",
+      "kind": "anyOf",
+      "pattern": "当前状态|确认当前|先告诉我|如果不能撤销|不要重复发送",
+      "tools": ["assistant.reply", "assistant.runtime_diagnostics"]
+    },
+    {
+      "id": "meta-state-reply-equivalent",
+      "kind": "anyOf",
+      "pattern": "我说.*时|清空搜索结果不要影响播放中的歌曲",
+      "tools": ["assistant.reply", "assistant.runtime_diagnostics"]
+    },
+    {
+      "id": "timed-reminder-equivalent",
+      "kind": "anyOf",
+      "pattern": "分钟后提醒|小时后提醒|后提醒我|提醒我回来",
+      "tools": ["todo.add_item", "countdown.set"]
+    },
+    {
+      "id": "world-clock-open-or-set-equivalent",
+      "kind": "anyOf",
+      "pattern": "打开世界时钟|显示.*时间|当地时间",
+      "tools": ["board.add_widget", "worldClock.set_zones"]
+    },
+    {
+      "id": "translation-open-or-draft-equivalent",
+      "kind": "anyOf",
+      "pattern": "打开翻译|启动翻译",
+      "tools": ["board.add_widget", "translate.set_draft"]
+    },
+    {
+      "id": "avoid-overlap-layout-equivalent",
+      "kind": "anyOf",
+      "pattern": "避免挡住|不要挡住|别挡住|不要覆盖",
+      "tools": ["widget.move", "widget.resize"]
+    },
+    {
+      "id": "music-discovery-or-play-equivalent",
+      "kind": "anyOf",
+      "pattern": "(?=.*(?:重新搜|重新搜索|先搜|搜完整曲库|不要沿用|不要继续|别继续|如果识别不准|如果没把握|播放前|播放.*前))(?=.*(?:音乐|歌|英文))",
+      "tools": ["music.search", "music.play"]
+    },
+    {
+      "id": "duration-arithmetic-equivalent",
+      "kind": "anyOf",
+      "pattern": "分钟.*加.*分钟|小时.*加.*小时|秒.*加.*秒",
+      "tools": ["calculator.set_display", "converter.set"]
+    },
+    {
+      "id": "close-message-board-forbids-send",
+      "kind": "forbid",
+      "pattern": "关闭留言板|关闭留言|收起留言板|不是发送",
+      "tools": ["messageBoard.send"]
+    },
+    {
+      "id": "do-not-open-news",
+      "kind": "forbid",
+      "pattern": "不要打开新闻|别打开新闻",
+      "tools": ["headline.request_refresh"]
+    },
+    {
+      "id": "do-not-load-news-market",
+      "kind": "forbid",
+      "pattern": "不要加载新闻行情",
+      "tools": ["headline.request_refresh", "market.set_indices"]
+    },
+    {
+      "id": "do-not-open-global-indices",
+      "kind": "forbid",
+      "pattern": "不要顺手加载全球指数|别打开全球指数",
+      "tools": ["market.set_indices"]
+    },
+    {
+      "id": "translation-text-forbids-real-close",
+      "kind": "forbid",
+      "pattern": "只翻译不要执行|写到便签：关闭留言板，不要真的关闭",
+      "tools": ["widget.remove"]
+    },
+    {
+      "id": "clear-search-results-forbids-music-control",
+      "kind": "forbid",
+      "pattern": "清空搜索结果不要影响播放中的歌曲",
+      "tools": ["music.search", "music.play", "music.previous", "music.next"]
+    },
+    {
+      "id": "save-steps-forbids-music-auth",
+      "kind": "forbid",
+      "pattern": "(?:固定保存|保存).*(?:步骤|链接|口令|验证码|文本)",
+      "tools": ["music.auth_status"]
+    },
+    {
+      "id": "close-tv-forbids-pause",
+      "kind": "forbid",
+      "pattern": "关闭电视(?!声音|直播|播放)",
+      "tools": ["tv.pause"]
+    },
+    {
+      "id": "preference-rules-forbid-immediate-actions",
+      "kind": "forbid",
+      "pattern": "我说.*时优先|以后我说.*就|规则改成",
+      "tools": ["board.add_widget", "widget.remove", "music.play", "music.search"]
+    }
+  ]
+}

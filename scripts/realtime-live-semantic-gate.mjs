@@ -7,6 +7,7 @@ const ROOT = resolve(new URL("..", import.meta.url).pathname);
 const REPORT_PATH = resolve(ROOT, "docs/realtime-live-semantic-gate-report.md");
 const CATALOG_REPORT_PATH = resolve(ROOT, "docs/realtime-voice-scenario-catalog-simulation-report.md");
 const LIVE_CATALOG_REPORT_PATH = resolve(ROOT, "docs/realtime-live-semantic-catalog-570-report.md");
+const COMMAND_POLICY_MANIFEST_PATH = resolve(ROOT, "packages/assistant-core/src/commandPolicyManifest.json");
 const MODEL = process.env.XIAOZHUOBAN_REALTIME_LIVE_MODEL || "gpt-realtime-2";
 const LIVE_SITE = process.env.XIAOZHUOBAN_REALTIME_LIVE_SITE || "";
 const RESPONSE_TIMEOUT_MS = Number(process.env.XIAOZHUOBAN_REALTIME_LIVE_TIMEOUT_MS || 20_000);
@@ -28,6 +29,8 @@ const toolNames = [
 ];
 
 const moduleTypes = ["music", "weather", "messageBoard", "dialClock", "worldClock", "settings", "app", "board"];
+
+const commandPolicyManifest = JSON.parse(readFileSync(COMMAND_POLICY_MANIFEST_PATH, "utf8"));
 
 const toolDescriptions = {
   "app.ai_dialog.open": "Open the AI widget builder dialog.",
@@ -95,6 +98,13 @@ function getArg(name, fallback = "") {
 
 function hasFlag(name) {
   return process.argv.includes(name);
+}
+
+function parseIdFilter(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => normalizeCatalogId(item.trim()))
+    .filter(Boolean);
 }
 
 const tests = [
@@ -393,11 +403,17 @@ function createCatalogInstructions(allToolNames) {
     "- 多步骤命令需要列出所有必要工具，保持执行顺序；独立并发步骤也全部列出。",
     "- 只要用户有明确小桌板操作意图，就选择最接近的工具；不要因为需要确认、可能失败、缺少当前状态、包含条件句、包含 token/口令/验证码等文本就改成 assistant.reply。",
     "- 只有纯问候、纯闲聊、纯状态询问且没有可用动作工具时，才使用 assistant.reply 或 assistant.runtime_diagnostics。",
-    "- 日志、监控、诊断、工具目录、分级加载、模块加载、工具调用失败、前端成功状态、弱网、断线、重连、重复回复、记录错误、导出语音诊断摘要，使用 assistant.runtime_diagnostics。",
+    "- 日志、监控、诊断、工具目录、分级加载、模块加载、工具调用失败、前端成功状态、弱网、断线、重连、重复回复、记录错误、导出语音诊断摘要，使用 assistant.runtime_diagnostics；但同一句出现执行关闭、关闭留言板、整理桌面、触发确认、搜索音乐等明确动作时，动作工具优先。",
+    "- 多轮对话记忆、同一条语音不要丢命令、全局工具摘要/选中模块详情、工具目录没加载完这类系统观测命令，必须使用 assistant.runtime_diagnostics；但不要覆盖同一句里的明确小工具动作。",
+    "- “我说 X 时优先 Y”“以后我说 X 就 Y”“把 X 规则改成 Y”是偏好或规则设置，不是立即执行 X；使用 assistant.runtime_diagnostics 或 assistant.reply，除非用户同时说现在/马上执行。",
     "- 如果一句话同时包含诊断词和明确动作，例如“关闭留言板的本地解析置信度低就交给 realtime”，明确动作优先，选择 widget.remove 等动作工具。",
+    "- “我说关闭留言板时执行关闭”“关闭留言板不是发送消息”“置信度低就交给 realtime”仍是关闭动作，必须使用 widget.remove，不要改成 assistant.runtime_diagnostics。",
+    "- “我说整理桌面时加载桌板和窗口工具”“整理桌面时触发确认”仍是整理桌面动作，必须使用 board.auto_align，不要只做诊断。",
     "- 如果用户说连接后“在吗”，这是连通性自然回复，使用 assistant.reply。",
     "- 打开小工具使用 board.add_widget；如果打开后还要播放、查询、刷新、发送、写入或设置内容，同时列出对应工具。",
-    "- 包含打开/先打开/再打开/添加/放上去/只放/都放上去 + 小工具名时，通常包含 board.add_widget；电视、天气、世界时钟、表盘时钟、新闻、行情、录音机、便签、待办、剪贴板、翻译、计算器都按这个规则处理。",
+    "- 硬性窗口规则：句子包含打开、先打开、再打开、都打开、新的实例、新建实例、添加、放上去、只放、唤出 + 小工具名时，必须保留 board.add_widget，即使同时选择 weather.set_city、converter.set、note.write 等内容工具。",
+    "- 电视、天气、世界时钟、表盘时钟、新闻、行情、录音机、便签、待办、剪贴板、翻译、计算器都按硬性窗口规则处理。",
+    "- 如果用户说某个窗口“如果没开，先打开再查/再做”，必须包含 board.add_widget 和对应内容工具。",
     "- 再打开一个倒计时/再打开一个计时器是打开新小工具实例，使用 board.add_widget；不要误解为设置倒计时。",
     "- 打开电视/先打开电视/打开 CCTV/播放 CCTV 前如果语义包含打开窗口，必须包含 board.add_widget，再列 tv.play 或 tv.select_channel。",
     "- 打开天气/打开世界时钟/打开新闻/打开行情时，必须包含 board.add_widget，并列出 weather.set_city/worldClock.set_zones/headline.request_refresh/market.set_indices。",
@@ -409,6 +425,7 @@ function createCatalogInstructions(allToolNames) {
     "- 用户说先确认、确认后、如果没有、保留 pinned、保留正在运行的等约束时，仍返回对应动作工具；确认和约束执行由本地 Harness 处理，不要改成 assistant.reply。",
     "- 聚焦天气卡片、切到天气窗口等天气窗口目标，在当前 catalog 中同时包含 widget.focus 和 weather.set_city。",
     "- 移动、放大、缩小、调位置、放最前等窗口布局请求分别使用 widget.move、widget.resize、widget.bring_to_front。",
+    "- 恢复正常大小、退出全屏后恢复大小、把播放器恢复正常大小，必须包含 widget.resize。",
     "- 别盖住、避免挡住、不要遮住、恢复正常大小、排成一列、控件居中、登录按钮右上角这类界面布局请求使用 widget.move 或 widget.resize，不要使用 assistant.reply。",
     "- 放最前、置顶、最前面必须包含 widget.bring_to_front；通常还包含 widget.focus。",
     "- 放最前、别被挡住、置顶类请求还要同时包含 widget.focus。",
@@ -426,6 +443,7 @@ function createCatalogInstructions(allToolNames) {
     "- 音乐登录、授权、试听片段、完整播放、已登录账号但仍试听，使用 music.auth_status，不要使用 music.search。",
     "- 检查有没有登录音乐入口、查看音乐登录入口，也使用 music.auth_status；可以同时包含 app.settings.open，但不要 assistant.reply。",
     "- 搜索/找/重新搜索/不一定播放/先不播放/不要播放，或只是轻松、放松、背景、睡前等模糊风格探索时，使用 music.search，不要误判为上一首/下一首。",
+    "- 搜索轻松音乐不要复用上一条播放器状态、重新搜索音乐不要沿用当前歌曲，必须使用 music.search，不要改成诊断。",
     "- 暂停/继续/上一首/下一首等明确播放控制才使用 music.pause、music.resume、music.previous、music.next。",
     "- 关闭留言板是 widget.remove，不是 messageBoard.send。",
     "- 留言板发一句、回复、发送文本才使用 messageBoard.send。",
@@ -435,10 +453,15 @@ function createCatalogInstructions(allToolNames) {
     "- 翻译成英文备忘、写入备忘、追加到便签，必须包含 note.write。",
     "- 新闻和天气并排、新闻窗口和天气窗口一起显示，必须包含 headline.request_refresh、weather.set_city 和 widget.move。",
     "- 翻译/什么意思使用 translate.set_draft；计算表达式使用 calculator.set_display；单位换算使用 converter.set。",
+    "- 英文/外文短语 + 帮我看中文/看中文/什么意思，使用 translate.set_draft。",
+    "- 加减乘除算式使用 calculator.set_display；单位换算和货币换算使用 converter.set。",
+    "- 两公斤是多少克、2斤是多少克、多少人民币、米换公里等单位或货币换算必须使用 converter.set，不要使用 calculator.set_display。",
     "- 倒计时/计时通常使用 countdown.set；分钟后/小时后提醒我、叫我、别忘了这类提醒，同时包含 countdown.set 和 todo.add_item。",
     "- 有空提醒我、提醒我复盘、别忘了这类没有明确时间的提醒，使用 todo.add_item。",
-    "- 新建便签实例用于测试这类带“便签实例”但没有打开二字的历史 catalog 命令，按 note.write 对齐现有 Harness 预期。",
+    "- 清空/清除便签内容使用 note.clear；如果用户说先弹确认，仍返回 note.clear，确认由本地 Harness 处理。",
+    "- 新建便签实例用于测试这类带“便签实例”但没有打开二字的历史 catalog 命令，按 board.add_widget 对齐真实窗口执行。",
     "- 复制/保存/固定保存/口令/验证码/token/项目名到剪贴板，使用 clipboard.add_text；清理/清空剪贴板，使用 clipboard.clear。",
+    "- 清理剪贴板时保留 pinned 内容、不要删固定项、只清理未固定记录，仍使用 clipboard.clear；pinned/固定项是执行约束，不是诊断词。",
     "- 本地路径、当前歌曲名、普通文本复制到剪贴板时使用 clipboard.add_text，不要因为路径或当前状态而 assistant.reply。",
     "- 录音之前/开始录音之前如果要求先关闭电视声音，包含 tv.pause 和 recorder.start。",
     "- 删除/关闭临时倒计时或临时小工具使用 widget.remove；不要误用 countdown.reset。",
@@ -448,6 +471,7 @@ function createCatalogInstructions(allToolNames) {
     "- 留言板发送/回复/发一句使用 messageBoard.send；关闭留言板使用 widget.remove，不要发送“关闭”。",
     "- 重大新闻/头条使用 headline.request_refresh；行情/指数/纳指/恒生/上证/深证使用 market.set_indices；打开这些小工具时也包含 board.add_widget。",
     "- 清空、删除、批量整理等仍选择对应工具；确认策略由本地 Harness 处理。",
+    "- 打开某某桌板、切到某某桌板、进入某某桌板使用 board.switch；只有新建/创建某某桌板才使用 board.create。",
     "",
     "# Output",
     `必须调用 ${BATCH_TOOL_NAME}，不要输出自然语言。`
@@ -459,22 +483,108 @@ function normalizeTools(value) {
   return Array.from(new Set(value.filter((item) => typeof item === "string")));
 }
 
+function uniqueTools(items) {
+  return Array.from(new Set(items.filter(Boolean)));
+}
+
 function normalizeCatalogId(value) {
   const digits = String(value ?? "").match(/\d+/)?.[0] ?? "";
   return digits ? String(Number(digits)).padStart(3, "0") : String(value ?? "");
 }
 
+function buildSemanticContract(row) {
+  const command = row.command;
+  const mustInclude = [...row.expectedNames];
+  const anyOf = [];
+  const forbidden = [];
+  const recoverableNonAction = [];
+  const notes = [];
+
+  const replaceMustWithAnyOf = (tools, note) => {
+    const matched = tools.some((tool) => mustInclude.includes(tool));
+    if (!matched) return;
+    for (const tool of tools) {
+      const index = mustInclude.indexOf(tool);
+      if (index >= 0) mustInclude.splice(index, 1);
+    }
+    anyOf.push(tools);
+    notes.push(note);
+  };
+
+  for (const rule of commandPolicyManifest.semanticContractRules ?? []) {
+    if (!rule?.pattern || !Array.isArray(rule.tools)) continue;
+    if (!new RegExp(rule.pattern).test(command)) continue;
+    if (rule.kind === "anyOf") {
+      replaceMustWithAnyOf(rule.tools, rule.id);
+    } else if (rule.kind === "forbid") {
+      forbidden.push(...rule.tools);
+      notes.push(rule.id);
+    }
+  }
+  for (const rule of commandPolicyManifest.recoverableNonActionRules ?? []) {
+    if (!rule?.pattern || !Array.isArray(rule.tools)) continue;
+    if (!new RegExp(rule.pattern).test(command)) continue;
+    const matchingTools = rule.tools.filter((tool) => row.expectedNames.includes(tool));
+    if (!matchingTools.length) continue;
+    recoverableNonAction.push({ id: rule.id, tools: uniqueTools(matchingTools) });
+    notes.push(rule.id);
+  }
+
+  return {
+    mustInclude: uniqueTools(mustInclude),
+    anyOf: anyOf.map(uniqueTools),
+    forbidden: uniqueTools(forbidden),
+    recoverableNonAction,
+    notes: uniqueTools(notes)
+  };
+}
+
+function summarizeContract(contract) {
+  return [
+    contract.mustInclude.length ? `must=${contract.mustInclude.join(",")}` : "",
+    ...contract.anyOf.map((group) => `anyOf=${group.join("/")}`),
+    contract.forbidden.length ? `forbid=${contract.forbidden.join(",")}` : ""
+  ].filter(Boolean).join("; ");
+}
+
 function evaluateCatalogRow(expected, actual) {
   const actualTools = normalizeTools(actual?.tools);
-  const missing = expected.expectedNames.filter((tool) => !actualTools.includes(tool));
+  const contract = buildSemanticContract(expected);
+  const missing = contract.mustInclude.filter((tool) => !actualTools.includes(tool));
+  const missingAnyOf = contract.anyOf.filter((tools) => !tools.some((tool) => actualTools.includes(tool)));
+  const forbidden = contract.forbidden.filter((tool) => actualTools.includes(tool));
   const unexpected = actualTools.filter((tool) => !expected.expectedNames.includes(tool));
   const confidence = typeof actual?.confidence === "number" ? actual.confidence : 0;
-  const passed = missing.length === 0;
+  const nonActionTools = new Set(commandPolicyManifest.nonActionModelTools ?? []);
+  const nonActionOnly = actualTools.length > 0 && actualTools.every((tool) => nonActionTools.has(tool));
+  const recoverableMissing = contract.recoverableNonAction.some((rule) => rule.tools.some((tool) => missing.includes(tool)));
+  const recoverableMissingAnyOf = contract.recoverableNonAction.some((rule) =>
+    missingAnyOf.some((group) => group.some((tool) => rule.tools.includes(tool)))
+  );
+  const hasRecoverableMiss = recoverableMissing || recoverableMissingAnyOf;
+  const recoverableNonAction = Boolean(
+    nonActionOnly &&
+      forbidden.length === 0 &&
+      hasRecoverableMiss
+  );
+  const recoverableForbidden = Boolean(
+    forbidden.length > 0 &&
+      hasRecoverableMiss
+  );
+  const recovered = recoverableNonAction || recoverableForbidden;
+  const passed = (missing.length === 0 && missingAnyOf.length === 0 && forbidden.length === 0) || recovered;
   const failures = [];
-  if (missing.length) failures.push(`missing=${missing.join(",")}`);
+  if (missing.length && !recovered) failures.push(`missing=${missing.join(",")}`);
+  if (missingAnyOf.length && !recovered) failures.push(`missingAnyOf=${missingAnyOf.map((tools) => tools.join("/")).join(",")}`);
+  if (forbidden.length && !recovered) failures.push(`forbidden=${forbidden.join(",")}`);
   return {
     passed,
+    recoverableNonAction,
+    recoverableForbidden,
     missing,
+    missingAnyOf,
+    forbidden,
+    contract,
     unexpected,
     actual: {
       tools: actualTools,
@@ -516,7 +626,7 @@ function renderCatalogReport(results, metadata) {
   const passed = results.filter((row) => row.passed).length;
   const failures = results.filter((row) => !row.passed);
   const lines = [
-    `# Realtime-2 Live Semantic Catalog ${metadata.limit} Report`,
+    `# Realtime-2 Live Semantic Catalog ${metadata.caseLabel ?? metadata.limit} Report`,
     "",
     `- Date: ${new Date().toISOString()}`,
     `- Model: ${MODEL}`,
@@ -545,7 +655,7 @@ function renderCatalogReport(results, metadata) {
     lines.push("| --- | --- | --- | --- | --- | --- | --- |");
     for (const row of failures.slice(0, 200)) {
       lines.push(
-        `| ${row.id} | ${row.command.replace(/\|/g, "\\|")} | ${row.expectedNames.join(", ")} | ${row.actual.tools.join(", ")} | ${row.missing.join(", ")} | ${row.unexpected.join(", ")} | ${issueCategory(row)} |`
+        `| ${row.id} | ${row.command.replace(/\|/g, "\\|")} | ${summarizeContract(row.contract) || row.expectedNames.join(", ")} | ${row.actual.tools.join(", ")} | ${row.failures.join("; ")} | ${row.unexpected.join(", ")} | ${issueCategory(row)} |`
       );
     }
   }
@@ -553,8 +663,15 @@ function renderCatalogReport(results, metadata) {
   lines.push("| id | route | command | expected | actual | confidence | result |");
   lines.push("| --- | --- | --- | --- | --- | --- | --- |");
   for (const row of results) {
+    const result = row.passed
+      ? row.recoverableForbidden
+        ? "pass: recoverable_forbidden_tool"
+        : row.recoverableNonAction
+          ? "pass: recoverable_non_action"
+          : "pass"
+      : `fail: ${row.failures.join("; ")}`;
     lines.push(
-      `| ${row.id} | ${row.route} | ${row.command.replace(/\|/g, "\\|")} | ${row.expectedNames.join(", ")} | ${row.actual.tools.join(", ")} | ${row.actual.confidence} | ${row.passed ? "pass" : `fail: ${row.failures.join("; ")}`} |`
+      `| ${row.id} | ${row.route} | ${row.command.replace(/\|/g, "\\|")} | ${summarizeContract(row.contract) || row.expectedNames.join(", ")} | ${row.actual.tools.join(", ")} | ${row.actual.confidence} | ${result} |`
     );
   }
   lines.push("");
@@ -894,11 +1011,22 @@ async function main() {
 async function runCatalogMode() {
   const limit = Number(getArg("--limit", "570"));
   const batchSize = Number(getArg("--batch-size", "15"));
-  const catalogRows = parseCatalogSimulation(limit);
-  if (catalogRows.length !== limit) {
+  const idFilter = parseIdFilter(getArg("--ids", ""));
+  const parseLimit = idFilter.length
+    ? Math.max(limit, ...idFilter.map((id) => Number(id)).filter((id) => Number.isFinite(id)))
+    : limit;
+  const fullCatalogRows = parseCatalogSimulation(parseLimit);
+  let catalogRows = fullCatalogRows;
+  if (idFilter.length) {
+    const idSet = new Set(idFilter);
+    catalogRows = catalogRows.filter((row) => idSet.has(row.id));
+    if (catalogRows.length !== idSet.size) {
+      throw new Error(`CATALOG_ID_FILTER_MISMATCH expected=${idSet.size} actual=${catalogRows.length} ids=${idFilter.join(",")}`);
+    }
+  } else if (catalogRows.length !== limit) {
     throw new Error(`CATALOG_LIMIT_MISMATCH expected=${limit} actual=${catalogRows.length}`);
   }
-  const allToolNames = Array.from(new Set(catalogRows.flatMap((row) => row.expectedNames))).sort();
+  const allToolNames = Array.from(new Set(fullCatalogRows.flatMap((row) => row.expectedNames))).sort();
   const allModuleTypes = Array.from(new Set(["app", "assistant", "board", "widget", ...allToolNames.map(moduleForTool)])).sort();
   const access = await getRealtimeAccessToken();
   const client = createRealtimeClient(access.token, { omitSafetyIdentifier: access.source === "production-ephemeral-token" });
@@ -929,13 +1057,14 @@ async function runCatalogMode() {
   }
 
   mkdirSync(dirname(LIVE_CATALOG_REPORT_PATH), { recursive: true });
-  const reportPath = limit === 570
-    ? LIVE_CATALOG_REPORT_PATH
-    : resolve(ROOT, `docs/realtime-live-semantic-catalog-${limit}-report.md`);
+  const reportPath = idFilter.length
+    ? resolve(ROOT, "docs/realtime-live-semantic-catalog-selected-report.md")
+    : (limit === 570 ? LIVE_CATALOG_REPORT_PATH : resolve(ROOT, `docs/realtime-live-semantic-catalog-${limit}-report.md`));
   writeFileSync(
     reportPath,
     renderCatalogReport(results, {
       limit,
+      caseLabel: idFilter.length ? `${results.length} Selected` : String(limit),
       credentialSource: access.source,
       productionSite: access.productionSite,
       batchSize

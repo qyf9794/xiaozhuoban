@@ -11,6 +11,8 @@ import {
   createCommandPlanFromToolCalls,
   createLearningCandidate,
   createPlanPreview,
+  getForbiddenToolViolations,
+  isNonActionModelTool,
   scoreCandidates,
   segmentCommandText,
   normalizeText,
@@ -22,6 +24,7 @@ import {
   type AssistantToolSpec,
   type CommandPlan,
   type CommandPlanStep,
+  type CommandPolicyForbiddenViolation,
   type CompactWidgetSummary,
   type CompactAssistantContext,
   type ConfirmationRequest,
@@ -84,6 +87,8 @@ export interface AssistantOperationEvent {
   message?: string;
 }
 
+type AssistantRecoveryReason = "non_action_model_tools" | "forbidden_model_tools";
+
 export interface AssistantCommandDiagnostics {
   commandTraceId: string;
   rawInput: string;
@@ -108,6 +113,12 @@ export interface AssistantCommandDiagnostics {
   };
   validationErrors?: Array<{ commandId: string; code: string; message: string }>;
   toolResults: Array<{ id: string; tool: string; status: string; message?: string; errorCode?: string }>;
+  recovery?: {
+    reason: AssistantRecoveryReason;
+    modelTools: string[];
+    recoveredTool: string;
+    violations?: CommandPolicyForbiddenViolation[];
+  };
   status?: AssistantToolResult["status"];
   message?: string;
   pendingConfirmation?: boolean;
@@ -145,6 +156,8 @@ const CONFIRM_TOOL = "assistant.confirm";
 const CANCEL_TOOL = "assistant.cancel";
 const ADD_WIDGET_TOOL = "board.add_widget";
 const FOCUS_WIDGET_TOOL = "widget.focus";
+const APP_FULLSCREEN_TOOL = "app.fullscreen.set";
+const WIDGET_RESIZE_TOOL = "widget.resize";
 const PLANNED_WIDGET_PREFIX = "planned_widget_";
 const LOCAL_SHORTCUT_CONFIDENCE_THRESHOLD = 0.9;
 const WIDGET_WINDOW_TOOLS = new Set([
@@ -433,6 +446,29 @@ export class AssistantHarness {
     this.markRealtimeUsed();
     const modelPlan = await this.options.realtime.requestCommandPlan?.(input, context, this.currentTools, this.options.moduleRegistry);
     if (modelPlan) {
+      const modelToolNames = modelPlan.commands.map((command) => command.tool);
+      const forbiddenViolations = getForbiddenToolViolations(input, modelToolNames);
+      const recovered = await this.recoverLocalShortcutFromModelPlan(
+        input,
+        modelToolNames,
+        startedAt,
+        modelToolNames.every(isNonActionModelTool) ? "non_action_model_tools" : forbiddenViolations.length ? "forbidden_model_tools" : null,
+        forbiddenViolations
+      );
+      if (recovered) {
+        return recovered;
+      }
+      if (forbiddenViolations.length) {
+        const result: AssistantToolResult = {
+          status: "failed",
+          message: "Realtime 计划包含被本地策略禁止的工具，已停止执行。",
+          errorCode: "REALTIME_PLAN_POLICY_REJECTED",
+          data: { violations: forbiddenViolations }
+        };
+        this.recordPolicyValidationErrors(forbiddenViolations);
+        await this.audit({ route: "model", result, durationMs: Date.now() - startedAt });
+        return { route: "model", result };
+      }
       return this.handleModelCommandPlan(input, modelPlan, startedAt);
     }
 
@@ -450,8 +486,78 @@ export class AssistantHarness {
       ...modelCall,
       transcript: modelCall.transcript ?? input
     };
+    const forbiddenViolations = getForbiddenToolViolations(input, [modelCallWithTranscript.name]);
+    const recovered = await this.recoverLocalShortcutFromModelPlan(
+      input,
+      [modelCallWithTranscript.name],
+      startedAt,
+      isNonActionModelTool(modelCallWithTranscript.name) ? "non_action_model_tools" : forbiddenViolations.length ? "forbidden_model_tools" : null,
+      forbiddenViolations
+    );
+    if (recovered) {
+      return recovered;
+    }
+    if (forbiddenViolations.length) {
+      const result: AssistantToolResult = {
+        status: "failed",
+        message: "Realtime 工具调用被本地策略拦截，已停止执行。",
+        errorCode: "REALTIME_TOOL_POLICY_REJECTED",
+        data: { violations: forbiddenViolations }
+      };
+      this.recordPolicyValidationErrors(forbiddenViolations);
+      await this.audit({ route: "model", call: modelCallWithTranscript, result, durationMs: Date.now() - startedAt });
+      return { route: "model", call: modelCallWithTranscript, result };
+    }
     this.rememberAuditMetadata(modelCallWithTranscript, input);
     return this.handleFunctionCall(modelCallWithTranscript, "model", startedAt);
+  }
+
+  private async recoverLocalShortcutFromModelPlan(
+    input: string,
+    modelToolNames: string[],
+    startedAt: number,
+    reason: AssistantRecoveryReason | null,
+    violations: CommandPolicyForbiddenViolation[] = []
+  ): Promise<AssistantHarnessResponse | null> {
+    if (this.pendingConfirmation || modelToolNames.length === 0 || !reason) {
+      return null;
+    }
+    const shortcut = this.options.shortcutRouter.route(input, this.buildShortcutContext());
+    if (!shortcut.matched || !this.shouldExecuteLocalShortcut(shortcut.confidence) || isNonActionModelTool(shortcut.toolCall.name)) {
+      return null;
+    }
+    const recoveredViolations = getForbiddenToolViolations(input, [shortcut.toolCall.name]);
+    if (recoveredViolations.length) {
+      this.recordPolicyValidationErrors([...violations, ...recoveredViolations]);
+      return null;
+    }
+    if (violations.length) {
+      this.recordPolicyValidationErrors(violations);
+    }
+    if (this.lastDiagnostics) {
+      this.lastDiagnostics.recovery = {
+        reason,
+        modelTools: [...modelToolNames],
+        recoveredTool: shortcut.toolCall.name,
+        ...(violations.length ? { violations } : {})
+      };
+    }
+    this.rememberAuditMetadata(shortcut.toolCall, input);
+    return this.handleFunctionCall(shortcut.toolCall, "shortcut", startedAt);
+  }
+
+  private recordPolicyValidationErrors(violations: CommandPolicyForbiddenViolation[]): void {
+    if (!this.lastDiagnostics || violations.length === 0) return;
+    this.lastDiagnostics.validationErrors = [
+      ...(this.lastDiagnostics.validationErrors ?? []),
+      ...violations.flatMap((violation) =>
+        violation.forbiddenTools.map((tool) => ({
+          commandId: violation.ruleId,
+          code: "POLICY_FORBIDDEN_TOOL",
+          message: `${tool} is forbidden by ${violation.ruleId}`
+        }))
+      )
+    ];
   }
 
   private async handleModelCommandPlan(input: string, plan: CommandPlan, startedAt: number): Promise<AssistantHarnessResponse> {
@@ -855,7 +961,8 @@ export class AssistantHarness {
     route: AssistantRoute,
     startedAt: number
   ): Promise<AssistantHarnessResponse[]> {
-    const validation = this.planValidator.validate(plan);
+    const executablePlan = this.repairRealtimePlanBeforeExecution(plan, route);
+    const validation = this.planValidator.validate(executablePlan);
     this.recordPlanDiagnostics(validation.plan, route, validation.errors);
     if (!validation.ok) {
       const firstCommand = plan.commands[0];
@@ -922,6 +1029,37 @@ export class AssistantHarness {
     }
     await this.updateRealtimeContext();
     return responses;
+  }
+
+  private repairRealtimePlanBeforeExecution(plan: CommandPlan, route: AssistantRoute): CommandPlan {
+    if (route !== "model") return plan;
+    if (!/(?:退出|取消|离开|关闭).{0,12}(?:全屏|沉浸)|(?:全屏|沉浸).{0,12}(?:退出|取消|离开|关闭)/.test(plan.sourceText)) {
+      return plan;
+    }
+    const hasResize = plan.commands.some((command) => command.tool === WIDGET_RESIZE_TOOL);
+    const hasFullscreenExit = plan.commands.some((command) => command.tool === APP_FULLSCREEN_TOOL);
+    if (!hasResize || hasFullscreenExit) return plan;
+    const exitCommand: CommandPlanStep = {
+      id: createId("policy_fullscreen_exit"),
+      module: "app-shell",
+      tool: APP_FULLSCREEN_TOOL,
+      args: { enabled: false, mode: "exit" },
+      risk: "safe",
+      confidence: 0.95,
+      source: "realtime",
+      requiresHarnessValidation: true
+    };
+    const firstGroup = plan.executionGroups[0];
+    return {
+      ...plan,
+      commands: [exitCommand, ...plan.commands],
+      executionGroups: firstGroup
+        ? [
+            { ...firstGroup, mode: "sequential", commandIds: [exitCommand.id, ...firstGroup.commandIds] },
+            ...plan.executionGroups.slice(1)
+          ]
+        : [{ id: "group_1", mode: "sequential", commandIds: [exitCommand.id, ...plan.commands.map((command) => command.id)] }]
+    };
   }
 
   private rewriteCommandFromCompletedAdds(

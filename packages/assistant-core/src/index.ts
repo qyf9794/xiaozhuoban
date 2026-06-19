@@ -8,6 +8,7 @@ export * from "./outbox";
 export * from "./learningSystem";
 export * from "./aiModuleReview";
 export * from "./moduleTestRunner";
+export * from "./commandPolicy";
 
 export type AssistantActionRisk = "safe" | "confirm" | "destructive";
 
