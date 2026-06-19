@@ -451,6 +451,21 @@ describe("stage-one assistant acceptance scenarios", () => {
     ]);
   });
 
+  it("defers precise music playback workflows to Realtime before local search shortcuts", async () => {
+    const { harness, modelInputs } = createAcceptanceHarness();
+    await harness.initialize();
+
+    await harness.handleUserInput("打开音乐播放器，搜索邓紫棋泡沫并播放");
+    await harness.handleUserInput("给我放五月天倔强，播放后把歌词搜索也打开");
+    await harness.handleUserInput("给我放刘若英后来，播放器没有打开就先打开");
+
+    expect(modelInputs).toEqual([
+      "打开音乐播放器，搜索邓紫棋泡沫并播放",
+      "给我放五月天倔强，播放后把歌词搜索也打开",
+      "给我放刘若英后来，播放器没有打开就先打开"
+    ]);
+  });
+
   it("opens widgets from casual aliases without model fallback", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness({ initialWidgetTypes: ["weather", "todo"] });
     await harness.initialize();
