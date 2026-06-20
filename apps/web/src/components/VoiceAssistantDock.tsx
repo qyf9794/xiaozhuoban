@@ -633,9 +633,6 @@ export function VoiceAssistantDock({
               aria-label="助手指令"
               data-testid="voice-assistant-command-input"
             />
-            <button type="submit" disabled={shouldDisableVoiceAssistantSend(muted)} aria-label="发送指令" data-testid="voice-assistant-send">
-              ↵
-            </button>
           </form>
 
           {pending ? (
