@@ -36,6 +36,12 @@ const ASSISTANT_TERMINAL_OPERATION_VISIBLE_MS = 8000;
 const repositoryByUserId = new Map<string, SupabaseRepository>();
 const E2E_AUTH_BYPASS = import.meta.env.VITE_XIAOZHUOBAN_E2E_AUTH_BYPASS === "true";
 
+function getAssistantSpeechTextFromDiagnostic(event: AssistantDiagnosticEvent): string {
+  if (event.type !== "realtime.voice.assistant_transcript" || event.status !== "success") return "";
+  const transcript = event.data?.transcript;
+  return typeof transcript === "string" ? transcript.trim() : "";
+}
+
 function getAssistantRuntimeText(status: { mode: AssistantRuntimeMode; metrics: RealtimeBudgetMetrics } | null) {
   if (!status) return "本地待机 · Realtime 按需连接";
   const activeSeconds = Math.round(status.metrics.realtimeActiveMs / 1000);
@@ -174,6 +180,7 @@ export function App() {
     pendingCount: 0
   });
   const [assistantOperationSnapshot, setAssistantOperationSnapshot] = useState<AssistantOperationSnapshot>({ active: [] });
+  const [assistantSpeech, setAssistantSpeech] = useState<{ id: number; text: string } | null>(null);
   const assistantOperation: VoiceAssistantOperationStatus | null = useMemo(
     () => getAssistantOperationStatus(assistantOperationSnapshot),
     [assistantOperationSnapshot]
@@ -197,6 +204,7 @@ export function App() {
   const backupInputRef = useRef<HTMLInputElement | null>(null);
   const mobileChromeHideTimerRef = useRef<number | null>(null);
   const assistantOperationClearTimerRef = useRef<number | null>(null);
+  const assistantSpeechEventIdRef = useRef(0);
   const assistantCapabilityBridgeRef = useRef(new WidgetCapabilityBridge());
   const sidebarOpenRef = useRef(sidebarOpen);
   const fullscreenRef = useRef(fullscreen);
@@ -205,6 +213,11 @@ export function App() {
   const isMobileUa = useMemo(() => isLikelyMobileUA(), []);
   const isMobileMode = isMobileUa || viewportWidth <= MOBILE_VIEWPORT_MAX;
   const recordDiagnostic = (event: AssistantDiagnosticEvent) => {
+    const assistantSpeechText = getAssistantSpeechTextFromDiagnostic(event);
+    if (assistantSpeechText) {
+      assistantSpeechEventIdRef.current += 1;
+      setAssistantSpeech({ id: assistantSpeechEventIdRef.current, text: assistantSpeechText });
+    }
     recordAuthenticatedAssistantDiagnostic(event);
   };
   const assistantRuntime = useMemo(
@@ -734,6 +747,7 @@ export function App() {
           isMobileMode={isMobileMode}
           desktopBottomInset={desktopViewportBottomInset}
           operationStatus={assistantOperation}
+          assistantSpeech={assistantSpeech}
           runtimeStatus={getAssistantRuntimeText(assistantRuntimeBudget)}
           syncPendingCount={assistantOutboxStatus.pendingCount}
           syncLastError={assistantOutboxStatus.lastError}

@@ -104,6 +104,18 @@ export function getVoiceAssistantOperationText(operation: VoiceAssistantOperatio
   return operation.message ? `失败：${operation.message}` : `失败${command}`;
 }
 
+export function getVoiceAssistantPanelAnswerText(
+  assistantSpeechText: string | undefined,
+  pendingMessage: string | undefined,
+  lastMessage: string
+): string {
+  const speech = assistantSpeechText?.trim();
+  if (speech) return speech;
+  const pending = pendingMessage?.trim();
+  if (pending) return pending;
+  return lastMessage.trim() || "好了，我在。";
+}
+
 export function resolveVoiceAssistantSubmitText(stateText: string, inputValue: string | undefined): string {
   const stateValue = stateText.trim();
   if (stateValue) return stateValue;
@@ -259,6 +271,7 @@ export function VoiceAssistantDock({
   onRetrySync,
   onCommandRoute,
   onSendRealtimeTextCommand,
+  assistantSpeech,
   onDiagnostic
 }: {
   harness: AssistantHarness;
@@ -276,6 +289,7 @@ export function VoiceAssistantDock({
   onRetrySync?: () => Promise<void> | void;
   onCommandRoute?: (route: AssistantRoute) => void;
   onSendRealtimeTextCommand?: (input: string, options?: { commandTraceId?: string }) => Promise<void>;
+  assistantSpeech?: { id: number; text: string } | null;
   onDiagnostic?: (event: AssistantDiagnosticEvent) => void;
 }) {
   const [state, setState] = useState<VoiceAssistantDockState>("disconnected");
@@ -306,7 +320,12 @@ export function VoiceAssistantDock({
   const suppressOrbClickRef = useRef(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [mobileTextPanelOpen, setMobileTextPanelOpen] = useState(false);
+  const textRef = useRef("");
   const voiceEnabled = Boolean(onConnectVoice || onConnectTextOnly);
+
+  useEffect(() => {
+    textRef.current = text;
+  }, [text]);
 
   const clearMobileTextPanelCollapseTimer = () => {
     if (mobileTextPanelCollapseTimerRef.current !== null) {
@@ -319,18 +338,20 @@ export function VoiceAssistantDock({
     if (!isMobileMode) return;
     clearMobileTextPanelCollapseTimer();
     mobileTextPanelCollapseTimerRef.current = window.setTimeout(() => {
-      if (!harness.getPendingConfirmation()) {
+      if (!harness.getPendingConfirmation() && !textRef.current.trim()) {
         setMobileTextPanelOpen(false);
       }
       mobileTextPanelCollapseTimerRef.current = null;
     }, VOICE_ASSISTANT_MOBILE_TEXT_PANEL_IDLE_MS);
   };
 
-  const openMobileTextPanel = () => {
+  const openMobileTextPanel = ({ focusInput = true }: { focusInput?: boolean } = {}) => {
     if (!isMobileMode) return;
     setMobileTextPanelOpen(true);
     scheduleMobileTextPanelCollapse();
-    window.setTimeout(() => inputRef.current?.focus(), 0);
+    if (focusInput) {
+      window.setTimeout(() => inputRef.current?.focus(), 0);
+    }
   };
 
   const keepMobileTextPanelOpen = () => {
@@ -377,6 +398,15 @@ export function VoiceAssistantDock({
   }, [isMobileMode]);
 
   useEffect(() => {
+    const speechText = assistantSpeech?.text.trim();
+    if (!speechText) return;
+    setLastMessage(speechText);
+    if (isMobileMode) {
+      openMobileTextPanel({ focusInput: false });
+    }
+  }, [assistantSpeech?.id, isMobileMode]);
+
+  useEffect(() => {
     return () => {
       clearMobileTextPanelCollapseTimer();
       clearOrbLongPressTimer();
@@ -387,6 +417,7 @@ export function VoiceAssistantDock({
   const textPanelVisible = shouldShowVoiceAssistantTextPanel(isMobileMode, mobileTextPanelOpen, Boolean(pending));
   const visualState = muted ? "muted" : pending ? "waiting_confirmation" : state;
   const visibleOperation = getVisibleVoiceAssistantOperation(operation, operationStatus);
+  const panelAnswerText = getVoiceAssistantPanelAnswerText(assistantSpeech?.text, pending?.message, lastMessage);
   const orbVisualMode =
     visualState === "thinking" || visualState === "executing" || visualState === "waiting_confirmation"
       ? "thinking"
@@ -748,8 +779,30 @@ export function VoiceAssistantDock({
         <div
           className="voice-assistant-dock__pill"
           onPointerDown={keepMobileTextPanelOpen}
+          onPointerMove={keepMobileTextPanelOpen}
           onFocusCapture={keepMobileTextPanelOpen}
         >
+          <div className="voice-assistant-dock__answer" aria-live="polite">
+            <p className="voice-assistant-dock__answer-text">{panelAnswerText}</p>
+            {pending ? (
+              <div className="voice-assistant-dock__confirm">
+                {getVoiceAssistantPreviewLines(pending).length > 0 ? (
+                  <div className="voice-assistant-dock__preview" data-testid="voice-assistant-preview">
+                    {getVoiceAssistantPreviewLines(pending).map((line) => (
+                      <span key={line}>{line}</span>
+                    ))}
+                  </div>
+                ) : null}
+                <button type="button" onClick={confirm}>
+                  确认
+                </button>
+                <button type="button" onClick={cancel}>
+                  取消
+                </button>
+              </div>
+            ) : null}
+          </div>
+
           <form className="voice-assistant-dock__form" onSubmit={onSubmit}>
             <input
               ref={inputRef}
@@ -769,24 +822,6 @@ export function VoiceAssistantDock({
               data-testid="voice-assistant-command-input"
             />
           </form>
-
-          {pending ? (
-            <div className="voice-assistant-dock__confirm">
-              {getVoiceAssistantPreviewLines(pending).length > 0 ? (
-                <div className="voice-assistant-dock__preview" data-testid="voice-assistant-preview">
-                  {getVoiceAssistantPreviewLines(pending).map((line) => (
-                    <span key={line}>{line}</span>
-                  ))}
-                </div>
-              ) : null}
-              <button type="button" onClick={confirm}>
-                确认
-              </button>
-              <button type="button" onClick={cancel}>
-                取消
-              </button>
-            </div>
-          ) : null}
         </div>
         ) : null}
       </div>

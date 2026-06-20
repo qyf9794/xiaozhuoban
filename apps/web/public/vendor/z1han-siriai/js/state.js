@@ -120,7 +120,6 @@ export function createSiriState() {
 		charge: 0,
 		flash: 0,
 		answer: 0,
-		colorMix: 0,
 	};
 
 	const springs = {

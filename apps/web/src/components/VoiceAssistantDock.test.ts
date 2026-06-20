@@ -11,6 +11,7 @@ import {
   getVoiceAssistantRuntimeText,
   getVoiceAssistantPreviewLines,
   getVoiceAssistantOperationText,
+  getVoiceAssistantPanelAnswerText,
   prependVoiceAssistantHistory,
   publishVoiceAssistantDiagnostics,
   resolveVoiceAssistantSubmitText,
@@ -70,6 +71,16 @@ describe("VoiceAssistantDock", () => {
     );
     expect(getVoiceAssistantOperationText({ phase: "error", command: "添加便签", message: "未知工具" })).toBe(
       "失败：未知工具"
+    );
+  });
+
+  it("prioritizes spoken assistant answers in the text panel", () => {
+    expect(getVoiceAssistantPanelAnswerText(" 我在，有什么需要我帮你处理？ ", "请确认", "语音已连接")).toBe(
+      "我在，有什么需要我帮你处理？"
+    );
+    expect(getVoiceAssistantPanelAnswerText("", " 确认执行吗？ ", "语音已连接")).toBe("确认执行吗？");
+    expect(getVoiceAssistantPanelAnswerText(undefined, undefined, " 语音已连接，可以直接说话。 ")).toBe(
+      "语音已连接，可以直接说话。"
     );
   });
 

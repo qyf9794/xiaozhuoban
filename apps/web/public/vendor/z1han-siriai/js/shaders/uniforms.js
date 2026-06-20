@@ -92,7 +92,6 @@ export function waveUniforms(surface, bands, preset = WAVE_PRESETS.bloom) {
 		{ name: 'uLow', value: bands.low * audioScale },
 		{ name: 'uMid', value: bands.mid * audioScale },
 		{ name: 'uHigh', value: bands.high * audioScale },
-		{ name: 'uColorMix', value: surface.colorMix ?? 0 },
 		...Object.entries(uniformValues).map(([name, value]) => ({ name, value })),
 	];
 }

@@ -214,7 +214,6 @@ body {
 }
 
 .voice-assistant-dock__orb {
-  --voice-orb-scale: 1;
   position: relative;
   flex: 0 0 auto;
   width: 128px;
@@ -227,8 +226,7 @@ body {
   cursor: grab;
   background: transparent;
   box-shadow: none;
-  transform: translateZ(0) scale(var(--voice-orb-scale));
-  transition: transform 90ms linear, filter 180ms ease, opacity 180ms ease;
+  transform: translateZ(0);
 }
 
 .voice-assistant-dock__orb:active {
@@ -265,25 +263,31 @@ body {
   --voice-pill-radius: 24px;
   position: relative;
   width: min(320px, calc(100vw - 170px));
-  min-height: 94px;
+  min-height: 188px;
   display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px;
-  align-content: center;
+  align-content: stretch;
   padding: 20px 22px;
   border-radius: var(--voice-pill-radius);
   border: 1px solid rgba(255, 255, 255, 0.34);
-  background:
-    linear-gradient(90deg, rgba(0, 0, 0, 0.2), transparent 12%, transparent 88%, rgba(0, 0, 0, 0.16)),
-    radial-gradient(ellipse 120% 74% at 50% 108%, rgba(0, 0, 0, 0.18), transparent 66%),
-    linear-gradient(180deg, rgba(3, 5, 7, 0.9) 0%, rgba(5, 7, 9, 0.84) 24%, rgba(18, 20, 21, 0.66) 48%, rgba(32, 34, 36, 0.34) 72%, rgba(3, 5, 7, 0) 100%);
-  backdrop-filter: blur(24px) saturate(126%) contrast(102%);
-  -webkit-backdrop-filter: blur(24px) saturate(126%) contrast(102%);
+  background: linear-gradient(
+    180deg,
+    rgba(3, 5, 7, 1) 0%,
+    rgba(3, 5, 7, 1) 50%,
+    rgba(3, 5, 7, 0.94) 62%,
+    rgba(3, 5, 7, 0.68) 76%,
+    rgba(3, 5, 7, 0.32) 90%,
+    rgba(3, 5, 7, 0) 100%
+  );
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   box-shadow:
     inset 0 0 0 2px rgba(255, 255, 255, 0.18),
-    inset 0 0 18px rgba(255, 255, 255, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.52),
+    inset 0 0 18px rgba(255, 255, 255, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.64),
     inset 0 20px 42px rgba(255, 255, 255, 0.06),
-    inset 0 -30px 50px rgba(255, 255, 255, 0.18),
+    inset 0 -30px 50px rgba(255, 255, 255, 0),
     0 18px 40px rgba(2, 6, 23, 0.14);
   overflow: hidden;
 }
@@ -295,38 +299,44 @@ body {
   border-radius: inherit;
   border: 2px solid rgba(255, 255, 255, 0.18);
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.24), transparent 12%, transparent 88%, rgba(255, 255, 255, 0.2)),
-    radial-gradient(ellipse 104% 48% at 50% 18%, rgba(255, 255, 255, 0.05), rgba(0, 0, 0, 0.58) 48%, transparent 76%),
-    radial-gradient(ellipse 96% 42% at 50% 76%, rgba(255, 255, 255, 0.18), transparent 76%),
-    linear-gradient(118deg, rgba(255, 255, 255, 0.16), transparent 23%, transparent 68%, rgba(255, 255, 255, 0.12));
+    linear-gradient(90deg, rgba(255, 255, 255, 0.18), transparent 12%, transparent 88%, rgba(255, 255, 255, 0.14)),
+    radial-gradient(ellipse 104% 48% at 50% 18%, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.28) 48%, transparent 76%),
+    linear-gradient(118deg, rgba(255, 255, 255, 0.12), transparent 23%, transparent 68%, rgba(255, 255, 255, 0.08));
   mix-blend-mode: screen;
-  opacity: 0.82;
+  opacity: 0.56;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 50%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 50%, transparent 100%);
   pointer-events: none;
 }
 
 .voice-assistant-dock__pill::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 58%;
-  border-radius: 0 0 var(--voice-pill-radius) var(--voice-pill-radius);
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.22), transparent 9%, transparent 91%, rgba(255, 255, 255, 0.18)),
-    radial-gradient(ellipse 118% 62% at 50% 100%, rgba(255, 255, 255, 0.46), transparent 70%),
-    radial-gradient(ellipse 90% 24% at 50% 12%, rgba(255, 255, 255, 0.2), transparent 70%),
-    radial-gradient(ellipse 68% 18% at 48% 36%, rgba(255, 224, 144, 0.1), transparent 72%),
-    radial-gradient(ellipse 78% 19% at 54% 42%, rgba(90, 118, 255, 0.08), transparent 74%),
-    linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.09) 18%, rgba(255, 255, 255, 0.16) 50%, rgba(255, 255, 255, 0.09) 82%, transparent 100%);
-  filter: blur(0.4px);
-  opacity: 0.78;
-  pointer-events: none;
+  content: none;
 }
 
 .voice-assistant-dock__pill > * {
   position: relative;
   z-index: 1;
+}
+
+.voice-assistant-dock__answer {
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  overflow: auto;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: left;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.58);
+  -webkit-overflow-scrolling: touch;
+}
+
+.voice-assistant-dock__answer-text {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .voice-assistant-dock__operation {
@@ -372,13 +382,15 @@ body {
   display: grid;
   grid-template-columns: 1fr;
   gap: 0;
+  align-content: start;
+  min-height: 0;
+  padding-top: 10px;
 }
 
 .voice-assistant-dock__form input {
   width: 100%;
   min-width: 0;
   border: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 0;
   background: transparent;
   color: rgba(255, 255, 255, 0.92);
@@ -394,14 +406,14 @@ body {
 }
 
 .voice-assistant-dock__form input:focus {
-  border-color: rgba(255, 255, 255, 0.46);
+  box-shadow: none;
 }
 
 .voice-assistant-dock__preview {
   grid-column: 1 / -1;
   display: grid;
   gap: 3px;
-  max-height: 72px;
+  max-height: 44px;
   overflow: auto;
   color: rgba(255, 236, 205, 0.9);
   padding: 0;
@@ -475,7 +487,7 @@ body {
 
   .voice-assistant-dock__pill {
     width: min(276px, calc(100vw - 40px));
-    min-height: 94px;
+    min-height: 188px;
     padding: 18px 20px;
   }
 

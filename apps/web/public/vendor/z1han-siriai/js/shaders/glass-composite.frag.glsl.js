@@ -198,12 +198,11 @@ vec4 glassFragment(vec2 pixel) {
 	vec2 grad = shapeGradient(p, halfSize, uCornerRadius, uGradRadialMix);
 	vec2 baseUv = (uPanelOrigin + panelUv * uPanelSize) / uCanvasSize;
 	vec2 rUv = clamp(refractedUv(baseUv, d, grad), vec2(0.0), vec2(1.0));
-	float embedded = clamp(uTransparentOutside, 0.0, 1.0);
 
 	// glass = refraction + highlight ONLY — no face color (no saturation/black/luma/tint),
 	// so it looks like untouched glass over whatever is behind it.
 	vec3 col = sampleScene(rUv);
-	col += vec3(highlightBand(d, grad) * uHlAmount * (1.0 - embedded));
+	col += vec3(highlightBand(d, grad) * uHlAmount);
 
 	// Inner rim reflections: a warm key lobe across the upper glass edge and a
 	// cooler blue return lobe near the lower edge, matching the mobile Siri view.
@@ -217,7 +216,7 @@ vec4 glassFragment(vec2 pixel) {
 		vec3(1.0, 0.78, 0.34) * upperLobe * 0.36 +
 		vec3(0.2, 0.34, 1.0) * lowerLobe * 0.28 +
 		vec3(0.55, 0.66, 1.0) * sideLobe * 0.18;
-	col += innerRimColor * innerRim * (1.0 - embedded);
+	col += innerRimColor * innerRim;
 
 	// chip lenses: glass-on-glass. Each capsule refracts the already-refracted
 	// scene a second time and wears its own rim highlight + a faint face lift.
@@ -244,8 +243,9 @@ vec4 glassFragment(vec2 pixel) {
 		chipCol += vec3(highlightBand(cd, cgrad) * uChipHlAmount);
 		col = mix(col, chipCol, ca);
 	}
-	float embeddedFade = 1.0 - smoothstep(0.08, 0.98, panelUv.y);
-	float embeddedAlpha = alpha * embeddedFade * 0.78;
+	float embedded = clamp(uTransparentOutside, 0.0, 1.0);
+	float embeddedFade = 1.0 - smoothstep(0.5, 1.0, panelUv.y);
+	float embeddedAlpha = alpha * embeddedFade;
 	return vec4(col, mix(alpha, embeddedAlpha, embedded));
 }
 
@@ -261,9 +261,8 @@ void main() {
 	// framed: the photo fills the canvas around the panel (standalone page)
 	vec4 framed = vec4(mix(background, glassRgb, a), 1.0);
 	// floating: premultiplied glass over transparency (embedded in a host page,
-	// which supplies the real backdrop behind the canvas).
-	float floatingOpacity = 1.0;
-	vec4 floating = vec4(glassRgb * a * floatingOpacity, a * floatingOpacity);
+	// which supplies the real backdrop behind the canvas)
+	vec4 floating = vec4(glassRgb * a, a);
 	outColor = mix(framed, floating, clamp(uTransparentOutside, 0.0, 1.0));
 }
 `;
