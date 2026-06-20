@@ -1,5 +1,5 @@
-import { SiriRenderer } from "./renderer.js?v=20260620-orb-opaque-wave-boundary";
-import { createSiriState } from "./state.js?v=20260620-orb-opaque-wave-boundary";
+import { SiriRenderer } from "./renderer.js?v=20260620-orb-mono-rim-refraction";
+import { createSiriState } from "./state.js?v=20260620-orb-mono-rim-refraction";
 
 const canvas = document.querySelector("#siri27-canvas");
 const status = document.querySelector("#mic-status");
@@ -9,6 +9,7 @@ const siri = createSiriState();
 let rafId = 0;
 let prevTimestamp = 0;
 let mode = "idle";
+let colorMode = "mono";
 
 function setNeutralBackdrop() {
   const tile = document.createElement("canvas");
@@ -33,6 +34,11 @@ function select(nextMode) {
   }
 }
 
+function selectColorMode(nextColorMode) {
+  colorMode = nextColorMode === "color" ? "color" : "mono";
+  renderer.setColorMode(colorMode);
+}
+
 function syntheticBands(now) {
   if (mode === "thinking") {
     return { low: 0.55 + 0.2 * Math.sin(now * 0.005), mid: 0.46, high: 0.34 };
@@ -45,9 +51,9 @@ function syntheticBands(now) {
     };
   }
   return {
-    low: 0.34 + 0.06 * Math.sin(now * 0.003),
-    mid: 0.26 + 0.05 * Math.sin(now * 0.004 + 1.2),
-    high: 0.2 + 0.04 * Math.sin(now * 0.005 + 2.1)
+    low: 0.34 + 0.08 * Math.sin(now * 0.00085),
+    mid: 0.24 + 0.05 * Math.sin(now * 0.0011 + 1.2),
+    high: 0.16 + 0.035 * Math.sin(now * 0.00135 + 2.1)
   };
 }
 
@@ -69,12 +75,14 @@ canvas.addEventListener("siri-render-error", (event) => {
 window.addEventListener("message", (event) => {
   if (!event.data || event.data.type !== "z1han-siri-orb-state") return;
   select(event.data.mode || "idle");
+  selectColorMode(event.data.colorMode || "mono");
 });
 
 if (renderer.error) {
   if (status) status.textContent = renderer.error.message;
 } else {
   setNeutralBackdrop();
+  selectColorMode("mono");
   select("idle");
   const initialBands = syntheticBands(0);
   siri.tick(0, initialBands);

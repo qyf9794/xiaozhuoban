@@ -81,7 +81,7 @@ export const WAVE_PRESETS = {
 	},
 };
 
-export function waveUniforms(surface, bands, preset = WAVE_PRESETS.bloom) {
+export function waveUniforms(surface, bands, preset = WAVE_PRESETS.bloom, options = {}) {
 	const { audioScale, ...uniformValues } = preset;
 	return [
 		{ name: 'uResolved', value: surface.sharedResolved },
@@ -92,6 +92,7 @@ export function waveUniforms(surface, bands, preset = WAVE_PRESETS.bloom) {
 		{ name: 'uLow', value: bands.low * audioScale },
 		{ name: 'uMid', value: bands.mid * audioScale },
 		{ name: 'uHigh', value: bands.high * audioScale },
+		{ name: 'uMonoMode', value: options.monoMode ?? 0 },
 		...Object.entries(uniformValues).map(([name, value]) => ({ name, value })),
 	];
 }

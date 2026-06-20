@@ -210,6 +210,22 @@ export function getVisibleVoiceAssistantOperation(
   return externalOperation ?? internalOperation;
 }
 
+export function getVoiceAssistantOrbVisualMode(
+  visualState: VoiceAssistantDockState,
+  visibleOperation: VoiceAssistantOperationStatus,
+  textPanelVisible: boolean
+): "idle" | "listening" | "thinking" {
+  const backgroundProcessing =
+    !textPanelVisible &&
+    (visualState === "thinking" ||
+      visualState === "executing" ||
+      visibleOperation.phase === "thinking" ||
+      visibleOperation.phase === "executing");
+  if (backgroundProcessing) return "thinking";
+  if (visualState === "listening") return "listening";
+  return "idle";
+}
+
 export function publishVoiceAssistantDiagnostics(snapshot: unknown): void {
   publishAssistantHarnessDiagnostics(snapshot);
 }
@@ -417,12 +433,7 @@ export function VoiceAssistantDock({
   const visualState = muted ? "muted" : pending ? "waiting_confirmation" : state;
   const visibleOperation = getVisibleVoiceAssistantOperation(operation, operationStatus);
   const panelAnswerText = getVoiceAssistantPanelAnswerText(assistantSpeech?.text, pending?.message);
-  const orbVisualMode =
-    visualState === "thinking" || visualState === "executing" || visualState === "waiting_confirmation"
-      ? "thinking"
-      : visualState === "listening"
-        ? "listening"
-        : "idle";
+  const orbVisualMode = getVoiceAssistantOrbVisualMode(visualState, visibleOperation, textPanelVisible);
   const orbAudioLevel = clampVoiceAssistantAudioLevel(voiceAudioLevel);
   const orbColorMode = getVoiceAssistantOrbColorMode(voiceStatus);
   const orbScale = getVoiceAssistantOrbScale(voiceStatus, orbAudioLevel);

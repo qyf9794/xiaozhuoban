@@ -213,9 +213,10 @@ vec4 glassFragment(vec2 pixel) {
 
 	vec3 col = sampleScene(rUv);
 	float sceneLight = max(max(col.r, col.g), col.b);
-	float waveProtect = smoothstep(0.12, 0.82, sceneLight);
-	float upperBlack = 1.0 - smoothstep(0.0, 0.82, normalizedPanel.y);
-	col = mix(col, vec3(0.0), clamp(upperBlack * (1.0 - waveProtect * 0.92), 0.0, 1.0));
+	float waveProtect = smoothstep(0.035, 0.42, sceneLight);
+	float waveBandProtect = 1.0 - smoothstep(0.04, 0.34, abs(normalizedPanel.y - waveBoundary));
+	float upperBlack = 1.0 - smoothstep(-0.08, 0.82, normalizedPanel.y);
+	col = mix(col, vec3(0.0), clamp(upperBlack * (1.0 - max(waveProtect, waveBandProtect) * 0.96), 0.0, 1.0));
 	col += vec3(highlightBand(d, grad) * uHlAmount);
 
 	// Inner rim reflections: a warm key lobe across the upper glass edge and a
@@ -226,10 +227,12 @@ vec4 glassFragment(vec2 pixel) {
 	float lowerLobe = smoothstep(0.08, 0.78, normalizedPanel.y) * (1.0 - smoothstep(0.2, 1.0, abs(normalizedPanel.x)));
 	float sideLobe = smoothstep(0.72, 0.98, abs(normalizedPanel.x)) * (1.0 - smoothstep(-0.1, 0.78, normalizedPanel.y));
 	vec3 innerRimColor =
-		vec3(1.0, 0.78, 0.34) * upperLobe * 0.36 +
-		vec3(0.2, 0.34, 1.0) * lowerLobe * 0.28 +
-		vec3(0.55, 0.66, 1.0) * sideLobe * 0.18;
+		vec3(1.0, 0.82, 0.42) * upperLobe * 0.5 +
+		vec3(0.22, 0.44, 1.0) * lowerLobe * 0.38 +
+		vec3(0.64, 0.74, 1.0) * sideLobe * 0.24;
 	col += innerRimColor * innerRim;
+	float innerEdgeLine = smoothstep(0.74, 0.9, radial) * (1.0 - smoothstep(0.92, 0.99, radial)) * alpha;
+	col += vec3(0.42, 0.52, 0.86) * innerEdgeLine * 0.12;
 
 	// chip lenses: glass-on-glass. Each capsule refracts the already-refracted
 	// scene a second time and wears its own rim highlight + a faint face lift.

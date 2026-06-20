@@ -12,6 +12,7 @@ import {
   getVoiceAssistantPreviewLines,
   getVoiceAssistantOperationText,
   getVoiceAssistantPanelAnswerText,
+  getVoiceAssistantOrbVisualMode,
   prependVoiceAssistantHistory,
   publishVoiceAssistantDiagnostics,
   resolveVoiceAssistantSubmitText,
@@ -154,6 +155,15 @@ describe("VoiceAssistantDock", () => {
 
     expect(getVisibleVoiceAssistantOperation({ phase: "idle" }, external)).toBe(external);
     expect(getVisibleVoiceAssistantOperation({ phase: "thinking", command: "播放陈奕迅的十年" }, external)).toBe(external);
+  });
+
+  it("shows moving dots only for background processing without the text panel", () => {
+    expect(getVoiceAssistantOrbVisualMode("thinking", { phase: "thinking" }, false)).toBe("thinking");
+    expect(getVoiceAssistantOrbVisualMode("executing", { phase: "executing" }, false)).toBe("thinking");
+    expect(getVoiceAssistantOrbVisualMode("listening", { phase: "executing" }, false)).toBe("thinking");
+    expect(getVoiceAssistantOrbVisualMode("executing", { phase: "executing" }, true)).toBe("idle");
+    expect(getVoiceAssistantOrbVisualMode("waiting_confirmation", { phase: "waiting_confirmation" }, false)).toBe("idle");
+    expect(getVoiceAssistantOrbVisualMode("listening", { phase: "idle" }, false)).toBe("listening");
   });
 
   it("formats runtime mode with visible outbox count", () => {

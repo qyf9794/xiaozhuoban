@@ -57,6 +57,7 @@ uniform float uMidSoftness;
 uniform float uHighAberration;
 uniform float uHighAberrationAmplitude;
 uniform float uWhiteClip;
+uniform float uMonoMode;
 
 out vec4 outColor;
 
@@ -165,6 +166,9 @@ void main() {
 	float m = max(max(col.r, col.g), col.b);
 	vec3 huePreserved = col * ((m > 1.0) ? (1.0 / m) : 1.0);
 	col = mix(huePreserved, min(col, vec3(1.0)), clamp(uWhiteClip, 0.0, 1.0));
+	float monoLum = max(max(col.r, col.g), col.b);
+	vec3 monoCol = vec3(monoLum) * vec3(0.92, 0.96, 1.0);
+	col = mix(col, monoCol, clamp(uMonoMode, 0.0, 1.0));
 
 	float alpha = saturate(max(max(col.r, col.g), col.b) * 1.15);
 	outColor = vec4(col, alpha);

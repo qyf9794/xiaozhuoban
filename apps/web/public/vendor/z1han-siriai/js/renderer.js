@@ -19,13 +19,13 @@
 // unchanged uniforms cost nothing per frame.
 // ============================================================================
 
-import { VERTEX_SHADER } from './shaders/vertex.glsl.js?v=20260620-orb-opaque-wave-boundary';
-import { WAVE_FRAGMENT_SHADER } from './shaders/wave.frag.glsl.js?v=20260620-orb-opaque-wave-boundary';
-import { DOTS_FRAGMENT_SHADER } from './shaders/dots.frag.glsl.js?v=20260620-orb-opaque-wave-boundary';
-import { BACKGROUND_FRAGMENT_SHADER } from './shaders/background.frag.glsl.js?v=20260620-orb-opaque-wave-boundary';
-import { EFFECT_COMPOSITE_FRAGMENT_SHADER } from './shaders/effect-composite.frag.glsl.js?v=20260620-orb-opaque-wave-boundary';
-import { GLASS_COMPOSITE_FRAGMENT_SHADER } from './shaders/glass-composite.frag.glsl.js?v=20260620-orb-opaque-wave-boundary';
-import { WAVE_PRESETS, waveUniforms, dotsUniforms } from './shaders/uniforms.js?v=20260620-orb-opaque-wave-boundary';
+import { VERTEX_SHADER } from './shaders/vertex.glsl.js?v=20260620-orb-mono-rim-refraction';
+import { WAVE_FRAGMENT_SHADER } from './shaders/wave.frag.glsl.js?v=20260620-orb-mono-rim-refraction';
+import { DOTS_FRAGMENT_SHADER } from './shaders/dots.frag.glsl.js?v=20260620-orb-mono-rim-refraction';
+import { BACKGROUND_FRAGMENT_SHADER } from './shaders/background.frag.glsl.js?v=20260620-orb-mono-rim-refraction';
+import { EFFECT_COMPOSITE_FRAGMENT_SHADER } from './shaders/effect-composite.frag.glsl.js?v=20260620-orb-mono-rim-refraction';
+import { GLASS_COMPOSITE_FRAGMENT_SHADER } from './shaders/glass-composite.frag.glsl.js?v=20260620-orb-mono-rim-refraction';
+import { WAVE_PRESETS, waveUniforms, dotsUniforms } from './shaders/uniforms.js?v=20260620-orb-mono-rim-refraction';
 
 const MAX_DPR = 2;
 const PANEL_MARGIN_PX = 20;
@@ -167,10 +167,11 @@ export class SiriRenderer {
 			premultipliedAlpha: embedded,
 			preserveDrawingBuffer: false,
 		});
-		this.dpr = 1;
-		this.width = 1;
-		this.height = 1;
-		this.time = 0;
+			this.dpr = 1;
+			this.width = 1;
+			this.height = 1;
+			this.time = 0;
+			this.colorMode = 'mono';
 		this.panelOffset = [0, 0]; // device px, set by main.js drag springs
 		// chip lenses (suggestion buttons rendered AS glass by the final pass):
 		// rects = [cx, cy, halfW, halfH] in device px relative to the panel
@@ -256,7 +257,7 @@ export class SiriRenderer {
 		if (this._lastImage) this.setBackgroundImage(this._lastImage);
 	}
 
-	setBackgroundImage(image) {
+		setBackgroundImage(image) {
 		const gl = this.gl;
 		this._lastImage = image;
 		if (!gl || this.disposed || this.error || this._contextLost) return;
@@ -264,8 +265,12 @@ export class SiriRenderer {
 		gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
 		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
 		this.backgroundSize = [image.naturalWidth || image.width || 1, image.naturalHeight || image.height || 1];
-		this.backgroundReady = 1;
-	}
+			this.backgroundReady = 1;
+		}
+
+		setColorMode(colorMode) {
+			this.colorMode = colorMode === 'color' ? 'color' : 'mono';
+		}
 
 	render({ surface, progress, bands, sizes, dt = 0 }) {
 		if (!this.gl || this.disposed || this.error || this._contextLost || !surface || !sizes) return;
@@ -386,7 +391,10 @@ export class SiriRenderer {
 			{ name: 'uTime', value: this.time },
 			{ name: 'uMouse', type: 'vec4', value: [layout.effectWidth * 0.5, layout.effectHeight * 0.5, surface.press, 0] },
 		];
-		this._draw(this.programs.wave, [...shared, ...waveUniforms(surface, bands, this.wavePreset)]);
+			this._draw(this.programs.wave, [
+				...shared,
+				...waveUniforms(surface, bands, this.wavePreset, { monoMode: this.colorMode === 'mono' ? 1 : 0 }),
+			]);
 		this._draw(this.programs.dots, [...shared, ...dotsUniforms(surface, progress)]);
 		gl.disable(gl.BLEND);
 	}
