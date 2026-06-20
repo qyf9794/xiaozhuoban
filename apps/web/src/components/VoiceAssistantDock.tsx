@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent } from "react";
 import type { AssistantHarness, AssistantRoute } from "../assistant/AssistantHarness";
 import { publishAssistantHarnessDiagnostics, type AssistantDiagnosticEvent } from "../assistant/assistantDiagnostics";
 import type { RealtimeConnectionStatus } from "../assistant/openaiRealtimeAdapter";
@@ -16,7 +16,6 @@ export type VoiceAssistantDockState =
 
 const MICROPHONE_PERMISSION_MESSAGE = "麦克风权限被拒绝，请在浏览器地址栏允许麦克风后重试。";
 const MICROPHONE_UNAVAILABLE_MESSAGE = "没有检测到可用麦克风，或当前浏览器不支持录音。";
-
 export function getVoiceAssistantDockStatusText(state: VoiceAssistantDockState): string {
   if (state === "connecting") return "连接中";
   if (state === "listening") return "聆听中";
@@ -244,9 +243,24 @@ export function VoiceAssistantDock({
   const [lastMessage, setLastMessage] = useState("好了，我在。");
   const [history, setHistory] = useState<VoiceAssistantHistoryItem[]>([]);
   const [operation, setOperation] = useState<VoiceAssistantOperationStatus>({ phase: "idle" });
-  const [connectionMode, setConnectionMode] = useState<"audio" | "text" | null>(null);
   const initializedRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const orbFrameRef = useRef<HTMLIFrameElement | null>(null);
+  const dockRef = useRef<HTMLElement | null>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+    baseLeft: number;
+    baseRight: number;
+    baseTop: number;
+    baseBottom: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressOrbClickRef = useRef(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const voiceEnabled = Boolean(onConnectVoice || onConnectTextOnly);
 
   useEffect(() => {
@@ -267,9 +281,6 @@ export function VoiceAssistantDock({
 
   useEffect(() => {
     if (!voiceEnabled) return;
-    if (voiceStatus === "disconnected" || voiceStatus === "failed" || voiceStatus === "session_failed") {
-      setConnectionMode(null);
-    }
     setState(getVoiceAssistantDockStateForRealtimeStatus(voiceStatus));
     setLastMessage(getVoiceAssistantConnectionMessage(voiceStatus));
   }, [voiceEnabled, voiceStatus]);
@@ -277,6 +288,17 @@ export function VoiceAssistantDock({
   const pending = harness.getPendingConfirmation();
   const visualState = muted ? "muted" : pending ? "waiting_confirmation" : state;
   const visibleOperation = getVisibleVoiceAssistantOperation(operation, operationStatus);
+  const orbVisualMode =
+    visualState === "thinking" || visualState === "executing" || visualState === "waiting_confirmation"
+      ? "thinking"
+      : visualState === "listening"
+        ? "listening"
+        : "idle";
+
+  useEffect(() => {
+    orbFrameRef.current?.contentWindow?.postMessage({ type: "z1han-siri-orb-state", mode: orbVisualMode }, window.location.origin);
+  }, [orbVisualMode]);
+
   const runCommand = async (command: string) => {
     const input = command.trim();
     if (!input || muted) return;
@@ -440,7 +462,6 @@ export function VoiceAssistantDock({
     setOperation({ phase: "thinking", command: "连接语音" });
     try {
       await onConnectVoice();
-      setConnectionMode("audio");
       setOperation({ phase: "success", command: "连接语音", message: "语音已连接" });
       onDiagnostic?.({ type: "voice.connect.result", commandTraceId, status: "success" });
     } catch (error) {
@@ -461,7 +482,6 @@ export function VoiceAssistantDock({
     setOperation({ phase: "thinking", command: "连接文字 Realtime" });
     try {
       await onConnectTextOnly();
-      setConnectionMode("text");
       setLastMessage("文字 Realtime 已连接，可直接输入指令。");
       setOperation({ phase: "success", command: "连接文字 Realtime", message: "文字 Realtime 已连接" });
       onDiagnostic?.({ type: "voice.text_realtime.connect.result", commandTraceId, status: "success" });
@@ -477,136 +497,193 @@ export function VoiceAssistantDock({
   const disconnectVoice = () => {
     onDiagnostic?.({ type: "voice.disconnect.click", commandTraceId: createCommandTraceId("voice_disconnect"), status: "started" });
     onDisconnectVoice?.();
-    setConnectionMode(null);
     setState("disconnected");
     setLastMessage(getVoiceAssistantConnectionMessage("disconnected"));
     setOperation({ phase: "idle" });
   };
 
+  const onOrbPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    const rect = dockRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: dragOffset.x,
+      originY: dragOffset.y,
+      baseLeft: rect.left - dragOffset.x,
+      baseRight: rect.right - dragOffset.x,
+      baseTop: rect.top - dragOffset.y,
+      baseBottom: rect.bottom - dragOffset.y,
+      moved: false
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const onOrbPointerMove = (event: PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+    drag.moved = true;
+    suppressOrbClickRef.current = true;
+    const margin = 10;
+    const minX = margin - drag.baseLeft;
+    const maxX = window.innerWidth - margin - drag.baseRight;
+    const minY = margin - drag.baseTop;
+    const maxY = window.innerHeight - margin - drag.baseBottom;
+    setDragOffset({
+      x: Math.min(maxX, Math.max(minX, drag.originX + dx)),
+      y: Math.min(maxY, Math.max(minY, drag.originY + dy))
+    });
+  };
+
+  const onOrbPointerUp = (event: PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (drag?.pointerId === event.pointerId) {
+      dragRef.current = null;
+      window.setTimeout(() => {
+        suppressOrbClickRef.current = false;
+      }, 0);
+    }
+  };
+
+  const onOrbClick = () => {
+    if (suppressOrbClickRef.current) return;
+    if (voiceStatus === "connected" || voiceStatus === "configuring") {
+      disconnectVoice();
+      return;
+    }
+    if (onConnectVoice) {
+      void connectVoice();
+      return;
+    }
+    if (onConnectTextOnly) {
+      void connectTextOnly();
+      return;
+    }
+    setMuted((prev) => !prev);
+  };
+
+  const dockTransform = [
+    isMobileMode ? `translateX(-50%) translateY(${mobileVisible ? "0" : "calc(100% + 18px)"})` : "",
+    `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)`
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const operationText = getVoiceAssistantOperationText(visibleOperation);
+  const runtimeText = runtimeStatus ? getVoiceAssistantRuntimeText(runtimeStatus, syncPendingCount, syncLastError) : "";
+  const statusLines = [
+    `${getVoiceAssistantDockStatusText(visualState)} · ${lastMessage}`,
+    operationText,
+    runtimeText,
+    history[0] ? `${history[0].text} · ${history[0].result}` : ""
+  ].filter(Boolean);
+
   return (
     <aside
+      ref={dockRef}
       className={`voice-assistant-dock liquid-glass-preserve${isMobileMode ? " voice-assistant-dock-mobile" : ""}`}
       aria-label="语音助手"
       style={{
         bottom: isMobileMode ? "calc(env(safe-area-inset-bottom) + 12px)" : desktopBottomInset + 36,
         opacity: isMobileMode ? (mobileVisible ? 1 : 0) : 1,
         pointerEvents: isMobileMode && !mobileVisible ? "none" : "auto",
-        transform: isMobileMode
-          ? `translateX(-50%) translateY(${mobileVisible ? "0" : "calc(100% + 18px)"})`
-          : undefined
+        transform: dockTransform
       }}
+      data-voice-state={visualState}
       data-testid="voice-assistant-dock"
     >
-      <div className="voice-assistant-dock__top">
+      <div className="voice-assistant-dock__glass">
         <button
           type="button"
           className={`voice-assistant-dock__orb is-${visualState}`}
-          aria-label={muted ? "取消静音" : "静音助手"}
-          onClick={() => setMuted((prev) => !prev)}
+          aria-label={voiceStatus === "connected" || voiceStatus === "configuring" ? "断开 Realtime" : "连接语音"}
+          onPointerDown={onOrbPointerDown}
+          onPointerMove={onOrbPointerMove}
+          onPointerUp={onOrbPointerUp}
+          onPointerCancel={onOrbPointerUp}
+          onClick={onOrbClick}
         >
-          {muted ? "×" : "●"}
+          <iframe
+            ref={orbFrameRef}
+            className="voice-assistant-dock__orb-frame"
+            title="Siri glass orb shader"
+            src="/vendor/z1han-siriai/orb.html"
+            onLoad={() => {
+              orbFrameRef.current?.contentWindow?.postMessage({ type: "z1han-siri-orb-state", mode: orbVisualMode }, window.location.origin);
+            }}
+            aria-hidden="true"
+            tabIndex={-1}
+          />
         </button>
-        <div className="voice-assistant-dock__copy">
-          <strong>{getVoiceAssistantDockStatusText(visualState)}</strong>
-          <span>{lastMessage}</span>
+
+        <div className="voice-assistant-dock__pill">
+          <form className="voice-assistant-dock__form" onSubmit={onSubmit}>
+            <input
+              ref={inputRef}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              onInput={(event) => setText(event.currentTarget.value)}
+              onKeyDown={onCommandKeyDown}
+              placeholder=""
+              disabled={muted}
+              aria-label="助手指令"
+              data-testid="voice-assistant-command-input"
+            />
+            <button type="submit" disabled={shouldDisableVoiceAssistantSend(muted)} aria-label="发送指令" data-testid="voice-assistant-send">
+              ↵
+            </button>
+          </form>
+
+          {pending ? (
+            <div className="voice-assistant-dock__confirm">
+              {getVoiceAssistantPreviewLines(pending).length > 0 ? (
+                <div className="voice-assistant-dock__preview" data-testid="voice-assistant-preview">
+                  {getVoiceAssistantPreviewLines(pending).map((line) => (
+                    <span key={line}>{line}</span>
+                  ))}
+                </div>
+              ) : null}
+              <button type="button" onClick={confirm}>
+                确认
+              </button>
+              <button type="button" onClick={cancel}>
+                取消
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
 
-      <div
-        className={`voice-assistant-dock__operation is-${visibleOperation.phase}`}
-        aria-live="polite"
-        data-testid="voice-assistant-operation"
-      >
-        <span>{getVoiceAssistantOperationText(visibleOperation)}</span>
+      <div className="voice-assistant-dock__status-stream" aria-live="polite">
+        <div className="voice-assistant-dock__status-track">
+          {statusLines.map((line) => (
+            <span key={line}>{line}</span>
+          ))}
+          {statusLines.length > 1
+            ? statusLines.map((line) => (
+                <span key={`${line}_repeat`} aria-hidden="true">
+                  {line}
+                </span>
+              ))
+            : null}
+        </div>
       </div>
 
+      <div className={`voice-assistant-dock__operation is-${visibleOperation.phase}`} data-testid="voice-assistant-operation" hidden>
+        <span>{operationText}</span>
+      </div>
       {runtimeStatus ? (
-        <div className="voice-assistant-dock__runtime" data-testid="voice-assistant-runtime">
-          <span>{getVoiceAssistantRuntimeText(runtimeStatus, syncPendingCount, syncLastError)}</span>
+        <div className="voice-assistant-dock__runtime" data-testid="voice-assistant-runtime" hidden>
+          <span>{runtimeText}</span>
           {syncPendingCount > 0 && onRetrySync ? (
             <button type="button" onClick={() => void onRetrySync()}>
               重试
             </button>
           ) : null}
-        </div>
-      ) : null}
-
-      {voiceEnabled ? (
-        <div className="voice-assistant-dock__voice">
-          {voiceStatus === "connected" || voiceStatus === "configuring" ? (
-            <button type="button" onClick={disconnectVoice} disabled={muted} aria-label="断开 Realtime">
-              {connectionMode === "text" ? "断开文字" : "断开语音"}
-            </button>
-          ) : (
-            <>
-              {onConnectVoice ? (
-                <button
-                  type="button"
-                  onClick={() => void connectVoice()}
-                  disabled={muted || voiceStatus === "connecting"}
-                  aria-label="连接语音"
-                >
-                  连接语音
-                </button>
-              ) : null}
-              {onConnectTextOnly ? (
-                <button
-                  type="button"
-                  onClick={() => void connectTextOnly()}
-                  disabled={muted || voiceStatus === "connecting"}
-                  aria-label="连接文字 Realtime"
-                >
-                  文字 Realtime
-                </button>
-              ) : null}
-            </>
-          )}
-        </div>
-      ) : null}
-
-      <form className="voice-assistant-dock__form" onSubmit={onSubmit}>
-        <input
-          ref={inputRef}
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          onInput={(event) => setText(event.currentTarget.value)}
-          onKeyDown={onCommandKeyDown}
-          placeholder="说一句指令"
-          disabled={muted}
-          aria-label="助手指令"
-          data-testid="voice-assistant-command-input"
-        />
-        <button type="submit" disabled={shouldDisableVoiceAssistantSend(muted)} aria-label="发送指令" data-testid="voice-assistant-send">
-          ↵
-        </button>
-      </form>
-
-      {pending ? (
-        <div className="voice-assistant-dock__confirm">
-          {getVoiceAssistantPreviewLines(pending).length > 0 ? (
-            <div className="voice-assistant-dock__preview" data-testid="voice-assistant-preview">
-              {getVoiceAssistantPreviewLines(pending).map((line) => (
-                <span key={line}>{line}</span>
-              ))}
-            </div>
-          ) : null}
-          <button type="button" onClick={confirm}>
-            确认
-          </button>
-          <button type="button" onClick={cancel}>
-            取消
-          </button>
-        </div>
-      ) : null}
-
-      {history.length > 0 ? (
-        <div className="voice-assistant-dock__history" aria-label="助手命令记录">
-          {history.map((item) => (
-            <div key={item.id} className="voice-assistant-dock__history-row">
-              <span>{item.text}</span>
-              <small>{item.result}</small>
-            </div>
-          ))}
         </div>
       ) : null}
     </aside>

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        color-scheme: dark;
+        background: transparent;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+      }
+
+      .siri-page,
+      .siri-canvas {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+      }
+
+      .siri-hint,
+      .sr-only {
+        display: none;
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/siri27-tj0iOq2X.js?v=dark-transparent-orb-20260620"></script>
+  </head>
+  <body>
+    <main class="siri-page">
+      <canvas id="siri27-canvas" class="siri-canvas" aria-label="Siri27 shader orb"></canvas>
+      <p id="siri-hint" class="siri-hint" aria-live="polite">Hold to speak</p>
+      <p id="mic-status" class="sr-only" aria-live="polite">Idle.</p>
+    </main>
+  </body>
+</html>

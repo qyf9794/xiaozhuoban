@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root,
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+      }
+
+      .siri-page,
+      .siri-canvas {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+    </style>
+    <script type="module" src="./js/embed-orb.js?v=20260620-z1han-inner-rim"></script>
+  </head>
+  <body>
+    <main class="siri-page">
+      <canvas id="siri27-canvas" class="siri-canvas" aria-label="Siri glass orb shader"></canvas>
+      <p id="mic-status" class="sr-only" aria-live="polite">Idle.</p>
+    </main>
+  </body>
+</html>
