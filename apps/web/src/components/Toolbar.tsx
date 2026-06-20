@@ -24,6 +24,10 @@ function FullscreenIcon() {
   );
 }
 
+export function shouldOpenSettingsMenuForRequest(settingsOpenRequestId: number | undefined): boolean {
+  return typeof settingsOpenRequestId === "number" && settingsOpenRequestId > 0;
+}
+
 export function Toolbar({
   board,
   definitions,
@@ -80,7 +84,7 @@ export function Toolbar({
   }, [addMenuOpen, menuOpen, onMenuOpenChange]);
 
   useEffect(() => {
-    if (settingsOpenRequestId === undefined) return;
+    if (!shouldOpenSettingsMenuForRequest(settingsOpenRequestId)) return;
     setAddMenuOpen(false);
     setMenuOpen(true);
   }, [settingsOpenRequestId]);

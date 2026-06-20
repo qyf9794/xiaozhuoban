@@ -83,6 +83,9 @@ export interface VoiceAssistantOperationStatus {
   message?: string;
 }
 
+export const VOICE_ASSISTANT_MOBILE_TEXT_PANEL_IDLE_MS = 5000;
+export const VOICE_ASSISTANT_ORB_LONG_PRESS_MS = 520;
+
 export function prependVoiceAssistantHistory(
   history: VoiceAssistantHistoryItem[],
   item: VoiceAssistantHistoryItem,
@@ -153,6 +156,18 @@ export function getVoiceAssistantDockTransform(
   ]
     .filter(Boolean)
     .join(" ");
+}
+
+export function shouldShowVoiceAssistantTextPanel(
+  isMobileMode: boolean,
+  mobileTextPanelOpen: boolean,
+  hasPendingConfirmation: boolean
+): boolean {
+  return !isMobileMode || mobileTextPanelOpen || hasPendingConfirmation;
+}
+
+export function shouldSuppressVoiceAssistantOrbClickAfterPress(longPressTriggered: boolean, moved: boolean): boolean {
+  return longPressTriggered || moved;
 }
 
 export function shouldUseRealtimeTextCommand(
@@ -273,6 +288,9 @@ export function VoiceAssistantDock({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const orbFrameRef = useRef<HTMLIFrameElement | null>(null);
   const dockRef = useRef<HTMLElement | null>(null);
+  const mobileTextPanelCollapseTimerRef = useRef<number | null>(null);
+  const orbLongPressTimerRef = useRef<number | null>(null);
+  const orbLongPressTriggeredRef = useRef(false);
   const dragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -287,7 +305,46 @@ export function VoiceAssistantDock({
   } | null>(null);
   const suppressOrbClickRef = useRef(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [mobileTextPanelOpen, setMobileTextPanelOpen] = useState(false);
   const voiceEnabled = Boolean(onConnectVoice || onConnectTextOnly);
+
+  const clearMobileTextPanelCollapseTimer = () => {
+    if (mobileTextPanelCollapseTimerRef.current !== null) {
+      window.clearTimeout(mobileTextPanelCollapseTimerRef.current);
+      mobileTextPanelCollapseTimerRef.current = null;
+    }
+  };
+
+  const scheduleMobileTextPanelCollapse = () => {
+    if (!isMobileMode) return;
+    clearMobileTextPanelCollapseTimer();
+    mobileTextPanelCollapseTimerRef.current = window.setTimeout(() => {
+      if (!harness.getPendingConfirmation()) {
+        setMobileTextPanelOpen(false);
+      }
+      mobileTextPanelCollapseTimerRef.current = null;
+    }, VOICE_ASSISTANT_MOBILE_TEXT_PANEL_IDLE_MS);
+  };
+
+  const openMobileTextPanel = () => {
+    if (!isMobileMode) return;
+    setMobileTextPanelOpen(true);
+    scheduleMobileTextPanelCollapse();
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const keepMobileTextPanelOpen = () => {
+    if (!isMobileMode) return;
+    setMobileTextPanelOpen(true);
+    scheduleMobileTextPanelCollapse();
+  };
+
+  const clearOrbLongPressTimer = () => {
+    if (orbLongPressTimerRef.current !== null) {
+      window.clearTimeout(orbLongPressTimerRef.current);
+      orbLongPressTimerRef.current = null;
+    }
+  };
 
   useEffect(() => {
     if (initializedRef.current) return;
@@ -311,7 +368,23 @@ export function VoiceAssistantDock({
     setLastMessage(getVoiceAssistantConnectionMessage(voiceStatus));
   }, [voiceEnabled, voiceStatus]);
 
+  useEffect(() => {
+    if (isMobileMode) {
+      setMobileTextPanelOpen(false);
+      return;
+    }
+    clearMobileTextPanelCollapseTimer();
+  }, [isMobileMode]);
+
+  useEffect(() => {
+    return () => {
+      clearMobileTextPanelCollapseTimer();
+      clearOrbLongPressTimer();
+    };
+  }, []);
+
   const pending = harness.getPendingConfirmation();
+  const textPanelVisible = shouldShowVoiceAssistantTextPanel(isMobileMode, mobileTextPanelOpen, Boolean(pending));
   const visualState = muted ? "muted" : pending ? "waiting_confirmation" : state;
   const visibleOperation = getVisibleVoiceAssistantOperation(operation, operationStatus);
   const orbVisualMode =
@@ -464,6 +537,7 @@ export function VoiceAssistantDock({
     } else {
       void runCommand(input);
     }
+    scheduleMobileTextPanelCollapse();
   };
 
   const onSubmit = (event: FormEvent) => {
@@ -472,6 +546,7 @@ export function VoiceAssistantDock({
   };
 
   const onCommandKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    keepMobileTextPanelOpen();
     if (!shouldSubmitVoiceAssistantOnKeyDown(event)) return;
     event.preventDefault();
     submitCurrentCommand();
@@ -536,6 +611,8 @@ export function VoiceAssistantDock({
 
   const onOrbPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
+    clearOrbLongPressTimer();
+    orbLongPressTriggeredRef.current = false;
     const rect = dockRef.current?.getBoundingClientRect();
     if (!rect) return;
     dragRef.current = {
@@ -550,6 +627,14 @@ export function VoiceAssistantDock({
       baseBottom: rect.bottom - dragOffset.y,
       moved: false
     };
+    if (isMobileMode) {
+      orbLongPressTimerRef.current = window.setTimeout(() => {
+        orbLongPressTimerRef.current = null;
+        orbLongPressTriggeredRef.current = true;
+        suppressOrbClickRef.current = true;
+        openMobileTextPanel();
+      }, VOICE_ASSISTANT_ORB_LONG_PRESS_MS);
+    }
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -558,8 +643,10 @@ export function VoiceAssistantDock({
     if (!drag || drag.pointerId !== event.pointerId) return;
     const dx = event.clientX - drag.startX;
     const dy = event.clientY - drag.startY;
+    if (orbLongPressTriggeredRef.current) return;
     if (!drag.moved && Math.hypot(dx, dy) < 5) return;
     drag.moved = true;
+    clearOrbLongPressTimer();
     suppressOrbClickRef.current = true;
     const margin = 10;
     const minX = margin - drag.baseLeft;
@@ -575,10 +662,15 @@ export function VoiceAssistantDock({
   const onOrbPointerUp = (event: PointerEvent<HTMLButtonElement>) => {
     const drag = dragRef.current;
     if (drag?.pointerId === event.pointerId) {
+      const shouldSuppressClick = shouldSuppressVoiceAssistantOrbClickAfterPress(orbLongPressTriggeredRef.current, drag.moved);
+      clearOrbLongPressTimer();
       dragRef.current = null;
       window.setTimeout(() => {
+        if (shouldSuppressClick) {
+          orbLongPressTriggeredRef.current = false;
+        }
         suppressOrbClickRef.current = false;
-      }, 0);
+      }, shouldSuppressClick ? 250 : 0);
     }
   };
 
@@ -620,10 +712,11 @@ export function VoiceAssistantDock({
         pointerEvents: "auto",
         transform: dockTransform
       }}
+      data-text-panel-open={textPanelVisible ? "true" : "false"}
       data-voice-state={visualState}
       data-testid="voice-assistant-dock"
     >
-      <div className="voice-assistant-dock__glass">
+      <div className="voice-assistant-dock__glass" data-text-panel-open={textPanelVisible ? "true" : "false"}>
         <button
           type="button"
           className={`voice-assistant-dock__orb is-${visualState}`}
@@ -651,13 +744,24 @@ export function VoiceAssistantDock({
           />
         </button>
 
-        <div className="voice-assistant-dock__pill">
+        {textPanelVisible ? (
+        <div
+          className="voice-assistant-dock__pill"
+          onPointerDown={keepMobileTextPanelOpen}
+          onFocusCapture={keepMobileTextPanelOpen}
+        >
           <form className="voice-assistant-dock__form" onSubmit={onSubmit}>
             <input
               ref={inputRef}
               value={text}
-              onChange={(event) => setText(event.target.value)}
-              onInput={(event) => setText(event.currentTarget.value)}
+              onChange={(event) => {
+                setText(event.target.value);
+                keepMobileTextPanelOpen();
+              }}
+              onInput={(event) => {
+                setText(event.currentTarget.value);
+                keepMobileTextPanelOpen();
+              }}
               onKeyDown={onCommandKeyDown}
               placeholder=""
               disabled={muted}
@@ -684,8 +788,10 @@ export function VoiceAssistantDock({
             </div>
           ) : null}
         </div>
+        ) : null}
       </div>
 
+      {textPanelVisible ? (
       <div className="voice-assistant-dock__status-stream" aria-live="polite">
         <div className="voice-assistant-dock__status-track">
           {statusLines.map((line) => (
@@ -700,6 +806,7 @@ export function VoiceAssistantDock({
             : null}
         </div>
       </div>
+      ) : null}
 
       <div className={`voice-assistant-dock__operation is-${visibleOperation.phase}`} data-testid="voice-assistant-operation" hidden>
         <span>{operationText}</span>

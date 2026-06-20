@@ -14,6 +14,8 @@ import {
   prependVoiceAssistantHistory,
   publishVoiceAssistantDiagnostics,
   resolveVoiceAssistantSubmitText,
+  shouldShowVoiceAssistantTextPanel,
+  shouldSuppressVoiceAssistantOrbClickAfterPress,
   shouldDisableVoiceAssistantSend,
   shouldUseRealtimeHarnessCommand,
   shouldUseRealtimeTextCommand,
@@ -105,6 +107,19 @@ describe("VoiceAssistantDock", () => {
     expect(getVoiceAssistantDockTransform(true, { x: 0, y: 0 })).toBe("translateX(-50%) translate3d(0px, 0px, 0)");
     expect(getVoiceAssistantDockTransform(true, { x: 12, y: -8 })).toBe("translateX(-50%) translate3d(12px, -8px, 0)");
     expect(getVoiceAssistantDockTransform(false, { x: 12, y: -8 })).toBe("translate3d(12px, -8px, 0)");
+  });
+
+  it("keeps the mobile text panel collapsed until opened or confirmation is pending", () => {
+    expect(shouldShowVoiceAssistantTextPanel(true, false, false)).toBe(false);
+    expect(shouldShowVoiceAssistantTextPanel(true, true, false)).toBe(true);
+    expect(shouldShowVoiceAssistantTextPanel(true, false, true)).toBe(true);
+    expect(shouldShowVoiceAssistantTextPanel(false, false, false)).toBe(true);
+  });
+
+  it("suppresses the orb click after long press or drag", () => {
+    expect(shouldSuppressVoiceAssistantOrbClickAfterPress(false, false)).toBe(false);
+    expect(shouldSuppressVoiceAssistantOrbClickAfterPress(true, false)).toBe(true);
+    expect(shouldSuppressVoiceAssistantOrbClickAfterPress(false, true)).toBe(true);
   });
 
   it("uses realtime text submission after realtime is ready unless the input answers a local confirmation", () => {
