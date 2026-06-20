@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getVoiceAssistantConnectionMessage,
+  getVoiceAssistantDockTransform,
   getVoiceAssistantDockStateForRealtimeStatus,
   getVoiceAssistantErrorMessage,
   getVoiceAssistantDockStatusText,
@@ -98,6 +99,12 @@ describe("VoiceAssistantDock", () => {
     expect(getVoiceAssistantOrbScale("connected", 0)).toBe(1);
     expect(getVoiceAssistantOrbScale("connected", 1)).toBeCloseTo(1.075);
     expect(getVoiceAssistantOrbScale("connected", 10)).toBeCloseTo(1.075);
+  });
+
+  it("keeps the mobile voice dock resident instead of translating it off screen", () => {
+    expect(getVoiceAssistantDockTransform(true, { x: 0, y: 0 })).toBe("translateX(-50%) translate3d(0px, 0px, 0)");
+    expect(getVoiceAssistantDockTransform(true, { x: 12, y: -8 })).toBe("translateX(-50%) translate3d(12px, -8px, 0)");
+    expect(getVoiceAssistantDockTransform(false, { x: 12, y: -8 })).toBe("translate3d(12px, -8px, 0)");
   });
 
   it("uses realtime text submission after realtime is ready unless the input answers a local confirmation", () => {

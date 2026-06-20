@@ -732,7 +732,6 @@ export function App() {
           onConnectTextOnly={assistantRuntime.connectTextOnly}
           onDisconnectVoice={assistantRuntime.disconnect}
           isMobileMode={isMobileMode}
-          mobileVisible={mobileChromeVisible}
           desktopBottomInset={desktopViewportBottomInset}
           operationStatus={assistantOperation}
           runtimeStatus={getAssistantRuntimeText(assistantRuntimeBudget)}

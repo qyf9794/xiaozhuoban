@@ -143,6 +143,18 @@ export function getVoiceAssistantOrbColorMode(voiceStatus: RealtimeConnectionSta
   return voiceStatus === "connected" ? "color" : "mono";
 }
 
+export function getVoiceAssistantDockTransform(
+  isMobileMode: boolean,
+  dragOffset: { x: number; y: number }
+): string {
+  return [
+    isMobileMode ? "translateX(-50%)" : "",
+    `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)`
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 export function shouldUseRealtimeTextCommand(
   voiceStatus: RealtimeConnectionStatus,
   hasRealtimeTextSender: boolean,
@@ -224,7 +236,6 @@ export function VoiceAssistantDock({
   onConnectTextOnly,
   onDisconnectVoice,
   isMobileMode = false,
-  mobileVisible = true,
   desktopBottomInset = 14,
   operationStatus,
   runtimeStatus,
@@ -242,7 +253,6 @@ export function VoiceAssistantDock({
   onConnectTextOnly?: () => Promise<void>;
   onDisconnectVoice?: () => void;
   isMobileMode?: boolean;
-  mobileVisible?: boolean;
   desktopBottomInset?: number;
   operationStatus?: VoiceAssistantOperationStatus | null;
   runtimeStatus?: string | null;
@@ -589,12 +599,7 @@ export function VoiceAssistantDock({
     setMuted((prev) => !prev);
   };
 
-  const dockTransform = [
-    isMobileMode ? `translateX(-50%) translateY(${mobileVisible ? "0" : "calc(100% + 18px)"})` : "",
-    `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)`
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const dockTransform = getVoiceAssistantDockTransform(isMobileMode, dragOffset);
   const operationText = getVoiceAssistantOperationText(visibleOperation);
   const runtimeText = runtimeStatus ? getVoiceAssistantRuntimeText(runtimeStatus, syncPendingCount, syncLastError) : "";
   const statusLines = [
@@ -611,8 +616,8 @@ export function VoiceAssistantDock({
       aria-label="语音助手"
       style={{
         bottom: isMobileMode ? "calc(env(safe-area-inset-bottom) + 12px)" : desktopBottomInset + 36,
-        opacity: isMobileMode ? (mobileVisible ? 1 : 0) : 1,
-        pointerEvents: isMobileMode && !mobileVisible ? "none" : "auto",
+        opacity: 1,
+        pointerEvents: "auto",
         transform: dockTransform
       }}
       data-voice-state={visualState}
