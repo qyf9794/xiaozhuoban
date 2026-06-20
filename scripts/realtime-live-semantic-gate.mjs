@@ -417,6 +417,7 @@ function createCatalogInstructions(allToolNames) {
     "- 再打开一个倒计时/再打开一个计时器是打开新小工具实例，使用 board.add_widget；不要误解为设置倒计时。",
     "- 打开电视/先打开电视/打开 CCTV/播放 CCTV 前如果语义包含打开窗口，必须包含 board.add_widget，再列 tv.play 或 tv.select_channel。",
     "- 打开天气/打开世界时钟/打开新闻/打开行情时，必须包含 board.add_widget，并列出 weather.set_city/worldClock.set_zones/headline.request_refresh/market.set_indices。",
+    "- 新建/打开桌板后同时打开待办、便签、天气等多个小工具时，必须包含 board.create 或 board.switch、board.add_widget，并为天气列出 weather.set_city。",
     "- 打开音乐播放器并搜索/播放时，必须包含 board.add_widget，并列出 music.search 或 music.play。",
     "- 如果工具目录没加载完但用户要求打开音乐，仍包含 board.add_widget；如果要求播放具体歌曲且缺音乐工具，仍包含 music.play。",
     "- 打开上证和深证行情、打开市场行情、打开财经行情这类打开行情窗口请求，必须包含 board.add_widget 和 market.set_indices。",
@@ -442,6 +443,10 @@ function createCatalogInstructions(allToolNames) {
     "- 找 + 明确歌手和歌名，即使带播放前确认，也使用 music.play；确认由本地 Harness 处理。",
     "- 音乐登录、授权、试听片段、完整播放、已登录账号但仍试听，使用 music.auth_status，不要使用 music.search。",
     "- 检查有没有登录音乐入口、查看音乐登录入口，也使用 music.auth_status；可以同时包含 app.settings.open，但不要 assistant.reply。",
+    "- 音乐登录按钮位置、右上角、遮挡封面、挡住封面属于音乐窗口布局，使用 widget.move 或 widget.resize，不要使用 assistant.runtime_diagnostics。",
+    "- 重新授权音乐账号后再搜索某歌，必须包含 music.auth_status 和 music.search；登录后刷新播放器状态、播放前确认 MusicKit 可用，使用 music.auth_status，不要用 assistant.runtime_diagnostics 代替。",
+    "- 音乐授权失败时打开设置检查，必须包含 music.auth_status 和 app.settings.open。",
+    "- 如果歌曲已搜到、直接播放、直接调用播放工具，必须使用 music.play，不要只返回 assistant.runtime_diagnostics。",
     "- 搜索/找/重新搜索/不一定播放/先不播放/不要播放，或只是轻松、放松、背景、睡前等模糊风格探索时，使用 music.search，不要误判为上一首/下一首。",
     "- 搜索轻松音乐不要复用上一条播放器状态、重新搜索音乐不要沿用当前歌曲，必须使用 music.search，不要改成诊断。",
     "- 暂停/继续/上一首/下一首等明确播放控制才使用 music.pause、music.resume、music.previous、music.next。",
@@ -461,14 +466,18 @@ function createCatalogInstructions(allToolNames) {
     "- 清空/清除便签内容使用 note.clear；如果用户说先弹确认，仍返回 note.clear，确认由本地 Harness 处理。",
     "- 新建便签实例用于测试这类带“便签实例”但没有打开二字的历史 catalog 命令，按 board.add_widget 对齐真实窗口执行。",
     "- 复制/保存/固定保存/口令/验证码/token/项目名到剪贴板，使用 clipboard.add_text；清理/清空剪贴板，使用 clipboard.clear。",
+    "- 保存或固定保存检查步骤、排查步骤、登录状态检查步骤，是保存文本，不是检查音乐授权；使用 clipboard.add_text 或 note.write，禁止 music.auth_status 抢占。",
     "- 清理剪贴板时保留 pinned 内容、不要删固定项、只清理未固定记录，仍使用 clipboard.clear；pinned/固定项是执行约束，不是诊断词。",
     "- 本地路径、当前歌曲名、普通文本复制到剪贴板时使用 clipboard.add_text，不要因为路径或当前状态而 assistant.reply。",
+    "- 单独说停止录音、结束录音，必须使用 recorder.stop，不要回复确认。",
     "- 录音之前/开始录音之前如果要求先关闭电视声音，包含 tv.pause 和 recorder.start。",
+    "- 停止录音前确认当前是否正在录，是状态确认，不要直接 recorder.stop；使用 assistant.reply 或 assistant.runtime_diagnostics。",
     "- 删除/关闭临时倒计时或临时小工具使用 widget.remove；不要误用 countdown.reset。",
     "- 用户说“我说关闭 X 时执行关闭，不是发送/不是回复”仍然是关闭命令，使用 widget.remove。",
     "- 发送消息前先确认内容，仍选择 messageBoard.send；关闭音乐和电视之前先确认一次，仍选择 widget.remove。",
     "- 缩小窗口且避免挡住其他窗口时，同时包含 widget.resize 和 widget.move。",
     "- 留言板发送/回复/发一句使用 messageBoard.send；关闭留言板使用 widget.remove，不要发送“关闭”。",
+    "- 留言板不要重复发送刚才那句话，可以使用 assistant.reply、assistant.runtime_diagnostics 或 messageBoard.clear_draft；不要使用 messageBoard.send。",
     "- 重大新闻/头条使用 headline.request_refresh；行情/指数/纳指/恒生/上证/深证使用 market.set_indices；打开这些小工具时也包含 board.add_widget。",
     "- 清空、删除、批量整理等仍选择对应工具；确认策略由本地 Harness 处理。",
     "- 打开某某桌板、切到某某桌板、进入某某桌板使用 board.switch；只有新建/创建某某桌板才使用 board.create。",
@@ -634,6 +643,15 @@ function renderCatalogReport(results, metadata) {
     `- Source site: ${metadata.productionSite ?? "local"}`,
     `- Cases: ${passed}/${results.length} passed`,
     `- Batch size: ${metadata.batchSize}`,
+    ...(typeof metadata.initialPassed === "number" ? [`- Initial pass: ${metadata.initialPassed}/${results.length}`] : []),
+    ...(metadata.retryRounds?.length
+      ? [
+          `- Failure retries: ${metadata.retryRounds.length} round(s), retry batch size ${metadata.retryBatchSize}`,
+          ...metadata.retryRounds.map(
+            (round) => `  - Round ${round.round}: retried ${round.retried}, recovered ${round.recovered}, remaining ${round.remaining}`
+          )
+        ]
+      : []),
     "- Secret handling: Realtime credentials are never written to this report.",
     "",
     "## Failure Summary",
@@ -1011,6 +1029,8 @@ async function main() {
 async function runCatalogMode() {
   const limit = Number(getArg("--limit", "700"));
   const batchSize = Number(getArg("--batch-size", "12"));
+  const retryAttempts = Number(getArg("--retry-failures", "2"));
+  const retryBatchSize = Number(getArg("--retry-batch-size", "1"));
   const idFilter = parseIdFilter(getArg("--ids", ""));
   const parseLimit = idFilter.length
     ? Math.max(limit, ...idFilter.map((id) => Number(id)).filter((id) => Number.isFinite(id)))
@@ -1031,6 +1051,8 @@ async function runCatalogMode() {
   const access = await getRealtimeAccessToken();
   const client = createRealtimeClient(access.token, { omitSafetyIdentifier: access.source === "production-ephemeral-token" });
   const results = [];
+  const retryRounds = [];
+  let initialPassed = 0;
   try {
     await client.connect();
     for (let start = 0, batchIndex = 1; start < catalogRows.length; start += batchSize, batchIndex += 1) {
@@ -1052,6 +1074,37 @@ async function runCatalogMode() {
       const passed = results.filter((row) => row.passed).length;
       console.log(`BATCH ${batchIndex} ${batch[0].id}-${batch[batch.length - 1].id}: totalPassed=${passed}/${results.length}`);
     }
+    initialPassed = results.filter((row) => row.passed).length;
+    for (let retryRound = 1; retryRound <= retryAttempts; retryRound += 1) {
+      const failedRows = results.filter((row) => !row.passed);
+      if (!failedRows.length) break;
+      let recovered = 0;
+      for (let start = 0; start < failedRows.length; start += retryBatchSize) {
+        const batch = failedRows.slice(start, start + retryBatchSize);
+        const event = await client.runCatalogBatch(batch, allToolNames, allModuleTypes, `retry_${retryRound}_${start / retryBatchSize + 1}`);
+        const functionCall = findFunctionCall(event);
+        const functionName = decodeToolName(functionCall?.name);
+        if (functionName !== BATCH_TOOL_NAME) {
+          throw new Error(`CATALOG_RETRY_FUNCTION_MISMATCH round=${retryRound} function=${functionName}`);
+        }
+        const args = parseArguments(functionCall.arguments);
+        const actualRows = Array.isArray(args.rows) ? args.rows : [];
+        const byId = new Map(actualRows.filter((row) => row && typeof row === "object").map((row) => [normalizeCatalogId(row.id), row]));
+        for (const expected of batch) {
+          const actual = byId.get(expected.id);
+          const evaluation = evaluateCatalogRow(expected, actual);
+          const index = results.findIndex((row) => row.id === expected.id);
+          const next = { ...expected, ...evaluation, retryRound };
+          if (index >= 0) {
+            if (!results[index].passed && next.passed) recovered += 1;
+            results[index] = next;
+          }
+        }
+      }
+      const remaining = results.filter((row) => !row.passed).length;
+      retryRounds.push({ round: retryRound, retried: failedRows.length, recovered, remaining });
+      console.log(`RETRY ${retryRound}: retried=${failedRows.length} recovered=${recovered} remaining=${remaining}`);
+    }
   } finally {
     await client.close();
   }
@@ -1067,7 +1120,10 @@ async function runCatalogMode() {
       caseLabel: idFilter.length ? `${results.length} Selected` : String(limit),
       credentialSource: access.source,
       productionSite: access.productionSite,
-      batchSize
+      batchSize,
+      initialPassed,
+      retryBatchSize,
+      retryRounds
     })
   );
   const failed = results.filter((row) => !row.passed);

@@ -143,8 +143,14 @@
     {
       "id": "state-confirmation-reply-equivalent",
       "kind": "anyOf",
-      "pattern": "当前状态|确认当前|先告诉我|如果不能撤销|不要重复发送",
+      "pattern": "当前状态|确认当前|先告诉我|如果不能撤销",
       "tools": ["assistant.reply", "assistant.runtime_diagnostics"]
+    },
+    {
+      "id": "message-board-no-repeat-safe-equivalent",
+      "kind": "anyOf",
+      "pattern": "留言板不要重复发送|不要重复发送刚才",
+      "tools": ["assistant.reply", "assistant.runtime_diagnostics", "messageBoard.clear_draft"]
     },
     {
       "id": "meta-state-reply-equivalent",
@@ -235,6 +241,12 @@
       "kind": "forbid",
       "pattern": "关闭电视(?!声音|直播|播放)",
       "tools": ["tv.pause"]
+    },
+    {
+      "id": "confirm-recorder-state-forbids-stop",
+      "kind": "forbid",
+      "pattern": "停止录音前确认|确认当前是否正在录",
+      "tools": ["recorder.stop"]
     },
     {
       "id": "preference-rules-forbid-immediate-actions",
