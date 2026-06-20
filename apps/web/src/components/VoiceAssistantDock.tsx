@@ -106,14 +106,13 @@ export function getVoiceAssistantOperationText(operation: VoiceAssistantOperatio
 
 export function getVoiceAssistantPanelAnswerText(
   assistantSpeechText: string | undefined,
-  pendingMessage: string | undefined,
-  lastMessage: string
+  pendingMessage: string | undefined
 ): string {
   const speech = assistantSpeechText?.trim();
   if (speech) return speech;
   const pending = pendingMessage?.trim();
   if (pending) return pending;
-  return lastMessage.trim() || "好了，我在。";
+  return "";
 }
 
 export function resolveVoiceAssistantSubmitText(stateText: string, inputValue: string | undefined): string {
@@ -417,7 +416,7 @@ export function VoiceAssistantDock({
   const textPanelVisible = shouldShowVoiceAssistantTextPanel(isMobileMode, mobileTextPanelOpen, Boolean(pending));
   const visualState = muted ? "muted" : pending ? "waiting_confirmation" : state;
   const visibleOperation = getVisibleVoiceAssistantOperation(operation, operationStatus);
-  const panelAnswerText = getVoiceAssistantPanelAnswerText(assistantSpeech?.text, pending?.message, lastMessage);
+  const panelAnswerText = getVoiceAssistantPanelAnswerText(assistantSpeech?.text, pending?.message);
   const orbVisualMode =
     visualState === "thinking" || visualState === "executing" || visualState === "waiting_confirmation"
       ? "thinking"
@@ -783,7 +782,7 @@ export function VoiceAssistantDock({
           onFocusCapture={keepMobileTextPanelOpen}
         >
           <div className="voice-assistant-dock__answer" aria-live="polite">
-            <p className="voice-assistant-dock__answer-text">{panelAnswerText}</p>
+            {panelAnswerText ? <p className="voice-assistant-dock__answer-text">{panelAnswerText}</p> : null}
             {pending ? (
               <div className="voice-assistant-dock__confirm">
                 {getVoiceAssistantPreviewLines(pending).length > 0 ? (

@@ -75,13 +75,11 @@ describe("VoiceAssistantDock", () => {
   });
 
   it("prioritizes spoken assistant answers in the text panel", () => {
-    expect(getVoiceAssistantPanelAnswerText(" 我在，有什么需要我帮你处理？ ", "请确认", "语音已连接")).toBe(
+    expect(getVoiceAssistantPanelAnswerText(" 我在，有什么需要我帮你处理？ ", "请确认")).toBe(
       "我在，有什么需要我帮你处理？"
     );
-    expect(getVoiceAssistantPanelAnswerText("", " 确认执行吗？ ", "语音已连接")).toBe("确认执行吗？");
-    expect(getVoiceAssistantPanelAnswerText(undefined, undefined, " 语音已连接，可以直接说话。 ")).toBe(
-      "语音已连接，可以直接说话。"
-    );
+    expect(getVoiceAssistantPanelAnswerText("", " 确认执行吗？ ")).toBe("确认执行吗？");
+    expect(getVoiceAssistantPanelAnswerText(undefined, undefined)).toBe("");
   });
 
   it("falls back to the real input value when submitting commands", () => {

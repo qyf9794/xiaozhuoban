@@ -1,5 +1,5 @@
-import { SiriRenderer } from "./renderer.js";
-import { createSiriState } from "./state.js";
+import { SiriRenderer } from "./renderer.js?v=20260620-orb-opaque-wave-boundary";
+import { createSiriState } from "./state.js?v=20260620-orb-opaque-wave-boundary";
 
 const canvas = document.querySelector("#siri27-canvas");
 const status = document.querySelector("#mic-status");

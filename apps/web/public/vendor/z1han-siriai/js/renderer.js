@@ -19,13 +19,13 @@
 // unchanged uniforms cost nothing per frame.
 // ============================================================================
 
-import { VERTEX_SHADER } from './shaders/vertex.glsl.js';
-import { WAVE_FRAGMENT_SHADER } from './shaders/wave.frag.glsl.js';
-import { DOTS_FRAGMENT_SHADER } from './shaders/dots.frag.glsl.js';
-import { BACKGROUND_FRAGMENT_SHADER } from './shaders/background.frag.glsl.js';
-import { EFFECT_COMPOSITE_FRAGMENT_SHADER } from './shaders/effect-composite.frag.glsl.js';
-import { GLASS_COMPOSITE_FRAGMENT_SHADER } from './shaders/glass-composite.frag.glsl.js';
-import { WAVE_PRESETS, waveUniforms, dotsUniforms } from './shaders/uniforms.js';
+import { VERTEX_SHADER } from './shaders/vertex.glsl.js?v=20260620-orb-opaque-wave-boundary';
+import { WAVE_FRAGMENT_SHADER } from './shaders/wave.frag.glsl.js?v=20260620-orb-opaque-wave-boundary';
+import { DOTS_FRAGMENT_SHADER } from './shaders/dots.frag.glsl.js?v=20260620-orb-opaque-wave-boundary';
+import { BACKGROUND_FRAGMENT_SHADER } from './shaders/background.frag.glsl.js?v=20260620-orb-opaque-wave-boundary';
+import { EFFECT_COMPOSITE_FRAGMENT_SHADER } from './shaders/effect-composite.frag.glsl.js?v=20260620-orb-opaque-wave-boundary';
+import { GLASS_COMPOSITE_FRAGMENT_SHADER } from './shaders/glass-composite.frag.glsl.js?v=20260620-orb-opaque-wave-boundary';
+import { WAVE_PRESETS, waveUniforms, dotsUniforms } from './shaders/uniforms.js?v=20260620-orb-opaque-wave-boundary';
 
 const MAX_DPR = 2;
 const PANEL_MARGIN_PX = 20;
