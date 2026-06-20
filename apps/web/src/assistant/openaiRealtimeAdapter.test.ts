@@ -16,6 +16,7 @@ import {
   reduceRealtimeActiveResponseId,
   resolveRealtimeConnectFailureStatus,
   resolveMicrophoneAccessErrorCode,
+  resolveRealtimeMicrophoneLevel,
   resolveRealtimePeerStatus,
   shouldQueueRealtimeEventWhenClosed,
   shouldHandleRealtimeFunctionCall,
@@ -23,6 +24,13 @@ import {
 } from "./openaiRealtimeAdapter";
 
 describe("OpenAI realtime adapter helpers", () => {
+  it("normalizes microphone samples into a bounded voice level", () => {
+    expect(resolveRealtimeMicrophoneLevel(new Uint8Array([128, 128, 128, 128]))).toBe(0);
+    expect(resolveRealtimeMicrophoneLevel(new Uint8Array([0, 255, 0, 255]))).toBe(1);
+    expect(resolveRealtimeMicrophoneLevel(new Uint8Array([118, 138, 118, 138]))).toBeGreaterThan(0);
+    expect(resolveRealtimeMicrophoneLevel(new Uint8Array())).toBe(0);
+  });
+
   it("parses response.function_call_arguments.done events", () => {
     const call = parseRealtimeFunctionCallEvent({
       type: "response.function_call_arguments.done",

@@ -9,6 +9,14 @@ const siri = createSiriState();
 let rafId = 0;
 let prevTimestamp = 0;
 let mode = "idle";
+let targetAudioLevel = 0;
+let smoothedAudioLevel = 0;
+let targetColorMix = 0;
+let smoothedColorMix = 0;
+
+function clampUnit(value) {
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+}
 
 function setNeutralBackdrop() {
   const tile = document.createElement("canvas");
@@ -40,22 +48,27 @@ function syntheticBands(now) {
     return { low: 0.55 + 0.2 * Math.sin(now * 0.005), mid: 0.46, high: 0.34 };
   }
   if (mode === "listening") {
+    const voice = smoothedAudioLevel;
     return {
-      low: 0.28 + 0.16 * Math.sin(now * 0.004),
-      mid: 0.18 + 0.1 * Math.sin(now * 0.006 + 1.4),
-      high: 0.16 + 0.08 * Math.sin(now * 0.008 + 2.2)
+      low: 0.16 + voice * 0.72 + 0.05 * Math.sin(now * 0.004),
+      mid: 0.12 + voice * 0.54 + 0.04 * Math.sin(now * 0.006 + 1.4),
+      high: 0.1 + voice * 0.38 + 0.03 * Math.sin(now * 0.008 + 2.2)
     };
   }
+  const monoBreath = 0.12 + 0.035 * Math.sin(now * 0.0028);
   return {
-    low: 0.34 + 0.06 * Math.sin(now * 0.003),
-    mid: 0.26 + 0.05 * Math.sin(now * 0.004 + 1.2),
-    high: 0.2 + 0.04 * Math.sin(now * 0.005 + 2.1)
+    low: monoBreath,
+    mid: monoBreath * 0.86,
+    high: monoBreath * 0.72
   };
 }
 
 function frame(now) {
   const dt = prevTimestamp ? Math.min((now - prevTimestamp) / 1000, 0.1) : 0;
   prevTimestamp = now;
+  smoothedAudioLevel += (targetAudioLevel - smoothedAudioLevel) * Math.min(1, dt * 12);
+  smoothedColorMix += (targetColorMix - smoothedColorMix) * Math.min(1, dt * 8);
+  siri.surface.colorMix = smoothedColorMix;
   const bands = syntheticBands(now);
   siri.tick(dt, bands);
   renderer.render({ surface: siri.surface, progress: siri.progress, bands, sizes: siri.sizes, dt });
@@ -71,6 +84,8 @@ canvas.addEventListener("siri-render-error", (event) => {
 window.addEventListener("message", (event) => {
   if (!event.data || event.data.type !== "z1han-siri-orb-state") return;
   select(event.data.mode || "idle");
+  targetAudioLevel = clampUnit(event.data.audioLevel);
+  targetColorMix = event.data.colorMode === "color" ? 1 : 0;
 });
 
 if (renderer.error) {
@@ -78,6 +93,7 @@ if (renderer.error) {
 } else {
   setNeutralBackdrop();
   select("idle");
+  siri.surface.colorMix = 0;
   const initialBands = syntheticBands(0);
   siri.tick(0, initialBands);
   renderer.render({ surface: siri.surface, progress: siri.progress, bands: initialBands, sizes: siri.sizes, dt: 0 });

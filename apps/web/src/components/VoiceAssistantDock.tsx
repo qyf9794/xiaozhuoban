@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type PointerEvent } from "react";
 import type { AssistantHarness, AssistantRoute } from "../assistant/AssistantHarness";
 import { publishAssistantHarnessDiagnostics, type AssistantDiagnosticEvent } from "../assistant/assistantDiagnostics";
 import type { RealtimeConnectionStatus } from "../assistant/openaiRealtimeAdapter";
@@ -129,6 +129,20 @@ export function shouldDisableVoiceAssistantSend(muted: boolean): boolean {
   return muted;
 }
 
+function clampVoiceAssistantAudioLevel(level: number | undefined): number {
+  if (typeof level !== "number" || !Number.isFinite(level)) return 0;
+  return Math.max(0, Math.min(1, level));
+}
+
+export function getVoiceAssistantOrbScale(voiceStatus: RealtimeConnectionStatus, audioLevel: number | undefined): number {
+  if (voiceStatus !== "connected") return 1;
+  return 1 + clampVoiceAssistantAudioLevel(audioLevel) * 0.075;
+}
+
+export function getVoiceAssistantOrbColorMode(voiceStatus: RealtimeConnectionStatus): "mono" | "color" {
+  return voiceStatus === "connected" ? "color" : "mono";
+}
+
 export function shouldUseRealtimeTextCommand(
   voiceStatus: RealtimeConnectionStatus,
   hasRealtimeTextSender: boolean,
@@ -205,6 +219,7 @@ function getResultText(status: string, message: string) {
 export function VoiceAssistantDock({
   harness,
   voiceStatus = "disconnected",
+  voiceAudioLevel = 0,
   onConnectVoice,
   onConnectTextOnly,
   onDisconnectVoice,
@@ -222,6 +237,7 @@ export function VoiceAssistantDock({
 }: {
   harness: AssistantHarness;
   voiceStatus?: RealtimeConnectionStatus;
+  voiceAudioLevel?: number;
   onConnectVoice?: () => Promise<void>;
   onConnectTextOnly?: () => Promise<void>;
   onDisconnectVoice?: () => void;
@@ -294,10 +310,16 @@ export function VoiceAssistantDock({
       : visualState === "listening"
         ? "listening"
         : "idle";
+  const orbAudioLevel = clampVoiceAssistantAudioLevel(voiceAudioLevel);
+  const orbColorMode = getVoiceAssistantOrbColorMode(voiceStatus);
+  const orbScale = getVoiceAssistantOrbScale(voiceStatus, orbAudioLevel);
 
   useEffect(() => {
-    orbFrameRef.current?.contentWindow?.postMessage({ type: "z1han-siri-orb-state", mode: orbVisualMode }, window.location.origin);
-  }, [orbVisualMode]);
+    orbFrameRef.current?.contentWindow?.postMessage(
+      { type: "z1han-siri-orb-state", mode: orbVisualMode, audioLevel: orbAudioLevel, colorMode: orbColorMode },
+      window.location.origin
+    );
+  }, [orbVisualMode, orbAudioLevel, orbColorMode]);
 
   const runCommand = async (command: string) => {
     const input = command.trim();
@@ -600,6 +622,7 @@ export function VoiceAssistantDock({
         <button
           type="button"
           className={`voice-assistant-dock__orb is-${visualState}`}
+          style={{ "--voice-orb-scale": orbScale } as CSSProperties}
           aria-label={voiceStatus === "connected" || voiceStatus === "configuring" ? "断开 Realtime" : "连接语音"}
           onPointerDown={onOrbPointerDown}
           onPointerMove={onOrbPointerMove}
@@ -613,7 +636,10 @@ export function VoiceAssistantDock({
             title="Siri glass orb shader"
             src="/vendor/z1han-siriai/orb.html"
             onLoad={() => {
-              orbFrameRef.current?.contentWindow?.postMessage({ type: "z1han-siri-orb-state", mode: orbVisualMode }, window.location.origin);
+              orbFrameRef.current?.contentWindow?.postMessage(
+                { type: "z1han-siri-orb-state", mode: orbVisualMode, audioLevel: orbAudioLevel, colorMode: orbColorMode },
+                window.location.origin
+              );
             }}
             aria-hidden="true"
             tabIndex={-1}

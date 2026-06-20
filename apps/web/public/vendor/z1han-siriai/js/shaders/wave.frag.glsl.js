@@ -57,6 +57,7 @@ uniform float uMidSoftness;
 uniform float uHighAberration;
 uniform float uHighAberrationAmplitude;
 uniform float uWhiteClip;
+uniform float uColorMix;
 
 out vec4 outColor;
 
@@ -127,7 +128,8 @@ void main() {
 	for (int i = 0; i < 4; i += 1) {
 		float fi = float(i);
 		float t13 = fi * 0.33333334;
-		vec3 hue = mix(vec3(1.0), spectrumTri(fi), vec3(res));
+		vec3 monoHue = vec3(0.86, 0.94, 1.0);
+		vec3 hue = mix(monoHue, spectrumTri(fi), vec3(res * clamp(uColorMix, 0.0, 1.0)));
 		wSum += hue;
 		float ph = atArg2 + mix(negBase, c73, t13);
 		float w2 = env68 * sin(ph) + mouseLift;

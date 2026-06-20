@@ -48,6 +48,7 @@ export interface OpenAIRealtimeWebRtcAdapterOptions {
   getSafetyIdentifier?: () => string | undefined;
   onFunctionCall?: (call: AssistantToolCall) => void | Promise<void>;
   onStatusChange?: (status: RealtimeConnectionStatus) => void;
+  onMicrophoneLevel?: (level: number) => void;
   onDiagnostic?: (event: AssistantDiagnosticEvent) => void;
   fetchImpl?: typeof fetch;
   sessionUpdateTimeoutMs?: number;
@@ -80,8 +81,17 @@ type PendingTextCommandAfterSelectorUpdate = {
   commandTraceId: string;
   inputLength: number;
 };
+type MicrophoneLevelMonitor = {
+  audioContext: AudioContext;
+  analyser: AnalyserNode;
+  source: MediaStreamAudioSourceNode;
+  animationFrameId: number | null;
+};
 
 const PLANNED_WIDGET_PREFIX = "planned_widget_";
+const MICROPHONE_LEVEL_SILENCE_FLOOR = 0.015;
+const MICROPHONE_LEVEL_GAIN = 4.2;
+const MICROPHONE_LEVEL_EMIT_DELTA = 0.012;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
@@ -95,6 +105,22 @@ function parseArguments(value: unknown): unknown {
   } catch {
     return { raw: value };
   }
+}
+
+function clampUnit(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+export function resolveRealtimeMicrophoneLevel(samples: Uint8Array): number {
+  if (samples.length === 0) return 0;
+  let sumSquares = 0;
+  for (const sample of samples) {
+    const centered = (sample - 128) / 128;
+    sumSquares += centered * centered;
+  }
+  const rms = Math.sqrt(sumSquares / samples.length);
+  return clampUnit(Math.max(0, rms - MICROPHONE_LEVEL_SILENCE_FLOOR) * MICROPHONE_LEVEL_GAIN);
 }
 
 function normalizeMusicToolArguments(args: Record<string, unknown>): Record<string, unknown> {
@@ -697,6 +723,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private realtimeResponseTraceIds = new Map<string, string>();
   private realtimeItemTraceIds = new Map<string, string>();
   private functionCallTraceIds = new Map<string, string>();
+  private microphoneLevelMonitor: MicrophoneLevelMonitor | null = null;
   private pendingScopedToolSelectionResult: PendingScopedToolSelectionResult | null = null;
   private pendingTextCommandAfterSelectorUpdate: PendingTextCommandAfterSelectorUpdate | null = null;
 
@@ -798,6 +825,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         return;
       }
       this.mediaStream = stream;
+      this.startMicrophoneLevelMonitor(stream);
     } else {
       this.emitDiagnostic({ type: "realtime.microphone.permission", status: "skipped", data: { mode } });
     }
@@ -954,6 +982,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   }
 
   private closeResources(): void {
+    this.stopMicrophoneLevelMonitor();
     closeRealtimeConnectionResources({
       dataChannel: this.dataChannel,
       peerConnection: this.peerConnection,
@@ -968,6 +997,63 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.pendingScopedToolSelectionResult = null;
     this.pendingTextCommandAfterSelectorUpdate = null;
     this.clearRealtimeTraceState();
+  }
+
+  private startMicrophoneLevelMonitor(stream: MediaStream): void {
+    this.stopMicrophoneLevelMonitor();
+    if (!this.options.onMicrophoneLevel) return;
+    const AudioContextCtor =
+      globalThis.AudioContext ?? (globalThis as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return;
+
+    try {
+      const audioContext = new AudioContextCtor();
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.68;
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+      void audioContext.resume?.();
+
+      const samples = new Uint8Array(analyser.fftSize);
+      let smoothedLevel = 0;
+      let lastEmittedLevel = -1;
+      const monitor: MicrophoneLevelMonitor = { audioContext, analyser, source, animationFrameId: null };
+      const tick = () => {
+        analyser.getByteTimeDomainData(samples);
+        const rawLevel = resolveRealtimeMicrophoneLevel(samples);
+        smoothedLevel = smoothedLevel * 0.62 + rawLevel * 0.38;
+        if (Math.abs(smoothedLevel - lastEmittedLevel) >= MICROPHONE_LEVEL_EMIT_DELTA || smoothedLevel === 0) {
+          lastEmittedLevel = smoothedLevel;
+          this.options.onMicrophoneLevel?.(smoothedLevel);
+        }
+        monitor.animationFrameId = requestAnimationFrame(tick);
+      };
+
+      this.microphoneLevelMonitor = monitor;
+      tick();
+    } catch (error) {
+      this.emitDiagnostic({
+        type: "realtime.microphone.level_monitor",
+        status: "failed",
+        message: error instanceof Error ? error.message : "microphone level monitor failed"
+      });
+      this.options.onMicrophoneLevel?.(0);
+    }
+  }
+
+  private stopMicrophoneLevelMonitor(): void {
+    const monitor = this.microphoneLevelMonitor;
+    if (!monitor) {
+      this.options.onMicrophoneLevel?.(0);
+      return;
+    }
+    if (monitor.animationFrameId !== null) {
+      cancelAnimationFrame(monitor.animationFrameId);
+    }
+    void monitor.audioContext.close().catch(() => undefined);
+    this.microphoneLevelMonitor = null;
+    this.options.onMicrophoneLevel?.(0);
   }
 
   updateTools(tools: AssistantToolSpec[]): void {

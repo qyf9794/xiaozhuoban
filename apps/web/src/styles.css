@@ -214,6 +214,7 @@ body {
 }
 
 .voice-assistant-dock__orb {
+  --voice-orb-scale: 1;
   position: relative;
   flex: 0 0 auto;
   width: 128px;
@@ -226,7 +227,8 @@ body {
   cursor: grab;
   background: transparent;
   box-shadow: none;
-  transform: translateZ(0);
+  transform: translateZ(0) scale(var(--voice-orb-scale));
+  transition: transform 90ms linear, filter 180ms ease, opacity 180ms ease;
 }
 
 .voice-assistant-dock__orb:active {

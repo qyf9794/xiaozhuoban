@@ -4,6 +4,8 @@ import {
   getVoiceAssistantDockStateForRealtimeStatus,
   getVoiceAssistantErrorMessage,
   getVoiceAssistantDockStatusText,
+  getVoiceAssistantOrbColorMode,
+  getVoiceAssistantOrbScale,
   getVisibleVoiceAssistantOperation,
   getVoiceAssistantRuntimeText,
   getVoiceAssistantPreviewLines,
@@ -86,6 +88,16 @@ describe("VoiceAssistantDock", () => {
   it("keeps send available for DOM-backed command fallback", () => {
     expect(shouldDisableVoiceAssistantSend(false)).toBe(false);
     expect(shouldDisableVoiceAssistantSend(true)).toBe(true);
+  });
+
+  it("keeps the Siri orb mono before connection and scales gently with connected voice level", () => {
+    expect(getVoiceAssistantOrbColorMode("disconnected")).toBe("mono");
+    expect(getVoiceAssistantOrbColorMode("connecting")).toBe("mono");
+    expect(getVoiceAssistantOrbColorMode("connected")).toBe("color");
+    expect(getVoiceAssistantOrbScale("disconnected", 1)).toBe(1);
+    expect(getVoiceAssistantOrbScale("connected", 0)).toBe(1);
+    expect(getVoiceAssistantOrbScale("connected", 1)).toBeCloseTo(1.075);
+    expect(getVoiceAssistantOrbScale("connected", 10)).toBeCloseTo(1.075);
   });
 
   it("uses realtime text submission after realtime is ready unless the input answers a local confirmation", () => {

@@ -165,6 +165,7 @@ export function App() {
   const [desktopViewportBottomInset, setDesktopViewportBottomInset] = useState(14);
   const [mobileChromeVisible, setMobileChromeVisible] = useState(true);
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeConnectionStatus>("disconnected");
+  const [realtimeAudioLevel, setRealtimeAudioLevel] = useState(0);
   const [assistantRuntimeBudget, setAssistantRuntimeBudget] = useState<{
     mode: AssistantRuntimeMode;
     metrics: RealtimeBudgetMetrics;
@@ -237,6 +238,7 @@ export function App() {
         },
         adapterOptions: {
           getAccessToken: () => useAuthStore.getState().session?.access_token,
+          onMicrophoneLevel: setRealtimeAudioLevel,
           onDiagnostic: recordDiagnostic
         },
         onStatusChange: (status) => {
@@ -725,6 +727,7 @@ export function App() {
         <VoiceAssistantDock
           harness={assistantRuntime.harness}
           voiceStatus={realtimeStatus}
+          voiceAudioLevel={realtimeAudioLevel}
           onConnectVoice={assistantRuntime.connect}
           onConnectTextOnly={assistantRuntime.connectTextOnly}
           onDisconnectVoice={assistantRuntime.disconnect}
