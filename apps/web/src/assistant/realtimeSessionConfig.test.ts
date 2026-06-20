@@ -79,6 +79,7 @@ describe("realtime session config", () => {
     expect(tools).toHaveLength(1);
     expect(tools[0]?.name).toBe("assistant__dot__select_tool");
     expect(JSON.stringify(tools[0]?.parameters)).toContain("board.add_widget");
+    expect(JSON.stringify(tools[0]?.parameters)).toContain("selectedModule");
     expect(JSON.stringify(tools[0]?.parameters)).not.toContain("widgetId");
   });
 

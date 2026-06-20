@@ -120,8 +120,9 @@ describe("registerBoardActions", () => {
   it("registers desktop scoped board actions", () => {
     const { store } = createStore();
     const registry = createRegistry(store);
+    const specs = registry.list("desktop");
 
-    expect(registry.list("desktop").map((spec) => spec.name)).toEqual([
+    expect(specs.map((spec) => spec.name)).toEqual([
       "board.add_widget",
       "widget.focus",
       "widget.fullscreen_focus",
@@ -134,6 +135,18 @@ describe("registerBoardActions", () => {
       "board.create",
       "board.rename",
       "board.delete"
+    ]);
+    expect(
+      specs
+        .filter((spec) => spec.name.startsWith("widget."))
+        .map((spec) => [spec.name, spec.requiresTarget])
+    ).toEqual([
+      ["widget.focus", true],
+      ["widget.fullscreen_focus", true],
+      ["widget.remove", true],
+      ["widget.move", true],
+      ["widget.resize", true],
+      ["widget.bring_to_front", true]
     ]);
   });
 

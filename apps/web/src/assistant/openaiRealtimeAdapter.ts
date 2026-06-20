@@ -1429,13 +1429,14 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       return;
     }
 
+    const selectedModule = this.resolveSelectedModuleForToolSelection(selectedTool, selection);
     const update = createScopedRealtimeToolUpdate(
       {
         input: selection.userCommand || selection.targetHint || selection.name,
         context: this.currentContext,
         tools: this.currentTools,
-        moduleContext: selection.selectedModule
-          ? this.moduleRegistry?.getScopedContextForModule(selection.selectedModule, {
+        moduleContext: selectedModule
+          ? this.moduleRegistry?.getScopedContextForModule(selectedModule, {
               userText: selection.userCommand || selection.targetHint || selection.name,
               selectedToolHint: selection.name,
               compactContext: this.currentContext,
@@ -1479,7 +1480,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       status: "success",
       operationId: call.id,
       toolName: selectedTool.name,
-      data: { targetHint: selection.targetHint, selectedModule: selection.selectedModule, confidence: selection.confidence }
+      data: { targetHint: selection.targetHint, selectedModule, confidence: selection.confidence }
     });
     this.emitDiagnostic({
       type: "realtime.tool_selection.result_deferred",
@@ -1488,6 +1489,27 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       toolName: selectedTool.name,
       commandTraceId
     });
+  }
+
+  private resolveSelectedModuleForToolSelection(
+    selectedTool: AssistantToolSpec,
+    selection: NonNullable<ReturnType<typeof parseToolSelectionArguments>>
+  ): string | undefined {
+    if (selection.selectedModule) return selection.selectedModule;
+    if (selectedTool.widgetType) return selectedTool.widgetType;
+
+    const input = selection.userCommand || selection.targetHint || selection.name;
+    const scopedContext = this.currentContext ? createScopedRealtimeContext(this.currentContext, selectedTool, selection, input) : null;
+    const scopedWidgetTypes = [...new Set((scopedContext?.widgets ?? []).map((widget) => widget.type).filter(Boolean))];
+    if (scopedWidgetTypes.length === 1) {
+      return scopedWidgetTypes[0];
+    }
+
+    if (!selectedTool.name.startsWith("widget.")) {
+      return this.moduleRegistry?.findModuleForTool(selectedTool.name)?.type ?? selectedTool.name.split(".")[0];
+    }
+
+    return undefined;
   }
 
   private sendEvent(event: RealtimeEvent, options: { queueWhenClosed?: boolean; commandTraceId?: string } = {}): void {

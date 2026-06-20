@@ -1201,6 +1201,100 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(serialized).not.toContain("private note");
   });
 
+  it("infers module context for generic widget removal when selectedModule is omitted", () => {
+    const adapter = new OpenAIRealtimeWebRtcAdapter();
+    const registry = new WidgetAssistantRegistry();
+    registry.register({
+      type: "worldClock",
+      definition: { id: "worldClock", type: "worldClock", name: "世界时钟" },
+      aliases: ["世界时钟"],
+      shortcuts: [],
+      tools: [],
+      context: {
+        getScopedContext: ({ compactContext }) => ({
+          moduleType: "worldClock",
+          tools: [],
+          toolSchemas: {},
+          instances: (compactContext?.widgets ?? []).filter((widget) => widget.type === "worldClock"),
+          stateSummary: { instanceCount: compactContext?.widgetCountsByType?.worldClock ?? 0 },
+          shortcutExamples: ["关闭世界时钟"],
+          executionPolicy: { defaultMode: "latest-wins" },
+          riskPolicy: { safe: ["widget.remove"], confirm: [], destructive: [] }
+        })
+      },
+      realtime: {
+        exposeCatalog: () => ({
+          type: "worldClock",
+          displayName: "世界时钟",
+          aliases: ["世界时钟"],
+          capabilities: ["关闭窗口"],
+          shortcutExamples: ["关闭世界时钟"],
+          riskSummary: []
+        }),
+        getScopedContext: ({ compactContext }) => ({
+          moduleType: "worldClock",
+          tools: [],
+          toolSchemas: {},
+          instances: (compactContext?.widgets ?? []).filter((widget) => widget.type === "worldClock"),
+          stateSummary: { instanceCount: compactContext?.widgetCountsByType?.worldClock ?? 0 },
+          shortcutExamples: ["关闭世界时钟"],
+          executionPolicy: { defaultMode: "latest-wins" },
+          riskPolicy: { safe: ["widget.remove"], confirm: [], destructive: [] }
+        })
+      },
+      executionPolicy: { defaultMode: "latest-wins" }
+    });
+    adapter.updateModules(registry);
+    adapter.updateTools([
+      {
+        name: "widget.remove",
+        description: "删除小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop",
+        risk: "safe",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: { worldClock: 1, note: 1 },
+      widgets: [
+        {
+          widgetId: "wi_world",
+          definitionId: "wd_worldClock",
+          type: "worldClock",
+          name: "世界时钟",
+          order: 1,
+          summary: "北京 伦敦 纽约"
+        },
+        {
+          widgetId: "wi_note",
+          definitionId: "wd_note",
+          type: "note",
+          name: "便签",
+          order: 2,
+          summary: "private note"
+        }
+      ]
+    });
+    (adapter as unknown as { sessionReady: boolean }).sessionReady = true;
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_world_clock",
+      name: "assistant.select_tool",
+      arguments: { name: "widget.remove", targetHint: "世界时钟", userCommand: "关闭世界时钟", confidence: 0.94 },
+      source: "realtime"
+    });
+
+    const serialized = JSON.stringify((adapter as unknown as { queuedEvents: unknown[] }).queuedEvents);
+    expect(serialized).toContain("Selected Module Scoped Context");
+    expect(serialized).toContain("worldClock");
+    expect(serialized).toContain("wi_world");
+    expect(serialized).toContain("widget__dot__remove");
+    expect(serialized).not.toContain("private note");
+  });
+
   it("waits for scoped session.updated before sending tool selection results", () => {
     const sent: unknown[] = [];
     const diagnostics: Array<{ type: string; status?: string; operationId?: string; toolName?: string }> = [];

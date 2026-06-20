@@ -286,6 +286,11 @@ export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[]): Rea
           enum: tools.map((tool) => tool.name),
           description: "Selected registered tool name."
         },
+        selectedModule: {
+          type: "string",
+          enum: (tools.length > 0 ? [...new Set(tools.map((tool) => tool.widgetType).filter(Boolean))] : []) as string[],
+          description: "Selected Xiaozhuoban module type when known."
+        },
         targetHint: {
           type: "string",
           description: "Short target words copied from the user's command."

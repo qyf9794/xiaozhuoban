@@ -224,7 +224,8 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         description: "Focus an existing widget on the current board.",
         parameters: widgetIdSchema,
         risk: "safe",
-        scope: "desktop"
+        scope: "desktop",
+        requiresTarget: true
       },
       async execute(args, context) {
         const target = findWidget(store, args.widgetId);
@@ -241,7 +242,8 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         description: "Enter fullscreen focus for an existing widget when supported.",
         parameters: widgetIdSchema,
         risk: "safe",
-        scope: "desktop"
+        scope: "desktop",
+        requiresTarget: true
       },
       async execute(args, context) {
         const target = findWidget(store, args.widgetId);
@@ -261,7 +263,8 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         description: "Close a widget window on the current board.",
         parameters: widgetIdSchema,
         risk: "safe",
-        scope: "desktop"
+        scope: "desktop",
+        requiresTarget: true
       },
       async execute(args, context) {
         await callMaybeWithOptions(store.removeWidgetInstance, [args.widgetId], persistOptions(context));
@@ -274,7 +277,8 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         description: "Move a widget to a new board position.",
         parameters: moveWidgetSchema,
         risk: "safe",
-        scope: "desktop"
+        scope: "desktop",
+        requiresTarget: true
       },
       async execute(args, context) {
         const target = findWidget(store, args.widgetId);
@@ -295,7 +299,8 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         description: "Resize a widget only when its existing panel supports resizing.",
         parameters: resizeWidgetSchema,
         risk: "safe",
-        scope: "desktop"
+        scope: "desktop",
+        requiresTarget: true
       },
       async execute(args, context) {
         const target = findWidget(store, args.widgetId);
@@ -319,7 +324,8 @@ function boardActions(store: BoardActionStore): Array<AssistantAction<any>> {
         description: "Bring a widget to the front if the store supports layer changes.",
         parameters: widgetIdSchema,
         risk: "safe",
-        scope: "desktop"
+        scope: "desktop",
+        requiresTarget: true
       },
       async execute(args, context) {
         if (!store.bringWidgetToFront) {
