@@ -196,7 +196,7 @@ export class SiriRenderer {
 		this._contextLost = false;
 		// Dynamic-Island dark container (see effect-composite shader). Embedded
 		// floating orbs should not carry the original phone island's opaque black.
-		this.container = embedded ? { black: 0, fade: 1, gauss: 4, strength: 0.22 } : { black: 0.25, fade: 1, gauss: 8, strength: 0.9 };
+		this.container = embedded ? { black: 0, fade: 1, gauss: 3, strength: 0.74 } : { black: 0.25, fade: 1, gauss: 8, strength: 0.9 };
 		// anger: deep wine-red tint on the dark container, raised by main/ask-flow
 		// when a reply opens with "!!!!". 0 = neutral black, 1 = full red glow.
 		this.anger = 0;

@@ -24,10 +24,8 @@ function setNeutralBackdrop() {
   tile.height = 2;
   const ctx = tile.getContext("2d");
   if (!ctx) return;
-  const gradient = ctx.createLinearGradient(0, 0, 0, 2);
-  gradient.addColorStop(0, "#f6fbff");
-  gradient.addColorStop(1, "#7b8c98");
-  ctx.fillStyle = gradient;
+  ctx.clearRect(0, 0, 2, 2);
+  ctx.fillStyle = "rgba(0, 0, 0, 0)";
   ctx.fillRect(0, 0, 2, 2);
   renderer.setBackgroundImage(tile);
 }
