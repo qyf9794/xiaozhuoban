@@ -258,8 +258,10 @@ void main() {
 	// framed: the photo fills the canvas around the panel (standalone page)
 	vec4 framed = vec4(mix(background, glassRgb, a), 1.0);
 	// floating: premultiplied glass over transparency (embedded in a host page,
-	// which supplies the real backdrop behind the canvas)
-	vec4 floating = vec4(glassRgb * a, a);
+	// which supplies the real backdrop behind the canvas). Keep the orb glass
+	// translucent instead of painting the original standalone sphere as opaque.
+	float floatingOpacity = mix(1.0, 0.58, clamp(uTransparentOutside, 0.0, 1.0));
+	vec4 floating = vec4(glassRgb * a * floatingOpacity, a * floatingOpacity);
 	outColor = mix(framed, floating, clamp(uTransparentOutside, 0.0, 1.0));
 }
 `;
