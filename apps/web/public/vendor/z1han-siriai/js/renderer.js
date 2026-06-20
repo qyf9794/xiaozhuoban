@@ -438,9 +438,10 @@ export class SiriRenderer {
 		this._draw(
 			this.programs.glassComposite,
 			[
-				{ name: 'uResolution', type: 'vec2', value: [this.width, this.height] },
-				{ name: 'uTextureSize', type: 'vec2', value: this.backgroundSize },
-				{ name: 'uPanelSize', type: 'vec2', value: layout.panelSize },
+					{ name: 'uResolution', type: 'vec2', value: [this.width, this.height] },
+					{ name: 'uTextureSize', type: 'vec2', value: this.backgroundSize },
+					{ name: 'uTime', value: this.time },
+					{ name: 'uPanelSize', type: 'vec2', value: layout.panelSize },
 				{ name: 'uCanvasSize', type: 'vec2', value: [this.width, this.height] },
 				{ name: 'uPanelOrigin', type: 'vec2', value: layout.panelOrigin },
 				{ name: 'uMarginPx', value: layout.margin },

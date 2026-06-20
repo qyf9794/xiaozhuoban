@@ -22,6 +22,7 @@ precision highp float;
 uniform vec2 uResolution;
 uniform sampler2D uSceneTexture;
 uniform sampler2D uBackground;
+uniform float uTime;
 
 uniform vec2 uTextureSize;
 uniform vec2 uPanelSize;
@@ -184,6 +185,14 @@ float highlightBand(float d, vec2 grad) {
 	return keyN + fillN;
 }
 
+float orbWaveBoundary(vec2 normalizedPanel) {
+	float x = clamp(normalizedPanel.x, -1.0, 1.0);
+	float envelope = pow(max(cos(min(abs(x) * 0.92, 1.0) * 1.5707964), 0.0), 2.0);
+	float primary = sin(x * 3.35 - uTime * 1.55);
+	float secondary = sin(x * 6.7 + uTime * 0.72 + 1.1) * 0.32;
+	return (primary + secondary) * envelope * 0.07;
+}
+
 vec4 glassFragment(vec2 pixel) {
 	vec2 panelUv = (pixel - uPanelOrigin) / uPanelSize;
 	vec2 inQuad = step(vec2(0.0), panelUv) * step(panelUv, vec2(1.0));
@@ -199,14 +208,18 @@ vec4 glassFragment(vec2 pixel) {
 	vec2 baseUv = (uPanelOrigin + panelUv * uPanelSize) / uCanvasSize;
 	vec2 rUv = clamp(refractedUv(baseUv, d, grad), vec2(0.0), vec2(1.0));
 
-	// glass = refraction + highlight ONLY — no face color (no saturation/black/luma/tint),
-	// so it looks like untouched glass over whatever is behind it.
+	vec2 normalizedPanel = p / max(halfSize, vec2(1.0));
+	float waveBoundary = orbWaveBoundary(normalizedPanel);
+
 	vec3 col = sampleScene(rUv);
+	float sceneLight = max(max(col.r, col.g), col.b);
+	float waveProtect = smoothstep(0.12, 0.82, sceneLight);
+	float upperBlack = 1.0 - smoothstep(0.0, 0.82, normalizedPanel.y);
+	col = mix(col, vec3(0.0), clamp(upperBlack * (1.0 - waveProtect * 0.92), 0.0, 1.0));
 	col += vec3(highlightBand(d, grad) * uHlAmount);
 
 	// Inner rim reflections: a warm key lobe across the upper glass edge and a
 	// cooler blue return lobe near the lower edge, matching the mobile Siri view.
-	vec2 normalizedPanel = p / max(halfSize, vec2(1.0));
 	float radial = length(normalizedPanel);
 	float innerRim = smoothstep(0.62, 0.92, radial) * (1.0 - smoothstep(0.98, 1.06, radial)) * alpha;
 	float upperLobe = (1.0 - smoothstep(-0.54, 0.04, normalizedPanel.y)) * smoothstep(-0.96, -0.18, normalizedPanel.x + 0.26);
@@ -244,7 +257,9 @@ vec4 glassFragment(vec2 pixel) {
 		col = mix(col, chipCol, ca);
 	}
 	float embedded = clamp(uTransparentOutside, 0.0, 1.0);
-	float embeddedFade = 1.0 - smoothstep(0.5, 1.0, panelUv.y);
+	float aboveWave = 1.0 - smoothstep(waveBoundary - 0.035, waveBoundary + 0.035, normalizedPanel.y);
+	float embeddedFade = 1.0 - smoothstep(waveBoundary + 0.02, 1.0, normalizedPanel.y);
+	embeddedFade = mix(embeddedFade, 1.0, aboveWave);
 	float embeddedAlpha = alpha * embeddedFade;
 	return vec4(col, mix(alpha, embeddedAlpha, embedded));
 }
