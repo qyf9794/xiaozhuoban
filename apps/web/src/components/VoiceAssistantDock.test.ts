@@ -109,8 +109,8 @@ describe("VoiceAssistantDock", () => {
     expect(getVoiceAssistantOrbColorMode("connected")).toBe("color");
     expect(getVoiceAssistantOrbScale("disconnected", 1)).toBe(1);
     expect(getVoiceAssistantOrbScale("connected", 0)).toBe(1);
-    expect(getVoiceAssistantOrbScale("connected", 1)).toBeCloseTo(0.955);
-    expect(getVoiceAssistantOrbScale("connected", 10)).toBeCloseTo(0.955);
+    expect(getVoiceAssistantOrbScale("connected", 1)).toBeCloseTo(0.915);
+    expect(getVoiceAssistantOrbScale("connected", 10)).toBeCloseTo(0.915);
   });
 
   it("keeps the mobile voice dock resident instead of translating it off screen", () => {

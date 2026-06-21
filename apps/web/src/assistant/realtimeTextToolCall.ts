@@ -16,6 +16,7 @@ import {
 import {
   XIAOZHUOBAN_REALTIME_MODEL,
   createRealtimeContextInstructions,
+  createRealtimeSessionAudioConfig,
   decodeRealtimeToolName,
   serializeAssistantToolForRealtime,
   type RealtimeFunctionTool
@@ -516,6 +517,7 @@ export function createScopedRealtimeToolUpdate(
     session: {
       type: "realtime",
       instructions: createScopedRealtimeToolInstructions(scopedContext, selection, request.input, request.moduleContext),
+      audio: createRealtimeSessionAudioConfig(),
       tools: executableTools.map((candidate) => serializeAssistantToolForRealtime(candidate)),
       tool_choice: executableTools.length ? "required" : "none",
       parallel_tool_calls: false

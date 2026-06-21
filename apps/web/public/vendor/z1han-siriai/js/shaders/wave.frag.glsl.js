@@ -166,6 +166,16 @@ void main() {
 	float m = max(max(col.r, col.g), col.b);
 	vec3 huePreserved = col * ((m > 1.0) ? (1.0 / m) : 1.0);
 	col = mix(huePreserved, min(col, vec3(1.0)), clamp(uWhiteClip, 0.0, 1.0));
+	float paletteY = smoothstep(-0.24, 0.24, py - waveBase * 0.35);
+	vec3 lowerBlue = vec3(0.05, 0.22, 1.0);
+	vec3 centerBlue = vec3(0.08, 0.45, 1.0);
+	vec3 upperWarm = vec3(1.0, 0.66, 0.30);
+	vec3 referencePalette = mix(upperWarm, centerBlue, smoothstep(0.0, 0.52, paletteY));
+	referencePalette = mix(referencePalette, lowerBlue, smoothstep(0.48, 1.0, paletteY));
+	referencePalette = mix(referencePalette, vec3(1.0, 0.92, 0.72), smoothstep(0.78, 1.0, m));
+	float colorEnergy = max(max(col.r, col.g), col.b);
+	vec3 referenceCol = referencePalette * colorEnergy * 1.34;
+	col = mix(mix(referenceCol, col * referencePalette * 1.1, 0.18), col, clamp(uMonoMode, 0.0, 1.0));
 	float monoLum = max(max(col.r, col.g), col.b);
 	vec3 monoCol = vec3(monoLum) * vec3(0.92, 0.96, 1.0);
 	col = mix(col, monoCol, clamp(uMonoMode, 0.0, 1.0));

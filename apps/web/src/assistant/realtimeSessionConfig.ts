@@ -46,6 +46,18 @@ export interface RealtimeFunctionTool {
   parameters: Record<string, unknown>;
 }
 
+export function createRealtimeSessionAudioConfig(options: RealtimeSessionOptions = {}) {
+  return {
+    input: {
+      turn_detection: createRealtimeTurnDetection(options),
+      transcription: createRealtimeInputTranscription()
+    },
+    output: {
+      voice: "marin"
+    }
+  };
+}
+
 type JsonObjectSchema = {
   type: "object";
   properties: Record<string, unknown>;
@@ -378,16 +390,8 @@ export function createRealtimeClientSecretPayload(options: RealtimeSessionOption
       reasoning: {
         effort: options.reasoningEffort ?? "low"
       },
-      audio: {
-        input: {
-          turn_detection: createRealtimeTurnDetection(options),
-          transcription: createRealtimeInputTranscription()
-        },
-        output: {
-          voice: "marin"
-        }
-      },
-      max_output_tokens: 120,
+      audio: createRealtimeSessionAudioConfig(options),
+      max_output_tokens: 240,
       tool_choice: "auto",
       parallel_tool_calls: true,
       tools: createInitialRealtimeTools()

@@ -150,7 +150,7 @@ function clampVoiceAssistantAudioLevel(level: number | undefined): number {
 
 export function getVoiceAssistantOrbScale(voiceStatus: RealtimeConnectionStatus, audioLevel: number | undefined): number {
   if (voiceStatus !== "connected") return 1;
-  return 1 - clampVoiceAssistantAudioLevel(audioLevel) * 0.045;
+  return 1 - clampVoiceAssistantAudioLevel(audioLevel) * 0.085;
 }
 
 export function getVoiceAssistantOrbColorMode(voiceStatus: RealtimeConnectionStatus): "mono" | "color" {
@@ -459,7 +459,7 @@ export function VoiceAssistantDock({
   const visibleOperation = getVisibleVoiceAssistantOperation(operation, operationStatus);
   const panelAnswerText = getVoiceAssistantPanelAnswerText(assistantSpeech?.text, pending?.message);
   const orbVisualMode = getVoiceAssistantOrbVisualMode(visualState, visibleOperation, textPanelVisible);
-  const orbAudioLevel = clampVoiceAssistantAudioLevel(Math.max(voiceAudioLevel, assistantSpeechLevel));
+  const orbAudioLevel = Math.pow(clampVoiceAssistantAudioLevel(Math.max(voiceAudioLevel, assistantSpeechLevel)), 0.78);
   const orbColorMode = getVoiceAssistantOrbColorMode(voiceStatus);
   const orbScale = getVoiceAssistantOrbScale(voiceStatus, orbAudioLevel);
 

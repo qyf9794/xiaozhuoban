@@ -1,5 +1,5 @@
-import { SiriRenderer } from "./renderer.js?v=20260621-orb-rim-lift";
-import { createSiriState } from "./state.js?v=20260621-orb-rim-lift";
+import { SiriRenderer } from "./renderer.js?v=20260621-voice-audio-wave";
+import { createSiriState } from "./state.js?v=20260621-voice-audio-wave";
 
 const canvas = document.querySelector("#siri27-canvas");
 const status = document.querySelector("#mic-status");
@@ -50,29 +50,29 @@ function selectColorMode(nextColorMode) {
 function syntheticBands(now, voiceDrive = 0) {
   if (mode === "thinking") {
     return {
-      low: Math.min(1, 0.55 + 0.16 * Math.sin(now * 0.0028) + voiceDrive * 0.3),
-      mid: Math.min(1, 0.46 + voiceDrive * 0.24),
-      high: Math.min(1, 0.34 + voiceDrive * 0.16)
+      low: Math.min(1, 0.55 + 0.16 * Math.sin(now * 0.0028) + voiceDrive * 0.38),
+      mid: Math.min(1, 0.46 + voiceDrive * 0.3),
+      high: Math.min(1, 0.34 + voiceDrive * 0.2)
     };
   }
   if (mode === "listening") {
     return {
-      low: Math.min(1, 0.28 + 0.12 * Math.sin(now * 0.0022) + voiceDrive * 0.55),
-      mid: Math.min(1, 0.18 + 0.075 * Math.sin(now * 0.0032 + 1.4) + voiceDrive * 0.38),
-      high: Math.min(1, 0.16 + 0.055 * Math.sin(now * 0.0042 + 2.2) + voiceDrive * 0.24)
+      low: Math.min(1, 0.28 + 0.12 * Math.sin(now * 0.0022) + voiceDrive * 0.68),
+      mid: Math.min(1, 0.18 + 0.075 * Math.sin(now * 0.0032 + 1.4) + voiceDrive * 0.48),
+      high: Math.min(1, 0.16 + 0.055 * Math.sin(now * 0.0042 + 2.2) + voiceDrive * 0.32)
     };
   }
   return {
-    low: Math.min(1, 0.34 + 0.055 * Math.sin(now * 0.00055) + voiceDrive * 0.16),
-    mid: Math.min(1, 0.24 + 0.035 * Math.sin(now * 0.0007 + 1.2) + voiceDrive * 0.11),
-    high: Math.min(1, 0.16 + 0.025 * Math.sin(now * 0.00085 + 2.1) + voiceDrive * 0.08)
+    low: Math.min(1, 0.34 + 0.055 * Math.sin(now * 0.00055) + voiceDrive * 0.24),
+    mid: Math.min(1, 0.24 + 0.035 * Math.sin(now * 0.0007 + 1.2) + voiceDrive * 0.17),
+    high: Math.min(1, 0.16 + 0.025 * Math.sin(now * 0.00085 + 2.1) + voiceDrive * 0.12)
   };
 }
 
 function frame(now) {
   const dt = prevTimestamp ? Math.min((now - prevTimestamp) / 1000, 0.1) : 0;
   prevTimestamp = now;
-  audioPeak = Math.max(audioLevel, audioPeak * Math.exp(-dt * 4.2));
+  audioPeak = Math.max(audioLevel, audioPeak * Math.exp(-dt * 3.4));
   const bands = syntheticBands(now, audioPeak);
   siri.tick(dt, bands);
   renderer.render({ surface: siri.surface, progress: siri.progress, bands, sizes: siri.sizes, dt });

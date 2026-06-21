@@ -147,6 +147,16 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(events[1]).toEqual({ type: "response.create", response: { output_modalities: ["text"] } });
   });
 
+  it("creates audio response events for voice realtime tool results", () => {
+    const events = createRealtimeToolResultEvents(
+      { id: "call_1", name: "widget.remove", arguments: { widgetId: "wi_worldClock" }, source: "realtime" },
+      { status: "success", message: "已关闭" },
+      { responseMode: "voice" }
+    );
+
+    expect(events[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio", "text"] } });
+  });
+
   it("creates realtime text command events with text-only response output", () => {
     expect(createRealtimeTextCommandEvents("打开表盘时钟")).toEqual([
       {
@@ -301,6 +311,42 @@ describe("OpenAI realtime adapter helpers", () => {
 
     expect(sent).toHaveLength(2);
     expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["text"] } });
+  });
+
+  it("continues voice realtime with audio after active tool response finishes", () => {
+    const adapter = new OpenAIRealtimeWebRtcAdapter();
+    const sent: unknown[] = [];
+    Object.assign(
+      adapter as unknown as {
+        dataChannel: { readyState: string; send: (payload: string) => void };
+        activeResponseId: string;
+        connectMode: "audio";
+      },
+      {
+        activeResponseId: "resp_voice_1",
+        connectMode: "audio",
+        dataChannel: {
+          readyState: "open",
+          send(payload: string) {
+            sent.push(JSON.parse(payload) as unknown);
+          }
+        }
+      }
+    );
+
+    adapter.sendToolResult(
+      { id: "call_voice_1", name: "assistant.select_tool", arguments: {}, source: "realtime" },
+      { status: "success", message: "已选择工具" }
+    );
+    expect(sent).toHaveLength(1);
+
+    (
+      adapter as unknown as {
+        handleRealtimeLifecycleEvent: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeLifecycleEvent({ type: "response.done", response: { id: "resp_voice_1" } });
+
+    expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio", "text"] } });
   });
 
   it("tracks active realtime responses through lifecycle events", () => {
@@ -509,6 +555,53 @@ describe("OpenAI realtime adapter helpers", () => {
       Object.defineProperty(globalThis, "navigator", {
         configurable: true,
         value: originalNavigator
+      });
+    }
+  });
+
+  it("keeps remote audio element alive until realtime disconnects", () => {
+    const originalAudio = globalThis.Audio;
+    const adapter = new OpenAIRealtimeWebRtcAdapter();
+    const calls: string[] = [];
+    const attributes = new Map<string, string>();
+    const remoteStream = { id: "remote_stream_1" };
+    class MockAudio {
+      autoplay = false;
+      srcObject: unknown = null;
+
+      setAttribute(name: string, value: string) {
+        attributes.set(name, value);
+      }
+
+      play() {
+        calls.push("play");
+        return Promise.resolve();
+      }
+
+      pause() {
+        calls.push("pause");
+      }
+    }
+
+    Object.defineProperty(globalThis, "Audio", {
+      configurable: true,
+      value: MockAudio
+    });
+
+    try {
+      (adapter as unknown as { attachRemoteAudioStream: (stream: MediaStream) => void }).attachRemoteAudioStream(remoteStream as MediaStream);
+      const retained = (adapter as unknown as { remoteAudioElement: HTMLAudioElement | null }).remoteAudioElement;
+      expect(retained).toMatchObject({ autoplay: true, srcObject: remoteStream });
+      expect(attributes.get("playsinline")).toBe("true");
+      expect(calls).toContain("play");
+
+      (adapter as unknown as { closeResources: () => void }).closeResources();
+      expect((adapter as unknown as { remoteAudioElement: HTMLAudioElement | null }).remoteAudioElement).toBeNull();
+      expect(calls).toContain("pause");
+    } finally {
+      Object.defineProperty(globalThis, "Audio", {
+        configurable: true,
+        value: originalAudio
       });
     }
   });
@@ -1196,6 +1289,8 @@ describe("OpenAI realtime adapter helpers", () => {
     const serialized = JSON.stringify((adapter as unknown as { queuedEvents: unknown[] }).queuedEvents);
     expect(serialized).toContain("assistant__dot__select_tool");
     expect(serialized).toContain("widget__dot__remove");
+    expect(serialized).toContain("semantic_vad");
+    expect(serialized).toContain("gpt-4o-mini-transcribe");
     expect(serialized).toContain("wi_music");
     expect(serialized).not.toContain("music__dot__pause");
     expect(serialized).not.toContain("private note");

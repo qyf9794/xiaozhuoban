@@ -157,7 +157,7 @@ export function createRealtimeClientSecretPayload(options: RealtimeSessionOption
           voice: "marin"
         }
       },
-      max_output_tokens: 120,
+      max_output_tokens: 240,
       tool_choice: "auto",
       parallel_tool_calls: true,
       tools: createInitialRealtimeTools()

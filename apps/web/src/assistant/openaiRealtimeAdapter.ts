@@ -11,6 +11,7 @@ import type { AssistantRealtimeAdapter } from "./AssistantHarness";
 import type { AssistantDiagnosticEvent } from "./assistantDiagnostics";
 import {
   createInitialRealtimeToolSpecs,
+  createRealtimeSessionAudioConfig,
   decodeRealtimeToolName
 } from "./realtimeSessionConfig";
 import { realtimeWidgetAliases } from "./realtimeRoutingPolicy";
@@ -103,9 +104,9 @@ const TARGET_REQUIRED_WINDOW_TOOLS = new Set([
   "widget.resize",
   "widget.bring_to_front"
 ]);
-const MICROPHONE_LEVEL_SILENCE_FLOOR = 0.015;
-const MICROPHONE_LEVEL_GAIN = 4.2;
-const MICROPHONE_LEVEL_EMIT_DELTA = 0.012;
+const MICROPHONE_LEVEL_SILENCE_FLOOR = 0.01;
+const MICROPHONE_LEVEL_GAIN = 5.2;
+const MICROPHONE_LEVEL_EMIT_DELTA = 0.008;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
@@ -555,7 +556,7 @@ export function handleRealtimeFunctionCallEvent(
 export function createRealtimeToolResultEvents(
   call: AssistantToolCall,
   result: AssistantToolResult,
-  options: { activeResponseId?: string | null } = {}
+  options: { activeResponseId?: string | null; responseMode?: RealtimeResponseMode } = {}
 ): RealtimeEvent[] {
   const events: RealtimeEvent[] = [
     {
@@ -568,18 +569,24 @@ export function createRealtimeToolResultEvents(
     }
   ];
   if (!options.activeResponseId) {
-    events.push(createRealtimeTextOnlyResponseCreateEvent());
+    events.push(createRealtimeResponseCreateEvent(options.responseMode ?? "text"));
   }
   return events;
 }
 
-function createRealtimeTextOnlyResponseCreateEvent(): RealtimeEvent {
+type RealtimeResponseMode = "text" | "voice";
+
+function createRealtimeResponseCreateEvent(mode: RealtimeResponseMode = "text"): RealtimeEvent {
   return {
     type: "response.create",
     response: {
-      output_modalities: ["text"]
+      output_modalities: mode === "voice" ? ["audio", "text"] : ["text"]
     }
   };
+}
+
+function createRealtimeTextOnlyResponseCreateEvent(): RealtimeEvent {
+  return createRealtimeResponseCreateEvent("text");
 }
 
 export function createRealtimeTextCommandEvents(input: string): RealtimeEvent[] {
@@ -844,9 +851,11 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private realtimeItemTraceIds = new Map<string, string>();
   private functionCallTraceIds = new Map<string, string>();
   private microphoneLevelMonitor: MicrophoneLevelMonitor | null = null;
+  private remoteAudioElement: HTMLAudioElement | null = null;
   private pendingScopedToolSelectionResult: PendingScopedToolSelectionResult | null = null;
   private pendingTextCommandAfterSelectorUpdate: PendingTextCommandAfterSelectorUpdate | null = null;
   private activeScopedToolSelection: RealtimeTargetHint | null = null;
+  private connectMode: RealtimeConnectMode = "text";
 
   constructor(private readonly options: OpenAIRealtimeWebRtcAdapterOptions = {}) {}
 
@@ -899,6 +908,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
 
   private async connectInternal(attemptId: number, mode: RealtimeConnectMode): Promise<void> {
     const fetchImpl = this.options.fetchImpl ?? fetch;
+    this.connectMode = mode;
     this.options.onStatusChange?.("connecting");
     this.emitDiagnostic({ type: "realtime.connect.start", status: "connecting", data: { mode } });
     this.handledFunctionCallIds.clear();
@@ -1014,10 +1024,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       peerConnection.oniceconnectionstatechange = () => handlePeerStateChange(peerConnection.iceConnectionState);
       peerConnection.ontrack = (event) => {
         const [remoteStream] = event.streams;
-        if (!remoteStream || typeof Audio === "undefined") return;
-        const audio = new Audio();
-        audio.autoplay = true;
-        audio.srcObject = remoteStream;
+        this.attachRemoteAudioStream(remoteStream);
       };
 
       dataChannel.onopen = () => {
@@ -1106,6 +1113,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
 
   private closeResources(): void {
     this.stopMicrophoneLevelMonitor();
+    this.releaseRemoteAudioElement();
     closeRealtimeConnectionResources({
       dataChannel: this.dataChannel,
       peerConnection: this.peerConnection,
@@ -1121,6 +1129,31 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.pendingTextCommandAfterSelectorUpdate = null;
     this.activeScopedToolSelection = null;
     this.clearRealtimeTraceState();
+  }
+
+  private releaseRemoteAudioElement(): void {
+    const audio = this.remoteAudioElement;
+    if (!audio) return;
+    audio.pause();
+    audio.srcObject = null;
+    this.remoteAudioElement = null;
+  }
+
+  private attachRemoteAudioStream(remoteStream: MediaStream | undefined): void {
+    if (!remoteStream || typeof Audio === "undefined") return;
+    this.releaseRemoteAudioElement();
+    const audio = new Audio();
+    audio.autoplay = true;
+    audio.setAttribute("playsinline", "true");
+    audio.srcObject = remoteStream;
+    this.remoteAudioElement = audio;
+    void audio.play?.().catch((error) => {
+      this.emitDiagnostic({
+        type: "realtime.remote_audio.play",
+        status: "failed",
+        message: error instanceof Error ? error.message : "remote audio play failed"
+      });
+    });
   }
 
   private startMicrophoneLevelMonitor(stream: MediaStream): void {
@@ -1200,6 +1233,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       session: {
         type: "realtime",
         instructions: createRealtimeToolSelectionInstructions(tools, capabilityCatalog),
+        audio: createRealtimeSessionAudioConfig(),
         tools: [createRealtimeToolSelectionTool(tools)],
         tool_choice: "auto",
         parallel_tool_calls: false
@@ -1266,9 +1300,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       errorCode: result.errorCode,
       commandTraceId
     });
-    createRealtimeToolResultEvents(call, result, { activeResponseId: this.activeResponseId }).forEach((event) =>
-      this.sendEvent(event, { queueWhenClosed: false, commandTraceId })
-    );
+    createRealtimeToolResultEvents(call, result, {
+      activeResponseId: this.activeResponseId,
+      responseMode: this.connectMode === "audio" ? "voice" : "text"
+    }).forEach((event) => this.sendEvent(event, { queueWhenClosed: false, commandTraceId }));
     if (hadActiveResponse) {
       this.pendingResponseCreateAfterActiveToolResult = true;
     }
@@ -1698,7 +1733,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (previousActiveResponseId && !this.activeResponseId && this.pendingResponseCreateAfterActiveToolResult) {
       this.pendingResponseCreateAfterActiveToolResult = false;
       this.emitDiagnostic({ type: "realtime.response.create_after_tool_result", status: "sent" });
-      this.sendEvent(createRealtimeTextOnlyResponseCreateEvent(), { queueWhenClosed: false });
+      this.sendEvent(createRealtimeResponseCreateEvent(this.connectMode === "audio" ? "voice" : "text"), { queueWhenClosed: false });
     }
     if (event.type === "session.updated") {
       this.clearSessionUpdateTimeout();

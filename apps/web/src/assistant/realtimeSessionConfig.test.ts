@@ -11,6 +11,7 @@ import {
   createRealtimeInputTranscription,
   createRealtimeContextInstructions,
   createRealtimeClientSecretPayload,
+  createRealtimeSessionAudioConfig,
   createRealtimeTurnDetection,
   decodeRealtimeToolName,
   encodeRealtimeToolName,
@@ -90,6 +91,7 @@ describe("realtime session config", () => {
     expect(payload.session.model).toBe(XIAOZHUOBAN_REALTIME_MODEL);
     expect(payload.session.type).toBe("realtime");
     expect(payload.session.reasoning.effort).toBe("minimal");
+    expect(payload.session.max_output_tokens).toBe(240);
     expect("output_modalities" in payload.session).toBe(false);
     expect(payload.session.audio.output.voice).toBe("marin");
     expect(payload.session.audio.input.turn_detection).toEqual({
@@ -119,6 +121,21 @@ describe("realtime session config", () => {
 
   it("enables low-cost input audio transcription for user speech diagnostics", () => {
     expect(createRealtimeInputTranscription()).toEqual({ model: "gpt-4o-mini-transcribe" });
+  });
+
+  it("reuses audio config for session updates without dropping voice turn detection", () => {
+    expect(createRealtimeSessionAudioConfig()).toEqual({
+      input: {
+        turn_detection: {
+          type: "semantic_vad",
+          eagerness: "low",
+          create_response: true,
+          interrupt_response: true
+        },
+        transcription: { model: "gpt-4o-mini-transcribe" }
+      },
+      output: { voice: "marin" }
+    });
   });
 
   it("round trips internal tool names through Realtime-safe names", () => {
