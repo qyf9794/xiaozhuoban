@@ -13,6 +13,7 @@ import {
   createInitialRealtimeToolSpecs,
   decodeRealtimeToolName
 } from "./realtimeSessionConfig";
+import { realtimeWidgetAliases } from "./realtimeRoutingPolicy";
 import {
   REALTIME_TOOL_SELECTION_TOOL_NAME,
   createRealtimeCommandPlanRequestBody,
@@ -26,7 +27,9 @@ import {
   parseRealtimeCommandPlanResponse,
   parseRealtimeTextToolCallResponse,
   parseRealtimeTextPlanSelectionResponse,
-  parseRealtimeTextToolSelectionResponse
+  parseRealtimeTextToolSelectionResponse,
+  type RealtimeTextPlanSelectionStep,
+  type RealtimeTextToolSelection
 } from "./realtimeTextToolCall";
 import { createRealtimeCapabilityCatalog } from "./capabilityCatalog";
 
@@ -81,6 +84,9 @@ type PendingTextCommandAfterSelectorUpdate = {
   commandTraceId: string;
   inputLength: number;
 };
+type RealtimeTargetHint = Pick<RealtimeTextToolSelection, "selectedModule" | "targetHint"> & {
+  userCommand?: string;
+};
 type MicrophoneLevelMonitor = {
   audioContext: AudioContext;
   analyser: AnalyserNode;
@@ -89,6 +95,14 @@ type MicrophoneLevelMonitor = {
 };
 
 const PLANNED_WIDGET_PREFIX = "planned_widget_";
+const TARGET_REQUIRED_WINDOW_TOOLS = new Set([
+  "widget.focus",
+  "widget.fullscreen_focus",
+  "widget.remove",
+  "widget.move",
+  "widget.resize",
+  "widget.bring_to_front"
+]);
 const MICROPHONE_LEVEL_SILENCE_FLOOR = 0.015;
 const MICROPHONE_LEVEL_GAIN = 4.2;
 const MICROPHONE_LEVEL_EMIT_DELTA = 0.012;
@@ -161,10 +175,101 @@ function normalizeMusicToolArguments(args: Record<string, unknown>): Record<stri
   return nextArgs;
 }
 
+function compactTargetText(value: unknown) {
+  return typeof value === "string" ? value.replace(/\s+/g, "") : "";
+}
+
+function scoreWindowToolTarget(targetText: string, widget: CompactAssistantContext["widgets"][number]) {
+  if (!targetText) return 0;
+  const compactName = compactTargetText(widget.name);
+  let score = 0;
+  if (compactName && targetText.includes(compactName)) score = Math.max(score, 100 + compactName.length);
+  if (targetText.includes(widget.type)) score = Math.max(score, 80 + widget.type.length);
+  for (const alias of realtimeWidgetAliases[widget.type] ?? []) {
+    const compactAlias = compactTargetText(alias);
+    if (compactAlias && targetText.includes(compactAlias)) {
+      score = Math.max(score, 40 + compactAlias.length);
+    }
+  }
+  return score;
+}
+
+function inferWindowToolTargetType(
+  command: CommandPlan["commands"][number],
+  plan: CommandPlan,
+  context: CompactAssistantContext,
+  hint?: RealtimeTargetHint
+) {
+  const args = isRecord(command.args) ? command.args : {};
+  const explicitModule = hint?.selectedModule || (command.module && !["widget", "board", "app", "app-shell"].includes(command.module) ? command.module : "");
+  if (explicitModule && context.widgets.some((widget) => widget.type === explicitModule)) {
+    return explicitModule;
+  }
+  const targetText = [
+    compactTargetText(args.targetText),
+    compactTargetText(args.target),
+    compactTargetText(args.widgetRef),
+    compactTargetText(hint?.targetHint),
+    compactTargetText(hint?.userCommand),
+    compactTargetText(plan.sourceText),
+    compactTargetText(plan.normalizedText)
+  ].join(" ");
+  const scored = context.widgets
+    .map((widget) => ({ widget, score: scoreWindowToolTarget(targetText, widget) }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.widget.order - b.widget.order);
+  return scored[0]?.widget.type ?? "";
+}
+
+function bindWindowToolTargetForCall(
+  call: AssistantToolCall,
+  context: CompactAssistantContext | null,
+  tools: AssistantToolSpec[],
+  hint?: RealtimeTargetHint
+): AssistantToolCall {
+  if (!context || !isRecord(call.arguments) || typeof call.arguments.widgetId === "string") {
+    return call;
+  }
+  const tool = tools.find((item) => item.name === call.name);
+  if (!tool?.requiresTarget || !TARGET_REQUIRED_WINDOW_TOOLS.has(call.name)) {
+    return call;
+  }
+  const command: CommandPlan["commands"][number] = {
+    id: call.id,
+    module: hint?.selectedModule ?? call.name.split(".")[0] ?? "widget",
+    tool: call.name,
+    args: call.arguments,
+    risk: tool.risk ?? "safe",
+    confidence: 0.9,
+    source: call.source,
+    requiresHarnessValidation: true
+  };
+  const targetType = inferWindowToolTargetType(
+    command,
+    {
+      id: `single_${call.id}`,
+      sourceText: call.transcript ?? hint?.userCommand ?? hint?.targetHint ?? call.name,
+      normalizedText: call.transcript ?? hint?.userCommand ?? hint?.targetHint ?? call.name,
+      commands: [command],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: [call.id] }],
+      dependencies: [],
+      confidence: 0.9,
+      needsConfirmation: false,
+      createdBy: call.source === "learned" ? "learned" : call.source === "text" ? "text-llm" : call.source === "realtime" ? "realtime-2" : "local",
+      requiresHarnessValidation: true
+    },
+    context,
+    hint
+  );
+  const widget = targetType ? context.widgets.find((item) => item.type === targetType) : undefined;
+  return widget ? { ...call, arguments: { ...call.arguments, widgetId: widget.widgetId } } : call;
+}
+
 function normalizeRealtimePlanArguments(
   plan: CommandPlan,
   context: CompactAssistantContext,
-  tools: AssistantToolSpec[]
+  tools: AssistantToolSpec[],
+  planSelection?: RealtimeTextPlanSelectionStep[]
 ): CommandPlan {
   const toolsByName = new Map(tools.map((tool) => [tool.name, tool]));
   const definitionsByType = new Map((context.availableDefinitions ?? []).map((definition) => [definition.type, definition]));
@@ -204,6 +309,17 @@ function normalizeRealtimePlanArguments(
     if (tool?.scope === "widget-detail" && tool.widgetType && typeof args.widgetId !== "string") {
       const existingWidgetId = firstWidgetByType.get(tool.widgetType);
       args.widgetId = existingWidgetId ?? `${PLANNED_WIDGET_PREFIX}${tool.widgetType}`;
+    }
+    if (tool?.requiresTarget && TARGET_REQUIRED_WINDOW_TOOLS.has(command.tool) && typeof args.widgetId !== "string") {
+      const selectionHint =
+        planSelection?.find((step) => step.id && step.id === command.id) ??
+        planSelection?.find((step) => step.name === command.tool && step.selectedModule === command.module) ??
+        planSelection?.find((step) => step.name === command.tool);
+      const targetType = inferWindowToolTargetType(command, plan, context, selectionHint);
+      const existingWidgetId = targetType ? firstWidgetByType.get(targetType) : undefined;
+      if (existingWidgetId) {
+        args.widgetId = existingWidgetId;
+      }
     }
 
     return { ...command, args };
@@ -250,6 +366,10 @@ function normalizeRealtimePlanArguments(
   const normalizedCommands = commandsWithInsertedAdds.map((command) => {
     const tool = toolsByName.get(command.tool);
     if (!tool?.widgetType || !addCommandByType.has(tool.widgetType) || command.tool === "board.add_widget") {
+      return command;
+    }
+    const widgetId = isRecord(command.args) && typeof command.args.widgetId === "string" ? command.args.widgetId : "";
+    if (widgetId && !widgetId.startsWith(PLANNED_WIDGET_PREFIX)) {
       return command;
     }
     const addCommandId = addCommandByType.get(tool.widgetType)!;
@@ -726,6 +846,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private microphoneLevelMonitor: MicrophoneLevelMonitor | null = null;
   private pendingScopedToolSelectionResult: PendingScopedToolSelectionResult | null = null;
   private pendingTextCommandAfterSelectorUpdate: PendingTextCommandAfterSelectorUpdate | null = null;
+  private activeScopedToolSelection: RealtimeTargetHint | null = null;
 
   constructor(private readonly options: OpenAIRealtimeWebRtcAdapterOptions = {}) {}
 
@@ -787,6 +908,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.pendingResponseCreateAfterActiveToolResult = false;
     this.pendingScopedToolSelectionResult = null;
     this.pendingTextCommandAfterSelectorUpdate = null;
+    this.activeScopedToolSelection = null;
 
     let stream: MediaStream | null = null;
     if (mode === "audio") {
@@ -969,6 +1091,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.pendingResponseCreateAfterActiveToolResult = false;
     this.pendingScopedToolSelectionResult = null;
     this.pendingTextCommandAfterSelectorUpdate = null;
+    this.activeScopedToolSelection = null;
     this.options.onStatusChange?.("disconnected");
   }
 
@@ -996,6 +1119,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.pendingResponseCreateAfterActiveToolResult = false;
     this.pendingScopedToolSelectionResult = null;
     this.pendingTextCommandAfterSelectorUpdate = null;
+    this.activeScopedToolSelection = null;
     this.clearRealtimeTraceState();
   }
 
@@ -1184,6 +1308,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.pendingResponseCreateAfterActiveToolResult = false;
       this.pendingScopedToolSelectionResult = null;
       this.pendingTextCommandAfterSelectorUpdate = null;
+      this.activeScopedToolSelection = null;
     }
     this.emitDiagnostic({
       type: "realtime.text_command.reset_selector",
@@ -1262,7 +1387,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       throw await readRealtimeEndpointError(planResponse, "REALTIME_PLAN_EXECUTION_FAILED");
     }
     const parsedPlan = parseRealtimeCommandPlanResponse(await planResponse.json());
-    const plan = parsedPlan ? normalizeRealtimePlanArguments(parsedPlan, contextWithVersions, tools) : null;
+    const plan = parsedPlan ? normalizeRealtimePlanArguments(parsedPlan, contextWithVersions, tools, planSelection.steps) : null;
     this.emitDiagnostic({
       type: "realtime.text_plan.execute.result",
       status: plan ? "success" : "empty",
@@ -1341,7 +1466,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (!toolCallResponse.ok) {
       throw await readRealtimeEndpointError(toolCallResponse, "REALTIME_TOOL_CALL_FAILED");
     }
-    const call = parseRealtimeTextToolCallResponse(await toolCallResponse.json());
+    const parsedCall = parseRealtimeTextToolCallResponse(await toolCallResponse.json());
+    const call = parsedCall
+      ? bindWindowToolTargetForCall(parsedCall, contextWithVersions, tools, { ...selection, userCommand: input })
+      : null;
     this.emitDiagnostic({
       type: "realtime.text_tool.execute.result",
       status: call ? "success" : "empty",
@@ -1372,7 +1500,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       return;
     }
     const sanitized = sanitizeRealtimeToolCallArguments(call, this.currentTools.find((tool) => tool.name === call.name));
-    const toolCall = sanitized.call;
+    const toolCall = bindWindowToolTargetForCall(sanitized.call, this.currentContext, this.currentTools, this.activeScopedToolSelection ?? undefined);
+    this.activeScopedToolSelection = null;
     if (sanitized.removedKeys.length) {
       this.emitDiagnostic({
         type: "realtime.function_call.arguments_sanitized",
@@ -1430,6 +1559,11 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     }
 
     const selectedModule = this.resolveSelectedModuleForToolSelection(selectedTool, selection);
+    this.activeScopedToolSelection = {
+      selectedModule,
+      targetHint: selection.targetHint,
+      userCommand: selection.userCommand || selection.targetHint || selection.name
+    };
     const update = createScopedRealtimeToolUpdate(
       {
         input: selection.userCommand || selection.targetHint || selection.name,

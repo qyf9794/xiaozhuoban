@@ -1302,7 +1302,7 @@ export class AssistantHarness {
     }
 
     const targetText = getTargetText(call.arguments);
-    if (!targetText && isRecord(call.arguments) && typeof call.arguments.widgetId === "string") {
+    if (isRecord(call.arguments) && typeof call.arguments.widgetId === "string") {
       const widgetId = call.arguments.widgetId;
       const context = this.getCurrentContext();
       const input = this.options.getContextInput();

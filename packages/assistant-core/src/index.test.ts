@@ -2094,6 +2094,42 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes close world clock wording to widget removal", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("关闭世界时钟", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("widget.remove");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_worldClock" });
+    }
+  });
+
+  it.each([
+    ["便签", "wi_note"],
+    ["待办", "wi_todo"],
+    ["天气", "wi_weather"],
+    ["倒计时", "wi_countdown"],
+    ["新闻", "wi_headline"],
+    ["行情", "wi_market"],
+    ["计算器", "wi_calculator"],
+    ["翻译", "wi_translate"],
+    ["换算", "wi_converter"],
+    ["剪贴板", "wi_clipboard"],
+    ["电视", "wi_tv"],
+    ["世界时钟", "wi_worldClock"],
+    ["留言板", "wi_messageBoard"]
+  ])("routes close %s wording to widget removal", (name, widgetId) => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route(`关闭${name}`, context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("widget.remove");
+      expect(result.toolCall.arguments).toEqual({ widgetId });
+    }
+  });
+
   it("does not remove the focused widget for ambiguous close wording", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("关一下", context);

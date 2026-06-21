@@ -12,14 +12,18 @@ import {
   createPassthroughSchema,
   type AssistantAction,
   type AssistantToolCall,
+  type AssistantToolSpec,
   type AssistantToolResult,
   type CommandPlan,
+  type CompactAssistantContext,
   type ContextSummarizerInput
 } from "@xiaozhuoban/assistant-core";
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { createAppShellActions } from "./appShellActions";
 import { AssistantHarness, type AssistantRealtimeAdapter } from "./AssistantHarness";
 import { registerBoardActions } from "./boardActions";
+import { OpenAIRealtimeWebRtcAdapter } from "./openaiRealtimeAdapter";
+import type { RealtimeTextPlanSelection } from "./realtimeTextToolCall";
 import { WidgetCapabilityBridge, createWidgetCapabilityActions } from "./widgetCapabilityBridge";
 import { createWidgetStateActions } from "./widgetStateActions";
 
@@ -27,6 +31,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../../../../");
 const simulationReportPath = path.join(repoRoot, "docs/realtime-voice-scenario-catalog-simulation-report.md");
 const statefulReportPath = path.join(repoRoot, "docs/realtime-voice-scenario-catalog-stateful-harness-report.md");
+const widgetIdAuditReportPath = path.join(repoRoot, "docs/realtime-voice-scenario-catalog-widget-id-audit-report.md");
 const NOW = "2026-06-21T08:30:00.000Z";
 
 type CatalogCase = {
@@ -41,6 +46,21 @@ type PlannedCall = {
 };
 
 type WidgetSnapshot = Pick<WidgetInstance, "id" | "definitionId" | "state" | "position" | "size" | "zIndex">;
+
+type WidgetIdAuditEntry = {
+  id: string;
+  tool: string;
+  expectedWidgetId?: string;
+  rawWidgetId?: string;
+  normalizedWidgetId?: string;
+  executedWidgetId?: string;
+};
+
+type WidgetIdAuditPlan = {
+  rawPlan: CommandPlan;
+  planSelection: RealtimeTextPlanSelection;
+  entries: WidgetIdAuditEntry[];
+};
 
 const widgetNames: Record<string, string> = {
   calculator: "计算器",
@@ -305,6 +325,94 @@ function createPlan(text: string, calls: PlannedCall[]): CommandPlan {
   return plan;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function clonePlan(plan: CommandPlan): CommandPlan {
+  return JSON.parse(JSON.stringify(plan)) as CommandPlan;
+}
+
+function widgetTypeFromWidgetId(widgetId: string): string | undefined {
+  const match = /^wi_([A-Za-z]+)(?:_\d+)?$/.exec(widgetId);
+  return match?.[1];
+}
+
+function commandArgs(command: CommandPlan["commands"][number]) {
+  return isRecord(command.args) ? command.args : {};
+}
+
+function widgetIdFromArgs(args: Record<string, unknown>): string | undefined {
+  return typeof args.widgetId === "string" ? args.widgetId : undefined;
+}
+
+function createWidgetIdAuditPlan(text: string, calls: PlannedCall[], tools: AssistantToolSpec[]): WidgetIdAuditPlan {
+  const toolSpecs = new Map(tools.map((tool) => [tool.name, tool]));
+  const rawPlan = clonePlan(createPlan(text, calls));
+  const entries: WidgetIdAuditEntry[] = [];
+  const planSelection: RealtimeTextPlanSelection = {
+    steps: rawPlan.commands.map((command, index) => {
+      const args = commandArgs(command);
+      const expectedWidgetId = widgetIdFromArgs(args);
+      const targetType = expectedWidgetId ? widgetTypeFromWidgetId(expectedWidgetId) : inferWidgetType(text, command.tool);
+      const tool = toolSpecs.get(command.tool);
+      const shouldStripWidgetId = Boolean(tool?.requiresTarget && expectedWidgetId);
+      if (shouldStripWidgetId) {
+        delete args.widgetId;
+        if (!("targetText" in args) && targetType) args.targetText = `${widgetNames[targetType] ?? targetType}窗口`;
+        command.args = args;
+      }
+      entries.push({
+        id: command.id,
+        tool: command.tool,
+        expectedWidgetId,
+        rawWidgetId: widgetIdFromArgs(args)
+      });
+      return {
+        id: command.id,
+        name: command.tool,
+        selectedModule: targetType ?? tool?.widgetType ?? command.tool.split(".")[0],
+        targetHint: targetType ? `${widgetNames[targetType] ?? targetType}窗口` : undefined,
+        confidence: 0.97,
+        connector: index === 0 ? "start" : "sequential"
+      };
+    })
+  };
+  return { rawPlan, planSelection, entries };
+}
+
+async function normalizePlanThroughRealtimeAdapter(
+  input: string,
+  context: CompactAssistantContext,
+  tools: AssistantToolSpec[],
+  auditPlan: WidgetIdAuditPlan
+) {
+  const fetchImpl: typeof fetch = async (_url, init) => {
+    const body = typeof init?.body === "string" ? (JSON.parse(init.body) as { phase?: string }) : {};
+    const payload = body.phase === "plan_select" ? { planSelection: auditPlan.planSelection } : { plan: auditPlan.rawPlan };
+    return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const adapter = new OpenAIRealtimeWebRtcAdapter({
+    textToolCallEndpoint: "/api/realtime/tool-call",
+    fetchImpl
+  });
+  return adapter.requestCommandPlan(input, context, tools);
+}
+
+function summarizeWidgetIds(entries: WidgetIdAuditEntry[]) {
+  return entries
+    .map((entry) =>
+      [
+        entry.tool,
+        `expected=${entry.expectedWidgetId ?? "-"}`,
+        `raw=${entry.rawWidgetId ?? "MISSING"}`,
+        `normalized=${entry.normalizedWidgetId ?? "MISSING"}`,
+        `executed=${entry.executedWidgetId ?? "MISSING"}`
+      ].join("/")
+    )
+    .join(" | ");
+}
+
 function createNoopAction(name: string): AssistantAction<Record<string, unknown>> {
   return {
     spec: {
@@ -331,7 +439,7 @@ function snapshotWidgets(widgets: WidgetInstance[]): WidgetSnapshot[] {
   }));
 }
 
-function createStatefulHarness(testCase: CatalogCase) {
+function createStatefulHarness(testCase: CatalogCase, options: { commandPlan?: CommandPlan } = {}) {
   const definitions = widgetTypes.map(definition);
   let widgets = widgetTypes.map((type, index) => widget(type, index + 1));
   let focusedWidgetId = "wi_weather";
@@ -517,6 +625,7 @@ function createStatefulHarness(testCase: CatalogCase) {
   const getContextInput = (): ContextSummarizerInput => ({
     boardId: activeBoardId,
     boardName: boards.find((board) => board.id === activeBoardId)?.name,
+    maxWidgets: widgets.length,
     availableBoards: boards.map((board) => ({ boardId: board.id, name: board.name, active: board.id === activeBoardId || undefined })),
     focusedWidgetId,
     availableDefinitions: definitions.map((item) => ({ definitionId: item.id, type: item.type, name: item.name })),
@@ -539,7 +648,7 @@ function createStatefulHarness(testCase: CatalogCase) {
       sentResults.push({ call, result });
     },
     requestCommandPlan(input) {
-      return input === testCase.text ? createPlan(testCase.text, plannedCalls) : null;
+      return input === testCase.text ? options.commandPlan ?? createPlan(testCase.text, plannedCalls) : null;
     },
     requestToolCall() {
       return null;
@@ -562,6 +671,8 @@ function createStatefulHarness(testCase: CatalogCase) {
     mutations,
     beforeWidgets: snapshotWidgets(widgets),
     getWidgets: () => widgets,
+    registry,
+    getCompactContext: () => new ContextSummarizer().summarize(getContextInput()),
     plannedCalls
   };
 }
@@ -607,6 +718,93 @@ describe("700 voice scenario catalog through stateful AssistantHarness execution
     }
 
     fs.writeFileSync(statefulReportPath, `${rows.join("\n")}\n`, "utf8");
+    expect(failures).toEqual([]);
+  });
+
+  it("audits widgetId recovery and real execution for every catalog command", async () => {
+    const cases = parseSimulationReport();
+    expect(cases).toHaveLength(700);
+
+    const rows = [
+      "# Realtime Voice Scenario Catalog Widget ID Audit Report",
+      "",
+      [
+        "Every row strips `widgetId` from target-required raw Realtime plans, runs the plan through",
+        "`OpenAIRealtimeWebRtcAdapter.requestCommandPlan`, and then executes the normalized plan through",
+        "`AssistantHarness.handleRealtimeUserInput` with real action schemas and an in-memory widget store."
+      ].join(" "),
+      ""
+    ];
+    const failures: string[] = [];
+
+    for (const testCase of cases) {
+      const planningEnv = createStatefulHarness(testCase);
+      const tools = planningEnv.registry.list();
+      const toolSpecs = new Map(tools.map((tool) => [tool.name, tool]));
+      const auditPlan = createWidgetIdAuditPlan(testCase.text, planningEnv.plannedCalls, tools);
+      const normalizedPlan = await normalizePlanThroughRealtimeAdapter(testCase.text, planningEnv.getCompactContext(), tools, auditPlan);
+      if (!normalizedPlan) {
+        failures.push(`${String(testCase.id).padStart(3, "0")} ${testCase.text}: adapter returned null normalized plan`);
+        rows.push(`${String(testCase.id).padStart(3, "0")}. [fail] widgetIds=NO_NORMALIZED_PLAN; mutations=none; command=${testCase.text}`);
+        continue;
+      }
+
+      const normalizedById = new Map(normalizedPlan.commands.map((command) => [command.id, command]));
+      for (const entry of auditPlan.entries) {
+        const normalized = normalizedById.get(entry.id);
+        entry.normalizedWidgetId = normalized ? widgetIdFromArgs(commandArgs(normalized)) : undefined;
+      }
+
+      const env = createStatefulHarness(testCase, { commandPlan: normalizedPlan });
+      await env.harness.initialize();
+      let response = await env.harness.handleRealtimeUserInput(testCase.text, { commandTraceId: `widget_id_audit_${String(testCase.id).padStart(3, "0")}` });
+      if (response.result.status === "needs_confirmation") {
+        response = await env.harness.handleUserInput("确认", { commandTraceId: `widget_id_audit_${String(testCase.id).padStart(3, "0")}_confirm` });
+      }
+
+      const executedById = new Map(env.sentResults.map((item) => [item.call.id, item.call]));
+      for (const entry of auditPlan.entries) {
+        const executed = executedById.get(entry.id);
+        entry.executedWidgetId = executed ? widgetIdFromArgs(isRecord(executed.arguments) ? executed.arguments : {}) : undefined;
+      }
+
+      const actualTools = env.sentResults.map((item) => item.call.name).filter((name) => name !== "assistant.confirm");
+      const missing = testCase.tools.filter((tool) => !actualTools.includes(tool));
+      const failedResults = env.sentResults.filter((item) => item.result.status !== "success" && item.result.status !== "needs_confirmation");
+      const expectedMutation = testCase.tools.some(shouldMutate);
+      const hasMutation = env.mutations.length > 0 || JSON.stringify(env.beforeWidgets) !== JSON.stringify(snapshotWidgets(env.getWidgets()));
+      const widgetIdFailures = auditPlan.entries
+        .filter((entry) => {
+          const tool = toolSpecs.get(entry.tool);
+          if (!tool?.requiresTarget || !entry.expectedWidgetId) return false;
+          return (
+            entry.rawWidgetId !== undefined ||
+            entry.normalizedWidgetId !== entry.expectedWidgetId ||
+            entry.executedWidgetId !== entry.expectedWidgetId
+          );
+        })
+        .map(
+          (entry) =>
+            `${entry.tool}:expected=${entry.expectedWidgetId};raw=${entry.rawWidgetId ?? "MISSING"};normalized=${entry.normalizedWidgetId ?? "MISSING"};executed=${entry.executedWidgetId ?? "MISSING"}`
+        );
+      const ok =
+        response.result.status === "success" &&
+        missing.length === 0 &&
+        failedResults.length === 0 &&
+        widgetIdFailures.length === 0 &&
+        (!expectedMutation || hasMutation);
+
+      rows.push(
+        `${String(testCase.id).padStart(3, "0")}. [${ok ? "pass" : "fail"}] widgetIds=${summarizeWidgetIds(auditPlan.entries)}; tools=${actualTools.join(",") || "NONE"}; mutations=${env.mutations.join(",") || "none"}; command=${testCase.text}`
+      );
+      if (!ok) {
+        failures.push(
+          `${String(testCase.id).padStart(3, "0")} ${testCase.text}: status=${response.result.status}; expected=${testCase.tools.join(",")}; actual=${actualTools.join(",")}; missing=${missing.join(",")}; widgetIdFailures=${widgetIdFailures.join(",")}; failed=${failedResults.map((item) => `${item.call.name}:${item.result.errorCode ?? item.result.status}`).join(",")}; mutations=${env.mutations.join(",")}; message=${response.result.message}`
+        );
+      }
+    }
+
+    fs.writeFileSync(widgetIdAuditReportPath, `${rows.join("\n")}\n`, "utf8");
     expect(failures).toEqual([]);
   });
 });

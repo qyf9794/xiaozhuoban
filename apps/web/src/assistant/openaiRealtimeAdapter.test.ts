@@ -1398,6 +1398,55 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(calls).toEqual([]);
   });
 
+  it("binds live realtime window tool calls from the prior tool selection", () => {
+    const calls: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall: (call) => {
+        calls.push(call);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "widget.remove",
+        description: "删除小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop",
+        risk: "safe",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: { dialClock: 1, worldClock: 1 },
+      widgets: [
+        { widgetId: "wi_dialClock", definitionId: "wd_dialClock", type: "dialClock", name: "表盘时钟", order: 1, summary: "" },
+        { widgetId: "wi_worldClock", definitionId: "wd_worldClock", type: "worldClock", name: "世界时钟", order: 2, summary: "" }
+      ]
+    });
+    (adapter as unknown as { sessionReady: boolean }).sessionReady = true;
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_world_clock",
+      name: "assistant.select_tool",
+      arguments: { name: "widget.remove", selectedModule: "worldClock", targetHint: "世界时钟", userCommand: "关闭世界时钟", confidence: 0.95 },
+      source: "realtime"
+    });
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "call_close_world_clock",
+      name: "widget.remove",
+      arguments: {},
+      source: "realtime"
+    });
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        name: "widget.remove",
+        arguments: { widgetId: "wi_worldClock" }
+      })
+    ]);
+  });
+
   it("requests text fallback tool calls from the scoped backend endpoint", async () => {
     const requests: Array<{ url: string; body: unknown; headers?: HeadersInit }> = [];
     const adapter = new OpenAIRealtimeWebRtcAdapter({
@@ -1546,6 +1595,137 @@ describe("OpenAI realtime adapter helpers", () => {
       name: "widget.remove",
       arguments: { widgetId: "wi_music" },
       source: "text"
+    });
+  });
+
+  it("binds text fallback window tool calls when the scoped backend omits widgetId", async () => {
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      textToolCallEndpoint: "/api/realtime/tool-call",
+      fetchImpl: (async (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        if (body.phase === "select") {
+          return new Response(
+            JSON.stringify({
+              selection: { name: "widget.remove", selectedModule: "worldClock", targetHint: "世界时钟", confidence: 0.95 }
+            }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            call: {
+              id: "model_close_world_clock",
+              name: "widget.remove",
+              arguments: {},
+              source: "text"
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }) as typeof fetch
+    });
+
+    const call = await adapter.requestToolCall(
+      "关闭世界时钟",
+      {
+        boardId: "board_1",
+        boardName: "默认桌板",
+        widgetCountsByType: { dialClock: 1, worldClock: 1 },
+        widgets: [
+          { widgetId: "wi_dialClock", definitionId: "wd_dialClock", type: "dialClock", name: "表盘时钟", order: 1, summary: "" },
+          { widgetId: "wi_worldClock", definitionId: "wd_worldClock", type: "worldClock", name: "世界时钟", order: 2, summary: "" }
+        ]
+      },
+      [
+        {
+          name: "widget.remove",
+          description: "删除小工具",
+          parameters: createPassthroughSchema<Record<string, unknown>>(),
+          scope: "desktop",
+          risk: "safe",
+          requiresTarget: true
+        }
+      ]
+    );
+
+    expect(call).toMatchObject({
+      name: "widget.remove",
+      arguments: { widgetId: "wi_worldClock" }
+    });
+  });
+
+  it.each([
+    ["note", "便签"],
+    ["todo", "待办"],
+    ["tv", "电视"],
+    ["music", "音乐"],
+    ["weather", "天气"],
+    ["countdown", "倒计时"],
+    ["headline", "新闻"],
+    ["market", "行情"],
+    ["calculator", "计算器"],
+    ["translate", "翻译"],
+    ["converter", "换算"],
+    ["clipboard", "剪贴板"],
+    ["recorder", "录音机"],
+    ["messageBoard", "留言板"],
+    ["dialClock", "表盘时钟"],
+    ["worldClock", "世界时钟"]
+  ])("binds text fallback window tool calls for %s", async (type, name) => {
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      textToolCallEndpoint: "/api/realtime/tool-call",
+      fetchImpl: (async (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        if (body.phase === "select") {
+          return new Response(
+            JSON.stringify({
+              selection: { name: "widget.remove", selectedModule: type, targetHint: name, confidence: 0.95 }
+            }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            call: {
+              id: `model_close_${type}`,
+              name: "widget.remove",
+              arguments: {},
+              source: "text"
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }) as typeof fetch
+    });
+
+    const call = await adapter.requestToolCall(
+      `关闭${name}`,
+      {
+        boardId: "board_1",
+        boardName: "默认桌板",
+        widgetCountsByType: { [type]: 1 },
+        widgets: [
+          type === "dialClock"
+            ? { widgetId: "wi_decoy", definitionId: "wd_worldClock", type: "worldClock", name: "世界时钟", order: 1, summary: "" }
+            : { widgetId: "wi_decoy", definitionId: "wd_dialClock", type: "dialClock", name: "表盘时钟", order: 1, summary: "" },
+          { widgetId: `wi_${type}`, definitionId: `wd_${type}`, type, name, order: 2, summary: "" }
+        ]
+      },
+      [
+        {
+          name: "widget.remove",
+          description: "删除小工具",
+          parameters: createPassthroughSchema<Record<string, unknown>>(),
+          scope: "desktop",
+          risk: "safe",
+          requiresTarget: true
+        }
+      ]
+    );
+
+    expect(call).toMatchObject({
+      name: "widget.remove",
+      arguments: { widgetId: `wi_${type}` }
     });
   });
 
@@ -1806,6 +1986,171 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(plan?.commands[1]?.dependsOn).toEqual(["cmd_add_music"]);
     expect(plan?.commands[2]?.dependsOn).toEqual(["cmd_add_music"]);
     expect(plan?.executionGroups[0]).toMatchObject({ mode: "sequential" });
+  });
+
+  it("binds realtime window remove plans to the mentioned widget instance", async () => {
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      textToolCallEndpoint: "/api/realtime/tool-call",
+      fetchImpl: (async (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        if (body.phase === "plan_select") {
+          return new Response(
+            JSON.stringify({
+              planSelection: {
+                steps: [{ id: "widget.remove", name: "widget.remove", selectedModule: "worldClock", targetHint: "世界时钟", confidence: 0.96 }]
+              }
+            }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            plan: {
+              id: "plan_close_world_clock",
+              sourceText: "关闭世界时钟",
+              normalizedText: "关闭世界时钟",
+              commands: [
+                {
+                  id: "cmd_close_world_clock",
+                  module: "widget",
+                  tool: "widget.remove",
+                  args: { targetText: "世界时钟窗口" },
+                  risk: "safe",
+                  confidence: 0.92,
+                  source: "text",
+                  requiresHarnessValidation: true
+                }
+              ],
+              executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_close_world_clock"] }],
+              dependencies: [],
+              confidence: 0.92,
+              needsConfirmation: false,
+              createdBy: "text-llm",
+              requiresHarnessValidation: true
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }) as typeof fetch
+    });
+
+    const plan = await adapter.requestCommandPlan(
+      "关闭世界时钟",
+      {
+        boardId: "board_1",
+        boardName: "默认桌板",
+        widgetCountsByType: { dialClock: 1, worldClock: 1, note: 1 },
+        widgets: [
+          { widgetId: "wi_dialClock", definitionId: "wd_dialClock", type: "dialClock", name: "表盘时钟", order: 1, summary: "" },
+          { widgetId: "wi_worldClock", definitionId: "wd_worldClock", type: "worldClock", name: "世界时钟", order: 2, summary: "北京 伦敦" },
+          { widgetId: "wi_note", definitionId: "wd_note", type: "note", name: "便签", order: 3, summary: "private note" }
+        ]
+      },
+      [
+        {
+          name: "widget.remove",
+          description: "删除小工具",
+          parameters: createPassthroughSchema<Record<string, unknown>>(),
+          scope: "desktop",
+          risk: "safe",
+          requiresTarget: true
+        }
+      ]
+    );
+
+    expect(plan?.commands[0]).toMatchObject({
+      tool: "widget.remove",
+      args: { targetText: "世界时钟窗口", widgetId: "wi_worldClock" }
+    });
+  });
+
+  it("binds multiple realtime window plan steps from selected modules", async () => {
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      textToolCallEndpoint: "/api/realtime/tool-call",
+      fetchImpl: (async (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        if (body.phase === "plan_select") {
+          return new Response(
+            JSON.stringify({
+              planSelection: {
+                steps: [
+                  { id: "cmd_close_message_board", name: "widget.remove", selectedModule: "messageBoard", targetHint: "留言板", connector: "start", confidence: 0.96 },
+                  { id: "cmd_close_world_clock", name: "widget.remove", selectedModule: "worldClock", targetHint: "世界时钟", connector: "parallel", confidence: 0.96 }
+                ]
+              }
+            }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            plan: {
+              id: "plan_close_two_windows",
+              sourceText: "关闭留言板和世界时钟",
+              normalizedText: "关闭留言板和世界时钟",
+              commands: [
+                {
+                  id: "cmd_close_message_board",
+                  module: "widget",
+                  tool: "widget.remove",
+                  args: {},
+                  risk: "safe",
+                  confidence: 0.92,
+                  source: "text",
+                  requiresHarnessValidation: true
+                },
+                {
+                  id: "cmd_close_world_clock",
+                  module: "widget",
+                  tool: "widget.remove",
+                  args: {},
+                  risk: "safe",
+                  confidence: 0.92,
+                  source: "text",
+                  requiresHarnessValidation: true
+                }
+              ],
+              executionGroups: [{ id: "group_1", mode: "parallel", commandIds: ["cmd_close_message_board", "cmd_close_world_clock"] }],
+              dependencies: [],
+              confidence: 0.92,
+              needsConfirmation: false,
+              createdBy: "text-llm",
+              requiresHarnessValidation: true
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }) as typeof fetch
+    });
+
+    const plan = await adapter.requestCommandPlan(
+      "关闭留言板和世界时钟",
+      {
+        boardId: "board_1",
+        boardName: "默认桌板",
+        widgetCountsByType: { dialClock: 1, messageBoard: 1, worldClock: 1 },
+        widgets: [
+          { widgetId: "wi_dialClock", definitionId: "wd_dialClock", type: "dialClock", name: "表盘时钟", order: 1, summary: "" },
+          { widgetId: "wi_messageBoard", definitionId: "wd_messageBoard", type: "messageBoard", name: "留言板", order: 2, summary: "" },
+          { widgetId: "wi_worldClock", definitionId: "wd_worldClock", type: "worldClock", name: "世界时钟", order: 3, summary: "" }
+        ]
+      },
+      [
+        {
+          name: "widget.remove",
+          description: "删除小工具",
+          parameters: createPassthroughSchema<Record<string, unknown>>(),
+          scope: "desktop",
+          risk: "safe",
+          requiresTarget: true
+        }
+      ]
+    );
+
+    expect(plan?.commands.map((command) => command.args)).toEqual([
+      { widgetId: "wi_messageBoard" },
+      { widgetId: "wi_worldClock" }
+    ]);
   });
 
   it("inserts a widget add command when realtime omits a required target instance", async () => {
