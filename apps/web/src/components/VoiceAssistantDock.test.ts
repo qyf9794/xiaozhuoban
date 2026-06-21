@@ -103,14 +103,14 @@ describe("VoiceAssistantDock", () => {
     expect(shouldDisableVoiceAssistantSend(true)).toBe(true);
   });
 
-  it("keeps the Siri orb mono before connection and scales gently with connected voice level", () => {
+  it("keeps the Siri orb mono before connection and contracts gently with connected voice level", () => {
     expect(getVoiceAssistantOrbColorMode("disconnected")).toBe("mono");
     expect(getVoiceAssistantOrbColorMode("connecting")).toBe("mono");
     expect(getVoiceAssistantOrbColorMode("connected")).toBe("color");
     expect(getVoiceAssistantOrbScale("disconnected", 1)).toBe(1);
     expect(getVoiceAssistantOrbScale("connected", 0)).toBe(1);
-    expect(getVoiceAssistantOrbScale("connected", 1)).toBeCloseTo(1.075);
-    expect(getVoiceAssistantOrbScale("connected", 10)).toBeCloseTo(1.075);
+    expect(getVoiceAssistantOrbScale("connected", 1)).toBeCloseTo(0.955);
+    expect(getVoiceAssistantOrbScale("connected", 10)).toBeCloseTo(0.955);
   });
 
   it("keeps the mobile voice dock resident instead of translating it off screen", () => {

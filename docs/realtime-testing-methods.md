@@ -10,6 +10,7 @@ This is the canonical test path for future Realtime and voice-control checks.
 - Deterministic simulation report: `docs/realtime-voice-scenario-catalog-simulation-report.md`
 - Deterministic execution groups: `docs/realtime-voice-scenario-execution-groups.md`
 - Harness execution report: `docs/realtime-voice-scenario-catalog-harness-report.md`
+- Stateful execution report: `docs/realtime-voice-scenario-catalog-stateful-harness-report.md`
 - Text-only Realtime event report: `docs/realtime-voice-scenario-catalog-text-only-realtime-report.md`
 - Audio replay fallback report: `docs/realtime-audio-replay-fallback-report.md`
 
@@ -19,7 +20,7 @@ Run these before changing Realtime routing or command policy:
 
 ```bash
 pnpm --filter @xiaozhuoban/assistant-core test
-pnpm vitest run apps/web/src/assistant/AssistantHarness.test.ts apps/web/src/assistant/voiceScenarioHoldout.test.ts apps/web/src/assistant/voiceScenarioCatalogTextOnlyRealtime.test.ts apps/web/src/assistant/voiceScenarioCatalogHarness.test.ts apps/web/src/assistant/openaiRealtimeAdapter.test.ts apps/web/src/assistant/realtimeTextToolCall.test.ts
+pnpm vitest run apps/web/src/assistant/AssistantHarness.test.ts apps/web/src/assistant/voiceScenarioHoldout.test.ts apps/web/src/assistant/voiceScenarioCatalogStatefulHarness.test.ts apps/web/src/assistant/voiceScenarioCatalogHarness.test.ts apps/web/src/assistant/openaiRealtimeAdapter.test.ts apps/web/src/assistant/realtimeTextToolCall.test.ts
 pnpm typecheck
 git diff --check
 ```
@@ -52,6 +53,16 @@ XIAOZHUOBAN_REALTIME_LIVE_SITE=https://xiaozhuoban.bqxb.org node scripts/realtim
 ```
 
 Online full-run results can vary because the model can return different safe plans across runs. Treat the full run as an early-warning scan. Fix and record failure clusters through targeted reruns.
+
+## Stateful 700 Execution Gate
+
+Run this after routing, target-resolution, or tool-execution changes:
+
+```bash
+pnpm --filter @xiaozhuoban/web test -- src/assistant/voiceScenarioCatalogStatefulHarness.test.ts
+```
+
+This is the main 700-command execution gate. It uses real assistant action schemas, real target resolution, confirmation flow, and an in-memory board/widget store. Unlike the semantic gate, it fails when a selected tool cannot execute because required args such as `widgetId`, city, countdown duration, or widget state are missing.
 
 ## Real-Page Execution Probe
 

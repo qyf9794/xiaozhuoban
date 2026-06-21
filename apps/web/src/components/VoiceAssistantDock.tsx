@@ -150,7 +150,7 @@ function clampVoiceAssistantAudioLevel(level: number | undefined): number {
 
 export function getVoiceAssistantOrbScale(voiceStatus: RealtimeConnectionStatus, audioLevel: number | undefined): number {
   if (voiceStatus !== "connected") return 1;
-  return 1 + clampVoiceAssistantAudioLevel(audioLevel) * 0.075;
+  return 1 - clampVoiceAssistantAudioLevel(audioLevel) * 0.045;
 }
 
 export function getVoiceAssistantOrbColorMode(voiceStatus: RealtimeConnectionStatus): "mono" | "color" {
@@ -319,6 +319,7 @@ export function VoiceAssistantDock({
   const dockRef = useRef<HTMLElement | null>(null);
   const mobileTextPanelCollapseTimerRef = useRef<number | null>(null);
   const orbLongPressTimerRef = useRef<number | null>(null);
+  const assistantSpeechPulseFrameRef = useRef<number | null>(null);
   const orbLongPressTriggeredRef = useRef(false);
   const dragRef = useRef<{
     pointerId: number;
@@ -335,6 +336,7 @@ export function VoiceAssistantDock({
   const suppressOrbClickRef = useRef(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [mobileTextPanelOpen, setMobileTextPanelOpen] = useState(false);
+  const [assistantSpeechLevel, setAssistantSpeechLevel] = useState(0);
   const textRef = useRef("");
   const voiceEnabled = Boolean(onConnectVoice || onConnectTextOnly);
 
@@ -382,6 +384,13 @@ export function VoiceAssistantDock({
     }
   };
 
+  const clearAssistantSpeechPulse = () => {
+    if (assistantSpeechPulseFrameRef.current !== null) {
+      window.cancelAnimationFrame(assistantSpeechPulseFrameRef.current);
+      assistantSpeechPulseFrameRef.current = null;
+    }
+  };
+
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
@@ -416,15 +425,31 @@ export function VoiceAssistantDock({
     const speechText = assistantSpeech?.text.trim();
     if (!speechText) return;
     setLastMessage(speechText);
+    clearAssistantSpeechPulse();
+    const startedAt = performance.now();
+    const duration = Math.min(1500, 560 + speechText.length * 18);
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / duration);
+      setAssistantSpeechLevel(0.62 * (1 - progress));
+      if (progress < 1) {
+        assistantSpeechPulseFrameRef.current = window.requestAnimationFrame(tick);
+      } else {
+        assistantSpeechPulseFrameRef.current = null;
+        setAssistantSpeechLevel(0);
+      }
+    };
+    setAssistantSpeechLevel(0.62);
+    assistantSpeechPulseFrameRef.current = window.requestAnimationFrame(tick);
     if (isMobileMode) {
       openMobileTextPanel({ focusInput: false });
     }
-  }, [assistantSpeech?.id, isMobileMode]);
+  }, [assistantSpeech?.id, assistantSpeech?.text, isMobileMode]);
 
   useEffect(() => {
     return () => {
       clearMobileTextPanelCollapseTimer();
       clearOrbLongPressTimer();
+      clearAssistantSpeechPulse();
     };
   }, []);
 
@@ -434,7 +459,7 @@ export function VoiceAssistantDock({
   const visibleOperation = getVisibleVoiceAssistantOperation(operation, operationStatus);
   const panelAnswerText = getVoiceAssistantPanelAnswerText(assistantSpeech?.text, pending?.message);
   const orbVisualMode = getVoiceAssistantOrbVisualMode(visualState, visibleOperation, textPanelVisible);
-  const orbAudioLevel = clampVoiceAssistantAudioLevel(voiceAudioLevel);
+  const orbAudioLevel = clampVoiceAssistantAudioLevel(Math.max(voiceAudioLevel, assistantSpeechLevel));
   const orbColorMode = getVoiceAssistantOrbColorMode(voiceStatus);
   const orbScale = getVoiceAssistantOrbScale(voiceStatus, orbAudioLevel);
 

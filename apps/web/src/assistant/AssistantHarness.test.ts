@@ -26,9 +26,10 @@ function createTools(): AssistantToolSpec[] {
   return [
     { name: "board.auto_align", description: "整理", parameters: schema, scope: "desktop", risk: "confirm" },
     { name: "app.fullscreen.set", description: "全屏", parameters: schema, scope: "desktop", risk: "safe" },
-    { name: "widget.focus", description: "聚焦", parameters: schema, scope: "desktop" },
-    { name: "widget.remove", description: "关闭小工具", parameters: schema, scope: "desktop", risk: "safe" },
-    { name: "widget.resize", description: "调整窗口", parameters: schema, scope: "desktop", risk: "safe" },
+    { name: "widget.focus", description: "聚焦", parameters: schema, scope: "desktop", requiresTarget: true },
+    { name: "widget.remove", description: "关闭小工具", parameters: schema, scope: "desktop", risk: "safe", requiresTarget: true },
+    { name: "widget.move", description: "移动窗口", parameters: schema, scope: "desktop", risk: "safe", requiresTarget: true },
+    { name: "widget.resize", description: "调整窗口", parameters: schema, scope: "desktop", risk: "safe", requiresTarget: true },
     {
       name: "note.append",
       description: "追加便签",
@@ -137,8 +138,9 @@ function createRegistry(resultsByTool: Record<string, AssistantToolResult> = {})
         scope: "desktop"
       },
       async execute(args, context) {
+        void context;
         const recordArgs = args as Record<string, unknown>;
-        executed.push(`${name}:${context.target?.widgetId ?? (name === "widget.move" ? recordArgs.widgetId : undefined) ?? "none"}`);
+        executed.push(`${name}:${typeof recordArgs.widgetId === "string" ? recordArgs.widgetId : "none"}`);
         if (delayMs > 0) {
           await new Promise((resolve) => globalThis.setTimeout(resolve, delayMs));
         }
@@ -467,7 +469,7 @@ describe("AssistantHarness", () => {
 
     expect(response.route).toBe("model");
     expect(response.result.status).toBe("success");
-    expect(executed).toEqual(["widget.focus:none"]);
+    expect(executed).toEqual(["widget.focus:wi_tv"]);
   });
 
   it("recovers a close-widget shortcut when realtime returns only diagnostics", async () => {
@@ -488,7 +490,7 @@ describe("AssistantHarness", () => {
 
     expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
-    expect(executed).toEqual(["widget.remove:none"]);
+    expect(executed).toEqual(["widget.remove:wi_messageBoard"]);
   });
 
   it("recovers an auto-align shortcut when realtime returns only diagnostics", async () => {
@@ -504,6 +506,75 @@ describe("AssistantHarness", () => {
     expect(response.result.status).toBe("needs_confirmation");
     expect(harness.getPendingConfirmation()?.actionName).toBe("board.auto_align");
     expect(executed).toEqual([]);
+  });
+
+  it("does not recover diagnostic logging requests into mutating local shortcuts", async () => {
+    const input = "关闭留言板成功后记录窗口移除状态";
+    const { harness, executed } = createHarness({
+      modelPlan: createNonActionRealtimePlan(input),
+      registryFactory() {
+        const state = createRegistry();
+        state.registry.register({
+          spec: {
+            name: "assistant.runtime_diagnostics",
+            description: "诊断",
+            parameters: createPassthroughSchema<Record<string, unknown>>(),
+            scope: "desktop",
+            risk: "safe"
+          },
+          execute() {
+            state.executed.push("assistant.runtime_diagnostics:none");
+            return { status: "success", message: "diagnostics done" };
+          }
+        });
+        return state;
+      },
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_messageBoard", definitionId: "wd_messageBoard", type: "messageBoard", name: "留言板", order: 3 }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput(input);
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["assistant.runtime_diagnostics:none"]);
+  });
+
+  it("does not bulk-close constrained keep-one-window requests before realtime planning", async () => {
+    const input = "把所有弹窗先收起来，只留下命令面板";
+    const { harness, executed } = createHarness({
+      modelPlan: createRealtimePlanWithTool(input, "app.command_palette.open"),
+      registryFactory() {
+        const state = createRegistry();
+        state.registry.register({
+          spec: {
+            name: "app.command_palette.open",
+            description: "命令面板",
+            parameters: createPassthroughSchema<Record<string, unknown>>(),
+            scope: "desktop",
+            risk: "safe"
+          },
+          execute() {
+            state.executed.push("app.command_palette.open:none");
+            return { status: "success", message: "palette done" };
+          }
+        });
+        return state;
+      }
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput(input);
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["app.command_palette.open:none"]);
   });
 
   it("recovers a local shortcut when realtime returns a forbidden message-board send plan", async () => {
@@ -529,7 +600,7 @@ describe("AssistantHarness", () => {
       modelTools: ["messageBoard.send"],
       recoveredTool: "widget.remove"
     });
-    expect(executed).toEqual(["widget.remove:none"]);
+    expect(executed).toEqual(["widget.remove:wi_messageBoard"]);
   });
 
   it("rejects a forbidden realtime tool when local recovery would also violate policy", async () => {
@@ -587,7 +658,7 @@ describe("AssistantHarness", () => {
     const confirmed = await harness.handleUserInput("确认");
 
     expect(confirmed.result.status).toBe("success");
-    expect(executed).toEqual(["widget.remove:none"]);
+    expect(executed).toEqual(["widget.remove:wi_tv"]);
   });
 
   it("continues same-group commands after confirming a blocking plan step", async () => {
@@ -624,7 +695,16 @@ describe("AssistantHarness", () => {
       createdBy: "realtime-2",
       requiresHarnessValidation: true
     };
-    const { harness, executed } = createHarness({ modelPlan });
+    const { harness, executed } = createHarness({
+      modelPlan,
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_todo", definitionId: "wd_todo", type: "todo", name: "待办", order: 3, summary: "" }
+        ]
+      })
+    });
     await harness.initialize();
 
     const response = await harness.handleUserInput("整理桌面后聚焦待办窗口");
@@ -636,7 +716,7 @@ describe("AssistantHarness", () => {
     const confirmed = await harness.handleUserInput("确认");
 
     expect(confirmed.result.status).toBe("success");
-    expect(executed).toEqual(["board.auto_align:none", "widget.focus:none"]);
+    expect(executed).toEqual(["board.auto_align:none", "widget.focus:wi_todo"]);
   });
 
   it("executes a realtime command plan with parallel independent tools through harness validation", async () => {
@@ -915,9 +995,9 @@ describe("AssistantHarness", () => {
     expect(executed).toEqual(["countdown.set:wi_countdown"]);
   });
 
-  it("turns successful model fallback into a confirmed learned local shortcut", async () => {
+  it("does not auto-create learned shortcut candidates from successful model fallback", async () => {
     const learnedCommandStore = new LearnedCommandStore();
-    const { harness, executed, auditEvents } = createHarness({
+    const { harness } = createHarness({
       learnedCommandStore,
       modelCall: {
         id: "model_close_music",
@@ -932,23 +1012,44 @@ describe("AssistantHarness", () => {
 
     expect(first.route).toBe("model");
     expect(first.result.status).toBe("success");
-    expect(harness.getPendingConfirmation()).toMatchObject({
-      actionName: "assistant.learn",
-      message: "要记住“执行我的电视收纳暗号”下次直接执行 widget.remove 吗？"
+    expect(harness.getPendingConfirmation()).toBeNull();
+    expect(await learnedCommandStore.match("执行我的电视收纳暗号")).toBeNull();
+    expect((await learnedCommandStore.list()).shortcuts).toEqual([]);
+  });
+
+  it("still executes an already confirmed learned local shortcut", async () => {
+    const learnedCommandStore = new LearnedCommandStore();
+    await learnedCommandStore.addCandidate({
+      id: "learn_tv_close",
+      type: "shortcut_alias",
+      module: "widget",
+      rawText: "执行我的电视收纳暗号",
+      normalizedText: "执行我的电视收纳暗号",
+      intent: "widget.remove",
+      tool: "widget.remove",
+      args: { widgetId: "wi_tv" },
+      risk: "safe",
+      confidence: 0.91,
+      source: "realtime-success",
+      status: "confirmed",
+      createdAt: "2026-06-21T00:00:00.000Z",
+      regressionCase: {
+        input: "执行我的电视收纳暗号",
+        expected: {
+          module: "widget",
+          tool: "widget.remove",
+          args: { widgetId: "wi_tv" }
+        }
+      }
     });
-    expect(auditEvents.at(-1)).toMatchObject({ learningCandidate: true });
+    const { harness, executed } = createHarness({ learnedCommandStore });
+    await harness.initialize();
 
-    const confirmed = await harness.handleUserInput("确认");
-    expect(confirmed.route).toBe("learned");
-    expect(confirmed.result.status).toBe("success");
-    expect(await learnedCommandStore.match("执行我的电视收纳暗号")).toMatchObject({ tool: "widget.remove", status: "confirmed" });
-
-    executed.length = 0;
     const second = await harness.handleUserInput("执行我的电视收纳暗号");
 
     expect(second.route).toBe("learned");
     expect(second.result.status).toBe("success");
-    expect(executed).toEqual(["widget.remove:none"]);
+    expect(executed).toEqual(["widget.remove:wi_tv"]);
   });
 
   it("does not create learned candidates for sensitive model fallback payloads", async () => {
@@ -1130,7 +1231,7 @@ describe("AssistantHarness", () => {
 
     expect(response.route).toBe("model");
     expect(response.result.status).toBe("success");
-    expect(executed).toEqual(["app.fullscreen.set:none", "widget.resize:none"]);
+    expect(executed).toEqual(["app.fullscreen.set:none", "widget.resize:wi_music"]);
   });
 
   it("prepends fullscreen exit when realtime only focuses after a restore-window request", async () => {
@@ -1164,7 +1265,7 @@ describe("AssistantHarness", () => {
 
     expect(response.route).toBe("model");
     expect(response.result.status).toBe("success");
-    expect(executed).toEqual(["app.fullscreen.set:none", "widget.focus:none"]);
+    expect(executed).toEqual(["app.fullscreen.set:none", "widget.focus:wi_note"]);
   });
 
   it("delegates same-sentence music playback and reminder setup to realtime planning", async () => {
@@ -1339,7 +1440,7 @@ describe("AssistantHarness", () => {
     expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(response.result.message).toBe("widget.focus done；tv.play done");
-    expect(executed).toEqual(["widget.focus:none", "tv.play:wi_tv"]);
+    expect(executed).toEqual(["widget.focus:wi_tv", "tv.play:wi_tv"]);
     expect(operationEvents.slice(0, 2)).toMatchObject([
       { phase: "running", route: "shortcut", toolName: "widget.focus" },
       { phase: "running", route: "shortcut", toolName: "tv.play" }
@@ -1752,7 +1853,48 @@ describe("AssistantHarness", () => {
     expect(response.result.status).toBe("success");
     expect(response.result.message).toBe("widget.remove done；widget.remove done");
     expect(harness.getPendingConfirmation()).toBeNull();
-    expect(executed).toEqual(["widget.remove:none", "widget.remove:none"]);
+    expect(executed).toEqual(["widget.remove:wi_tv", "widget.remove:wi_note"]);
+  });
+
+  it("expands close all window commands into concrete widget removals", async () => {
+    const { harness, executed } = createHarness({
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_messageBoard", definitionId: "wd_messageBoard", type: "messageBoard", name: "留言板", order: 3 },
+          { widgetId: "wi_worldClock", definitionId: "wd_worldClock", type: "worldClock", name: "世界时钟", order: 4 }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("关闭所有窗口");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("widget.remove done；widget.remove done；widget.remove done；widget.remove done");
+    expect(executed).toEqual(["widget.remove:wi_tv", "widget.remove:wi_note", "widget.remove:wi_messageBoard", "widget.remove:wi_worldClock"]);
+  });
+
+  it("expands realtime close all window commands before model planning", async () => {
+    const { harness, executed } = createHarness({
+      modelCall: { id: "model_diag", name: "assistant.runtime_diagnostics", arguments: {}, source: "realtime" },
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_messageBoard", definitionId: "wd_messageBoard", type: "messageBoard", name: "留言板", order: 3 }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput("关闭全部窗口");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["widget.remove:wi_tv", "widget.remove:wi_note", "widget.remove:wi_messageBoard"]);
   });
 
   it("executes single close message board commands locally with high confidence", async () => {
@@ -1772,7 +1914,7 @@ describe("AssistantHarness", () => {
     expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(response.result.message).toBe("widget.remove done");
-    expect(executed).toEqual(["widget.remove:none"]);
+    expect(executed).toEqual(["widget.remove:wi_messageBoard"]);
   });
 
   it("executes close music and weather as removals without weather query fallback", async () => {
@@ -1794,7 +1936,7 @@ describe("AssistantHarness", () => {
     expect(response.result.status).toBe("success");
     expect(response.result.message).toBe("widget.remove done；widget.remove done");
     expect(response.result.errorCode).toBeUndefined();
-    expect(executed).toEqual(["widget.remove:none", "widget.remove:none"]);
+    expect(executed).toEqual(["widget.remove:wi_music", "widget.remove:wi_weather"]);
   });
 
   it("keeps noisy spoken close music as a single close shortcut", async () => {
@@ -1814,7 +1956,7 @@ describe("AssistantHarness", () => {
     expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(response.result.message).toBe("widget.remove done");
-    expect(executed).toEqual(["widget.remove:none"]);
+    expect(executed).toEqual(["widget.remove:wi_music"]);
   });
 
   it("does not leave queued confirmations after multi-close shortcut commands", async () => {
@@ -1826,7 +1968,7 @@ describe("AssistantHarness", () => {
 
     expect(confirmAfterCancel.result.status).toBe("needs_clarification");
     expect(harness.getPendingConfirmation()).toBeNull();
-    expect(executed).toEqual(["widget.remove:none", "widget.remove:none"]);
+    expect(executed).toEqual(["widget.remove:wi_tv", "widget.remove:wi_note"]);
   });
 
   it("syncs realtime tools to the target widget type after detail action success", async () => {
@@ -1866,6 +2008,30 @@ describe("AssistantHarness", () => {
 
     expect(response.result.status).toBe("success");
     expect(executed).toEqual(["note.append:wi_note"]);
+  });
+
+  it("expands direct realtime remove calls with bulk window targets", async () => {
+    const { harness, executed } = createHarness({
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_worldClock", definitionId: "wd_worldClock", type: "worldClock", name: "世界时钟", order: 3 }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleFunctionCall({
+      id: "call_close_all",
+      name: "widget.remove",
+      arguments: { targetText: "所有窗口" },
+      source: "realtime"
+    });
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["widget.remove:wi_tv", "widget.remove:wi_note", "widget.remove:wi_worldClock"]);
   });
 
   it("returns a failure for unknown tools", async () => {

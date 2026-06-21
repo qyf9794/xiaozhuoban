@@ -227,12 +227,12 @@ vec4 glassFragment(vec2 pixel) {
 	float lowerLobe = smoothstep(0.08, 0.78, normalizedPanel.y) * (1.0 - smoothstep(0.2, 1.0, abs(normalizedPanel.x)));
 	float sideLobe = smoothstep(0.72, 0.98, abs(normalizedPanel.x)) * (1.0 - smoothstep(-0.1, 0.78, normalizedPanel.y));
 	vec3 innerRimColor =
-		vec3(1.0, 0.82, 0.42) * upperLobe * 0.5 +
-		vec3(0.22, 0.44, 1.0) * lowerLobe * 0.38 +
-		vec3(0.64, 0.74, 1.0) * sideLobe * 0.24;
+		vec3(1.0, 0.82, 0.42) * upperLobe * 0.58 +
+		vec3(0.22, 0.44, 1.0) * lowerLobe * 0.44 +
+		vec3(0.64, 0.74, 1.0) * sideLobe * 0.27;
 	col += innerRimColor * innerRim;
 	float innerEdgeLine = smoothstep(0.74, 0.9, radial) * (1.0 - smoothstep(0.92, 0.99, radial)) * alpha;
-	col += vec3(0.42, 0.52, 0.86) * innerEdgeLine * 0.12;
+	col += vec3(0.42, 0.52, 0.86) * innerEdgeLine * 0.15;
 
 	// chip lenses: glass-on-glass. Each capsule refracts the already-refracted
 	// scene a second time and wears its own rim highlight + a faint face lift.

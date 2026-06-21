@@ -10,7 +10,7 @@
 // Key ideas:
 //   - uResolved (0..1) morphs the field from a radial "unresolved" glow ring
 //     into the horizontal waveform (mix(edge, abs(py - w), res) etc).
-//   - 4-tap spectral loop: each tap gets a phase-shifted wave and a hue from
+//   - 3-tap spectral loop: each tap gets a phase-shifted wave and a hue from
 //     spectrumTri(); accumulated color is normalized by the hue weight sum.
 //   - Audio bands (uLow/uMid/uHigh) modulate amplitude, aberration, band fill
 //     and softness through the uXxxAmplitude/uMidXxx/uHighXxx scalars.
@@ -125,7 +125,7 @@ void main() {
 
 	vec3 colAcc = vec3(0.0);
 	vec3 wSum = vec3(0.0);
-	for (int i = 0; i < 4; i += 1) {
+	for (int i = 0; i < 3; i += 1) {
 		float fi = float(i);
 		float t13 = fi * 0.33333334;
 		vec3 hue = mix(vec3(1.0), spectrumTri(fi), vec3(res));

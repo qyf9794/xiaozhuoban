@@ -39,7 +39,7 @@ export const WAVE_PRESETS = {
 		uFalloff: 1.7,
 		uEdgeMask: 0.4,
 		uEdgeMaskInset: 0,
-		uBandFill: 30000, // the translucent lobe body — this is what makes it "bloom"
+		uBandFill: 19000, // the translucent lobe body — this is what makes it "bloom"
 		uBandFillThickness: 0.08,
 		uSoftness: 2.5,
 		uLowAmplitude: 6,

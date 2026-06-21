@@ -44,8 +44,8 @@ const CHARGE_SPRING = { response: 0.18, dampingRatio: 1 };
 const FLASH_DECAY = 7; // exp falloff per second, matches the reference
 const SIM_MAX_STEP_S = 1 / 30;
 const WAVE_PHASE_WRAP = 62.831848; // ~10 * TAU, matches mod() in the shader
-const WAVE_SPEED_BASE = -2.5;
-const WAVE_SPEED_AUDIO = -12; // extra phase speed at full audio drive
+const WAVE_SPEED_BASE = -1.35;
+const WAVE_SPEED_AUDIO = -5.5; // extra phase speed at full audio drive
 const AUDIO_DRIVE_SCALE = 0.4;
 
 const STATE_PRESETS = {

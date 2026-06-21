@@ -9,7 +9,6 @@ import {
   WidgetAssistantRegistry,
   WidgetTargetResolver,
   createCommandPlanFromToolCalls,
-  createLearningCandidate,
   createPlanPreview,
   classifyShortcutDeferral,
   getForbiddenToolViolations,
@@ -38,6 +37,7 @@ import { realtimeWidgetAliases } from "./realtimeRoutingPolicy";
 export type AssistantRoute = "shortcut" | "model" | "function_call" | "learned";
 type AssistantRisk = CommandPlanStep["risk"];
 const riskRank: Record<AssistantRisk, number> = { safe: 0, confirm: 1, destructive: 2 };
+const AUTO_LEARNING_ENABLED = false;
 
 export interface AssistantRealtimeAdapter {
   updateTools: (tools: AssistantToolSpec[]) => Promise<void> | void;
@@ -211,6 +211,14 @@ function removeTargetText(args: unknown) {
   return next;
 }
 
+function createTargetBoundArguments(args: unknown, target?: ResolvedWidgetTarget) {
+  const next = removeTargetText(args);
+  if (!target || !isRecord(next) || typeof next.widgetId === "string") {
+    return next;
+  }
+  return { ...next, widgetId: target.widgetId };
+}
+
 function cleanCommandSegment(segment: string) {
   return segment
     .replace(/^[\s，,。；;]+|[\s，,。；;]+$/g, "")
@@ -253,6 +261,37 @@ function splitCloseMultiTargetCommand(input: string): string[][] {
     return [];
   }
   return matches.map((item) => [`${closeVerb}${item.alias}`]);
+}
+
+function isSimpleBulkCloseWindowCommand(input: string) {
+  const normalized = input.replace(/\s+/g, "");
+  if (/(保留|除了|除开|只关闭|只留下|留下|确认|先问|先确认|临时)/.test(normalized)) {
+    return false;
+  }
+  const hasCloseVerb = /(关闭|关掉|关上|收起|移除|删除)/.test(normalized);
+  const hasBulkQuantifier = /(所有|全部|全都|全部的|所有的)/.test(normalized);
+  const hasWindowNoun = /(窗口|小工具|组件|面板)/.test(normalized);
+  return hasCloseVerb && hasBulkQuantifier && hasWindowNoun;
+}
+
+function isBulkWindowTargetText(input: string) {
+  const normalized = input.replace(/\s+/g, "");
+  if (/(保留|除了|除开|只关闭|只留下|留下|临时)/.test(normalized)) {
+    return false;
+  }
+  return /(所有|全部|全都|全部的|所有的)/.test(normalized) && /(窗口|小工具|组件|面板)/.test(normalized);
+}
+
+function isDiagnosticOrPreferenceIntent(input: string) {
+  const normalized = input.replace(/\s+/g, "");
+  if (/(执行关闭|触发确认|不要回答没有工具)/.test(normalized)) {
+    return false;
+  }
+  return (
+    /(?:记录|日志|监控|诊断|前端成功状态|路由|恢复来源|重复次数|弱网|断线|恢复会话|多轮对话|不要忘记)/.test(normalized) ||
+    /(?:我说|以后我说|下次我说).{0,18}(?:时|优先|就)/.test(normalized) ||
+    /(?:前|之前|先).{0,10}(?:告诉我|回复|确认|查看|检查).{0,10}(?:状态|有没有|是否)/.test(normalized)
+  );
 }
 
 type AddedWidgetData = {
@@ -399,6 +438,10 @@ export class AssistantHarness {
       return learnedResponse;
     }
     const shortcutContext = this.buildShortcutContext();
+    const bulkClosePlan = this.buildBulkWindowClosePlan(input, shortcutContext);
+    if (bulkClosePlan) {
+      return this.handleShortcutPlan(bulkClosePlan, startedAt);
+    }
     const segmentedShortcut = this.hasSegmentedShortcutInput(input);
     const shortcutPlan = this.shouldDeferComplexShortcutSegment(input) ? null : this.buildShortcutPlan(input, shortcutContext);
     if (shortcutPlan) {
@@ -448,6 +491,10 @@ export class AssistantHarness {
     startedAt: number,
     context: CompactAssistantContext = this.getCurrentContext()
   ): Promise<AssistantHarnessResponse> {
+    const bulkClosePlan = this.buildBulkWindowClosePlan(input, this.buildShortcutContext());
+    if (bulkClosePlan) {
+      return this.handleShortcutPlan(bulkClosePlan, startedAt);
+    }
     this.markRealtimeUsed();
     const modelPlan = await this.options.realtime.requestCommandPlan?.(input, context, this.currentTools, this.options.moduleRegistry);
     if (modelPlan) {
@@ -525,6 +572,9 @@ export class AssistantHarness {
     violations: CommandPolicyForbiddenViolation[] = []
   ): Promise<AssistantHarnessResponse | null> {
     if (this.pendingConfirmation || modelToolNames.length === 0 || !reason) {
+      return null;
+    }
+    if (reason === "non_action_model_tools" && isDiagnosticOrPreferenceIntent(input)) {
       return null;
     }
     const shortcut = this.options.shortcutRouter.route(input, this.buildShortcutContext());
@@ -623,6 +673,29 @@ export class AssistantHarness {
       }
     }
     return calls;
+  }
+
+  private buildBulkWindowClosePlan(input: string, context: IntentShortcutContext): AssistantToolCall[][] | null {
+    if (this.pendingConfirmation || !isSimpleBulkCloseWindowCommand(input)) {
+      return null;
+    }
+    return this.createBulkWindowClosePlan(input, context);
+  }
+
+  private createBulkWindowClosePlan(input: string, context: IntentShortcutContext): AssistantToolCall[][] | null {
+    const widgets = [...(context.availableWidgets ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    if (!widgets.length) {
+      return null;
+    }
+    return [
+      widgets.map((widget) => ({
+        id: createId("bulk_close"),
+        name: "widget.remove",
+        arguments: { widgetId: widget.widgetId },
+        source: "shortcut",
+        transcript: input
+      }))
+    ];
   }
 
   private shouldExecuteLocalShortcut(confidence: number): boolean {
@@ -799,6 +872,17 @@ export class AssistantHarness {
     route: AssistantRoute = "function_call",
     startedAt = Date.now()
   ): Promise<AssistantHarnessResponse> {
+    if (call.name === "widget.remove" && !this.pendingConfirmation) {
+      const targetText = getTargetText(call.arguments);
+      const transcript = call.transcript ?? "";
+      if (isSimpleBulkCloseWindowCommand(transcript) || isBulkWindowTargetText(targetText)) {
+        const bulkPlan = this.createBulkWindowClosePlan(transcript || `关闭${targetText}`, this.buildShortcutContext());
+        if (bulkPlan) {
+          return this.handleShortcutPlan(bulkPlan, startedAt);
+        }
+      }
+    }
+
     if (call.name === CONFIRM_TOOL || call.name === CANCEL_TOOL) {
       this.emitOperation({ id: call.id, phase: "running", route, toolName: call.name });
       const result = await this.executeCall(call);
@@ -1277,7 +1361,7 @@ export class AssistantHarness {
       ...call,
       id: pending.id,
       name: pending.actionName,
-      arguments: removeTargetText(pending.arguments)
+      arguments: createTargetBoundArguments(pending.arguments, pending.target)
     };
     return this.executeRegistryCall(nextCall, pending.target);
   }
@@ -1299,7 +1383,7 @@ export class AssistantHarness {
       target,
       signal: controller.signal
     };
-    const task = this.options.registry.execute({ ...call, arguments: removeTargetText(call.arguments) }, context);
+    const task = this.options.registry.execute({ ...call, arguments: createTargetBoundArguments(call.arguments, target) }, context);
     const result = await withTimeout(task, this.options.actionTimeoutMs ?? 10_000);
     if (result === "timed_out") {
       controller.abort();
@@ -1426,26 +1510,14 @@ export class AssistantHarness {
     result: AssistantToolResult,
     route: AssistantRoute
   ): Promise<boolean> {
-    const store = this.options.learnedCommandStore;
-    if (!store || (route !== "model" && route !== "function_call")) {
+    void plan;
+    void call;
+    void result;
+    void route;
+    if (!AUTO_LEARNING_ENABLED) {
       return false;
     }
-    const candidate = createLearningCandidate({
-      rawText: plan.sourceText,
-      normalizedText: plan.normalizedText,
-      plan,
-      call,
-      result,
-      now: this.options.now
-    });
-    if (!candidate) return false;
-    try {
-      await store.addCandidate(candidate);
-      this.pendingLearningCandidate = candidate;
-      return true;
-    } catch {
-      return false;
-    }
+    return false;
   }
 
   private async audit(event: AssistantAuditEvent): Promise<void> {
