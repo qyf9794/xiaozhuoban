@@ -719,6 +719,147 @@ describe("AssistantHarness", () => {
     expect(executed).toEqual(["board.auto_align:none", "widget.focus:wi_todo"]);
   });
 
+  it("continues queued realtime-plan commands when confirmation is submitted through the realtime entry", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_realtime_confirm_then_focus",
+      sourceText: "整理桌面后聚焦待办窗口",
+      normalizedText: "整理桌面后聚焦待办窗口",
+      commands: [
+        {
+          id: "cmd_align",
+          module: "board",
+          tool: "board.auto_align",
+          args: {},
+          risk: "confirm",
+          confidence: 0.94,
+          source: "text",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "cmd_focus",
+          module: "widget",
+          tool: "widget.focus",
+          args: { widgetId: "wi_todo" },
+          risk: "safe",
+          confidence: 0.94,
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_align", "cmd_focus"] }],
+      confidence: 0.94,
+      needsConfirmation: true,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({
+      modelPlan,
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_todo", definitionId: "wd_todo", type: "todo", name: "待办", order: 3, summary: "" }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const first = await harness.handleRealtimeUserInput("整理桌面后聚焦待办窗口");
+    expect(first.result.status).toBe("needs_confirmation");
+
+    const confirmed = await harness.handleRealtimeUserInput("确认");
+
+    expect(confirmed.result.status).toBe("success");
+    expect(executed).toEqual(["board.auto_align:none", "widget.focus:wi_todo"]);
+  });
+
+  it("falls back to a matching widget type when a detail tool receives the wrong widget id", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_wrong_widget_id",
+      sourceText: "关闭电视，同时把音乐暂停",
+      normalizedText: "关闭电视，同时把音乐暂停",
+      commands: [
+        {
+          id: "cmd_music_pause",
+          module: "music",
+          tool: "music.pause",
+          args: { widgetId: "wi_tv" },
+          risk: "safe",
+          confidence: 0.94,
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_music_pause"] }],
+      confidence: 0.94,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({
+      modelPlan,
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_music", definitionId: "wd_music", type: "music", name: "音乐", order: 3, summary: "" }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("关闭电视，同时把音乐暂停");
+
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["music.pause:wi_music"]);
+  });
+
+  it("defers TV window resize and move phrasing instead of treating it as fullscreen", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_tv_window_layout",
+      sourceText: "电视窗口太挡眼，缩小并放到右上角",
+      normalizedText: "电视窗口太挡眼，缩小并放到右上角",
+      commands: [
+        {
+          id: "cmd_resize",
+          module: "widget",
+          tool: "widget.resize",
+          args: { widgetId: "wi_tv", w: 220, h: 180 },
+          risk: "safe",
+          confidence: 0.94,
+          source: "text",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "cmd_move",
+          module: "widget",
+          tool: "widget.move",
+          args: { widgetId: "wi_tv", x: 920, y: 0 },
+          risk: "safe",
+          confidence: 0.94,
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_resize", "cmd_move"] }],
+      confidence: 0.94,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({ modelPlan });
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("电视窗口太挡眼，缩小并放到右上角");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["widget.resize:wi_tv", "widget.move:wi_tv"]);
+  });
+
   it("executes a realtime command plan with parallel independent tools through harness validation", async () => {
     const modelPlan: CommandPlan = {
       id: "plan_realtime_parallel",

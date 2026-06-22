@@ -31,6 +31,27 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(resolveRealtimeMicrophoneLevel(new Uint8Array())).toBe(0);
   });
 
+  it("combines microphone and remote speech levels without one source clearing the other", () => {
+    const levels: number[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onMicrophoneLevel(level) {
+        levels.push(level);
+      }
+    });
+    const levelControls = adapter as unknown as {
+      setRealtimeAudioLevel: (kind: "microphone" | "remote", level: number) => void;
+      stopMicrophoneLevelMonitor: () => void;
+      stopRemoteAudioLevelMonitor: () => void;
+    };
+
+    levelControls.setRealtimeAudioLevel("microphone", 0.32);
+    levelControls.setRealtimeAudioLevel("remote", 0.68);
+    levelControls.stopMicrophoneLevelMonitor();
+    levelControls.stopRemoteAudioLevelMonitor();
+
+    expect(levels).toEqual([0.32, 0.68, 0.68, 0]);
+  });
+
   it("parses response.function_call_arguments.done events", () => {
     const call = parseRealtimeFunctionCallEvent({
       type: "response.function_call_arguments.done",
@@ -563,6 +584,7 @@ describe("OpenAI realtime adapter helpers", () => {
     const originalAudio = globalThis.Audio;
     const adapter = new OpenAIRealtimeWebRtcAdapter();
     const calls: string[] = [];
+    const monitoredStreams: unknown[] = [];
     const attributes = new Map<string, string>();
     const remoteStream = { id: "remote_stream_1" };
     class MockAudio {
@@ -587,6 +609,9 @@ describe("OpenAI realtime adapter helpers", () => {
       configurable: true,
       value: MockAudio
     });
+    (adapter as unknown as { startRemoteAudioLevelMonitor: (stream: MediaStream) => void }).startRemoteAudioLevelMonitor = (stream) => {
+      monitoredStreams.push(stream);
+    };
 
     try {
       (adapter as unknown as { attachRemoteAudioStream: (stream: MediaStream) => void }).attachRemoteAudioStream(remoteStream as MediaStream);
@@ -594,6 +619,7 @@ describe("OpenAI realtime adapter helpers", () => {
       expect(retained).toMatchObject({ autoplay: true, srcObject: remoteStream });
       expect(attributes.get("playsinline")).toBe("true");
       expect(calls).toContain("play");
+      expect(monitoredStreams).toEqual([remoteStream]);
 
       (adapter as unknown as { closeResources: () => void }).closeResources();
       expect((adapter as unknown as { remoteAudioElement: HTMLAudioElement | null }).remoteAudioElement).toBeNull();

@@ -265,6 +265,7 @@ function createAcceptanceHarness(options?: { modelCall?: AssistantToolCall | nul
     getAppShell: () => appShell,
     getBoards: () => boards,
     getActiveBoard: () => boards.find((board) => board.id === activeBoardId),
+    getWidgets: (type: string) => widgets.filter((item) => definitions.find((definition) => definition.id === item.definitionId)?.type === type),
     getWidget: (type: string) => widgets.find((item) => item.id === `wi_${type}`)
   };
 }
@@ -382,6 +383,50 @@ describe("stage-one assistant acceptance scenarios", () => {
     });
   });
 
+  it("rewrites a realtime add-countdown function call into setting the existing countdown", async () => {
+    const { harness, getWidget, getWidgets } = createAcceptanceHarness({ initialWidgetTypes: ["countdown", "note"] });
+    await harness.initialize();
+
+    const response = await harness.handleFunctionCall({
+      id: "rt_countdown_30m",
+      name: "board.add_widget",
+      arguments: { definitionId: "wd_countdown" },
+      source: "realtime",
+      transcript: "倒计时30分钟"
+    });
+
+    expect(response.route).toBe("function_call");
+    expect(response.result.status).toBe("success");
+    expect(getWidgets("countdown")).toHaveLength(1);
+    expect(getWidget("countdown")?.state).toMatchObject({
+      totalSeconds: 1800,
+      remainingSeconds: 1800,
+      running: true
+    });
+  });
+
+  it("adds one countdown and immediately applies the duration when realtime has no countdown target", async () => {
+    const { harness, getWidgets } = createAcceptanceHarness({ initialWidgetTypes: ["note"] });
+    await harness.initialize();
+
+    const response = await harness.handleFunctionCall({
+      id: "rt_countdown_add_30m",
+      name: "board.add_widget",
+      arguments: { definitionId: "wd_countdown" },
+      source: "realtime",
+      transcript: "倒计时30分钟"
+    });
+
+    const countdowns = getWidgets("countdown");
+    expect(response.result.status).toBe("success");
+    expect(countdowns).toHaveLength(1);
+    expect(countdowns[0]?.state).toMatchObject({
+      totalSeconds: 1800,
+      remainingSeconds: 1800,
+      running: true
+    });
+  });
+
   it("routes high-confidence timer, note, and translate commands locally", async () => {
     const { harness, modelInputs, getWidget } = createAcceptanceHarness();
     await harness.initialize();
@@ -474,7 +519,7 @@ describe("stage-one assistant acceptance scenarios", () => {
       ["查上海天气决定下午是否出门", "multi_step"],
       ["电视全屏时隐藏侧边栏", "tv_workflow"],
       ["音乐登录按钮挡住封面，放到右上角", "window_layout"],
-      ["翻译成中文后复制到剪贴板", "multi_step"]
+      ["翻译成中文后复制到剪贴板", "translation_workflow"]
     ] as const;
 
     for (const [command, category] of cases) {

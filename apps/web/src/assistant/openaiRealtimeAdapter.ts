@@ -93,6 +93,7 @@ type MicrophoneLevelMonitor = {
   analyser: AnalyserNode;
   source: MediaStreamAudioSourceNode;
   animationFrameId: number | null;
+  kind: "microphone" | "remote";
 };
 
 const PLANNED_WIDGET_PREFIX = "planned_widget_";
@@ -851,6 +852,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private realtimeItemTraceIds = new Map<string, string>();
   private functionCallTraceIds = new Map<string, string>();
   private microphoneLevelMonitor: MicrophoneLevelMonitor | null = null;
+  private remoteAudioLevelMonitor: MicrophoneLevelMonitor | null = null;
+  private microphoneLevel = 0;
+  private remoteAudioLevel = 0;
   private remoteAudioElement: HTMLAudioElement | null = null;
   private pendingScopedToolSelectionResult: PendingScopedToolSelectionResult | null = null;
   private pendingTextCommandAfterSelectorUpdate: PendingTextCommandAfterSelectorUpdate | null = null;
@@ -1132,6 +1136,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   }
 
   private releaseRemoteAudioElement(): void {
+    this.stopRemoteAudioLevelMonitor();
     const audio = this.remoteAudioElement;
     if (!audio) return;
     audio.pause();
@@ -1147,6 +1152,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     audio.setAttribute("playsinline", "true");
     audio.srcObject = remoteStream;
     this.remoteAudioElement = audio;
+    this.startRemoteAudioLevelMonitor(remoteStream);
     void audio.play?.().catch((error) => {
       this.emitDiagnostic({
         type: "realtime.remote_audio.play",
@@ -1157,11 +1163,24 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   }
 
   private startMicrophoneLevelMonitor(stream: MediaStream): void {
-    this.stopMicrophoneLevelMonitor();
-    if (!this.options.onMicrophoneLevel) return;
+    this.microphoneLevelMonitor = this.startAudioLevelMonitor(stream, "microphone", this.microphoneLevelMonitor);
+  }
+
+  private startRemoteAudioLevelMonitor(stream: MediaStream): void {
+    this.remoteAudioLevelMonitor = this.startAudioLevelMonitor(stream, "remote", this.remoteAudioLevelMonitor);
+  }
+
+  private startAudioLevelMonitor(
+    stream: MediaStream,
+    kind: "microphone" | "remote",
+    previousMonitor: MicrophoneLevelMonitor | null
+  ): MicrophoneLevelMonitor | null {
+    this.stopAudioLevelMonitor(previousMonitor);
+    this.setRealtimeAudioLevel(kind, 0);
+    if (!this.options.onMicrophoneLevel) return null;
     const AudioContextCtor =
       globalThis.AudioContext ?? (globalThis as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextCtor) return;
+    if (!AudioContextCtor) return null;
 
     try {
       const audioContext = new AudioContextCtor();
@@ -1175,42 +1194,59 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       const samples = new Uint8Array(analyser.fftSize);
       let smoothedLevel = 0;
       let lastEmittedLevel = -1;
-      const monitor: MicrophoneLevelMonitor = { audioContext, analyser, source, animationFrameId: null };
+      const monitor: MicrophoneLevelMonitor = { audioContext, analyser, source, animationFrameId: null, kind };
       const tick = () => {
         analyser.getByteTimeDomainData(samples);
         const rawLevel = resolveRealtimeMicrophoneLevel(samples);
         smoothedLevel = smoothedLevel * 0.62 + rawLevel * 0.38;
         if (Math.abs(smoothedLevel - lastEmittedLevel) >= MICROPHONE_LEVEL_EMIT_DELTA || smoothedLevel === 0) {
           lastEmittedLevel = smoothedLevel;
-          this.options.onMicrophoneLevel?.(smoothedLevel);
+          this.setRealtimeAudioLevel(kind, smoothedLevel);
         }
         monitor.animationFrameId = requestAnimationFrame(tick);
       };
 
-      this.microphoneLevelMonitor = monitor;
       tick();
+      return monitor;
     } catch (error) {
       this.emitDiagnostic({
-        type: "realtime.microphone.level_monitor",
+        type: kind === "microphone" ? "realtime.microphone.level_monitor" : "realtime.remote_audio.level_monitor",
         status: "failed",
-        message: error instanceof Error ? error.message : "microphone level monitor failed"
+        message: error instanceof Error ? error.message : `${kind} level monitor failed`
       });
-      this.options.onMicrophoneLevel?.(0);
+      this.setRealtimeAudioLevel(kind, 0);
+      return null;
     }
   }
 
   private stopMicrophoneLevelMonitor(): void {
-    const monitor = this.microphoneLevelMonitor;
-    if (!monitor) {
-      this.options.onMicrophoneLevel?.(0);
-      return;
-    }
+    this.stopAudioLevelMonitor(this.microphoneLevelMonitor);
+    this.microphoneLevelMonitor = null;
+    this.setRealtimeAudioLevel("microphone", 0);
+  }
+
+  private stopRemoteAudioLevelMonitor(): void {
+    this.stopAudioLevelMonitor(this.remoteAudioLevelMonitor);
+    this.remoteAudioLevelMonitor = null;
+    this.setRealtimeAudioLevel("remote", 0);
+  }
+
+  private stopAudioLevelMonitor(monitor: MicrophoneLevelMonitor | null): void {
+    if (!monitor) return;
     if (monitor.animationFrameId !== null) {
       cancelAnimationFrame(monitor.animationFrameId);
     }
     void monitor.audioContext.close().catch(() => undefined);
-    this.microphoneLevelMonitor = null;
-    this.options.onMicrophoneLevel?.(0);
+  }
+
+  private setRealtimeAudioLevel(kind: "microphone" | "remote", level: number): void {
+    const nextLevel = Math.max(0, Math.min(1, level));
+    if (kind === "microphone") {
+      this.microphoneLevel = nextLevel;
+    } else {
+      this.remoteAudioLevel = nextLevel;
+    }
+    this.options.onMicrophoneLevel?.(Math.max(this.microphoneLevel, this.remoteAudioLevel));
   }
 
   updateTools(tools: AssistantToolSpec[]): void {

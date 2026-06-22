@@ -357,8 +357,9 @@ describe("WidgetAssistantRegistry and Command Planner", () => {
       ["查上海天气决定下午是否出门", "multi_step"],
       ["把天气摘要发到留言板，然后清空输入框", "message_board_safety"],
       ["电视全屏时隐藏侧边栏", "tv_workflow"],
+      ["电视窗口太挡眼，缩小并放到右上角", "window_layout"],
       ["音乐登录按钮挡住封面，放到右上角", "window_layout"],
-      ["翻译成中文后复制到剪贴板", "multi_step"]
+      ["翻译成中文后复制到剪贴板", "translation_workflow"]
     ] as const;
 
     for (const [input, category] of cases) {
@@ -733,6 +734,27 @@ describe("IntentShortcutRouter", () => {
     if (result.matched) {
       expect(result.toolCall.name).toBe("weather.set_city");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_weather", city: "洛杉矶" });
+    }
+  });
+
+  it("routes weather window commands without treating window verbs as cities", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const focus = router.route("聚焦天气卡片", context);
+    const add = router.route("再打开一个天气", {
+      ...context,
+      availableWidgets: context.availableWidgets?.filter((widget) => widget.type !== "weather")
+    });
+
+    expect(focus.matched).toBe(true);
+    if (focus.matched) {
+      expect(focus.toolCall.name).toBe("widget.focus");
+      expect(focus.toolCall.arguments).toEqual({ widgetId: "wi_weather" });
+    }
+
+    expect(add.matched).toBe(true);
+    if (add.matched) {
+      expect(add.toolCall.name).toBe("board.add_widget");
+      expect(add.toolCall.arguments).toEqual({ definitionId: "wd_weather" });
     }
   });
 

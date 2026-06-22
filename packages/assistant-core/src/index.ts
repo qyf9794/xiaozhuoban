@@ -728,7 +728,10 @@ function inferCityName(input: string) {
   const known = knownCities.find(([alias]) => lower.includes(alias.toLowerCase()));
   if (known) return known[1];
   const beforeWeather = normalized.match(/([\u4e00-\u9fa5a-zA-Z-]{2,24})\s*(?:天气|weather)/i);
-  const candidate = cleanCommandContent(beforeWeather?.[1] ?? "").replace(/^(查查|查询|切换到|切到|打开|显示|看看|看|查)/, "");
+  const candidate = cleanCommandContent(beforeWeather?.[1] ?? "")
+    .replace(/^(帮我查一下|帮我查|查一下|查查|查询|切换到|切到|聚焦|再打开一个|再打开|打开一个|打开|显示|看看|看|查)/, "")
+    .replace(/^(一个|一下|个|小工具|窗口|卡片|面板)/, "");
+  if (!candidate || /^(天气|weather|小工具|窗口|卡片|面板)$/i.test(candidate)) return "";
   return cleanCommandContent(candidate);
 }
 
@@ -1915,6 +1918,9 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
           /(电视|直播|电视频道).*(全屏|放大)/.test(normalized) ||
           /(全屏|放大).*(播放|播).*(电视|直播|电视频道)/.test(normalized) ||
           /(央视|中央|CCTV).*(全屏|放大).*(播放|播)?/i.test(raw);
+        if (/(窗口|面板|卡片).{0,20}(缩小|调小|右上角|右侧|左侧|移动|移到|放到|挡眼|太挡眼)|(?:缩小|调小|右上角|右侧|左侧|移动|移到|放到|挡眼|太挡眼).{0,20}(窗口|面板|卡片)/.test(normalized)) {
+          return { matched: false, reason: "tv_window_layout_deferred" };
+        }
         if (/(暂停|停一下|停止|停掉)/.test(normalized)) return { matched: false, reason: "tv_pause_deferred" };
         const channelName = inferTvChannelName(raw);
         if (!channelName && wantsTvPlaybackFullscreen) {

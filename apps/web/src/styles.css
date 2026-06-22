@@ -226,7 +226,10 @@ body {
   cursor: grab;
   background: transparent;
   box-shadow: none;
-  transform: translateZ(0);
+  transform: translateZ(0) scale(var(--voice-orb-scale, 1));
+  transform-origin: center;
+  transition: transform 80ms linear;
+  will-change: transform;
 }
 
 .voice-assistant-dock__orb:active {

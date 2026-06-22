@@ -317,6 +317,46 @@ function plannedWidgetType(widgetId: string) {
   return isPlannedWidgetId(widgetId) ? widgetId.slice(PLANNED_WIDGET_PREFIX.length) : "";
 }
 
+function placeholderWidgetType(widgetId: string) {
+  const match = /^wi_([A-Za-z]+)$/.exec(widgetId);
+  return match?.[1] ?? "";
+}
+
+function placeholderDefinitionType(definitionId: string) {
+  const match = /^wd_([A-Za-z]+)$/.exec(definitionId);
+  return match?.[1] ?? "";
+}
+
+type ShortcutTargetCandidate = Pick<CompactWidgetSummary, "widgetId" | "definitionId" | "type" | "name" | "order"> &
+  Partial<Pick<CompactWidgetSummary, "focused" | "recent" | "summary">>;
+
+function sortByShortcutTargetPreference<T extends ShortcutTargetCandidate>(widgets: T[], focusedWidgetId?: string) {
+  const seen = new Set<string>();
+  return widgets
+    .filter((widget) => {
+      if (seen.has(widget.widgetId)) return false;
+      seen.add(widget.widgetId);
+      return true;
+    })
+    .sort((left, right) => {
+      const leftFocused = left.widgetId === focusedWidgetId || left.focused ? 0 : 1;
+      const rightFocused = right.widgetId === focusedWidgetId || right.focused ? 0 : 1;
+      if (leftFocused !== rightFocused) return leftFocused - rightFocused;
+      const leftRecent = left.recent ? 0 : 1;
+      const rightRecent = right.recent ? 0 : 1;
+      if (leftRecent !== rightRecent) return leftRecent - rightRecent;
+      return (left.order ?? 0) - (right.order ?? 0);
+    });
+}
+
+function hasExplicitCountdownDuration(input: string) {
+  const normalized = normalizeText(input).replace(/\s+/g, "");
+  return (
+    /(倒计时|计时器|定时器|定时|计时)/.test(normalized) &&
+    /(?:[0-9零〇一二两三四五六七八九十半]+)(?:个)?(?:秒|分钟|分|小时|钟头|钟)/.test(normalized)
+  );
+}
+
 export class AssistantHarness {
   private pendingConfirmation: ConfirmationRequest | null = null;
   private currentTools: AssistantToolSpec[] = [];
@@ -408,7 +448,9 @@ export class AssistantHarness {
     this.startDiagnostics(input, commandTraceId);
     await this.options.realtime.setActiveCommandTraceId?.(commandTraceId);
     try {
-      const response = await this.handleRealtimeModelInput(input, startedAt);
+      const response = this.pendingConfirmation
+        ? await this.handleUserInputInternal(input, startedAt)
+        : await this.handleRealtimeModelInput(input, startedAt);
       this.finishDiagnostics(response);
       return response;
     } catch (error) {
@@ -829,9 +871,15 @@ export class AssistantHarness {
     }
     if (call.name === ADD_WIDGET_TOOL && typeof call.arguments.definitionId === "string") {
       const definitionId = call.arguments.definitionId;
-      const definition = context.availableDefinitions?.find((item) => item.definitionId === definitionId);
+      const placeholderType = placeholderDefinitionType(definitionId);
+      const definition =
+        context.availableDefinitions?.find((item) => item.definitionId === definitionId) ??
+        (placeholderType ? context.availableDefinitions?.find((item) => item.type === placeholderType) : undefined);
       if (!definition) {
         return context;
+      }
+      if (definition.definitionId !== definitionId) {
+        call.arguments = { ...call.arguments, definitionId: definition.definitionId };
       }
       return this.withPlannedFocusedWidget(context, {
         widgetId: `${PLANNED_WIDGET_PREFIX}${definition.type}`,
@@ -872,6 +920,11 @@ export class AssistantHarness {
     route: AssistantRoute = "function_call",
     startedAt = Date.now()
   ): Promise<AssistantHarnessResponse> {
+    const normalizedCall = this.rewriteCountdownAddWidgetCall(call);
+    if (normalizedCall !== call) {
+      return this.handleFunctionCall(normalizedCall, route, startedAt);
+    }
+
     if (call.name === "widget.remove" && !this.pendingConfirmation) {
       const targetText = getTargetText(call.arguments);
       const transcript = call.transcript ?? "";
@@ -897,7 +950,11 @@ export class AssistantHarness {
       await this.updateRealtimeContext();
       await this.audit({ route, call, result, durationMs: Date.now() - startedAt });
       this.recordDiagnosticsToolResult(call, result);
-      return { route, call, result };
+      const response = { route, call, result };
+      if (call.name === CONFIRM_TOOL && result.status === "success" && this.queuedPostConfirmationPlan) {
+        return this.continueQueuedPostConfirmationPlan(response, startedAt);
+      }
+      return response;
     }
 
     const plan = createCommandPlanFromToolCalls(call.transcript ?? call.name, [call]);
@@ -1153,7 +1210,7 @@ export class AssistantHarness {
         id: `${plan.id}_after_confirm`,
         commands: remainingCommands,
         executionGroups: remainingGroups,
-        dependencies: plan.dependencies.filter((dependency) => remainingIds.has(dependency.from) && remainingIds.has(dependency.to))
+        dependencies: (plan.dependencies ?? []).filter((dependency) => remainingIds.has(dependency.from) && remainingIds.has(dependency.to))
       }
     };
   }
@@ -1247,6 +1304,7 @@ export class AssistantHarness {
     if (!spec) {
       return { status: "failed", message: `未知工具：${call.name}`, errorCode: "UNKNOWN_TOOL" };
     }
+    this.resolveDefinitionPlaceholderIfNeeded(call);
 
     const target = this.resolveTargetIfNeeded(call, spec);
     if (target.status !== "ready") {
@@ -1313,19 +1371,44 @@ export class AssistantHarness {
       const widget =
         context.widgets.find((item) => item.widgetId === widgetId) ??
         input.widgets?.find((item) => item.widgetId === widgetId);
-      return widget
-        ? {
-            status: "ready",
-            target: {
-              widgetId: widget.widgetId,
-              definitionId: widget.definitionId,
-              type: widget.type,
-              name: widget.name,
-              confidence: 1,
-              reason: "matched_by_id"
-            }
+      if (widget && (!spec.widgetType || widget.type === spec.widgetType)) {
+        return {
+          status: "ready",
+          target: {
+            widgetId: widget.widgetId,
+            definitionId: widget.definitionId,
+            type: widget.type,
+            name: widget.name,
+            confidence: 1,
+            reason: "matched_by_id"
           }
-        : { status: "blocked", result: { status: "failed", message: "没有找到这个小工具", errorCode: "WIDGET_NOT_FOUND" } };
+        };
+      }
+      const placeholderType = spec.widgetType ?? placeholderWidgetType(widgetId);
+      const fallbackWidget = placeholderType
+        ? sortByShortcutTargetPreference(
+            [
+              ...context.widgets.filter((item) => item.type === placeholderType),
+              ...(input.widgets ?? []).filter((item) => item.type === placeholderType)
+            ],
+            input.focusedWidgetId
+          )[0]
+        : undefined;
+      if (fallbackWidget) {
+        call.arguments = { ...call.arguments, widgetId: fallbackWidget.widgetId };
+        return {
+          status: "ready",
+          target: {
+            widgetId: fallbackWidget.widgetId,
+            definitionId: fallbackWidget.definitionId,
+            type: fallbackWidget.type,
+            name: fallbackWidget.name,
+            confidence: 0.84,
+            reason: "matched_by_placeholder_id"
+          }
+        };
+      }
+      return { status: "blocked", result: { status: "failed", message: "没有找到这个小工具", errorCode: "WIDGET_NOT_FOUND" } };
     }
 
     const resolution = this.options.targetResolver.resolve(targetText, {
@@ -1349,6 +1432,22 @@ export class AssistantHarness {
       status: "blocked",
       result: { status: "failed", message: resolution.message, errorCode: "TARGET_NOT_FOUND" }
     };
+  }
+
+  private resolveDefinitionPlaceholderIfNeeded(call: AssistantToolCall) {
+    if (call.name !== ADD_WIDGET_TOOL || !isRecord(call.arguments) || typeof call.arguments.definitionId !== "string") {
+      return;
+    }
+    const definitionId = call.arguments.definitionId;
+    const context = this.getCurrentContext();
+    if (context.availableDefinitions?.some((item) => item.definitionId === definitionId)) {
+      return;
+    }
+    const placeholderType = placeholderDefinitionType(definitionId);
+    const definition = placeholderType ? context.availableDefinitions?.find((item) => item.type === placeholderType) : undefined;
+    if (definition) {
+      call.arguments = { ...call.arguments, definitionId: definition.definitionId };
+    }
   }
 
   private async confirmPending(call: AssistantToolCall): Promise<AssistantToolResult> {
@@ -1464,6 +1563,39 @@ export class AssistantHarness {
         addWidget: result.data,
         followUp: followUpResult.data
       }
+    };
+  }
+
+  private rewriteCountdownAddWidgetCall(call: AssistantToolCall): AssistantToolCall {
+    if (call.name !== ADD_WIDGET_TOOL || !isRecord(call.arguments)) {
+      return call;
+    }
+    if (isRecord(call.arguments.followUp)) {
+      return call;
+    }
+    const transcript = call.transcript ?? "";
+    if (!hasExplicitCountdownDuration(transcript)) {
+      return call;
+    }
+    const context = this.buildShortcutContext();
+    const definitionId = typeof call.arguments.definitionId === "string" ? call.arguments.definitionId : "";
+    const definition = context.availableDefinitions?.find((item) => item.definitionId === definitionId);
+    if (definition?.type !== "countdown") {
+      return call;
+    }
+    const shortcut = this.options.shortcutRouter.route(transcript, context);
+    if (!shortcut.matched) {
+      return call;
+    }
+    const routedCall = shortcut.toolCall;
+    if (routedCall.name === ADD_WIDGET_TOOL && isRecord(routedCall.arguments) && !isRecord(routedCall.arguments.followUp)) {
+      return call;
+    }
+    return {
+      ...routedCall,
+      id: call.id,
+      source: call.source,
+      transcript
     };
   }
 

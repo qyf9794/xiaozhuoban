@@ -67,7 +67,7 @@ export const shortcutDeferralRules: ShortcutDeferralRule[] = [
     category: "multi_step",
     reason: "multi-step board or widget lifecycle commands should not be partially executed as local shortcuts",
     pattern:
-      /(?:切到|切回|回到|新开|新建|创建).{0,20}(?:后|再|然后|同时|，|,).{0,24}(?:打开|添加|把|放上|移动|调到)|(?:关闭|关掉|关上|删掉|删除|移除).{0,20}(?:后|再|然后|同时|，|,).{0,24}(?:打开|添加|新建|新开)|(?:打开|开一下|唤出|再开).{0,20}(?:后|，|,).{0,24}(?:把|移动|固定|用于|对比)/
+      /(?:切到|切回|回到|新开|新建|创建|打开).{0,20}(?:后|再|然后|同时|，|,).{0,24}(?:打开|添加|启动|把|放上|移动|调到)|(?:关闭|关掉|关上|删掉|删除|移除).{0,20}(?:后|再|然后|同时|，|,).{0,24}(?:打开|添加|新建|新开)|(?:打开|开一下|唤出|再开).{0,20}(?:后|并|同时|然后|，|,).{0,24}(?:把|移动|固定|用于|对比|放到|放在|排成|摆到|启动|添加)/
   },
   {
     id: "music-search-then-play",
@@ -86,7 +86,7 @@ export const shortcutDeferralRules: ShortcutDeferralRule[] = [
     id: "weather-cross-tool",
     category: "weather_semantic",
     reason: "weather decisions combined with other widgets need Realtime planning",
-    pattern: /(?:天气|冷不冷|会不会下雨|适合|带伞|体感温度|洗车).{0,36}(?:顺便|同时|再|然后|并|后|如果|先).{0,44}(?:便签|待办|提醒|世界时钟|本地时间|时间|空气|摘要|换算|华氏|摄氏|留言板|倒计时|翻译|英文|聚焦|放最前|对比)/
+    pattern: /(?:天气|冷不冷|会不会下雨|适合|带伞|体感温度|洗车).{0,36}(?:顺便|同时|再|然后|并|后|如果|先|，|,).{0,44}(?:便签|待办|提醒|世界时钟|本地时间|时间|空气|摘要|换算|华氏|摄氏|留言板|倒计时|翻译|英文|聚焦|放最前|对比|写到|写入|记到)/
   },
   {
     id: "weather-decision-question",
@@ -126,7 +126,7 @@ export const shortcutDeferralRules: ShortcutDeferralRule[] = [
     id: "translation-cross-tool",
     category: "translation_workflow",
     reason: "translation commands combined with copy, music, or notes need Realtime planning",
-    pattern: /(?:翻译|译成).{0,48}(?:复制结果|不要执行|关闭命令|播放轻松音乐|preview mode|0\.9|realtime|备忘|适合出门)|(?:good night realtime|今天适合出门吗|播放轻松音乐).{0,24}(?:翻译|译成)/i
+    pattern: /(?:翻译|译成).{0,48}(?:复制结果|剪贴板|便签|写入|写到|不要执行|关闭命令|播放轻松音乐|preview mode|0\.9|realtime|备忘|适合出门)|(?:good night realtime|good morning|今天适合出门吗|播放轻松音乐).{0,24}(?:翻译|译成)|(?:写到|写入).{0,16}便签.{0,24}(?:并|同时|再|然后).{0,24}(?:翻译|译成)/i
   },
   {
     id: "calculation-cross-tool",
@@ -194,7 +194,7 @@ export const shortcutDeferralRules: ShortcutDeferralRule[] = [
     category: "window_layout",
     reason: "generic window movement and resizing need current widget targets",
     pattern:
-      /窗口.{0,16}(?:拖到|移到|移动到|放到|放在|置顶|最前|调宽|调小|放大|缩小|退出全屏|盖住|挡住|压缩|恢复正常大小)|(?:窗口|面板|封面|播放控件|登录按钮|按钮|文字).{0,28}(?:太小|挡|覆盖|居中|放大|缩小|调宽|调小|右上角|正常大小|不要全屏|恢复正常|压缩)|(?:太小|太挡眼|挡眼|别挡|不要压缩).{0,28}(?:窗口|面板|封面|播放控件|登录按钮|按钮|文字|待办|倒计时|便签)/
+      /窗口.{0,16}(?:拖到|移到|移动到|放到|放在|置顶|最前|调宽|调小|放大|缩小|退出全屏|盖住|挡住|压缩|恢复正常大小)|(?:窗口|面板|封面|播放控件|登录按钮|按钮|文字).{0,28}(?:太小|挡|覆盖|居中|放大|缩小|调宽|调小|右上角|正常大小|不要全屏|恢复正常|压缩)|(?:太小|太挡眼|挡眼|别挡|不要压缩).{0,28}(?:窗口|面板|封面|播放控件|登录按钮|按钮|文字|待办|倒计时|便签|电视)|(?:电视|音乐|天气|便签|待办|倒计时|新闻|行情|世界时钟).{0,8}窗口.{0,20}(?:太挡眼|挡眼|缩小|放大|右上角|右侧|左侧)/
   }
 ];
 
