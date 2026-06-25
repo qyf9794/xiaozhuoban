@@ -396,10 +396,19 @@ body {
 .voice-assistant-dock__form {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0;
+  gap: 5px;
   align-content: start;
   min-height: 0;
   padding-top: 10px;
+}
+
+.voice-assistant-dock__transcript {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.54);
 }
 
 .voice-assistant-dock__form input {

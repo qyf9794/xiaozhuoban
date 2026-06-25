@@ -235,7 +235,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "session.update",
         session: expect.objectContaining({
           type: "realtime",
-          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
+          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__execute_command" })]),
           tool_choice: "auto"
         })
       })
@@ -249,7 +249,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "session.update",
         session: expect.objectContaining({
           type: "realtime",
-          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
+          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__execute_command" })]),
           tool_choice: "auto"
         })
       }),
@@ -276,7 +276,7 @@ describe("OpenAI realtime adapter helpers", () => {
       }),
       expect.objectContaining({ type: "realtime.event.send", commandTraceId: "trace_text_2", data: { eventType: "response.cancel" } }),
       expect.objectContaining({
-        type: "realtime.text_command.reset_selector",
+        type: "realtime.text_command.reset_command_tool",
         status: "sent",
         commandTraceId: "trace_text_2",
         data: { toolCount: expect.any(Number) }
@@ -657,7 +657,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "session.update",
         session: expect.objectContaining({
           type: "realtime",
-          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
+          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__execute_command" })]),
           tool_choice: "auto"
         })
       })
@@ -670,7 +670,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "session.update",
         session: expect.objectContaining({
           type: "realtime",
-          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
+          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__execute_command" })]),
           tool_choice: "auto"
         })
       }),
@@ -689,7 +689,7 @@ describe("OpenAI realtime adapter helpers", () => {
     ]);
     expect(diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        type: "realtime.text_command.reset_selector",
+        type: "realtime.text_command.reset_command_tool",
         status: "sent",
         commandTraceId: "trace_text_1",
         data: { toolCount: expect.any(Number) }
@@ -835,8 +835,8 @@ describe("OpenAI realtime adapter helpers", () => {
       .queuedEvents[0];
     expect(event.type).toBe("session.update");
     expect(event.session.type).toBe("realtime");
-    expect(event.session.instructions).toContain("board.auto_align");
-    expect(event.session.tools[0].name).toBe("assistant__dot__select_tool");
+    expect(event.session.instructions).toContain("assistant.execute_command");
+    expect(event.session.tools[0].name).toBe("assistant__dot__execute_command");
   });
 
   it("adds the active command trace id to adapter diagnostics", () => {
@@ -1168,6 +1168,72 @@ describe("OpenAI realtime adapter helpers", () => {
     ]));
   });
 
+  it("executes unified realtime command tool calls through the command handler", async () => {
+    const calls: unknown[] = [];
+    const sent: unknown[] = [];
+    const diagnostics: Array<{ type: string; commandTraceId?: string; status?: string; operationId?: string; toolName?: string }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      async onCommand(input, options) {
+        calls.push({ input, options });
+        return { status: "success", message: `已执行：${input}` };
+      },
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
+      }
+    });
+
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "response.output_item.done",
+      item: {
+        type: "function_call",
+        call_id: "call_command_1",
+        name: "assistant__dot__execute_command",
+        arguments: JSON.stringify({ command: "关闭音乐" })
+      }
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(calls).toEqual([{ input: "关闭音乐", options: { callId: "call_command_1", commandTraceId: undefined } }]);
+    expect(sent).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "conversation.item.create",
+        item: expect.objectContaining({
+          type: "function_call_output",
+          call_id: "call_command_1",
+          output: expect.stringContaining("已执行：关闭音乐")
+        })
+      })
+    ]));
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.function_call.command",
+        status: "started",
+        operationId: "call_command_1",
+        toolName: "assistant.execute_command"
+      }),
+      expect.objectContaining({
+        type: "realtime.function_call.command_result",
+        status: "success",
+        operationId: "call_command_1",
+        toolName: "assistant.execute_command"
+      })
+    ]));
+  });
+
   it("falls back to initial selector tools if voice connects before harness initialization finishes", () => {
     const adapter = new OpenAIRealtimeWebRtcAdapter();
 
@@ -1182,8 +1248,8 @@ describe("OpenAI realtime adapter helpers", () => {
       .queuedEvents[0];
     expect(tools.map((tool) => tool.name)).toContain("board.add_widget");
     expect(event.session.type).toBe("realtime");
-    expect(event.session.tools[0].name).toBe("assistant__dot__select_tool");
-    expect(JSON.stringify(event.session.tools[0].parameters)).toContain("board.add_widget");
+    expect(event.session.tools[0].name).toBe("assistant__dot__execute_command");
+    expect(JSON.stringify(event.session.tools[0].parameters)).toContain("command");
     expect(JSON.stringify(event.session.tools[0].parameters)).not.toContain("widgetId");
   });
 
@@ -1312,8 +1378,9 @@ describe("OpenAI realtime adapter helpers", () => {
       source: "realtime"
     });
 
-    const serialized = JSON.stringify((adapter as unknown as { queuedEvents: unknown[] }).queuedEvents);
-    expect(serialized).toContain("assistant__dot__select_tool");
+    const queuedEvents = (adapter as unknown as { queuedEvents: unknown[] }).queuedEvents;
+    const serialized = JSON.stringify(queuedEvents[queuedEvents.length - 1]);
+    expect(serialized).not.toContain("assistant__dot__execute_command");
     expect(serialized).toContain("widget__dot__remove");
     expect(serialized).toContain("semantic_vad");
     expect(serialized).toContain("gpt-4o-mini-transcribe");
@@ -1414,6 +1481,76 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(serialized).toContain("wi_world");
     expect(serialized).toContain("widget__dot__remove");
     expect(serialized).not.toContain("private note");
+  });
+
+  it("routes live realtime close-all-window selections through the local bulk shortcut", async () => {
+    const calls: unknown[] = [];
+    const sent: unknown[] = [];
+    const diagnostics: Array<{ type: string; status?: string; operationId?: string; data?: unknown }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall: (call) => {
+        calls.push(call);
+      },
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "widget.remove",
+        description: "删除小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop",
+        risk: "safe",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: { tv: 1, note: 1 },
+      widgets: [
+        { widgetId: "wi_tv", definitionId: "wd_tv", type: "tv", name: "电视", order: 1, summary: "" },
+        { widgetId: "wi_note", definitionId: "wd_note", type: "note", name: "便签", order: 2, summary: "" }
+      ]
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
+      }
+    });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_close_all",
+      name: "assistant.select_tool",
+      arguments: { name: "widget.remove", targetHint: "所有窗口", userCommand: "关闭所有窗口", confidence: 0.96 },
+      source: "realtime"
+    });
+    await Promise.resolve();
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        id: "select_close_all_bulk_window_shortcut",
+        name: "widget.remove",
+        arguments: { targetText: "关闭所有窗口" },
+        source: "shortcut",
+        transcript: "关闭所有窗口"
+      })
+    ]);
+    expect(JSON.stringify(sent)).toContain("local_bulk_shortcut");
+    expect(JSON.stringify(sent)).not.toContain("widget__dot__remove");
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.tool_selection.local_bulk_shortcut",
+        status: "started",
+        operationId: "select_close_all",
+        data: { targetText: "关闭所有窗口" }
+      })
+    ]));
   });
 
   it("waits for scoped session.updated before sending tool selection results", () => {

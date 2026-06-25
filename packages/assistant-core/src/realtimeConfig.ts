@@ -65,6 +65,7 @@ export const XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL = "gpt-4.1-mini";
 export const XIAOZHUOBAN_REALTIME_INPUT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
 export const DEFAULT_REALTIME_CLIENT_SECRET_TTL_SECONDS = 600;
 export const REALTIME_TOOL_SELECTION_TOOL_NAME = "assistant.select_tool";
+export const REALTIME_COMMAND_EXECUTION_TOOL_NAME = "assistant.execute_command";
 export const REALTIME_TOOL_SELECTION_CONFIDENCE_THRESHOLD = 0.65;
 
 export const XIAOZHUOBAN_REALTIME_INSTRUCTIONS = [
@@ -72,10 +73,9 @@ export const XIAOZHUOBAN_REALTIME_INSTRUCTIONS = [
   "你是小桌板里的语音助手，负责控制小桌板 Web 桌面、已加载小工具和已注册工具。",
   "",
   "# Tool Policy",
-  "- 常驻阶段只选择工具，不直接生成真实工具参数。",
-  "- 需要控制桌面时，先调用 assistant.select_tool，让前端按所选工具提供最小必要上下文。",
-  "- 前端提供局部上下文后，只调用已选工具；工具缺失时再简短说明缺少对应能力。",
-  "- 关闭、关掉、收起小工具窗口时调用 widget.remove，不需要请求确认。",
+  "- 需要控制桌面、窗口或小工具时，只调用 assistant.execute_command，并把用户原话或最短等价命令放入 command。",
+  "- 不要直接调用 widget.remove、widget.move、board.add_widget 等底层工具；本地 harness 会解析、确认、校验和执行。",
+  "- 普通问候或闲聊可以直接简短回答，不需要调用工具。",
   "- 清空内容、删除用户数据、覆盖内容、批量修改数据必须请求确认。",
   "- 不控制 macOS、Windows、浏览器外部桌面或用户本地系统。",
   "- 不调用 Codex 或浏览器外部系统；动态生成、复杂规划和长文本改写需要对应工具注册后才执行。",

@@ -172,9 +172,11 @@ export function getVoiceAssistantDockTransform(
 export function shouldShowVoiceAssistantTextPanel(
   isMobileMode: boolean,
   mobileTextPanelOpen: boolean,
-  hasPendingConfirmation: boolean
+  hasPendingConfirmation: boolean,
+  hasPanelAnswer = false
 ): boolean {
-  return !isMobileMode || mobileTextPanelOpen || hasPendingConfirmation;
+  void isMobileMode;
+  return mobileTextPanelOpen || hasPendingConfirmation || hasPanelAnswer;
 }
 
 export function shouldSuppressVoiceAssistantOrbClickAfterPress(longPressTriggered: boolean, moved: boolean): boolean {
@@ -217,7 +219,8 @@ export function getVoiceAssistantOrbVisualMode(
 ): "idle" | "listening" | "thinking" {
   const backgroundProcessing =
     !textPanelVisible &&
-    (visualState === "thinking" ||
+    (visualState === "connecting" ||
+      visualState === "thinking" ||
       visualState === "executing" ||
       visibleOperation.phase === "thinking" ||
       visibleOperation.phase === "executing");
@@ -287,6 +290,7 @@ export function VoiceAssistantDock({
   onCommandRoute,
   onSendRealtimeTextCommand,
   assistantSpeech,
+  userSpeech,
   onDiagnostic
 }: {
   harness: AssistantHarness;
@@ -305,6 +309,7 @@ export function VoiceAssistantDock({
   onCommandRoute?: (route: AssistantRoute) => void;
   onSendRealtimeTextCommand?: (input: string, options?: { commandTraceId?: string }) => Promise<void>;
   assistantSpeech?: { id: number; text: string } | null;
+  userSpeech?: { id: number; text: string } | null;
   onDiagnostic?: (event: AssistantDiagnosticEvent) => void;
 }) {
   const [state, setState] = useState<VoiceAssistantDockState>("disconnected");
@@ -352,7 +357,6 @@ export function VoiceAssistantDock({
   };
 
   const scheduleMobileTextPanelCollapse = () => {
-    if (!isMobileMode) return;
     clearMobileTextPanelCollapseTimer();
     mobileTextPanelCollapseTimerRef.current = window.setTimeout(() => {
       if (!harness.getPendingConfirmation() && !textRef.current.trim()) {
@@ -363,7 +367,6 @@ export function VoiceAssistantDock({
   };
 
   const openMobileTextPanel = ({ focusInput = true }: { focusInput?: boolean } = {}) => {
-    if (!isMobileMode) return;
     setMobileTextPanelOpen(true);
     scheduleMobileTextPanelCollapse();
     if (focusInput) {
@@ -372,7 +375,6 @@ export function VoiceAssistantDock({
   };
 
   const keepMobileTextPanelOpen = () => {
-    if (!isMobileMode) return;
     setMobileTextPanelOpen(true);
     scheduleMobileTextPanelCollapse();
   };
@@ -414,10 +416,7 @@ export function VoiceAssistantDock({
   }, [voiceEnabled, voiceStatus]);
 
   useEffect(() => {
-    if (isMobileMode) {
-      setMobileTextPanelOpen(false);
-      return;
-    }
+    setMobileTextPanelOpen(false);
     clearMobileTextPanelCollapseTimer();
   }, [isMobileMode]);
 
@@ -440,10 +439,15 @@ export function VoiceAssistantDock({
     };
     setAssistantSpeechLevel(0.62);
     assistantSpeechPulseFrameRef.current = window.requestAnimationFrame(tick);
-    if (isMobileMode) {
-      openMobileTextPanel({ focusInput: false });
-    }
+    openMobileTextPanel({ focusInput: false });
   }, [assistantSpeech?.id, assistantSpeech?.text, isMobileMode]);
+
+  useEffect(() => {
+    const speechText = userSpeech?.text.trim();
+    if (!speechText) return;
+    setLastMessage(speechText);
+    openMobileTextPanel({ focusInput: false });
+  }, [userSpeech?.id, userSpeech?.text, isMobileMode]);
 
   useEffect(() => {
     return () => {
@@ -454,10 +458,16 @@ export function VoiceAssistantDock({
   }, []);
 
   const pending = harness.getPendingConfirmation();
-  const textPanelVisible = shouldShowVoiceAssistantTextPanel(isMobileMode, mobileTextPanelOpen, Boolean(pending));
   const visualState = muted ? "muted" : pending ? "waiting_confirmation" : state;
   const visibleOperation = getVisibleVoiceAssistantOperation(operation, operationStatus);
   const panelAnswerText = getVoiceAssistantPanelAnswerText(assistantSpeech?.text, pending?.message);
+  const panelUserText = userSpeech?.text.trim() ?? "";
+  const textPanelVisible = shouldShowVoiceAssistantTextPanel(
+    isMobileMode,
+    mobileTextPanelOpen,
+    Boolean(pending),
+    Boolean(panelAnswerText || panelUserText)
+  );
   const orbVisualMode = getVoiceAssistantOrbVisualMode(visualState, visibleOperation, textPanelVisible);
   const orbAudioLevel = Math.pow(clampVoiceAssistantAudioLevel(Math.max(voiceAudioLevel, assistantSpeechLevel)), 0.78);
   const orbColorMode = getVoiceAssistantOrbColorMode(voiceStatus);
@@ -693,14 +703,12 @@ export function VoiceAssistantDock({
       baseBottom: rect.bottom - dragOffset.y,
       moved: false
     };
-    if (isMobileMode) {
-      orbLongPressTimerRef.current = window.setTimeout(() => {
-        orbLongPressTimerRef.current = null;
-        orbLongPressTriggeredRef.current = true;
-        suppressOrbClickRef.current = true;
-        openMobileTextPanel();
-      }, VOICE_ASSISTANT_ORB_LONG_PRESS_MS);
-    }
+    orbLongPressTimerRef.current = window.setTimeout(() => {
+      orbLongPressTimerRef.current = null;
+      orbLongPressTriggeredRef.current = true;
+      suppressOrbClickRef.current = true;
+      openMobileTextPanel();
+    }, VOICE_ASSISTANT_ORB_LONG_PRESS_MS);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -839,6 +847,7 @@ export function VoiceAssistantDock({
           </div>
 
           <form className="voice-assistant-dock__form" onSubmit={onSubmit}>
+            {panelUserText ? <p className="voice-assistant-dock__transcript">{panelUserText}</p> : null}
             <input
               ref={inputRef}
               value={text}

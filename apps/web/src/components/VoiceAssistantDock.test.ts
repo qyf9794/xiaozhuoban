@@ -119,11 +119,12 @@ describe("VoiceAssistantDock", () => {
     expect(getVoiceAssistantDockTransform(false, { x: 12, y: -8 })).toBe("translate3d(12px, -8px, 0)");
   });
 
-  it("keeps the mobile text panel collapsed until opened or confirmation is pending", () => {
+  it("keeps the text panel collapsed until opened, answered, or confirmation is pending", () => {
     expect(shouldShowVoiceAssistantTextPanel(true, false, false)).toBe(false);
     expect(shouldShowVoiceAssistantTextPanel(true, true, false)).toBe(true);
     expect(shouldShowVoiceAssistantTextPanel(true, false, true)).toBe(true);
-    expect(shouldShowVoiceAssistantTextPanel(false, false, false)).toBe(true);
+    expect(shouldShowVoiceAssistantTextPanel(false, false, false)).toBe(false);
+    expect(shouldShowVoiceAssistantTextPanel(false, false, false, true)).toBe(true);
   });
 
   it("suppresses the orb click after long press or drag", () => {
@@ -158,6 +159,7 @@ describe("VoiceAssistantDock", () => {
   });
 
   it("shows moving dots only for background processing without the text panel", () => {
+    expect(getVoiceAssistantOrbVisualMode("connecting", { phase: "thinking" }, false)).toBe("thinking");
     expect(getVoiceAssistantOrbVisualMode("thinking", { phase: "thinking" }, false)).toBe("thinking");
     expect(getVoiceAssistantOrbVisualMode("executing", { phase: "executing" }, false)).toBe("thinking");
     expect(getVoiceAssistantOrbVisualMode("listening", { phase: "executing" }, false)).toBe("thinking");

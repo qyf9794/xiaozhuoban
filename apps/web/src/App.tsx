@@ -42,6 +42,12 @@ function getAssistantSpeechTextFromDiagnostic(event: AssistantDiagnosticEvent): 
   return typeof transcript === "string" ? transcript.trim() : "";
 }
 
+function getUserSpeechTextFromDiagnostic(event: AssistantDiagnosticEvent): string {
+  if (event.type !== "realtime.voice.user_transcript" || event.status !== "success") return "";
+  const transcript = event.data?.transcript;
+  return typeof transcript === "string" ? transcript.trim() : "";
+}
+
 function getAssistantRuntimeText(status: { mode: AssistantRuntimeMode; metrics: RealtimeBudgetMetrics } | null) {
   if (!status) return "本地待机 · Realtime 按需连接";
   const activeSeconds = Math.round(status.metrics.realtimeActiveMs / 1000);
@@ -181,6 +187,7 @@ export function App() {
   });
   const [assistantOperationSnapshot, setAssistantOperationSnapshot] = useState<AssistantOperationSnapshot>({ active: [] });
   const [assistantSpeech, setAssistantSpeech] = useState<{ id: number; text: string } | null>(null);
+  const [userSpeech, setUserSpeech] = useState<{ id: number; text: string } | null>(null);
   const assistantOperation: VoiceAssistantOperationStatus | null = useMemo(
     () => getAssistantOperationStatus(assistantOperationSnapshot),
     [assistantOperationSnapshot]
@@ -205,6 +212,7 @@ export function App() {
   const mobileChromeHideTimerRef = useRef<number | null>(null);
   const assistantOperationClearTimerRef = useRef<number | null>(null);
   const assistantSpeechEventIdRef = useRef(0);
+  const userSpeechEventIdRef = useRef(0);
   const assistantCapabilityBridgeRef = useRef(new WidgetCapabilityBridge());
   const sidebarOpenRef = useRef(sidebarOpen);
   const fullscreenRef = useRef(fullscreen);
@@ -217,6 +225,11 @@ export function App() {
     if (assistantSpeechText) {
       assistantSpeechEventIdRef.current += 1;
       setAssistantSpeech({ id: assistantSpeechEventIdRef.current, text: assistantSpeechText });
+    }
+    const userSpeechText = getUserSpeechTextFromDiagnostic(event);
+    if (userSpeechText) {
+      userSpeechEventIdRef.current += 1;
+      setUserSpeech({ id: userSpeechEventIdRef.current, text: userSpeechText });
     }
     recordAuthenticatedAssistantDiagnostic(event);
   };
@@ -748,6 +761,7 @@ export function App() {
           desktopBottomInset={desktopViewportBottomInset}
           operationStatus={assistantOperation}
           assistantSpeech={assistantSpeech}
+          userSpeech={userSpeech}
           runtimeStatus={getAssistantRuntimeText(assistantRuntimeBudget)}
           syncPendingCount={assistantOutboxStatus.pendingCount}
           syncLastError={assistantOutboxStatus.lastError}

@@ -54,7 +54,7 @@ function createRuntimeWithFakeAdapter(options: {
       return adapter;
     }
   });
-  return { runtime, adapter, statuses, diagnostics };
+  return { runtime, adapter, statuses, diagnostics, getAdapterOptions: () => adapterOptions };
 }
 
 afterEach(() => {
@@ -170,5 +170,36 @@ describe("createRealtimeAssistantRuntime", () => {
       realtimeSessionCount: 0,
       estimatedCostUsd: 0
     });
+  });
+
+  it("routes unified realtime command tool calls through the realtime harness path", async () => {
+    const { runtime, getAdapterOptions, diagnostics } = createRuntimeWithFakeAdapter();
+    const handleRealtimeUserInput = vi.spyOn(runtime.harness, "handleRealtimeUserInput").mockResolvedValue({
+      route: "shortcut",
+      call: { id: "call_close", name: "widget.remove", arguments: { targetText: "所有窗口" }, source: "shortcut" },
+      result: { status: "success", message: "已关闭所有窗口" }
+    });
+
+    const result = await getAdapterOptions()?.onCommand?.("关闭所有窗口", { callId: "call_realtime_command_1", commandTraceId: "voice_1" });
+
+    expect(result).toEqual({ status: "success", message: "已关闭所有窗口" });
+    expect(handleRealtimeUserInput).toHaveBeenCalledWith("关闭所有窗口", { commandTraceId: "voice_1" });
+    expect(runtime.runtimeController.metrics.localHitCount).toBe(1);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.runtime.command_tool_result",
+        status: "success",
+        commandTraceId: "voice_1",
+        route: "shortcut"
+      })
+    ]));
+  });
+
+  it("does not expose voice transcript execution routing from the runtime", async () => {
+    const { runtime, getAdapterOptions } = createRuntimeWithFakeAdapter();
+    const handleRealtimeUserInput = vi.spyOn(runtime.harness, "handleRealtimeUserInput");
+
+    expect(getAdapterOptions()?.onUserTranscript).toBeUndefined();
+    expect(handleRealtimeUserInput).not.toHaveBeenCalled();
   });
 });

@@ -11,7 +11,10 @@ import type { AssistantRealtimeAdapter } from "./AssistantHarness";
 import type { AssistantDiagnosticEvent } from "./assistantDiagnostics";
 import {
   createInitialRealtimeToolSpecs,
+  createRealtimeCommandExecutionTool,
   createRealtimeSessionAudioConfig,
+  REALTIME_COMMAND_EXECUTION_TOOL_NAME,
+  XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
   decodeRealtimeToolName
 } from "./realtimeSessionConfig";
 import { realtimeWidgetAliases } from "./realtimeRoutingPolicy";
@@ -51,6 +54,14 @@ export interface OpenAIRealtimeWebRtcAdapterOptions {
   getAccessToken?: () => string | undefined | Promise<string | undefined>;
   getSafetyIdentifier?: () => string | undefined;
   onFunctionCall?: (call: AssistantToolCall) => void | Promise<void>;
+  onCommand?: (
+    input: string,
+    options: { callId: string; commandTraceId?: string }
+  ) => AssistantToolResult | Promise<AssistantToolResult>;
+  onUserTranscript?: (
+    input: string,
+    options: { commandTraceId?: string; itemId?: string }
+  ) => void | Promise<void>;
   onStatusChange?: (status: RealtimeConnectionStatus) => void;
   onMicrophoneLevel?: (level: number) => void;
   onDiagnostic?: (event: AssistantDiagnosticEvent) => void;
@@ -417,6 +428,21 @@ function parseToolSelectionArguments(value: unknown): {
   };
 }
 
+function parseRealtimeCommandExecutionArguments(value: unknown): { command: string } | null {
+  const parsed = parseArguments(value);
+  if (!isRecord(parsed)) return null;
+  const command =
+    typeof parsed.command === "string"
+      ? parsed.command
+      : typeof parsed.userCommand === "string"
+        ? parsed.userCommand
+        : typeof parsed.transcript === "string"
+          ? parsed.transcript
+          : "";
+  const trimmed = command.trim();
+  return trimmed ? { command: trimmed } : null;
+}
+
 const SAFE_REALTIME_DIAGNOSTIC_ARG_KEYS = new Set([
   "query",
   "kind",
@@ -454,6 +480,14 @@ function createSafeRealtimeToolCallDiagnosticData(call: AssistantToolCall): Reco
 
 function shouldSendRealtimeToolResult(call: AssistantToolCall): boolean {
   return call.source === "realtime";
+}
+
+function isBulkWindowSelectionText(...values: Array<string | undefined>): boolean {
+  const normalized = values.filter(Boolean).join(" ").replace(/\s+/g, "");
+  if (!normalized || /(保留|除了|除开|只关闭|只留下|留下|确认|先问|先确认|临时)/.test(normalized)) {
+    return false;
+  }
+  return /(所有|全部|全都|全部的|所有的)/.test(normalized) && /(窗口|小工具|组件|面板)/.test(normalized);
 }
 
 function getDeclaredToolParameterKeys(tool: AssistantToolSpec | undefined): Set<string> | null {
@@ -1251,7 +1285,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
 
   updateTools(tools: AssistantToolSpec[]): void {
     this.currentTools = tools;
-    const selectorUpdate = this.createToolSelectionSessionUpdate(tools);
+    const commandToolUpdate = this.createCommandExecutionSessionUpdate();
     const capabilityCatalog = this.createCapabilityCatalog(tools);
     const toolCatalogVersion = capabilityCatalog[0]?.catalogVersion;
     this.emitDiagnostic({
@@ -1259,7 +1293,21 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       status: "queued_or_sent",
       data: { toolCount: tools.length, tools: tools.map((tool) => tool.name), toolCatalogVersion }
     });
-    this.sendEvent(selectorUpdate);
+    this.sendEvent(commandToolUpdate);
+  }
+
+  private createCommandExecutionSessionUpdate(): RealtimeEvent {
+    return {
+      type: "session.update",
+      session: {
+        type: "realtime",
+        instructions: XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
+        audio: createRealtimeSessionAudioConfig(),
+        tools: [createRealtimeCommandExecutionTool()],
+        tool_choice: "auto",
+        parallel_tool_calls: false
+      }
+    };
   }
 
   private createToolSelectionSessionUpdate(tools: AssistantToolSpec[] = this.getEffectiveSessionTools()): RealtimeEvent {
@@ -1382,12 +1430,12 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.activeScopedToolSelection = null;
     }
     this.emitDiagnostic({
-      type: "realtime.text_command.reset_selector",
+      type: "realtime.text_command.reset_command_tool",
       status: "sent",
       commandTraceId,
       data: { toolCount: this.getEffectiveSessionTools().length }
     });
-    this.sendEvent(this.createToolSelectionSessionUpdate(), { queueWhenClosed: false, commandTraceId });
+    this.sendEvent(this.createCommandExecutionSessionUpdate(), { queueWhenClosed: false, commandTraceId });
     this.pendingTextCommandAfterSelectorUpdate = {
       events: createRealtimeTextCommandEvents(text),
       commandTraceId,
@@ -1559,6 +1607,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (commandTraceId) {
       this.functionCallTraceIds.set(call.id, commandTraceId);
     }
+    if (call.name === REALTIME_COMMAND_EXECUTION_TOOL_NAME) {
+      this.handleRealtimeCommandExecution(call, commandTraceId);
+      return;
+    }
     if (call.name === REALTIME_TOOL_SELECTION_TOOL_NAME) {
       this.emitDiagnostic({
         type: "realtime.function_call.selection",
@@ -1594,6 +1646,71 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     void this.options.onFunctionCall?.(toolCall);
   }
 
+  private handleRealtimeCommandExecution(call: AssistantToolCall, commandTraceId?: string): void {
+    const parsed = parseRealtimeCommandExecutionArguments(call.arguments);
+    if (!parsed) {
+      this.emitDiagnostic({
+        type: "realtime.function_call.command",
+        status: "needs_clarification",
+        operationId: call.id,
+        toolName: call.name,
+        commandTraceId,
+        errorCode: "REALTIME_COMMAND_EMPTY"
+      });
+      this.sendToolResult(call, {
+        status: "needs_clarification",
+        message: "我需要听到要执行的具体指令。",
+        errorCode: "REALTIME_COMMAND_EMPTY"
+      });
+      return;
+    }
+    this.emitDiagnostic({
+      type: "realtime.function_call.command",
+      status: "started",
+      operationId: call.id,
+      toolName: call.name,
+      commandTraceId,
+      data: { input: parsed.command }
+    });
+    void Promise.resolve(this.options.onCommand?.(parsed.command, { callId: call.id, commandTraceId }))
+      .then((result) => {
+        const finalResult = result ?? {
+          status: "failed",
+          message: "本地命令执行器不可用。",
+          errorCode: "REALTIME_COMMAND_HANDLER_MISSING"
+        };
+        this.emitDiagnostic({
+          type: "realtime.function_call.command_result",
+          status: finalResult.status,
+          operationId: call.id,
+          toolName: call.name,
+          commandTraceId,
+          message: finalResult.message,
+          errorCode: finalResult.errorCode,
+          data: { input: parsed.command }
+        });
+        this.sendToolResult(call, finalResult);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "命令执行失败";
+        this.emitDiagnostic({
+          type: "realtime.function_call.command_result",
+          status: "failed",
+          operationId: call.id,
+          toolName: call.name,
+          commandTraceId,
+          message,
+          errorCode: "REALTIME_COMMAND_HANDLER_FAILED",
+          data: { input: parsed.command }
+        });
+        this.sendToolResult(call, {
+          status: "failed",
+          message,
+          errorCode: "REALTIME_COMMAND_HANDLER_FAILED"
+        });
+      });
+  }
+
   private handleToolSelection(call: AssistantToolCall): void {
     const commandTraceId = this.functionCallTraceIds.get(call.id) ?? this.activeCommandTraceId ?? this.activeRealtimeResponseTraceId ?? undefined;
     const selection = parseToolSelectionArguments(call.arguments);
@@ -1626,6 +1743,44 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         message: "我需要再确认要操作哪个小工具。",
         errorCode: "TOOL_SELECTION_LOW_CONFIDENCE"
       });
+      return;
+    }
+
+    if (
+      selectedTool.name === "widget.remove" &&
+      isBulkWindowSelectionText(selection.userCommand, selection.targetHint)
+    ) {
+      const targetText = selection.userCommand || selection.targetHint || "所有窗口";
+      const bulkCall: AssistantToolCall = {
+        id: `${call.id}_bulk_window_shortcut`,
+        name: "widget.remove",
+        arguments: { targetText },
+        source: "shortcut",
+        transcript: targetText
+      };
+      this.emitDiagnostic({
+        type: "realtime.tool_selection.local_bulk_shortcut",
+        status: "started",
+        operationId: call.id,
+        toolName: selectedTool.name,
+        commandTraceId,
+        data: { targetText }
+      });
+      void Promise.resolve(this.options.onFunctionCall?.(bulkCall))
+        .then(() => {
+          this.sendToolResult(call, {
+            status: "success",
+            message: "已用本地快捷方式执行批量窗口关闭。",
+            data: { selectedTool: selectedTool.name, targetHint: selection.targetHint, execution: "local_bulk_shortcut" }
+          });
+        })
+        .catch((error) => {
+          this.sendToolResult(call, {
+            status: "failed",
+            message: error instanceof Error ? error.message : "批量窗口关闭失败",
+            errorCode: "LOCAL_BULK_SHORTCUT_FAILED"
+          });
+        });
       return;
     }
 
@@ -1758,12 +1913,12 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         });
       }
       this.emitRealtimeSemanticDiagnostic(parsed, commandTraceId);
-      this.handleRealtimeLifecycleEvent(parsed);
+      this.handleRealtimeLifecycleEvent(parsed, commandTraceId);
     }
     handleRealtimeFunctionCallEvent(parsed ?? data, this.handledFunctionCallIds, (call) => this.handleFunctionCall(call));
   }
 
-  private handleRealtimeLifecycleEvent(event: RealtimeEvent): void {
+  private handleRealtimeLifecycleEvent(event: RealtimeEvent, commandTraceId?: string): void {
     const previousActiveResponseId = this.activeResponseId;
     this.activeResponseId = reduceRealtimeActiveResponseId(this.activeResponseId, event);
     if (previousActiveResponseId && !this.activeResponseId && this.pendingResponseCreateAfterActiveToolResult) {
@@ -1886,12 +2041,14 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       return;
     }
     if (eventType === "conversation.item.input_audio_transcription.completed") {
+      const transcript = extractRealtimeEventTranscript(event);
       this.emitDiagnostic({
         type: "realtime.voice.user_transcript",
         status: "success",
         commandTraceId,
-        data: { itemId, transcript: extractRealtimeEventTranscript(event) }
+        data: { itemId, transcript }
       });
+      this.handleRealtimeUserTranscript(transcript, commandTraceId, itemId);
       return;
     }
     if (eventType === "conversation.item.input_audio_transcription.failed") {
@@ -1927,6 +2084,31 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     }
     if (commandTraceId && this.activeRealtimeResponseTraceId === commandTraceId) {
       this.activeRealtimeResponseTraceId = null;
+    }
+  }
+
+  private handleRealtimeUserTranscript(transcript: string, commandTraceId?: string, itemId?: string): void {
+    const input = transcript.trim();
+    if (!input || !this.options.onUserTranscript) return;
+    try {
+      void Promise.resolve(this.options.onUserTranscript(input, { commandTraceId, itemId }))
+        .catch((error) => {
+          this.emitDiagnostic({
+            type: "realtime.voice.user_transcript_callback",
+            status: "failed",
+            commandTraceId,
+            message: error instanceof Error ? error.message : "user transcript callback failed",
+            data: { itemId, input }
+          });
+        });
+    } catch (error) {
+      this.emitDiagnostic({
+        type: "realtime.voice.user_transcript_callback",
+        status: "failed",
+        commandTraceId,
+        message: error instanceof Error ? error.message : "user transcript callback failed",
+        data: { itemId, input }
+      });
     }
   }
 

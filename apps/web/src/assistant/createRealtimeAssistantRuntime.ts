@@ -114,6 +114,43 @@ export function createRealtimeAssistantRuntime(options: {
     },
     async onFunctionCall(call) {
       await harness.handleFunctionCall(call, "function_call");
+    },
+    async onCommand(input, commandOptions) {
+      try {
+        const response = await harness.handleRealtimeUserInput(input, { commandTraceId: commandOptions.commandTraceId });
+        if (response.route === "shortcut" || response.route === "learned") {
+          runtimeController.recordLocalHit();
+        } else if (response.route === "model") {
+          runtimeController.recordFallback();
+        }
+        notifyRuntime();
+        emitDiagnostic?.({
+          type: "realtime.runtime.command_tool_result",
+          status: response.result.status,
+          commandTraceId: commandOptions.commandTraceId,
+          route: response.route,
+          toolName: response.call?.name,
+          operationId: response.call?.id,
+          message: response.result.message,
+          errorCode: response.result.errorCode,
+          data: { input }
+        });
+        return response.result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "realtime command harness failed";
+        emitDiagnostic?.({
+          type: "realtime.runtime.command_tool_result",
+          status: "failed",
+          commandTraceId: commandOptions.commandTraceId,
+          message,
+          data: { input }
+        });
+        return {
+          status: "failed",
+          message,
+          errorCode: "REALTIME_COMMAND_HANDLER_FAILED"
+        };
+      }
     }
   };
   const adapter = options.adapterFactory ? options.adapterFactory(adapterOptions) : new OpenAIRealtimeWebRtcAdapter(adapterOptions);

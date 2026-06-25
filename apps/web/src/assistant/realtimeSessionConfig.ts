@@ -2,6 +2,7 @@ import {
   DEFAULT_REALTIME_CLIENT_SECRET_TTL_SECONDS,
   OPENAI_REALTIME_CLIENT_SECRET_URL,
   REALTIME_TOOL_SELECTION_TOOL_NAME,
+  REALTIME_COMMAND_EXECUTION_TOOL_NAME,
   ToolScopeManager,
   XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL,
   XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
@@ -26,6 +27,7 @@ export {
   DEFAULT_REALTIME_CLIENT_SECRET_TTL_SECONDS,
   OPENAI_REALTIME_CLIENT_SECRET_URL,
   REALTIME_TOOL_SELECTION_TOOL_NAME,
+  REALTIME_COMMAND_EXECUTION_TOOL_NAME,
   XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL,
   XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
   XIAOZHUOBAN_REALTIME_INPUT_TRANSCRIPTION_MODEL,
@@ -276,7 +278,7 @@ export function createInitialRealtimeToolSpecs(): AssistantToolSpec[] {
 }
 
 export function createInitialRealtimeTools(): RealtimeFunctionTool[] {
-  return [createRealtimeToolSelectionTool(createInitialRealtimeToolSpecs())];
+  return [createRealtimeCommandExecutionTool()];
 }
 
 export function createInitialRegisteredRealtimeTools(): RealtimeFunctionTool[] {
@@ -314,6 +316,24 @@ export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[]): Rea
         confidence: { type: "number" }
       },
       ["name"]
+    )
+  };
+}
+
+export function createRealtimeCommandExecutionTool(): RealtimeFunctionTool {
+  return {
+    type: "function",
+    name: encodeRealtimeToolName(REALTIME_COMMAND_EXECUTION_TOOL_NAME),
+    description:
+      "Execute a Xiaozhuoban desktop, board, window, or widget command through the local harness. Use this for all UI control requests.",
+    parameters: objectSchema(
+      {
+        command: {
+          type: "string",
+          description: "The user's original command or the shortest equivalent command to execute."
+        }
+      },
+      ["command"]
     )
   };
 }
