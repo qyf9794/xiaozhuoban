@@ -265,6 +265,7 @@ function createAcceptanceHarness(options?: { modelCall?: AssistantToolCall | nul
     getAppShell: () => appShell,
     getBoards: () => boards,
     getActiveBoard: () => boards.find((board) => board.id === activeBoardId),
+    getAllWidgets: () => widgets,
     getWidgets: (type: string) => widgets.filter((item) => definitions.find((definition) => definition.id === item.definitionId)?.type === type),
     getWidget: (type: string) => widgets.find((item) => item.id === `wi_${type}`)
   };
@@ -853,6 +854,21 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(response.result.status).toBe("success");
     expect(harness.getPendingConfirmation()).toBeNull();
     expect(getWidget("note")).toBeFalsy();
+  });
+
+  it("closes every widget through the realtime command path", async () => {
+    const { harness, getAllWidgets, modelInputs } = createAcceptanceHarness({
+      initialWidgetTypes: ["weather", "countdown", "note", "todo", "worldClock", "headline", "calculator"]
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput("关闭所有小工具");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(harness.getPendingConfirmation()).toBeNull();
+    expect(getAllWidgets()).toHaveLength(0);
+    expect(modelInputs).toEqual([]);
   });
 
   it("does not block previously deferred requests before model fallback", async () => {

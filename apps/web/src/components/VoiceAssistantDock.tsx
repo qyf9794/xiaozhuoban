@@ -341,6 +341,7 @@ export function VoiceAssistantDock({
   const suppressOrbClickRef = useRef(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [mobileTextPanelOpen, setMobileTextPanelOpen] = useState(false);
+  const [dismissedPanelContentKey, setDismissedPanelContentKey] = useState("");
   const [assistantSpeechLevel, setAssistantSpeechLevel] = useState(0);
   const textRef = useRef("");
   const voiceEnabled = Boolean(onConnectVoice || onConnectTextOnly);
@@ -359,14 +360,16 @@ export function VoiceAssistantDock({
   const scheduleMobileTextPanelCollapse = () => {
     clearMobileTextPanelCollapseTimer();
     mobileTextPanelCollapseTimerRef.current = window.setTimeout(() => {
-      if (!harness.getPendingConfirmation() && !textRef.current.trim()) {
+      if (!textRef.current.trim()) {
         setMobileTextPanelOpen(false);
+        setDismissedPanelContentKey(panelContentKey);
       }
       mobileTextPanelCollapseTimerRef.current = null;
     }, VOICE_ASSISTANT_MOBILE_TEXT_PANEL_IDLE_MS);
   };
 
   const openMobileTextPanel = ({ focusInput = true }: { focusInput?: boolean } = {}) => {
+    setDismissedPanelContentKey("");
     setMobileTextPanelOpen(true);
     scheduleMobileTextPanelCollapse();
     if (focusInput) {
@@ -375,8 +378,16 @@ export function VoiceAssistantDock({
   };
 
   const keepMobileTextPanelOpen = () => {
+    setDismissedPanelContentKey("");
     setMobileTextPanelOpen(true);
     scheduleMobileTextPanelCollapse();
+  };
+
+  const hideVoiceAssistantTextPanel = () => {
+    clearMobileTextPanelCollapseTimer();
+    setMobileTextPanelOpen(false);
+    setDismissedPanelContentKey(panelContentKey);
+    inputRef.current?.blur();
   };
 
   const clearOrbLongPressTimer = () => {
@@ -462,11 +473,14 @@ export function VoiceAssistantDock({
   const visibleOperation = getVisibleVoiceAssistantOperation(operation, operationStatus);
   const panelAnswerText = getVoiceAssistantPanelAnswerText(assistantSpeech?.text, pending?.message);
   const panelUserText = userSpeech?.text.trim() ?? "";
+  const panelContentKey = [pending?.id, assistantSpeech?.id, userSpeech?.id, panelAnswerText, panelUserText].filter(Boolean).join(":");
+  const hasUndismissedPending = Boolean(pending) && dismissedPanelContentKey !== panelContentKey;
+  const hasUndismissedPanelContent = Boolean(panelAnswerText || panelUserText) && dismissedPanelContentKey !== panelContentKey;
   const textPanelVisible = shouldShowVoiceAssistantTextPanel(
     isMobileMode,
     mobileTextPanelOpen,
-    Boolean(pending),
-    Boolean(panelAnswerText || panelUserText)
+    hasUndismissedPending,
+    hasUndismissedPanelContent
   );
   const orbVisualMode = getVoiceAssistantOrbVisualMode(visualState, visibleOperation, textPanelVisible);
   const orbAudioLevel = Math.pow(clampVoiceAssistantAudioLevel(Math.max(voiceAudioLevel, assistantSpeechLevel)), 0.78);
@@ -707,7 +721,11 @@ export function VoiceAssistantDock({
       orbLongPressTimerRef.current = null;
       orbLongPressTriggeredRef.current = true;
       suppressOrbClickRef.current = true;
-      openMobileTextPanel();
+      if (textPanelVisible) {
+        hideVoiceAssistantTextPanel();
+      } else {
+        openMobileTextPanel();
+      }
     }, VOICE_ASSISTANT_ORB_LONG_PRESS_MS);
     event.currentTarget.setPointerCapture(event.pointerId);
   };

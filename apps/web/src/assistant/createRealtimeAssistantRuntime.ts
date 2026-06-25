@@ -23,6 +23,15 @@ type RuntimeRealtimeAdapter = AssistantRealtimeAdapter & {
   sendTextCommand?: (input: string, options?: { commandTraceId?: string }) => void;
 };
 
+function shouldFallbackUnhandledVoiceTranscriptToHarness(input: string): boolean {
+  const normalized = input.trim();
+  if (!normalized) return false;
+  if (/^(在吗|你好|您好|hello|hi|嗨|你在吗)[？?。!！\s]*$/i.test(normalized)) return false;
+  return /(关闭|关掉|收起|打开|唤出|调出|整理|排列|对齐|全屏|侧栏|侧边栏|设置|命令面板|倒计时|计时|留言板|音乐|歌曲|时钟|表盘|天气|新闻|头条|行情|指数|翻译|换算|小工具|窗口|组件|面板)/.test(
+    normalized
+  );
+}
+
 export interface RealtimeAssistantRuntime {
   harness: AssistantHarness;
   adapter: RuntimeRealtimeAdapter;
@@ -151,6 +160,38 @@ export function createRealtimeAssistantRuntime(options: {
           errorCode: "REALTIME_COMMAND_HANDLER_FAILED"
         };
       }
+    },
+    onUnhandledUserTranscript(input, transcriptOptions) {
+      if (!shouldFallbackUnhandledVoiceTranscriptToHarness(input)) {
+        return;
+      }
+      void harness.handleRealtimeUserInput(input, { commandTraceId: transcriptOptions.commandTraceId }).then((response) => {
+        if (response.route === "shortcut" || response.route === "learned") {
+          runtimeController.recordLocalHit();
+        } else if (response.route === "model") {
+          runtimeController.recordFallback();
+        }
+        notifyRuntime();
+        emitDiagnostic?.({
+          type: "realtime.runtime.unhandled_voice_transcript_result",
+          status: response.result.status,
+          commandTraceId: transcriptOptions.commandTraceId,
+          route: response.route,
+          toolName: response.call?.name,
+          operationId: response.call?.id,
+          message: response.result.message,
+          errorCode: response.result.errorCode,
+          data: { input }
+        });
+      }).catch((error) => {
+        emitDiagnostic?.({
+          type: "realtime.runtime.unhandled_voice_transcript_result",
+          status: "failed",
+          commandTraceId: transcriptOptions.commandTraceId,
+          message: error instanceof Error ? error.message : "unhandled voice transcript fallback failed",
+          data: { input }
+        });
+      });
     }
   };
   const adapter = options.adapterFactory ? options.adapterFactory(adapterOptions) : new OpenAIRealtimeWebRtcAdapter(adapterOptions);

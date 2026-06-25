@@ -1,5 +1,5 @@
-import { SiriRenderer } from "./renderer.js?v=20260621-voice-audio-wave";
-import { createSiriState } from "./state.js?v=20260621-voice-audio-wave";
+import { SiriRenderer } from "./renderer.js?v=20260625-edge-highlight";
+import { createSiriState } from "./state.js?v=20260625-edge-highlight";
 
 const canvas = document.querySelector("#siri27-canvas");
 const status = document.querySelector("#mic-status");

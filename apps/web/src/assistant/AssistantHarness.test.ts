@@ -2018,6 +2018,27 @@ describe("AssistantHarness", () => {
     expect(executed).toEqual(["widget.remove:wi_tv", "widget.remove:wi_note", "widget.remove:wi_messageBoard", "widget.remove:wi_worldClock"]);
   });
 
+  it("expands close all widget commands into concrete widget removals", async () => {
+    const { harness, executed } = createHarness({
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_messageBoard", definitionId: "wd_messageBoard", type: "messageBoard", name: "留言板", order: 3 },
+          { widgetId: "wi_worldClock", definitionId: "wd_worldClock", type: "worldClock", name: "世界时钟", order: 4 }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput("关闭所有小工具");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("widget.remove done；widget.remove done；widget.remove done；widget.remove done");
+    expect(executed).toEqual(["widget.remove:wi_tv", "widget.remove:wi_note", "widget.remove:wi_messageBoard", "widget.remove:wi_worldClock"]);
+  });
+
   it("expands realtime close all window commands before model planning", async () => {
     const { harness, executed } = createHarness({
       modelCall: { id: "model_diag", name: "assistant.runtime_diagnostics", arguments: {}, source: "realtime" },

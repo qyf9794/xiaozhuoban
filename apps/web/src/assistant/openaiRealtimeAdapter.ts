@@ -62,6 +62,10 @@ export interface OpenAIRealtimeWebRtcAdapterOptions {
     input: string,
     options: { commandTraceId?: string; itemId?: string }
   ) => void | Promise<void>;
+  onUnhandledUserTranscript?: (
+    input: string,
+    options: { commandTraceId?: string; itemId?: string }
+  ) => void | Promise<void>;
   onStatusChange?: (status: RealtimeConnectionStatus) => void;
   onMicrophoneLevel?: (level: number) => void;
   onDiagnostic?: (event: AssistantDiagnosticEvent) => void;
@@ -885,6 +889,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private realtimeResponseTraceIds = new Map<string, string>();
   private realtimeItemTraceIds = new Map<string, string>();
   private functionCallTraceIds = new Map<string, string>();
+  private realtimeTraceCommandToolCalls = new Set<string>();
+  private realtimeTraceUserTranscripts = new Map<string, { input: string; itemId?: string }>();
   private microphoneLevelMonitor: MicrophoneLevelMonitor | null = null;
   private remoteAudioLevelMonitor: MicrophoneLevelMonitor | null = null;
   private microphoneLevel = 0;
@@ -1608,6 +1614,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.functionCallTraceIds.set(call.id, commandTraceId);
     }
     if (call.name === REALTIME_COMMAND_EXECUTION_TOOL_NAME) {
+      if (commandTraceId) {
+        this.realtimeTraceCommandToolCalls.add(commandTraceId);
+        this.realtimeTraceUserTranscripts.delete(commandTraceId);
+      }
       this.handleRealtimeCommandExecution(call, commandTraceId);
       return;
     }
@@ -1964,7 +1974,55 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.emitDiagnostic({ type: "realtime.event.error", status: "failed", message });
       this.failSessionUpdate(message);
     }
+    if (
+      commandTraceId &&
+      (event.type === "response.done" || event.type === "response.cancelled" || event.type === "response.failed")
+    ) {
+      this.handleUnhandledRealtimeUserTranscript(commandTraceId);
+      this.realtimeTraceCommandToolCalls.delete(commandTraceId);
+      this.realtimeTraceUserTranscripts.delete(commandTraceId);
+    }
     this.clearFinishedRealtimeEventTrace(event);
+  }
+
+  private handleUnhandledRealtimeUserTranscript(commandTraceId: string): void {
+    if (this.realtimeTraceCommandToolCalls.has(commandTraceId) || !this.options.onUnhandledUserTranscript) return;
+    const transcript = this.realtimeTraceUserTranscripts.get(commandTraceId);
+    if (!transcript?.input) return;
+    this.emitDiagnostic({
+      type: "realtime.voice.user_transcript_unhandled",
+      status: "started",
+      commandTraceId,
+      data: { itemId: transcript.itemId, input: transcript.input }
+    });
+    try {
+      void Promise.resolve(this.options.onUnhandledUserTranscript(transcript.input, { commandTraceId, itemId: transcript.itemId }))
+        .then(() => {
+          this.emitDiagnostic({
+            type: "realtime.voice.user_transcript_unhandled",
+            status: "success",
+            commandTraceId,
+            data: { itemId: transcript.itemId, input: transcript.input }
+          });
+        })
+        .catch((error) => {
+          this.emitDiagnostic({
+            type: "realtime.voice.user_transcript_unhandled",
+            status: "failed",
+            commandTraceId,
+            message: error instanceof Error ? error.message : "unhandled user transcript fallback failed",
+            data: { itemId: transcript.itemId, input: transcript.input }
+          });
+        });
+    } catch (error) {
+      this.emitDiagnostic({
+        type: "realtime.voice.user_transcript_unhandled",
+        status: "failed",
+        commandTraceId,
+        message: error instanceof Error ? error.message : "unhandled user transcript fallback failed",
+        data: { itemId: transcript.itemId, input: transcript.input }
+      });
+    }
   }
 
   private getOrCreateRealtimeResponseTraceId(responseId: string): string {
@@ -2089,7 +2147,11 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
 
   private handleRealtimeUserTranscript(transcript: string, commandTraceId?: string, itemId?: string): void {
     const input = transcript.trim();
-    if (!input || !this.options.onUserTranscript) return;
+    if (!input) return;
+    if (commandTraceId) {
+      this.realtimeTraceUserTranscripts.set(commandTraceId, { input, itemId });
+    }
+    if (!this.options.onUserTranscript) return;
     try {
       void Promise.resolve(this.options.onUserTranscript(input, { commandTraceId, itemId }))
         .catch((error) => {

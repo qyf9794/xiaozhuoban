@@ -40,6 +40,7 @@ const XIAOZHUOBAN_REALTIME_INSTRUCTIONS = [
   "",
   "# Tool Policy",
   "- 需要控制桌面、窗口或小工具时，只调用 assistant.execute_command，并把用户原话或最短等价命令放入 command。",
+  "- 即使你没有看到具体窗口列表或 widgetId，也不要说没有拿到对象；本地 harness 有实时桌面状态，会解析目标并执行。",
   "- 不要直接调用 widget.remove、widget.move、board.add_widget 等底层工具；本地 harness 会解析、确认、校验和执行。",
   "- 普通问候或闲聊可以直接简短回答，不需要调用工具。",
   "- 清空内容、删除用户数据、覆盖内容、批量修改数据必须请求确认。",

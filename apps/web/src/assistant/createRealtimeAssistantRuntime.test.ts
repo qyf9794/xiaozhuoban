@@ -202,4 +202,36 @@ describe("createRealtimeAssistantRuntime", () => {
     expect(getAdapterOptions()?.onUserTranscript).toBeUndefined();
     expect(handleRealtimeUserInput).not.toHaveBeenCalled();
   });
+
+  it("falls back to the realtime harness when a command-like voice transcript is left unhandled", async () => {
+    const { runtime, getAdapterOptions, diagnostics } = createRuntimeWithFakeAdapter();
+    const handleRealtimeUserInput = vi.spyOn(runtime.harness, "handleRealtimeUserInput").mockResolvedValue({
+      route: "shortcut",
+      call: { id: "call_close_all", name: "widget.remove", arguments: { targetText: "所有小工具" }, source: "shortcut" },
+      result: { status: "success", message: "已关闭所有小工具" }
+    });
+
+    await getAdapterOptions()?.onUnhandledUserTranscript?.("关闭所有小工具", { commandTraceId: "voice_unhandled_1", itemId: "item_1" });
+    await Promise.resolve();
+
+    expect(handleRealtimeUserInput).toHaveBeenCalledWith("关闭所有小工具", { commandTraceId: "voice_unhandled_1" });
+    expect(runtime.runtimeController.metrics.localHitCount).toBe(1);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.runtime.unhandled_voice_transcript_result",
+        status: "success",
+        commandTraceId: "voice_unhandled_1",
+        route: "shortcut"
+      })
+    ]));
+  });
+
+  it("does not fall back unhandled greetings into the realtime harness", async () => {
+    const { runtime, getAdapterOptions } = createRuntimeWithFakeAdapter();
+    const handleRealtimeUserInput = vi.spyOn(runtime.harness, "handleRealtimeUserInput");
+
+    await getAdapterOptions()?.onUnhandledUserTranscript?.("你好", { commandTraceId: "voice_hello", itemId: "item_hello" });
+
+    expect(handleRealtimeUserInput).not.toHaveBeenCalled();
+  });
 });

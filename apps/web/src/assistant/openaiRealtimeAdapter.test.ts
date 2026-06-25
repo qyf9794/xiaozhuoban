@@ -1168,6 +1168,122 @@ describe("OpenAI realtime adapter helpers", () => {
     ]));
   });
 
+  it("falls back when a voice transcript finishes without a command tool call", async () => {
+    const fallbackInputs: Array<{ input: string; commandTraceId?: string; itemId?: string }> = [];
+    const diagnostics: Array<{ type: string; commandTraceId?: string; status?: string; data?: Record<string, unknown> }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onUnhandledUserTranscript(input, options) {
+        fallbackInputs.push({ input, ...options });
+      },
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "input_audio_buffer.speech_started", item_id: "item_voice_close_all" });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "conversation.item.input_audio_transcription.completed",
+      item_id: "item_voice_close_all",
+      transcript: "关闭所有小工具"
+    });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "response.created", response: { id: "resp_close_all" } });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "response.done", response: { id: "resp_close_all" } });
+    await Promise.resolve();
+
+    const trace = diagnostics.find((event) => event.type === "realtime.voice.speech_started")?.commandTraceId;
+    expect(fallbackInputs).toEqual([{ input: "关闭所有小工具", commandTraceId: trace, itemId: "item_voice_close_all" }]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "realtime.voice.user_transcript_unhandled", status: "started", commandTraceId: trace }),
+      expect.objectContaining({ type: "realtime.voice.user_transcript_unhandled", status: "success", commandTraceId: trace })
+    ]));
+  });
+
+  it("does not run transcript fallback after a unified command tool call", async () => {
+    const fallbackInputs: string[] = [];
+    const sent: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onUnhandledUserTranscript(input) {
+        fallbackInputs.push(input);
+      },
+      async onCommand(input) {
+        return { status: "success", message: `已执行：${input}` };
+      }
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
+      }
+    });
+
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "input_audio_buffer.speech_started", item_id: "item_voice_command" });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "conversation.item.input_audio_transcription.completed",
+      item_id: "item_voice_command",
+      transcript: "关闭所有小工具"
+    });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "response.created", response: { id: "resp_command" } });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "response.output_item.done",
+      item: {
+        type: "function_call",
+        call_id: "call_command_close_all",
+        name: "assistant__dot__execute_command",
+        arguments: JSON.stringify({ command: "关闭所有小工具" })
+      }
+    });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "response.done", response: { id: "resp_command" } });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(fallbackInputs).toEqual([]);
+    expect(sent).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "conversation.item.create",
+        item: expect.objectContaining({ call_id: "call_command_close_all" })
+      })
+    ]));
+  });
+
   it("executes unified realtime command tool calls through the command handler", async () => {
     const calls: unknown[] = [];
     const sent: unknown[] = [];
