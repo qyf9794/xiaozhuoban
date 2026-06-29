@@ -763,9 +763,11 @@ function inferTvChannelName(input: string) {
   return "";
 }
 
+const KNOWN_MUSIC_ARTISTS = ["陈奕迅", "王菲", "周杰伦", "林俊杰", "五月天", "孙燕姿", "张学友", "刘德华"];
+
 function inferMusicQuery(input: string) {
   const query = input
-    .replace(/(播放|搜索|搜|查找|找一下|找|来一首|放一首|放首|放点|放个|放些|听一下|听|音乐播放器|音乐|歌曲|歌单|专辑|歌手|歌|第一首|第一条|第一个|首个|一下|给我|帮我|麻烦|麻烦你)/g, " ")
+    .replace(/(我想听|想听|我要听|我想要|我想|想要|我要|想|播放|搜索|搜|查找|找一下|找|来一首|放一首|放首|放点|放个|放些|听一下|听|音乐播放器|音乐|歌曲|歌单|专辑|歌手|歌|第一首|第一条|第一个|首个|一下|给我|帮我|麻烦|麻烦你)/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .replace(/^(一点|一些|几首|几首?|来点|来些|轻一点的|轻松一点的)\s*/g, "")
@@ -773,9 +775,12 @@ function inferMusicQuery(input: string) {
     .replace(/的\s*$/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  const artistPrefixes = ["陈奕迅", "王菲", "周杰伦", "林俊杰", "五月天", "孙燕姿", "张学友", "刘德华"];
-  const artist = artistPrefixes.find((prefix) => query.startsWith(prefix) && query.length > prefix.length && !query.startsWith(`${prefix} `));
+  const artist = KNOWN_MUSIC_ARTISTS.find((prefix) => query.startsWith(prefix) && query.length > prefix.length && !query.startsWith(`${prefix} `));
   return artist ? `${artist} ${query.slice(artist.length).trim()}` : query;
+}
+
+function hasKnownMusicArtist(input: string, query: string) {
+  return KNOWN_MUSIC_ARTISTS.some((artist) => input.includes(artist) || query.includes(artist));
 }
 
 function inferMusicKind(input: string): "song" | "album" | "playlist" | undefined {
@@ -2079,7 +2084,11 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
           return { matched: false, reason: "music_play_requires_realtime_target" };
         }
         if (targetType === "music" && isPlay && !isPause && !isNext && !isPrevious && !isResume) {
-          const confidence = /(播放|来一首|放一首|放首)/.test(normalized) ? 0.88 : 0.86;
+          const confidence = hasKnownMusicArtist(raw, musicQuery)
+            ? 1
+            : /(播放|来一首|放一首|放首)/.test(normalized)
+              ? 0.88
+              : 0.86;
           return (
             routeWidgetDetailOrAdd(context, raw, "music", "music.play", musicArgs, confidence) ?? {
               matched: false,

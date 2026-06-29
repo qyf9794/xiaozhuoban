@@ -2279,6 +2279,52 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes artist-specific listen requests to add music and play locally", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("我想听王菲的歌", {
+      ...context,
+      availableWidgets: (context.availableWidgets ?? []).filter((widget) => widget.type !== "music")
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.confidence).toBeGreaterThanOrEqual(0.9);
+      expect(result.toolCall.name).toBe("board.add_widget");
+      expect(result.toolCall.arguments).toEqual({
+        definitionId: "wd_music",
+        followUp: {
+          name: "music.play",
+          arguments: { query: "王菲" }
+        }
+      });
+    }
+  });
+
+  it("routes artist-specific listen requests to the existing music widget", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("我想听王菲的歌", {
+      ...context,
+      availableWidgets: [
+        ...(context.availableWidgets ?? []),
+        {
+          widgetId: "wi_music",
+          definitionId: "wd_music",
+          type: "music",
+          name: "音乐",
+          order: 14,
+          summary: "空闲"
+        }
+      ]
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.confidence).toBe(1);
+      expect(result.toolCall.name).toBe("music.play");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_music", query: "王菲" });
+    }
+  });
+
   it("routes noisy spoken close music commands to widget removal", () => {
     const router = createDefaultIntentShortcutRouter();
     const contextWithMusic = {
@@ -2418,7 +2464,7 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
-  it("cleans casual music search filler and artist prefixes without crossing the local confidence threshold", () => {
+  it("keeps casual searches low confidence while routing artist-specific playback locally", () => {
     const router = createDefaultIntentShortcutRouter();
     const search = router.route("搜一点轻松的音乐", context);
     const play = router.route("来一首陈奕迅十年", {
@@ -2452,7 +2498,7 @@ describe("IntentShortcutRouter", () => {
     expect(play.matched).toBe(true);
     if (play.matched) {
       expect(play.toolCall.name).toBe("music.play");
-      expect(play.confidence).toBeLessThan(0.9);
+      expect(play.confidence).toBe(1);
       expect(play.toolCall.arguments).toEqual({ widgetId: "wi_music", query: "陈奕迅 十年" });
     }
   });

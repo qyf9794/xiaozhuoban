@@ -164,7 +164,7 @@ const ADD_WIDGET_TOOL = "board.add_widget";
 const FOCUS_WIDGET_TOOL = "widget.focus";
 const APP_FULLSCREEN_TOOL = "app.fullscreen.set";
 const PLANNED_WIDGET_PREFIX = "planned_widget_";
-const LOCAL_SHORTCUT_CONFIDENCE_THRESHOLD = 0.9;
+const LOCAL_SHORTCUT_CONFIDENCE_THRESHOLD = 0.75;
 const WIDGET_WINDOW_TOOLS = new Set([
   "widget.focus",
   "widget.fullscreen_focus",
@@ -217,6 +217,15 @@ function createTargetBoundArguments(args: unknown, target?: ResolvedWidgetTarget
     return next;
   }
   return { ...next, widgetId: target.widgetId };
+}
+
+function getPolicyToolNamesForCall(call: AssistantToolCall) {
+  const names = [call.name];
+  const followUp = isRecord(call.arguments) && isRecord(call.arguments.followUp) ? call.arguments.followUp : null;
+  if (followUp && typeof followUp.name === "string") {
+    names.push(followUp.name);
+  }
+  return names;
 }
 
 function cleanCommandSegment(segment: string) {
@@ -498,29 +507,34 @@ export class AssistantHarness {
     if (!segmentedShortcut) {
       const shortcut = this.options.shortcutRouter.route(input, shortcutContext);
       if (shortcut.matched && this.shouldExecuteLocalShortcut(shortcut.confidence) && !this.shouldDeferComplexShortcutSegment(input)) {
-        this.rememberAuditMetadata(shortcut.toolCall, input);
-        const response = await this.handleFunctionCall(shortcut.toolCall, "shortcut", startedAt);
-        if (shortcut.toolCall.name === CONFIRM_TOOL && response.result.status === "success" && this.queuedShortcutPlanGroups.length) {
-          const queued = this.queuedShortcutPlanGroups;
-          this.queuedShortcutPlanGroups = [];
-          const queuedResponse = await this.handleShortcutPlan(queued, startedAt);
-          return {
-            route: "shortcut",
-            call: response.call,
-            result: {
-              ...queuedResponse.result,
-              message: [response.result.message, queuedResponse.result.message].filter(Boolean).join("；"),
-              data: {
-                confirmed: response.result,
-                queued: queuedResponse.result
+        const violations = getForbiddenToolViolations(input, getPolicyToolNamesForCall(shortcut.toolCall));
+        if (violations.length) {
+          this.recordPolicyValidationErrors(violations);
+        } else {
+          this.rememberAuditMetadata(shortcut.toolCall, input);
+          const response = await this.handleFunctionCall(shortcut.toolCall, "shortcut", startedAt);
+          if (shortcut.toolCall.name === CONFIRM_TOOL && response.result.status === "success" && this.queuedShortcutPlanGroups.length) {
+            const queued = this.queuedShortcutPlanGroups;
+            this.queuedShortcutPlanGroups = [];
+            const queuedResponse = await this.handleShortcutPlan(queued, startedAt);
+            return {
+              route: "shortcut",
+              call: response.call,
+              result: {
+                ...queuedResponse.result,
+                message: [response.result.message, queuedResponse.result.message].filter(Boolean).join("；"),
+                data: {
+                  confirmed: response.result,
+                  queued: queuedResponse.result
+                }
               }
-            }
-          };
+            };
+          }
+          if (shortcut.toolCall.name === CONFIRM_TOOL && response.result.status === "success" && this.queuedPostConfirmationPlan) {
+            return this.continueQueuedPostConfirmationPlan(response, startedAt);
+          }
+          return response;
         }
-        if (shortcut.toolCall.name === CONFIRM_TOOL && response.result.status === "success" && this.queuedPostConfirmationPlan) {
-          return this.continueQueuedPostConfirmationPlan(response, startedAt);
-        }
-        return response;
       }
     }
 
@@ -623,7 +637,7 @@ export class AssistantHarness {
     if (!shortcut.matched || !this.shouldExecuteLocalShortcut(shortcut.confidence) || isNonActionModelTool(shortcut.toolCall.name)) {
       return null;
     }
-    const recoveredViolations = getForbiddenToolViolations(input, [shortcut.toolCall.name]);
+    const recoveredViolations = getForbiddenToolViolations(input, getPolicyToolNamesForCall(shortcut.toolCall));
     if (recoveredViolations.length) {
       this.recordPolicyValidationErrors([...violations, ...recoveredViolations]);
       return null;
@@ -704,6 +718,11 @@ export class AssistantHarness {
       for (const segment of group) {
         const routed = this.options.shortcutRouter.route(segment, planningContext);
         if (!routed.matched || !this.shouldExecuteLocalShortcut(routed.confidence) || this.shouldDeferComplexShortcutSegment(segment)) {
+          return null;
+        }
+        const violations = getForbiddenToolViolations(segment, getPolicyToolNamesForCall(routed.toolCall));
+        if (violations.length) {
+          this.recordPolicyValidationErrors(violations);
           return null;
         }
         this.rememberAuditMetadata(routed.toolCall, segment);

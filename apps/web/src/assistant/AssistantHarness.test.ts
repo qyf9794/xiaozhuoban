@@ -430,6 +430,18 @@ describe("AssistantHarness", () => {
     ]);
   });
 
+  it("executes artist-specific listen requests locally when the music widget is absent", async () => {
+    const { harness, executed } = createHarness();
+    await harness.initialize();
+
+    const response = await harness.handleUserInput("我想听王菲的歌");
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("board.add_widget done，music.play done");
+    expect(executed).toEqual(["board.add_widget:none", "music.play:wi_added_music"]);
+  });
+
   it("confirms and executes a pending action", async () => {
     const { harness, executed } = createHarness();
     await harness.initialize();
