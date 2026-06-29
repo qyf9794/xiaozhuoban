@@ -2159,6 +2159,101 @@ describe("IntentShortcutRouter", () => {
     expect(result).toEqual({ matched: false, reason: "no_shortcut_match" });
   });
 
+  it("routes generic close window wording to the focused widget", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("关闭窗口", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("widget.remove");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_tv" });
+    }
+  });
+
+  it("routes generic close window wording to the only available widget when focus is missing", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("关闭窗口", {
+      ...context,
+      focusedWidget: undefined,
+      availableWidgets: [
+        {
+          widgetId: "wi_messageBoard",
+          definitionId: "wd_messageBoard",
+          type: "messageBoard",
+          name: "留言板",
+          order: 1,
+          summary: "已连接"
+        }
+      ]
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("widget.remove");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_messageBoard" });
+    }
+  });
+
+  it("routes generic close window wording to the only non-message-board widget when focus is missing", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("关闭窗口", {
+      ...context,
+      focusedWidget: undefined,
+      availableWidgets: [
+        {
+          widgetId: "wi_messageBoard",
+          definitionId: "wd_messageBoard",
+          type: "messageBoard",
+          name: "留言板",
+          order: 1,
+          summary: "已连接"
+        },
+        {
+          widgetId: "wi_weather",
+          definitionId: "wd_weather",
+          type: "weather",
+          name: "天气",
+          order: 2,
+          summary: "上海"
+        }
+      ]
+    });
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("widget.remove");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_weather" });
+    }
+  });
+
+  it("keeps generic close window wording unresolved when several widgets are equally likely and focus is missing", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("关闭窗口", {
+      ...context,
+      focusedWidget: undefined,
+      availableWidgets: [
+        {
+          widgetId: "wi_weather",
+          definitionId: "wd_weather",
+          type: "weather",
+          name: "天气",
+          order: 1,
+          summary: "上海"
+        },
+        {
+          widgetId: "wi_note",
+          definitionId: "wd_note",
+          type: "note",
+          name: "便签",
+          order: 2,
+          summary: "备忘"
+        }
+      ]
+    });
+
+    expect(result).toEqual({ matched: false, reason: "no_shortcut_match" });
+  });
+
   it("routes close music commands to the existing music widget removal action", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("关闭音乐", {

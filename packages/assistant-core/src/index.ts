@@ -2153,7 +2153,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         if (!matchedType && !/(窗口|小工具|组件|面板)/.test(normalized)) {
           return { matched: false, reason: "close_widget_target_missing" };
         }
-        const widget = matchedType ? findWidgetByType(context, matchedType) : context.focusedWidget;
+        const widget = matchedType ? findWidgetByType(context, matchedType) : findImplicitCloseWidget(context);
         if (!widget) return { matched: false, reason: "close_widget_target_missing" };
         return shortcutMatch("widget.remove", { widgetId: widget.widgetId }, 0.95, context.source ?? "shortcut", raw);
       }
@@ -2216,6 +2216,16 @@ function inferWidgetType(input: string) {
 
 function inferOrdinalIndex(input: string) {
   return ORDINALS.find((entry) => entry.pattern.test(input))?.index ?? null;
+}
+
+function findImplicitCloseWidget(context: IntentShortcutContext) {
+  if (context.focusedWidget) return context.focusedWidget;
+  const widgets = context.availableWidgets ?? [];
+  const recentWidget = widgets.find((widget) => widget.recent);
+  if (recentWidget) return recentWidget;
+  if (widgets.length === 1) return widgets[0];
+  const nonMessageBoardWidgets = widgets.filter((widget) => widget.type !== "messageBoard");
+  return nonMessageBoardWidgets.length === 1 ? nonMessageBoardWidgets[0] : undefined;
 }
 
 function sortByBoardOrder(widgets: CompactWidgetSummary[]) {
