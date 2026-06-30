@@ -1614,10 +1614,6 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.functionCallTraceIds.set(call.id, commandTraceId);
     }
     if (call.name === REALTIME_COMMAND_EXECUTION_TOOL_NAME) {
-      if (commandTraceId) {
-        this.realtimeTraceCommandToolCalls.add(commandTraceId);
-        this.realtimeTraceUserTranscripts.delete(commandTraceId);
-      }
       this.handleRealtimeCommandExecution(call, commandTraceId);
       return;
     }
@@ -1673,6 +1669,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         errorCode: "REALTIME_COMMAND_EMPTY"
       });
       return;
+    }
+    if (commandTraceId) {
+      this.realtimeTraceCommandToolCalls.add(commandTraceId);
+      this.realtimeTraceUserTranscripts.delete(commandTraceId);
     }
     this.emitDiagnostic({
       type: "realtime.function_call.command",

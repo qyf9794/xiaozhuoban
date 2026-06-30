@@ -459,7 +459,7 @@ export class AssistantHarness {
     try {
       const response = this.pendingConfirmation
         ? await this.handleUserInputInternal(input, startedAt)
-        : await this.handleRealtimeModelInput(input, startedAt);
+        : await this.handleUserInputInternal(input, startedAt);
       this.finishDiagnostics(response);
       return response;
     } catch (error) {
@@ -492,6 +492,9 @@ export class AssistantHarness {
     const bulkClosePlan = this.buildBulkWindowClosePlan(input, shortcutContext);
     if (bulkClosePlan) {
       return this.handleShortcutPlan(bulkClosePlan, startedAt);
+    }
+    if (!this.pendingConfirmation && isDiagnosticOrPreferenceIntent(input)) {
+      return this.handleRealtimeModelInput(input, startedAt, this.getCurrentContext());
     }
     const segmentedShortcut = this.hasSegmentedShortcutInput(input);
     const shortcutPlan = this.shouldDeferComplexShortcutSegment(input) ? null : this.buildShortcutPlan(input, shortcutContext);
