@@ -74,14 +74,13 @@ describe("realtime session config", () => {
     });
   });
 
-  it("starts Realtime sessions with only the unified command execution function", () => {
+  it("starts Realtime sessions with tool selection and a command fallback", () => {
     const tools = createInitialRealtimeTools();
 
-    expect(tools).toHaveLength(1);
-    expect(tools[0]?.name).toBe("assistant__dot__execute_command");
-    expect(JSON.stringify(tools[0]?.parameters)).toContain("command");
-    expect(JSON.stringify(tools[0]?.parameters)).not.toContain("board.add_widget");
+    expect(tools.map((tool) => tool.name)).toEqual(["assistant__dot__select_tool", "assistant__dot__execute_command"]);
+    expect(JSON.stringify(tools[0]?.parameters)).toContain("board.add_widget");
     expect(JSON.stringify(tools[0]?.parameters)).not.toContain("widgetId");
+    expect(JSON.stringify(tools[1]?.parameters)).toContain("command");
   });
 
   it("builds an official-doc-aligned Realtime client secret payload", () => {
@@ -103,7 +102,7 @@ describe("realtime session config", () => {
     expect(payload.session.audio.input.transcription).toEqual({ model: "gpt-4o-mini-transcribe" });
     expect(payload.session.tool_choice).toBe("auto");
     expect(payload.session.parallel_tool_calls).toBe(true);
-    expect(payload.session.tools.map((tool) => tool.name)).toEqual(["assistant__dot__execute_command"]);
+    expect(payload.session.tools.map((tool) => tool.name)).toEqual(["assistant__dot__select_tool", "assistant__dot__execute_command"]);
   });
 
   it("keeps text fallback model separate from the realtime model", () => {
@@ -146,8 +145,8 @@ describe("realtime session config", () => {
   it("keeps instructions short-response and xiaozhuoban-only", () => {
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("控制小桌板");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("已注册工具");
-    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("只调用 assistant.execute_command");
-    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("不要直接调用 widget.remove");
+    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("优先调用 assistant.select_tool");
+    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("才调用 assistant.execute_command");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("删除用户数据");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("回复要短");
   });

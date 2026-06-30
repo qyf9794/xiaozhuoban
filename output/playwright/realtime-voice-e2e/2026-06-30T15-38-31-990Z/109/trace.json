@@ -1,0 +1,2636 @@
+{
+  "id": "109",
+  "command": "打开电视然后切到 CCTV5 再全屏",
+  "route": "realtime-2-required",
+  "tools": [
+    "board.add_widget",
+    "tv.fullscreen",
+    "tv.select_channel"
+  ],
+  "realtime": [
+    {
+      "phase": "plan_select",
+      "input": "打开电视然后切到 CCTV5 再全屏",
+      "request": {
+        "input": "打开电视然后切到 CCTV5 再全屏",
+        "tools": [
+          {
+            "name": "tv.fullscreen",
+            "description": "Enter fullscreen for TV playback.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "tv",
+            "requiresTarget": true
+          },
+          {
+            "name": "tv.play",
+            "description": "Play TV, optionally selecting a channel.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "tv",
+            "requiresTarget": true
+          },
+          {
+            "name": "tv.select_channel",
+            "description": "Select a TV channel by name or URL.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "tv",
+            "requiresTarget": true
+          },
+          {
+            "name": "tv.pause",
+            "description": "Pause TV playback.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "tv",
+            "requiresTarget": true
+          },
+          {
+            "name": "app.fullscreen.set",
+            "description": "Enter, exit, or toggle Xiaozhuoban page fullscreen.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "desktop",
+            "idempotency": "idempotent",
+            "concurrencyKey": "app.shell",
+            "examples": [
+              "全屏",
+              "退出全屏",
+              "进入小桌板全屏"
+            ]
+          },
+          {
+            "name": "board.add_widget",
+            "description": "Add an existing widget definition to the current board.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "desktop"
+          },
+          {
+            "name": "widget.focus",
+            "description": "Focus an existing widget on the current board.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "desktop",
+            "requiresTarget": true
+          },
+          {
+            "name": "widget.fullscreen_focus",
+            "description": "Enter fullscreen focus for an existing widget when supported.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "desktop",
+            "requiresTarget": true
+          },
+          {
+            "name": "app.ai_dialog.open",
+            "description": "Open the AI widget creation dialog.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "desktop",
+            "idempotency": "idempotent",
+            "concurrencyKey": "app.shell",
+            "examples": [
+              "打开 AI 生成",
+              "新建 AI 小工具"
+            ]
+          },
+          {
+            "name": "app.command_palette.open",
+            "description": "Open the Xiaozhuoban command/search palette.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "desktop",
+            "idempotency": "idempotent",
+            "concurrencyKey": "app.shell",
+            "examples": [
+              "打开搜索",
+              "打开命令面板"
+            ]
+          },
+          {
+            "name": "app.settings.open",
+            "description": "Open the Xiaozhuoban settings menu.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "desktop",
+            "idempotency": "idempotent",
+            "concurrencyKey": "app.shell",
+            "examples": [
+              "打开设置",
+              "显示设置菜单"
+            ]
+          }
+        ],
+        "moduleCatalog": [
+          {
+            "catalogVersion": "cat_1ws7m2h",
+            "type": "app",
+            "displayName": "小桌板窗口",
+            "aliases": [
+              "小桌板",
+              "窗口",
+              "侧栏",
+              "全屏",
+              "设置",
+              "搜索"
+            ],
+            "capabilities": [
+              "app.fullscreen.set | Enter, exit, or toggle Xiaozhuoban page fullscreen. | concurrency=app.shell",
+              "app.ai_dialog.open | Open the AI widget creation dialog. | concurrency=app.shell",
+              "app.command_palette.open | Open the Xiaozhuoban command/search palette. | concurrency=app.shell",
+              "app.settings.open | Open the Xiaozhuoban settings menu. | concurrency=app.shell"
+            ],
+            "shortcutExamples": [
+              "全屏",
+              "退出全屏",
+              "进入小桌板全屏",
+              "打开 AI 生成",
+              "新建 AI 小工具",
+              "打开搜索",
+              "打开命令面板",
+              "打开设置"
+            ],
+            "riskSummary": [],
+            "toolNames": [
+              "app.fullscreen.set",
+              "app.ai_dialog.open",
+              "app.command_palette.open",
+              "app.settings.open"
+            ],
+            "concurrencyKeys": [
+              "app.shell"
+            ],
+            "loadLevel": "catalog"
+          },
+          {
+            "catalogVersion": "cat_1ws7m2h",
+            "type": "board",
+            "displayName": "桌板",
+            "aliases": [
+              "桌板",
+              "桌面",
+              "布局",
+              "整理",
+              "排列"
+            ],
+            "capabilities": [
+              "board.add_widget | Add an existing widget definition to the current board."
+            ],
+            "shortcutExamples": [],
+            "riskSummary": [],
+            "toolNames": [
+              "board.add_widget"
+            ],
+            "concurrencyKeys": [],
+            "loadLevel": "catalog"
+          },
+          {
+            "catalogVersion": "cat_1ws7m2h",
+            "type": "tv",
+            "displayName": "电视",
+            "aliases": [
+              "电视",
+              "直播",
+              "电视机"
+            ],
+            "capabilities": [
+              "打开电视",
+              "选择频道",
+              "播放",
+              "暂停",
+              "全屏",
+              "关闭窗口",
+              "tv.fullscreen | Enter fullscreen for TV playback. | requiresTarget",
+              "tv.play | Play TV, optionally selecting a channel. | requiresTarget",
+              "tv.select_channel | Select a TV channel by name or URL. | requiresTarget",
+              "tv.pause | Pause TV playback. | requiresTarget"
+            ],
+            "shortcutExamples": [
+              "看央视新闻",
+              "暂停 CCTV1",
+              "央视五套全屏播放",
+              "播放 CCTV1"
+            ],
+            "riskSummary": [
+              "需要 mounted TV capability",
+              "与 music 播放存在媒体冲突",
+              "scoped context 只发送频道/播放摘要"
+            ],
+            "toolNames": [
+              "tv.fullscreen",
+              "tv.play",
+              "tv.select_channel",
+              "tv.pause"
+            ],
+            "concurrencyKeys": [],
+            "loadLevel": "catalog"
+          },
+          {
+            "catalogVersion": "cat_1ws7m2h",
+            "type": "widget",
+            "displayName": "小工具窗口",
+            "aliases": [
+              "小工具",
+              "窗口",
+              "关闭",
+              "移动",
+              "缩放",
+              "置顶"
+            ],
+            "capabilities": [
+              "widget.focus | Focus an existing widget on the current board. | requiresTarget",
+              "widget.fullscreen_focus | Enter fullscreen focus for an existing widget when supported. | requiresTarget"
+            ],
+            "shortcutExamples": [],
+            "riskSummary": [],
+            "toolNames": [
+              "widget.focus",
+              "widget.fullscreen_focus"
+            ],
+            "concurrencyKeys": [],
+            "loadLevel": "catalog"
+          }
+        ],
+        "toolCatalogVersion": "cat_1ws7m2h",
+        "phase": "plan_select"
+      },
+      "response": {
+        "call": null,
+        "planSelection": {
+          "steps": [
+            {
+              "id": "e2e_109_1",
+              "name": "board.add_widget",
+              "selectedModule": "app-shell",
+              "confidence": 0.94
+            },
+            {
+              "id": "e2e_109_2",
+              "name": "tv.fullscreen",
+              "selectedModule": "tv",
+              "confidence": 0.94
+            },
+            {
+              "id": "e2e_109_3",
+              "name": "tv.select_channel",
+              "selectedModule": "tv",
+              "confidence": 0.94
+            }
+          ]
+        }
+      }
+    },
+    {
+      "phase": "plan_execute",
+      "input": "打开电视然后切到 CCTV5 再全屏",
+      "request": {
+        "input": "打开电视然后切到 CCTV5 再全屏",
+        "context": {
+          "contextVersion": "ctx_mjanyy",
+          "boardId": "board_1782834042575_mgfdednr",
+          "boardName": "我的桌板",
+          "availableBoards": [
+            {
+              "boardId": "board_1782834042575_mgfdednr",
+              "name": "我的桌板",
+              "active": true
+            }
+          ],
+          "availableDefinitions": [
+            {
+              "definitionId": "wd_note_1782834042575_5xwi3kk4",
+              "type": "note",
+              "name": "便签"
+            },
+            {
+              "definitionId": "wd_todo_1782834042575_vxcrm32h",
+              "type": "todo",
+              "name": "待办"
+            },
+            {
+              "definitionId": "wd_calculator_1782834042575_2qm3kvsv",
+              "type": "calculator",
+              "name": "计算器"
+            },
+            {
+              "definitionId": "wd_countdown_1782834042575_f166s2cr",
+              "type": "countdown",
+              "name": "倒计时"
+            },
+            {
+              "definitionId": "wd_weather_1782834042575_qu0n88n7",
+              "type": "weather",
+              "name": "天气"
+            },
+            {
+              "definitionId": "wd_headline_1782834042575_zk1qnxu8",
+              "type": "headline",
+              "name": "重大新闻"
+            },
+            {
+              "definitionId": "wd_market_1782834042575_uy1opcox",
+              "type": "market",
+              "name": "全球指数"
+            },
+            {
+              "definitionId": "wd_music_1782834042575_arxgtwx5",
+              "type": "music",
+              "name": "音乐播放器"
+            },
+            {
+              "definitionId": "wd_tv_1782834042575_rg3av399",
+              "type": "tv",
+              "name": "电视播放"
+            },
+            {
+              "definitionId": "wd_dialClock_1782834042575_zp67gs94",
+              "type": "dialClock",
+              "name": "时钟"
+            },
+            {
+              "definitionId": "wd_worldClock_1782834042575_t80ugeda",
+              "type": "worldClock",
+              "name": "世界时钟"
+            },
+            {
+              "definitionId": "wd_translate_1782834042575_2zo4mqiy",
+              "type": "translate",
+              "name": "快速翻译"
+            },
+            {
+              "definitionId": "wd_clipboard_1782834042575_affcyrq8",
+              "type": "clipboard",
+              "name": "剪贴板历史"
+            },
+            {
+              "definitionId": "wd_converter_1782834042575_4zln4zqf",
+              "type": "converter",
+              "name": "单位换算"
+            },
+            {
+              "definitionId": "wd_recorder_1782834042575_7kvpif41",
+              "type": "recorder",
+              "name": "录音机"
+            },
+            {
+              "definitionId": "wd_messageBoard_1782834042575_56f2ia1l",
+              "type": "messageBoard",
+              "name": "留言板"
+            },
+            {
+              "definitionId": "wd_gomoku_1782834042575_0aa0m5p0",
+              "type": "gomoku",
+              "name": "五子棋"
+            },
+            {
+              "definitionId": "wd_monopoly_1782834042575_o74csfvp",
+              "type": "monopoly",
+              "name": "大富翁"
+            },
+            {
+              "definitionId": "wd_guandan_1782834042575_u4eza44g",
+              "type": "guandan",
+              "name": "掼蛋"
+            }
+          ],
+          "widgetCountsByType": {
+            "messageBoard": 1,
+            "tv": 1
+          },
+          "widgets": [
+            {
+              "widgetId": "wi_1782834044244_n8wkbvcx",
+              "definitionId": "wd_tv_1782834042575_rg3av399",
+              "type": "tv",
+              "name": "电视播放",
+              "order": 2,
+              "summary": "CNN",
+              "recent": true,
+              "focused": true
+            },
+            {
+              "widgetId": "wi_1782834042575_y8q4gefw",
+              "definitionId": "wd_messageBoard_1782834042575_56f2ia1l",
+              "type": "messageBoard",
+              "name": "留言板",
+              "order": 1,
+              "summary": "无摘要",
+              "recent": true
+            }
+          ],
+          "focusedWidget": {
+            "widgetId": "wi_1782834044244_n8wkbvcx",
+            "definitionId": "wd_tv_1782834042575_rg3av399",
+            "type": "tv",
+            "name": "电视播放",
+            "order": 2,
+            "summary": "CNN",
+            "recent": true,
+            "focused": true
+          },
+          "toolCatalogVersion": "cat_1ws7m2h"
+        },
+        "contextVersion": "ctx_mjanyy",
+        "toolCatalogVersion": "cat_1ws7m2h",
+        "tools": [
+          {
+            "name": "tv.fullscreen",
+            "description": "Enter fullscreen for TV playback.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "tv",
+            "requiresTarget": true
+          },
+          {
+            "name": "tv.play",
+            "description": "Play TV, optionally selecting a channel.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "tv",
+            "requiresTarget": true
+          },
+          {
+            "name": "tv.select_channel",
+            "description": "Select a TV channel by name or URL.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "tv",
+            "requiresTarget": true
+          },
+          {
+            "name": "tv.pause",
+            "description": "Pause TV playback.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "tv",
+            "requiresTarget": true
+          },
+          {
+            "name": "app.fullscreen.set",
+            "description": "Enter, exit, or toggle Xiaozhuoban page fullscreen.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "desktop",
+            "idempotency": "idempotent",
+            "concurrencyKey": "app.shell",
+            "examples": [
+              "全屏",
+              "退出全屏",
+              "进入小桌板全屏"
+            ]
+          },
+          {
+            "name": "board.add_widget",
+            "description": "Add an existing widget definition to the current board.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "desktop"
+          },
+          {
+            "name": "widget.focus",
+            "description": "Focus an existing widget on the current board.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "desktop",
+            "requiresTarget": true
+          },
+          {
+            "name": "widget.fullscreen_focus",
+            "description": "Enter fullscreen focus for an existing widget when supported.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "desktop",
+            "requiresTarget": true
+          },
+          {
+            "name": "app.ai_dialog.open",
+            "description": "Open the AI widget creation dialog.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "desktop",
+            "idempotency": "idempotent",
+            "concurrencyKey": "app.shell",
+            "examples": [
+              "打开 AI 生成",
+              "新建 AI 小工具"
+            ]
+          },
+          {
+            "name": "app.command_palette.open",
+            "description": "Open the Xiaozhuoban command/search palette.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "desktop",
+            "idempotency": "idempotent",
+            "concurrencyKey": "app.shell",
+            "examples": [
+              "打开搜索",
+              "打开命令面板"
+            ]
+          },
+          {
+            "name": "app.settings.open",
+            "description": "Open the Xiaozhuoban settings menu.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "desktop",
+            "idempotency": "idempotent",
+            "concurrencyKey": "app.shell",
+            "examples": [
+              "打开设置",
+              "显示设置菜单"
+            ]
+          }
+        ],
+        "planSelection": {
+          "steps": [
+            {
+              "id": "e2e_109_1",
+              "name": "board.add_widget",
+              "selectedModule": "app-shell",
+              "confidence": 0.94
+            },
+            {
+              "id": "e2e_109_2",
+              "name": "tv.fullscreen",
+              "selectedModule": "tv",
+              "confidence": 0.94
+            },
+            {
+              "id": "e2e_109_3",
+              "name": "tv.select_channel",
+              "selectedModule": "tv",
+              "confidence": 0.94
+            }
+          ]
+        },
+        "moduleContexts": [
+          {
+            "moduleType": "tv",
+            "tools": [
+              {
+                "name": "board.add_widget",
+                "description": "Add an existing widget definition to the current board.",
+                "parameters": {
+                  "argumentKeys": [
+                    "definitionId",
+                    "mobileMode",
+                    "followUp"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "definitionId"
+                    ],
+                    "properties": {
+                      "definitionId": {
+                        "type": "string"
+                      },
+                      "mobileMode": {
+                        "type": "boolean"
+                      },
+                      "followUp": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "desktop",
+                "argumentKeys": [
+                  "definitionId",
+                  "mobileMode",
+                  "followUp"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "stateful",
+                "missingArgPolicy": "fail",
+                "examples": [
+                  "打开电视",
+                  "打开电视机",
+                  "唤出直播"
+                ]
+              },
+              {
+                "name": "widget.focus",
+                "description": "Focus an existing widget on the current board.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "desktop",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "idempotent",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "聚焦电视",
+                  "切到电视",
+                  "打开电视"
+                ]
+              },
+              {
+                "name": "widget.fullscreen_focus",
+                "description": "Enter fullscreen focus for an existing widget when supported.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "desktop",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "idempotent",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "全屏电视",
+                  "放大电视",
+                  "专注看电视"
+                ]
+              },
+              {
+                "name": "widget.remove",
+                "description": "Close a widget window on the current board.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "desktop",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "idempotent",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "关闭电视",
+                  "关掉电视机",
+                  "把电视收起来"
+                ]
+              },
+              {
+                "name": "tv.play",
+                "description": "Play TV, optionally selecting a channel.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId",
+                    "channelName",
+                    "channelUrl"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      },
+                      "channelName": {
+                        "type": "string"
+                      },
+                      "channelUrl": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "widget-detail",
+                "widgetType": "tv",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId",
+                  "channelName",
+                  "channelUrl"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "stateful",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "播放 CCTV1",
+                  "看央视新闻",
+                  "央视五套全屏播放"
+                ]
+              },
+              {
+                "name": "tv.pause",
+                "description": "Pause TV playback.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "widget-detail",
+                "widgetType": "tv",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "stateful",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "暂停 CCTV1",
+                  "暂停电视",
+                  "先别播电视"
+                ]
+              },
+              {
+                "name": "tv.fullscreen",
+                "description": "Enter fullscreen for TV playback.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "widget-detail",
+                "widgetType": "tv",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "stateful",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "电视全屏",
+                  "央视五套全屏播放",
+                  "全屏播放电视"
+                ]
+              },
+              {
+                "name": "tv.select_channel",
+                "description": "Select a TV channel by name or URL.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId",
+                    "channelName",
+                    "channelUrl"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      },
+                      "channelName": {
+                        "type": "string"
+                      },
+                      "channelUrl": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "widget-detail",
+                "widgetType": "tv",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId",
+                  "channelName",
+                  "channelUrl"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "stateful",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "看央视新闻",
+                  "切到 CCTV13",
+                  "播放 CCTV1"
+                ]
+              }
+            ],
+            "toolSchemas": {
+              "board.add_widget": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "definitionId"
+                ],
+                "properties": {
+                  "definitionId": {
+                    "type": "string"
+                  },
+                  "mobileMode": {
+                    "type": "boolean"
+                  },
+                  "followUp": {
+                    "type": "object"
+                  }
+                }
+              },
+              "widget.focus": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  }
+                }
+              },
+              "widget.fullscreen_focus": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  }
+                }
+              },
+              "widget.remove": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  }
+                }
+              },
+              "tv.play": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  },
+                  "channelName": {
+                    "type": "string"
+                  },
+                  "channelUrl": {
+                    "type": "string"
+                  }
+                }
+              },
+              "tv.pause": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  }
+                }
+              },
+              "tv.fullscreen": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  }
+                }
+              },
+              "tv.select_channel": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  },
+                  "channelName": {
+                    "type": "string"
+                  },
+                  "channelUrl": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "instances": [
+              {
+                "widgetId": "wi_1782834044244_n8wkbvcx",
+                "definitionId": "wd_tv_1782834042575_rg3av399",
+                "type": "tv",
+                "name": "电视播放",
+                "order": 2,
+                "summary": "tv-playback-summary-only",
+                "recent": true,
+                "focused": true
+              }
+            ],
+            "stateSummary": {
+              "instanceCount": 1,
+              "focusedWidgetId": "wi_1782834044244_n8wkbvcx",
+              "selectedToolHint": "tv.fullscreen",
+              "playlistIncluded": false,
+              "currentChannelSummaryOnly": true,
+              "conflictsWithMusicPlayback": true
+            },
+            "shortcutExamples": [
+              "看央视新闻",
+              "暂停 CCTV1",
+              "央视五套全屏播放",
+              "播放 CCTV1"
+            ],
+            "executionPolicy": {
+              "defaultMode": "sequential",
+              "exclusiveActions": [
+                "tv.play",
+                "tv.pause",
+                "tv.fullscreen",
+                "tv.select_channel"
+              ],
+              "requiresMountedWidget": true,
+              "canRunInParallelWith": [
+                "weather",
+                "headline",
+                "worldClock",
+                "market"
+              ],
+              "conflictsWith": [
+                "music.play",
+                "music.resume"
+              ]
+            },
+            "riskPolicy": {
+              "safe": [
+                "board.add_widget",
+                "widget.focus",
+                "widget.fullscreen_focus",
+                "widget.remove",
+                "tv.play",
+                "tv.pause",
+                "tv.fullscreen",
+                "tv.select_channel"
+              ],
+              "confirm": [],
+              "destructive": []
+            }
+          },
+          {
+            "moduleType": "tv",
+            "tools": [
+              {
+                "name": "board.add_widget",
+                "description": "Add an existing widget definition to the current board.",
+                "parameters": {
+                  "argumentKeys": [
+                    "definitionId",
+                    "mobileMode",
+                    "followUp"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "definitionId"
+                    ],
+                    "properties": {
+                      "definitionId": {
+                        "type": "string"
+                      },
+                      "mobileMode": {
+                        "type": "boolean"
+                      },
+                      "followUp": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "desktop",
+                "argumentKeys": [
+                  "definitionId",
+                  "mobileMode",
+                  "followUp"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "stateful",
+                "missingArgPolicy": "fail",
+                "examples": [
+                  "打开电视",
+                  "打开电视机",
+                  "唤出直播"
+                ]
+              },
+              {
+                "name": "widget.focus",
+                "description": "Focus an existing widget on the current board.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "desktop",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "idempotent",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "聚焦电视",
+                  "切到电视",
+                  "打开电视"
+                ]
+              },
+              {
+                "name": "widget.fullscreen_focus",
+                "description": "Enter fullscreen focus for an existing widget when supported.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "desktop",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "idempotent",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "全屏电视",
+                  "放大电视",
+                  "专注看电视"
+                ]
+              },
+              {
+                "name": "widget.remove",
+                "description": "Close a widget window on the current board.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "desktop",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "idempotent",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "关闭电视",
+                  "关掉电视机",
+                  "把电视收起来"
+                ]
+              },
+              {
+                "name": "tv.play",
+                "description": "Play TV, optionally selecting a channel.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId",
+                    "channelName",
+                    "channelUrl"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      },
+                      "channelName": {
+                        "type": "string"
+                      },
+                      "channelUrl": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "widget-detail",
+                "widgetType": "tv",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId",
+                  "channelName",
+                  "channelUrl"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "stateful",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "播放 CCTV1",
+                  "看央视新闻",
+                  "央视五套全屏播放"
+                ]
+              },
+              {
+                "name": "tv.pause",
+                "description": "Pause TV playback.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "widget-detail",
+                "widgetType": "tv",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "stateful",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "暂停 CCTV1",
+                  "暂停电视",
+                  "先别播电视"
+                ]
+              },
+              {
+                "name": "tv.fullscreen",
+                "description": "Enter fullscreen for TV playback.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "widget-detail",
+                "widgetType": "tv",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "stateful",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "电视全屏",
+                  "央视五套全屏播放",
+                  "全屏播放电视"
+                ]
+              },
+              {
+                "name": "tv.select_channel",
+                "description": "Select a TV channel by name or URL.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId",
+                    "channelName",
+                    "channelUrl"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      },
+                      "channelName": {
+                        "type": "string"
+                      },
+                      "channelUrl": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "widget-detail",
+                "widgetType": "tv",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId",
+                  "channelName",
+                  "channelUrl"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "stateful",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "看央视新闻",
+                  "切到 CCTV13",
+                  "播放 CCTV1"
+                ]
+              }
+            ],
+            "toolSchemas": {
+              "board.add_widget": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "definitionId"
+                ],
+                "properties": {
+                  "definitionId": {
+                    "type": "string"
+                  },
+                  "mobileMode": {
+                    "type": "boolean"
+                  },
+                  "followUp": {
+                    "type": "object"
+                  }
+                }
+              },
+              "widget.focus": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  }
+                }
+              },
+              "widget.fullscreen_focus": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  }
+                }
+              },
+              "widget.remove": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  }
+                }
+              },
+              "tv.play": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  },
+                  "channelName": {
+                    "type": "string"
+                  },
+                  "channelUrl": {
+                    "type": "string"
+                  }
+                }
+              },
+              "tv.pause": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  }
+                }
+              },
+              "tv.fullscreen": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  }
+                }
+              },
+              "tv.select_channel": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  },
+                  "channelName": {
+                    "type": "string"
+                  },
+                  "channelUrl": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "instances": [
+              {
+                "widgetId": "wi_1782834044244_n8wkbvcx",
+                "definitionId": "wd_tv_1782834042575_rg3av399",
+                "type": "tv",
+                "name": "电视播放",
+                "order": 2,
+                "summary": "tv-playback-summary-only",
+                "recent": true,
+                "focused": true
+              }
+            ],
+            "stateSummary": {
+              "instanceCount": 1,
+              "focusedWidgetId": "wi_1782834044244_n8wkbvcx",
+              "selectedToolHint": "tv.select_channel",
+              "playlistIncluded": false,
+              "currentChannelSummaryOnly": true,
+              "conflictsWithMusicPlayback": true
+            },
+            "shortcutExamples": [
+              "看央视新闻",
+              "暂停 CCTV1",
+              "央视五套全屏播放",
+              "播放 CCTV1"
+            ],
+            "executionPolicy": {
+              "defaultMode": "sequential",
+              "exclusiveActions": [
+                "tv.play",
+                "tv.pause",
+                "tv.fullscreen",
+                "tv.select_channel"
+              ],
+              "requiresMountedWidget": true,
+              "canRunInParallelWith": [
+                "weather",
+                "headline",
+                "worldClock",
+                "market"
+              ],
+              "conflictsWith": [
+                "music.play",
+                "music.resume"
+              ]
+            },
+            "riskPolicy": {
+              "safe": [
+                "board.add_widget",
+                "widget.focus",
+                "widget.fullscreen_focus",
+                "widget.remove",
+                "tv.play",
+                "tv.pause",
+                "tv.fullscreen",
+                "tv.select_channel"
+              ],
+              "confirm": [],
+              "destructive": []
+            }
+          }
+        ],
+        "phase": "plan_execute"
+      },
+      "response": {
+        "call": null,
+        "plan": {
+          "id": "e2e_plan_109",
+          "sourceText": "打开电视然后切到 CCTV5 再全屏",
+          "normalizedText": "打开电视然后切到 CCTV5 再全屏",
+          "commands": [
+            {
+              "id": "e2e_109_1",
+              "module": "app-shell",
+              "tool": "board.add_widget",
+              "args": {
+                "definitionId": "wd_tv"
+              },
+              "risk": "safe",
+              "confidence": 0.94,
+              "source": "realtime",
+              "requiresHarnessValidation": true
+            },
+            {
+              "id": "e2e_109_2",
+              "module": "tv",
+              "tool": "tv.fullscreen",
+              "args": {
+                "widgetId": "wi_tv"
+              },
+              "risk": "safe",
+              "confidence": 0.94,
+              "source": "realtime",
+              "requiresHarnessValidation": true
+            },
+            {
+              "id": "e2e_109_3",
+              "module": "tv",
+              "tool": "tv.select_channel",
+              "args": {
+                "widgetId": "wi_tv",
+                "channelName": "CCTV5"
+              },
+              "risk": "safe",
+              "confidence": 0.94,
+              "source": "realtime",
+              "requiresHarnessValidation": true
+            }
+          ],
+          "executionGroups": [
+            {
+              "id": "e2e_group_109",
+              "mode": "sequential",
+              "commandIds": [
+                "e2e_109_1",
+                "e2e_109_2",
+                "e2e_109_3"
+              ]
+            }
+          ],
+          "dependencies": [],
+          "confidence": 0.94,
+          "createdBy": "realtime-2",
+          "requiresHarnessValidation": true
+        }
+      }
+    }
+  ],
+  "consoleErrors": [
+    "Failed to load resource: net::ERR_EMPTY_RESPONSE"
+  ],
+  "relevantConsoleErrors": [],
+  "before": {
+    "bodyText": "桌板\n+ 新建\n我的桌板\n我的桌板\n添加 Widget\n▾\n⚙\n×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送\n×\n电视播放\n订阅 m3u 直播源并按频道播放\n↻\nCNN\n#1\nBBC News\n#2\nCNA\n#3\nGB News\n#4\nABC News\n#5\nRT News\n#6\nTV Brics\n#7\nFrance24\n#8\nNHK World\n#9\nSky News\n#10\nAl Jazeera\n#11\nTRT World\n#12\nNEWSMAX\n#13\nReuters\n#14\nGlobal News\n#15\nNBC News Now\n#16\nOne American News\n#17\nDiscovery Channel\n#18\nDisney XD\n#19\nSky Sports Football\n#20\nSky Sports News\n#21\nSky Sports Premier League\n#22\nSportsnet 360\n#23\nBig Ten Network\n#24\nTrace Sport Stars\n#25\nHBO\n#26\nHBO 2\n#27\nLifetime Movie Network\n#28\nNational Geographic\n#29\nWION\n#30\nCartoon Network\n#31\nCMT\n#32\nArirang\n#33\nRT Documentary\n#34\nNewsy\n#35\nRedbull\n#36\nHollyWire\n#37\nComedy Central\n#38\nMovieSphere\n#39\nAMC\n#40\nWild Earth\n#41\nAnimal Planet\n#42\nAction Hollywood\n#43\nMytime Movie\n#44\nBBC Earth\n#45\nThe First\n#46\nKartoon Channel\n#47\nWE TV\n#48\nION Plus\n#49\nHistory Hit\n#50\nOutdoor Channel\n#51\nUniversal Movies\n#52\nUniversal Action\n#53\nUniversal Western\n#54\nUniversal Crime\n#55\nCW Gold\n#56\nCW Forever\n#57\nSony One Action HITS\n#58\nSony One Comedy HITS\n#59\nTop Movies\n#60\nAction Movies\n#61\nComedy Movies\n#62\nThrillers\n#63\nSci-Fi\n#64\nRomance Movies\n#65\nDrama Movies\n#66\nThriller TV\n#67\nComedy TV\n#68\nSony One FAVES\n#69\nSony One Dragons' Den\n#70\nGreat British Menu\n#71\nIcon Film Channel\n#72\nPopflix\n#73\nLG 1 Film\n#74\nLG 1 Spotlight\n#75\nLG 1\n#76\nGoUSA TV\n#77\nInside Outside\n#78\nSBS Drama\n#79\nNew Kmovies\n#80\nTennis Channel\n#81\nUniversal Monsters\n#82\n频道 83\n#83\nShowtime Extreme\n#84\nAdventure Earth\n#85\nAutentic History\n#86\nAutentic Travel\n#87\nAction Movies\n#88\nComedy Movies\n#89\nDrama Movies\n#90\nRomance Movies\n#91\nSci-Fi\n#92\nThrillers\n#93\nTop Movies\n#94\nReality\n#95\nFamily\n#96\nbeIN SPORTS XTRA\n#97\nMTV\n#98\nACC Network\n#99\nUFC\n#100\n⊞\n暂无其他在线用户\n聆听中 · 已添加小工具\n完成：已添加小工具\nlocal_standby · Realtime 0s · $0.0000\n打开电视 · 已添加小工具\n聆听中 · 已添加小工具\n完成：已添加小工具\nlocal_standby · Realtime 0s · $0.0000\n打开电视 · 已添加小工具",
+    "operation": "完成：已添加小工具",
+    "runtime": "local_standby · Realtime 0s · $0.0000",
+    "widgets": [
+      {
+        "id": "wi_1782834042575_y8q4gefw",
+        "className": "widget-box",
+        "zIndex": 1,
+        "rect": {
+          "x": 300,
+          "y": 72.796875,
+          "w": 240,
+          "h": 500
+        },
+        "text": "×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送",
+        "inputs": [
+          {
+            "placeholder": "输入留言，按 Enter 发送",
+            "ariaLabel": null,
+            "value": ""
+          }
+        ]
+      },
+      {
+        "id": "wi_1782834044244_n8wkbvcx",
+        "className": "widget-box is-focused",
+        "zIndex": 2,
+        "rect": {
+          "x": 320,
+          "y": 92.796875,
+          "w": 240,
+          "h": 480
+        },
+        "text": "×\n电视播放\n订阅 m3u 直播源并按频道播放\n↻\nCNN\n#1\nBBC News\n#2\nCNA\n#3\nGB News\n#4\nABC News\n#5\nRT News\n#6\nTV Brics\n#7\nFrance24\n#8\nNHK World\n#9\nSky News\n#10\nAl Jazeera\n#11\nTRT World\n#12\nNEWSMAX\n#13\nReuters\n#14\nGlobal News\n#15\nNBC News Now\n#16\nOne American News\n#17\nDiscovery Channel\n#18\nDisney XD\n#19\nSky Sports Football\n#20\nSky Sports News\n#21\nSky Sports Premier League\n#22\nSportsnet 360\n#23\nBig Ten Network\n#24\nTrace Sport Stars\n#25\nHBO\n#26\nHBO 2\n#27\nLifetime Movie Network\n#28\nNational Geographic\n#29\nWION\n#30\nCartoon Network\n#31\nCMT\n#32\nArirang\n#33\nRT Documentary\n#34\nNewsy\n#35\nRedbull\n#36\nHollyWire\n#37\nComedy Central\n#38\nMovieSphere\n#39\nAMC\n#40\nWild Earth\n#41\nAnimal Planet\n#42\nAction Hollywood\n#43\nMytime Movie\n#44\nBBC Earth\n#45\nThe First\n#46\nKartoon Channel\n#47\nWE TV\n#48\nION Plus\n#49\nHistory Hit\n#50\nOutdoor Channel\n#51\nUniversal Movies\n#52\nUniversal Action\n#53\nUniversal Western\n#54\nUniversal Crime\n#55\nCW Gold\n#56\nCW Forever\n#57\nSony One Action HITS\n#58\nSony One Comedy HITS\n#59\nTop Movies\n#60\nAction Movies\n#61\nComedy Movies\n#62\nThrillers\n#63\nSci-Fi\n#64\nRomance Movies\n#65\nDrama Movies\n#66\nThriller TV\n#67\nComedy TV\n#68\nSony One FAVES\n#69\nSony One Dragons' Den\n#70\nGreat British Menu\n#71\nIcon Film Channel\n#72\nPopflix\n#73\nLG 1 Film\n#74\nLG 1 Spotlight\n#75\nLG 1\n#76\nGoUSA TV\n#77\nInside Outside\n#78\nSBS Drama\n#79\nNew Kmovies\n#80\nTennis Channel\n#81\nUniversal Monsters\n#82\n频道 83\n#83\nShowtime Extreme\n#84\nAdventure Earth\n#85\nAutentic History\n#86\nAutentic Travel\n#87\nAction Movies\n#88\nComedy Movies\n#89\nDrama Movies\n#90\nRomance Movies\n#91\nSci-Fi\n#92\nThrillers\n#93\nTop Movies\n#94\nReality\n#95\nFamily\n#96\nbeIN SPORTS XTRA\n#97\nMTV\n#98\nACC Network\n#99\nUFC\n#100",
+        "inputs": [
+          {
+            "placeholder": "输入 m3u 订阅地址",
+            "ariaLabel": null,
+            "value": "https://raw.githubusercontent.com/YueChan/Live/refs/heads/main/Global.m3u"
+          }
+        ]
+      }
+    ],
+    "byType": {
+      "calculator": [],
+      "clipboard": [],
+      "converter": [],
+      "countdown": [],
+      "dialClock": [],
+      "headline": [],
+      "market": [],
+      "messageBoard": [
+        {
+          "id": "wi_1782834042575_y8q4gefw",
+          "className": "widget-box",
+          "zIndex": 1,
+          "rect": {
+            "x": 300,
+            "y": 72.796875,
+            "w": 240,
+            "h": 500
+          },
+          "text": "×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送",
+          "inputs": [
+            {
+              "placeholder": "输入留言，按 Enter 发送",
+              "ariaLabel": null,
+              "value": ""
+            }
+          ]
+        }
+      ],
+      "music": [],
+      "note": [],
+      "recorder": [],
+      "todo": [],
+      "translate": [],
+      "tv": [
+        {
+          "id": "wi_1782834044244_n8wkbvcx",
+          "className": "widget-box is-focused",
+          "zIndex": 2,
+          "rect": {
+            "x": 320,
+            "y": 92.796875,
+            "w": 240,
+            "h": 480
+          },
+          "text": "×\n电视播放\n订阅 m3u 直播源并按频道播放\n↻\nCNN\n#1\nBBC News\n#2\nCNA\n#3\nGB News\n#4\nABC News\n#5\nRT News\n#6\nTV Brics\n#7\nFrance24\n#8\nNHK World\n#9\nSky News\n#10\nAl Jazeera\n#11\nTRT World\n#12\nNEWSMAX\n#13\nReuters\n#14\nGlobal News\n#15\nNBC News Now\n#16\nOne American News\n#17\nDiscovery Channel\n#18\nDisney XD\n#19\nSky Sports Football\n#20\nSky Sports News\n#21\nSky Sports Premier League\n#22\nSportsnet 360\n#23\nBig Ten Network\n#24\nTrace Sport Stars\n#25\nHBO\n#26\nHBO 2\n#27\nLifetime Movie Network\n#28\nNational Geographic\n#29\nWION\n#30\nCartoon Network\n#31\nCMT\n#32\nArirang\n#33\nRT Documentary\n#34\nNewsy\n#35\nRedbull\n#36\nHollyWire\n#37\nComedy Central\n#38\nMovieSphere\n#39\nAMC\n#40\nWild Earth\n#41\nAnimal Planet\n#42\nAction Hollywood\n#43\nMytime Movie\n#44\nBBC Earth\n#45\nThe First\n#46\nKartoon Channel\n#47\nWE TV\n#48\nION Plus\n#49\nHistory Hit\n#50\nOutdoor Channel\n#51\nUniversal Movies\n#52\nUniversal Action\n#53\nUniversal Western\n#54\nUniversal Crime\n#55\nCW Gold\n#56\nCW Forever\n#57\nSony One Action HITS\n#58\nSony One Comedy HITS\n#59\nTop Movies\n#60\nAction Movies\n#61\nComedy Movies\n#62\nThrillers\n#63\nSci-Fi\n#64\nRomance Movies\n#65\nDrama Movies\n#66\nThriller TV\n#67\nComedy TV\n#68\nSony One FAVES\n#69\nSony One Dragons' Den\n#70\nGreat British Menu\n#71\nIcon Film Channel\n#72\nPopflix\n#73\nLG 1 Film\n#74\nLG 1 Spotlight\n#75\nLG 1\n#76\nGoUSA TV\n#77\nInside Outside\n#78\nSBS Drama\n#79\nNew Kmovies\n#80\nTennis Channel\n#81\nUniversal Monsters\n#82\n频道 83\n#83\nShowtime Extreme\n#84\nAdventure Earth\n#85\nAutentic History\n#86\nAutentic Travel\n#87\nAction Movies\n#88\nComedy Movies\n#89\nDrama Movies\n#90\nRomance Movies\n#91\nSci-Fi\n#92\nThrillers\n#93\nTop Movies\n#94\nReality\n#95\nFamily\n#96\nbeIN SPORTS XTRA\n#97\nMTV\n#98\nACC Network\n#99\nUFC\n#100",
+          "inputs": [
+            {
+              "placeholder": "输入 m3u 订阅地址",
+              "ariaLabel": null,
+              "value": "https://raw.githubusercontent.com/YueChan/Live/refs/heads/main/Global.m3u"
+            }
+          ]
+        }
+      ],
+      "weather": [],
+      "worldClock": []
+    },
+    "auditLogs": [],
+    "diagnostics": {
+      "sessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+      "exportedAt": "2026-06-30T15:40:45.869Z",
+      "events": [],
+      "lastHarnessDiagnostics": null
+    }
+  },
+  "after": {
+    "bodyText": "×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送\n×\n电视播放\n订阅 m3u 直播源并按频道播放\n↻\nCNN\n#1\nBBC News\n#2\nCNA\n#3\nGB News\n#4\nABC News\n#5\nRT News\n#6\nTV Brics\n#7\nFrance24\n#8\nNHK World\n#9\nSky News\n#10\nAl Jazeera\n#11\nTRT World\n#12\nNEWSMAX\n#13\nReuters\n#14\nGlobal News\n#15\nNBC News Now\n#16\nOne American News\n#17\nDiscovery Channel\n#18\nDisney XD\n#19\nSky Sports Football\n#20\nSky Sports News\n#21\nSky Sports Premier League\n#22\nSportsnet 360\n#23\nBig Ten Network\n#24\nTrace Sport Stars\n#25\nHBO\n#26\nHBO 2\n#27\nLifetime Movie Network\n#28\nNational Geographic\n#29\nWION\n#30\nCartoon Network\n#31\nCMT\n#32\nArirang\n#33\nRT Documentary\n#34\nNewsy\n#35\nRedbull\n#36\nHollyWire\n#37\nComedy Central\n#38\nMovieSphere\n#39\nAMC\n#40\nWild Earth\n#41\nAnimal Planet\n#42\nAction Hollywood\n#43\nMytime Movie\n#44\nBBC Earth\n#45\nThe First\n#46\nKartoon Channel\n#47\nWE TV\n#48\nION Plus\n#49\nHistory Hit\n#50\nOutdoor Channel\n#51\nUniversal Movies\n#52\nUniversal Action\n#53\nUniversal Western\n#54\nUniversal Crime\n#55\nCW Gold\n#56\nCW Forever\n#57\nSony One Action HITS\n#58\nSony One Comedy HITS\n#59\nTop Movies\n#60\nAction Movies\n#61\nComedy Movies\n#62\nThrillers\n#63\nSci-Fi\n#64\nRomance Movies\n#65\nDrama Movies\n#66\nThriller TV\n#67\nComedy TV\n#68\nSony One FAVES\n#69\nSony One Dragons' Den\n#70\nGreat British Menu\n#71\nIcon Film Channel\n#72\nPopflix\n#73\nLG 1 Film\n#74\nLG 1 Spotlight\n#75\nLG 1\n#76\nGoUSA TV\n#77\nInside Outside\n#78\nSBS Drama\n#79\nNew Kmovies\n#80\nTennis Channel\n#81\nUniversal Monsters\n#82\n频道 83\n#83\nShowtime Extreme\n#84\nAdventure Earth\n#85\nAutentic History\n#86\nAutentic Travel\n#87\nAction Movies\n#88\nComedy Movies\n#89\nDrama Movies\n#90\nRomance Movies\n#91\nSci-Fi\n#92\nThrillers\n#93\nTop Movies\n#94\nReality\n#95\nFamily\n#96\nbeIN SPORTS XTRA\n#97\nMTV\n#98\nACC Network\n#99\nUFC\n#100\n×\n电视播放\n订阅 m3u 直播源并按频道播放\n视频播放失败，请切换频道重试\n↻\nCCTV-5 体育\n#1\nCNN\n#2\nBBC News\n#3\nCNA\n#4\nGB News\n#5\nABC News\n#6\nRT News\n#7\nTV Brics\n#8\nFrance24\n#9\nNHK World\n#10\nSky News\n#11\nAl Jazeera\n#12\nTRT World\n#13\nNEWSMAX\n#14\nReuters\n#15\nGlobal News\n#16\nNBC News Now\n#17\nOne American News\n#18\nDiscovery Channel\n#19\nDisney XD\n#20\nSky Sports Football\n#21\nSky Sports News\n#22\nSky Sports Premier League\n#23\nSportsnet 360\n#24\nBig Ten Network\n#25\nTrace Sport Stars\n#26\nHBO\n#27\nHBO 2\n#28\nLifetime Movie Network\n#29\nNational Geographic\n#30\nWION\n#31\nCartoon Network\n#32\nCMT\n#33\nArirang\n#34\nRT Documentary\n#35\nNewsy\n#36\nRedbull\n#37\nHollyWire\n#38\nComedy Central\n#39\nMovieSphere\n#40\nAMC\n#41\nWild Earth\n#42\nAnimal Planet\n#43\nAction Hollywood\n#44\nMytime Movie\n#45\nBBC Earth\n#46\nThe First\n#47\nKartoon Channel\n#48\nWE TV\n#49\nION Plus\n#50\nHistory Hit\n#51\nOutdoor Channel\n#52\nUniversal Movies\n#53\nUniversal Action\n#54\nUniversal Western\n#55\nUniversal Crime\n#56\nCW Gold\n#57\nCW Forever\n#58\nSony One Action HITS\n#59\nSony One Comedy HITS\n#60\nTop Movies\n#61\nAction Movies\n#62\nComedy Movies\n#63\nThrillers\n#64\nSci-Fi\n#65\nRomance Movies\n#66\nDrama Movies\n#67\nThriller TV\n#68\nComedy TV\n#69\nSony One FAVES\n#70\nSony One Dragons' Den\n#71\nGreat British Menu\n#72\nIcon Film Channel\n#73\nPopflix\n#74\nLG 1 Film\n#75\nLG 1 Spotlight\n#76\nLG 1\n#77\nGoUSA TV\n#78\nInside Outside\n#79\nSBS Drama\n#80\nNew Kmovies\n#81\nTennis Channel\n#82\nUniversal Monsters\n#83\n频道 83\n#84\nShowtime Extreme\n#85\nAdventure Earth\n#86\nAutentic History\n#87\nAutentic Travel\n#88\nAction Movies\n#89\nComedy Movies\n#90\nDrama Movies\n#91\nRomance Movies\n#92\nSci-Fi\n#93\nThrillers\n#94\nTop Movies\n#95\nReality\n#96\nFamily\n#97\nbeIN SPORTS XTRA\n#98\nMTV\n#99\nACC Network\n#100\nUFC\n#101\n⊞\n暂无其他在线用户\n聆听中 · 已添加小工具；已全屏电视；已切换电视频道\n完成：已切换电视频道\nlocal_standby · Realtime 0s · $0.0000\n打开电视然后切到 CCTV5 再全屏 · 已添加小工具；已全屏电视；已切换电视频道\n聆听中 · 已添加小工具；已全屏电视；已切换电视频道\n完成：已切换电视频道\nlocal_standby · Realtime 0s · $0.0000\n打开电视然后切到 CCTV5 再全屏 · 已添加小工具；已全屏电视；已切换电视频道",
+    "operation": "完成：已切换电视频道",
+    "runtime": "local_standby · Realtime 0s · $0.0000",
+    "widgets": [
+      {
+        "id": "wi_1782834042575_y8q4gefw",
+        "className": "widget-box",
+        "zIndex": 1,
+        "rect": {
+          "x": 20,
+          "y": 20,
+          "w": 240,
+          "h": 500
+        },
+        "text": "×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送",
+        "inputs": [
+          {
+            "placeholder": "输入留言，按 Enter 发送",
+            "ariaLabel": null,
+            "value": ""
+          }
+        ]
+      },
+      {
+        "id": "wi_1782834044244_n8wkbvcx",
+        "className": "widget-box",
+        "zIndex": 2,
+        "rect": {
+          "x": 40,
+          "y": 40,
+          "w": 240,
+          "h": 480
+        },
+        "text": "×\n电视播放\n订阅 m3u 直播源并按频道播放\n↻\nCNN\n#1\nBBC News\n#2\nCNA\n#3\nGB News\n#4\nABC News\n#5\nRT News\n#6\nTV Brics\n#7\nFrance24\n#8\nNHK World\n#9\nSky News\n#10\nAl Jazeera\n#11\nTRT World\n#12\nNEWSMAX\n#13\nReuters\n#14\nGlobal News\n#15\nNBC News Now\n#16\nOne American News\n#17\nDiscovery Channel\n#18\nDisney XD\n#19\nSky Sports Football\n#20\nSky Sports News\n#21\nSky Sports Premier League\n#22\nSportsnet 360\n#23\nBig Ten Network\n#24\nTrace Sport Stars\n#25\nHBO\n#26\nHBO 2\n#27\nLifetime Movie Network\n#28\nNational Geographic\n#29\nWION\n#30\nCartoon Network\n#31\nCMT\n#32\nArirang\n#33\nRT Documentary\n#34\nNewsy\n#35\nRedbull\n#36\nHollyWire\n#37\nComedy Central\n#38\nMovieSphere\n#39\nAMC\n#40\nWild Earth\n#41\nAnimal Planet\n#42\nAction Hollywood\n#43\nMytime Movie\n#44\nBBC Earth\n#45\nThe First\n#46\nKartoon Channel\n#47\nWE TV\n#48\nION Plus\n#49\nHistory Hit\n#50\nOutdoor Channel\n#51\nUniversal Movies\n#52\nUniversal Action\n#53\nUniversal Western\n#54\nUniversal Crime\n#55\nCW Gold\n#56\nCW Forever\n#57\nSony One Action HITS\n#58\nSony One Comedy HITS\n#59\nTop Movies\n#60\nAction Movies\n#61\nComedy Movies\n#62\nThrillers\n#63\nSci-Fi\n#64\nRomance Movies\n#65\nDrama Movies\n#66\nThriller TV\n#67\nComedy TV\n#68\nSony One FAVES\n#69\nSony One Dragons' Den\n#70\nGreat British Menu\n#71\nIcon Film Channel\n#72\nPopflix\n#73\nLG 1 Film\n#74\nLG 1 Spotlight\n#75\nLG 1\n#76\nGoUSA TV\n#77\nInside Outside\n#78\nSBS Drama\n#79\nNew Kmovies\n#80\nTennis Channel\n#81\nUniversal Monsters\n#82\n频道 83\n#83\nShowtime Extreme\n#84\nAdventure Earth\n#85\nAutentic History\n#86\nAutentic Travel\n#87\nAction Movies\n#88\nComedy Movies\n#89\nDrama Movies\n#90\nRomance Movies\n#91\nSci-Fi\n#92\nThrillers\n#93\nTop Movies\n#94\nReality\n#95\nFamily\n#96\nbeIN SPORTS XTRA\n#97\nMTV\n#98\nACC Network\n#99\nUFC\n#100",
+        "inputs": [
+          {
+            "placeholder": "输入 m3u 订阅地址",
+            "ariaLabel": null,
+            "value": "https://raw.githubusercontent.com/YueChan/Live/refs/heads/main/Global.m3u"
+          }
+        ]
+      },
+      {
+        "id": "wi_1782834046007_w8g6b7i1",
+        "className": "widget-box is-focused",
+        "zIndex": 3,
+        "rect": {
+          "x": 60,
+          "y": 60,
+          "w": 240,
+          "h": 480
+        },
+        "text": "×\n电视播放\n订阅 m3u 直播源并按频道播放\n视频播放失败，请切换频道重试\n↻\nCCTV-5 体育\n#1\nCNN\n#2\nBBC News\n#3\nCNA\n#4\nGB News\n#5\nABC News\n#6\nRT News\n#7\nTV Brics\n#8\nFrance24\n#9\nNHK World\n#10\nSky News\n#11\nAl Jazeera\n#12\nTRT World\n#13\nNEWSMAX\n#14\nReuters\n#15\nGlobal News\n#16\nNBC News Now\n#17\nOne American News\n#18\nDiscovery Channel\n#19\nDisney XD\n#20\nSky Sports Football\n#21\nSky Sports News\n#22\nSky Sports Premier League\n#23\nSportsnet 360\n#24\nBig Ten Network\n#25\nTrace Sport Stars\n#26\nHBO\n#27\nHBO 2\n#28\nLifetime Movie Network\n#29\nNational Geographic\n#30\nWION\n#31\nCartoon Network\n#32\nCMT\n#33\nArirang\n#34\nRT Documentary\n#35\nNewsy\n#36\nRedbull\n#37\nHollyWire\n#38\nComedy Central\n#39\nMovieSphere\n#40\nAMC\n#41\nWild Earth\n#42\nAnimal Planet\n#43\nAction Hollywood\n#44\nMytime Movie\n#45\nBBC Earth\n#46\nThe First\n#47\nKartoon Channel\n#48\nWE TV\n#49\nION Plus\n#50\nHistory Hit\n#51\nOutdoor Channel\n#52\nUniversal Movies\n#53\nUniversal Action\n#54\nUniversal Western\n#55\nUniversal Crime\n#56\nCW Gold\n#57\nCW Forever\n#58\nSony One Action HITS\n#59\nSony One Comedy HITS\n#60\nTop Movies\n#61\nAction Movies\n#62\nComedy Movies\n#63\nThrillers\n#64\nSci-Fi\n#65\nRomance Movies\n#66\nDrama Movies\n#67\nThriller TV\n#68\nComedy TV\n#69\nSony One FAVES\n#70\nSony One Dragons' Den\n#71\nGreat British Menu\n#72\nIcon Film Channel\n#73\nPopflix\n#74\nLG 1 Film\n#75\nLG 1 Spotlight\n#76\nLG 1\n#77\nGoUSA TV\n#78\nInside Outside\n#79\nSBS Drama\n#80\nNew Kmovies\n#81\nTennis Channel\n#82\nUniversal Monsters\n#83\n频道 83\n#84\nShowtime Extreme\n#85\nAdventure Earth\n#86\nAutentic History\n#87\nAutentic Travel\n#88\nAction Movies\n#89\nComedy Movies\n#90\nDrama Movies\n#91\nRomance Movies\n#92\nSci-Fi\n#93\nThrillers\n#94\nTop Movies\n#95\nReality\n#96\nFamily\n#97\nbeIN SPORTS XTRA\n#98\nMTV\n#99\nACC Network\n#100\nUFC\n#101",
+        "inputs": [
+          {
+            "placeholder": "输入 m3u 订阅地址",
+            "ariaLabel": null,
+            "value": "https://raw.githubusercontent.com/YueChan/Live/refs/heads/main/Global.m3u"
+          }
+        ]
+      }
+    ],
+    "byType": {
+      "calculator": [],
+      "clipboard": [],
+      "converter": [],
+      "countdown": [],
+      "dialClock": [],
+      "headline": [],
+      "market": [],
+      "messageBoard": [
+        {
+          "id": "wi_1782834042575_y8q4gefw",
+          "className": "widget-box",
+          "zIndex": 1,
+          "rect": {
+            "x": 20,
+            "y": 20,
+            "w": 240,
+            "h": 500
+          },
+          "text": "×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送",
+          "inputs": [
+            {
+              "placeholder": "输入留言，按 Enter 发送",
+              "ariaLabel": null,
+              "value": ""
+            }
+          ]
+        }
+      ],
+      "music": [],
+      "note": [],
+      "recorder": [],
+      "todo": [],
+      "translate": [],
+      "tv": [
+        {
+          "id": "wi_1782834044244_n8wkbvcx",
+          "className": "widget-box",
+          "zIndex": 2,
+          "rect": {
+            "x": 40,
+            "y": 40,
+            "w": 240,
+            "h": 480
+          },
+          "text": "×\n电视播放\n订阅 m3u 直播源并按频道播放\n↻\nCNN\n#1\nBBC News\n#2\nCNA\n#3\nGB News\n#4\nABC News\n#5\nRT News\n#6\nTV Brics\n#7\nFrance24\n#8\nNHK World\n#9\nSky News\n#10\nAl Jazeera\n#11\nTRT World\n#12\nNEWSMAX\n#13\nReuters\n#14\nGlobal News\n#15\nNBC News Now\n#16\nOne American News\n#17\nDiscovery Channel\n#18\nDisney XD\n#19\nSky Sports Football\n#20\nSky Sports News\n#21\nSky Sports Premier League\n#22\nSportsnet 360\n#23\nBig Ten Network\n#24\nTrace Sport Stars\n#25\nHBO\n#26\nHBO 2\n#27\nLifetime Movie Network\n#28\nNational Geographic\n#29\nWION\n#30\nCartoon Network\n#31\nCMT\n#32\nArirang\n#33\nRT Documentary\n#34\nNewsy\n#35\nRedbull\n#36\nHollyWire\n#37\nComedy Central\n#38\nMovieSphere\n#39\nAMC\n#40\nWild Earth\n#41\nAnimal Planet\n#42\nAction Hollywood\n#43\nMytime Movie\n#44\nBBC Earth\n#45\nThe First\n#46\nKartoon Channel\n#47\nWE TV\n#48\nION Plus\n#49\nHistory Hit\n#50\nOutdoor Channel\n#51\nUniversal Movies\n#52\nUniversal Action\n#53\nUniversal Western\n#54\nUniversal Crime\n#55\nCW Gold\n#56\nCW Forever\n#57\nSony One Action HITS\n#58\nSony One Comedy HITS\n#59\nTop Movies\n#60\nAction Movies\n#61\nComedy Movies\n#62\nThrillers\n#63\nSci-Fi\n#64\nRomance Movies\n#65\nDrama Movies\n#66\nThriller TV\n#67\nComedy TV\n#68\nSony One FAVES\n#69\nSony One Dragons' Den\n#70\nGreat British Menu\n#71\nIcon Film Channel\n#72\nPopflix\n#73\nLG 1 Film\n#74\nLG 1 Spotlight\n#75\nLG 1\n#76\nGoUSA TV\n#77\nInside Outside\n#78\nSBS Drama\n#79\nNew Kmovies\n#80\nTennis Channel\n#81\nUniversal Monsters\n#82\n频道 83\n#83\nShowtime Extreme\n#84\nAdventure Earth\n#85\nAutentic History\n#86\nAutentic Travel\n#87\nAction Movies\n#88\nComedy Movies\n#89\nDrama Movies\n#90\nRomance Movies\n#91\nSci-Fi\n#92\nThrillers\n#93\nTop Movies\n#94\nReality\n#95\nFamily\n#96\nbeIN SPORTS XTRA\n#97\nMTV\n#98\nACC Network\n#99\nUFC\n#100",
+          "inputs": [
+            {
+              "placeholder": "输入 m3u 订阅地址",
+              "ariaLabel": null,
+              "value": "https://raw.githubusercontent.com/YueChan/Live/refs/heads/main/Global.m3u"
+            }
+          ]
+        },
+        {
+          "id": "wi_1782834046007_w8g6b7i1",
+          "className": "widget-box is-focused",
+          "zIndex": 3,
+          "rect": {
+            "x": 60,
+            "y": 60,
+            "w": 240,
+            "h": 480
+          },
+          "text": "×\n电视播放\n订阅 m3u 直播源并按频道播放\n视频播放失败，请切换频道重试\n↻\nCCTV-5 体育\n#1\nCNN\n#2\nBBC News\n#3\nCNA\n#4\nGB News\n#5\nABC News\n#6\nRT News\n#7\nTV Brics\n#8\nFrance24\n#9\nNHK World\n#10\nSky News\n#11\nAl Jazeera\n#12\nTRT World\n#13\nNEWSMAX\n#14\nReuters\n#15\nGlobal News\n#16\nNBC News Now\n#17\nOne American News\n#18\nDiscovery Channel\n#19\nDisney XD\n#20\nSky Sports Football\n#21\nSky Sports News\n#22\nSky Sports Premier League\n#23\nSportsnet 360\n#24\nBig Ten Network\n#25\nTrace Sport Stars\n#26\nHBO\n#27\nHBO 2\n#28\nLifetime Movie Network\n#29\nNational Geographic\n#30\nWION\n#31\nCartoon Network\n#32\nCMT\n#33\nArirang\n#34\nRT Documentary\n#35\nNewsy\n#36\nRedbull\n#37\nHollyWire\n#38\nComedy Central\n#39\nMovieSphere\n#40\nAMC\n#41\nWild Earth\n#42\nAnimal Planet\n#43\nAction Hollywood\n#44\nMytime Movie\n#45\nBBC Earth\n#46\nThe First\n#47\nKartoon Channel\n#48\nWE TV\n#49\nION Plus\n#50\nHistory Hit\n#51\nOutdoor Channel\n#52\nUniversal Movies\n#53\nUniversal Action\n#54\nUniversal Western\n#55\nUniversal Crime\n#56\nCW Gold\n#57\nCW Forever\n#58\nSony One Action HITS\n#59\nSony One Comedy HITS\n#60\nTop Movies\n#61\nAction Movies\n#62\nComedy Movies\n#63\nThrillers\n#64\nSci-Fi\n#65\nRomance Movies\n#66\nDrama Movies\n#67\nThriller TV\n#68\nComedy TV\n#69\nSony One FAVES\n#70\nSony One Dragons' Den\n#71\nGreat British Menu\n#72\nIcon Film Channel\n#73\nPopflix\n#74\nLG 1 Film\n#75\nLG 1 Spotlight\n#76\nLG 1\n#77\nGoUSA TV\n#78\nInside Outside\n#79\nSBS Drama\n#80\nNew Kmovies\n#81\nTennis Channel\n#82\nUniversal Monsters\n#83\n频道 83\n#84\nShowtime Extreme\n#85\nAdventure Earth\n#86\nAutentic History\n#87\nAutentic Travel\n#88\nAction Movies\n#89\nComedy Movies\n#90\nDrama Movies\n#91\nRomance Movies\n#92\nSci-Fi\n#93\nThrillers\n#94\nTop Movies\n#95\nReality\n#96\nFamily\n#97\nbeIN SPORTS XTRA\n#98\nMTV\n#99\nACC Network\n#100\nUFC\n#101",
+          "inputs": [
+            {
+              "placeholder": "输入 m3u 订阅地址",
+              "ariaLabel": null,
+              "value": "https://raw.githubusercontent.com/YueChan/Live/refs/heads/main/Global.m3u"
+            }
+          ]
+        }
+      ],
+      "weather": [],
+      "worldClock": []
+    },
+    "auditLogs": [
+      {
+        "id": "audit_1782834046017_vh8xit",
+        "operationId": "e2e_109_3",
+        "boardId": "board_1782834042575_mgfdednr",
+        "route": "model",
+        "sourceMode": "realtime",
+        "transcript": "打开电视然后切到 CCTV5 再全屏",
+        "normalized": "打开电视然后切到 cctv5 再全屏",
+        "candidateModules": [
+          {
+            "type": "tv",
+            "score": 0.8099999999999999,
+            "reason": "alias+action_word+focused_widget"
+          },
+          {
+            "type": "music",
+            "score": 0.18,
+            "reason": "action_word"
+          }
+        ],
+        "selectedModule": "tv",
+        "selectedToolHint": "tv.select_channel",
+        "selectionConfidence": 0.81,
+        "learningCandidate": false,
+        "toolName": "tv.select_channel",
+        "sanitizedArgs": {
+          "widgetId": "wi_tv",
+          "channelName": "CCTV5"
+        },
+        "resultStatus": "success",
+        "resultMessage": "已切换电视频道",
+        "durationMs": 29,
+        "createdAt": "2026-06-30T15:40:46.017Z"
+      },
+      {
+        "id": "audit_1782834046017_20522q",
+        "operationId": "e2e_109_2",
+        "boardId": "board_1782834042575_mgfdednr",
+        "route": "model",
+        "sourceMode": "realtime",
+        "transcript": "打开电视然后切到 CCTV5 再全屏",
+        "normalized": "打开电视然后切到 cctv5 再全屏",
+        "candidateModules": [
+          {
+            "type": "tv",
+            "score": 0.8099999999999999,
+            "reason": "alias+action_word+focused_widget"
+          },
+          {
+            "type": "music",
+            "score": 0.18,
+            "reason": "action_word"
+          }
+        ],
+        "selectedModule": "tv",
+        "selectedToolHint": "tv.fullscreen",
+        "selectionConfidence": 0.81,
+        "learningCandidate": false,
+        "toolName": "tv.fullscreen",
+        "sanitizedArgs": {
+          "widgetId": "wi_tv"
+        },
+        "resultStatus": "success",
+        "resultMessage": "已全屏电视",
+        "durationMs": 29,
+        "createdAt": "2026-06-30T15:40:46.017Z"
+      },
+      {
+        "id": "audit_1782834046017_2jlvrn",
+        "operationId": "e2e_109_1",
+        "boardId": "board_1782834042575_mgfdednr",
+        "route": "model",
+        "sourceMode": "realtime",
+        "transcript": "打开电视然后切到 CCTV5 再全屏",
+        "normalized": "打开电视然后切到 cctv5 再全屏",
+        "candidateModules": [
+          {
+            "type": "tv",
+            "score": 0.8099999999999999,
+            "reason": "alias+action_word+focused_widget"
+          },
+          {
+            "type": "music",
+            "score": 0.18,
+            "reason": "action_word"
+          }
+        ],
+        "selectedModule": "music",
+        "selectedToolHint": "board.add_widget",
+        "selectionConfidence": 0.81,
+        "learningCandidate": false,
+        "toolName": "board.add_widget",
+        "sanitizedArgs": {
+          "definitionId": "wd_tv"
+        },
+        "resultStatus": "success",
+        "resultMessage": "已添加小工具",
+        "durationMs": 29,
+        "createdAt": "2026-06-30T15:40:46.017Z"
+      }
+    ],
+    "diagnostics": {
+      "sessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+      "exportedAt": "2026-06-30T15:40:47.609Z",
+      "events": [
+        {
+          "type": "voice.text_command.submit",
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "status": "started",
+          "data": {
+            "input": "打开电视然后切到 CCTV5 再全屏"
+          },
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:45.988Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_exposure.plan",
+          "status": "success",
+          "data": {
+            "input": "打开电视然后切到 CCTV5 再全屏",
+            "selectedModules": [
+              "tv"
+            ],
+            "exposedTools": [
+              "tv.fullscreen",
+              "tv.play",
+              "tv.select_channel",
+              "tv.pause",
+              "app.fullscreen.set",
+              "board.add_widget",
+              "widget.focus",
+              "widget.fullscreen_focus",
+              "app.ai_dialog.open",
+              "app.command_palette.open",
+              "app.settings.open"
+            ],
+            "confidence": 1,
+            "reasons": {
+              "tv.fullscreen": [
+                "selected_module",
+                "tool_intent_match",
+                "module_alias_match",
+                "mounted_widget",
+                "focused_widget",
+                "safe_tool"
+              ],
+              "tv.play": [
+                "selected_module",
+                "tool_intent_match",
+                "module_alias_match",
+                "mounted_widget",
+                "focused_widget",
+                "safe_tool"
+              ],
+              "tv.select_channel": [
+                "selected_module",
+                "tool_intent_match",
+                "module_alias_match",
+                "mounted_widget",
+                "focused_widget",
+                "safe_tool"
+              ],
+              "tv.pause": [
+                "selected_module",
+                "module_alias_match",
+                "mounted_widget",
+                "focused_widget",
+                "safe_tool"
+              ],
+              "app.fullscreen.set": [
+                "tool_intent_match",
+                "tool_example_match",
+                "safe_tool",
+                "global_desktop_match"
+              ],
+              "board.add_widget": [
+                "tool_intent_match",
+                "safe_tool",
+                "relevant_window_tool",
+                "definition_available"
+              ],
+              "widget.focus": [
+                "tool_intent_match",
+                "safe_tool",
+                "relevant_window_tool"
+              ],
+              "widget.fullscreen_focus": [
+                "tool_intent_match",
+                "safe_tool",
+                "relevant_window_tool"
+              ],
+              "app.ai_dialog.open": [
+                "safe_tool",
+                "global_desktop_match"
+              ],
+              "app.command_palette.open": [
+                "safe_tool",
+                "global_desktop_match"
+              ],
+              "app.settings.open": [
+                "safe_tool",
+                "global_desktop_match"
+              ]
+            },
+            "excludedReasons": {
+              "app.sidebar.set": "module_tool_limit",
+              "widget.remove": "low_score",
+              "widget.move": "low_score",
+              "widget.resize": "low_score",
+              "widget.bring_to_front": "low_score",
+              "board.auto_align": "low_score",
+              "board.switch": "low_score",
+              "board.create": "low_score",
+              "board.rename": "low_score",
+              "board.delete": "low_score",
+              "note.write": "module_mismatch",
+              "note.clear": "module_mismatch",
+              "todo.add_item": "module_mismatch",
+              "todo.complete_item": "module_mismatch",
+              "todo.clear_completed": "module_mismatch",
+              "countdown.set": "module_mismatch",
+              "countdown.pause": "module_mismatch",
+              "countdown.resume": "module_mismatch",
+              "countdown.reset": "module_mismatch",
+              "weather.set_city": "module_mismatch",
+              "calculator.set_display": "module_mismatch",
+              "headline.request_refresh": "module_mismatch",
+              "market.set_indices": "module_mismatch",
+              "worldClock.set_zones": "module_mismatch",
+              "converter.set": "module_mismatch",
+              "translate.set_draft": "module_mismatch",
+              "clipboard.add_text": "[redacted]",
+              "clipboard.clear": "[redacted]",
+              "music.search": "module_mismatch",
+              "music.play": "module_mismatch",
+              "music.pause": "module_mismatch",
+              "music.resume": "module_mismatch"
+            }
+          },
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:45.990Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.text_plan.select.request",
+          "status": "started",
+          "data": {
+            "input": "打开电视然后切到 CCTV5 再全屏",
+            "contextVersion": "ctx_mjanyy",
+            "toolCatalogVersion": "cat_1ws7m2h"
+          },
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:45.990Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.text_plan.select.result",
+          "status": "success",
+          "data": {
+            "input": "打开电视然后切到 CCTV5 再全屏",
+            "stepCount": 3,
+            "steps": [
+              "board.add_widget",
+              "tv.fullscreen",
+              "tv.select_channel"
+            ]
+          },
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.004Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.text_plan.execute.result",
+          "status": "success",
+          "data": {
+            "input": "打开电视然后切到 CCTV5 再全屏",
+            "contextVersion": "ctx_mjanyy",
+            "toolCatalogVersion": "cat_1ws7m2h",
+            "commandCount": 3,
+            "tools": [
+              "board.add_widget",
+              "tv.fullscreen",
+              "tv.select_channel"
+            ]
+          },
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.006Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "status": "running",
+          "operationId": "e2e_109_1",
+          "route": "model",
+          "toolName": "board.add_widget",
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.007Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_4940ev",
+            "widgetCount": 3,
+            "boardId": "board_1782834042575_mgfdednr"
+          },
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.011Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_4940ev",
+            "widgetCount": 3,
+            "boardId": "board_1782834042575_mgfdednr"
+          },
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.011Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "status": "success",
+          "operationId": "e2e_109_1",
+          "route": "model",
+          "toolName": "board.add_widget",
+          "message": "已添加小工具",
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.011Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "status": "running",
+          "operationId": "e2e_109_2",
+          "route": "model",
+          "toolName": "tv.fullscreen",
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.011Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "status": "success",
+          "operationId": "e2e_109_2",
+          "route": "model",
+          "toolName": "tv.fullscreen",
+          "message": "已全屏电视",
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.013Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "status": "running",
+          "operationId": "e2e_109_3",
+          "route": "model",
+          "toolName": "tv.select_channel",
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.013Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_30q8yr",
+            "widgetCount": 3,
+            "boardId": "board_1782834042575_mgfdednr"
+          },
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.015Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_17qv0q3",
+            "widgetCount": 3,
+            "boardId": "board_1782834042575_mgfdednr"
+          },
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.017Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "status": "success",
+          "operationId": "e2e_109_3",
+          "route": "model",
+          "toolName": "tv.select_channel",
+          "message": "已切换电视频道",
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.017Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_result.send",
+          "status": "success",
+          "operationId": "e2e_109_1",
+          "toolName": "board.add_widget",
+          "message": "已添加小工具",
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.017Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "queued_or_dropped",
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "data": {
+            "eventType": "conversation.item.create"
+          },
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.017Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "queued_or_dropped",
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "data": {
+            "eventType": "response.create"
+          },
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.017Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_result.send",
+          "status": "success",
+          "operationId": "e2e_109_2",
+          "toolName": "tv.fullscreen",
+          "message": "已全屏电视",
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.017Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "queued_or_dropped",
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "data": {
+            "eventType": "conversation.item.create"
+          },
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.017Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "queued_or_dropped",
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "data": {
+            "eventType": "response.create"
+          },
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.017Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_result.send",
+          "status": "success",
+          "operationId": "e2e_109_3",
+          "toolName": "tv.select_channel",
+          "message": "已切换电视频道",
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.017Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "queued_or_dropped",
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "data": {
+            "eventType": "conversation.item.create"
+          },
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.017Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "queued_or_dropped",
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "data": {
+            "eventType": "response.create"
+          },
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.017Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_17qv0q3",
+            "widgetCount": 3,
+            "boardId": "board_1782834042575_mgfdednr"
+          },
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.017Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.text_command.result",
+          "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+          "status": "success",
+          "route": "model",
+          "toolName": "board.add_widget",
+          "operationId": "e2e_109_1",
+          "message": "已添加小工具；已全屏电视；已切换电视频道",
+          "data": {
+            "input": "打开电视然后切到 CCTV5 再全屏"
+          },
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.017Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_30q8yr",
+            "widgetCount": 3,
+            "boardId": "board_1782834042575_mgfdednr"
+          },
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.097Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_30q8yr",
+            "widgetCount": 3,
+            "boardId": "board_1782834042575_mgfdednr"
+          },
+          "clientSessionId": "diag_41c03f37-daf7-46ef-9423-453246a2add0",
+          "clientCreatedAt": "2026-06-30T15:40:46.099Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        }
+      ],
+      "lastHarnessDiagnostics": {
+        "commandTraceId": "cmd_d2260e11-a4f6-4ce1-ae07-7831a247575d",
+        "rawInput": "打开电视然后切到 CCTV5 再全屏",
+        "normalizedText": "打开电视然后切到 cctv5 再全屏",
+        "usedRealtime": true,
+        "segments": [
+          {
+            "id": "segment_1",
+            "text": "打开电视",
+            "connector": "start"
+          },
+          {
+            "id": "segment_2",
+            "text": "切到 CCTV5",
+            "connector": "sequential"
+          },
+          {
+            "id": "segment_3",
+            "text": "全屏",
+            "connector": "sequential"
+          }
+        ],
+        "candidateModules": [
+          {
+            "type": "tv",
+            "score": 0.8099999999999999,
+            "reason": "alias+action_word+focused_widget"
+          },
+          {
+            "type": "music",
+            "score": 0.18,
+            "reason": "action_word"
+          }
+        ],
+        "toolResults": [
+          {
+            "id": "e2e_109_1",
+            "tool": "board.add_widget",
+            "status": "success",
+            "message": "已添加小工具"
+          },
+          {
+            "id": "e2e_109_2",
+            "tool": "tv.fullscreen",
+            "status": "success",
+            "message": "已全屏电视"
+          },
+          {
+            "id": "e2e_109_3",
+            "tool": "tv.select_channel",
+            "status": "success",
+            "message": "已切换电视频道"
+          }
+        ],
+        "shortcutDeferral": {
+          "ruleId": "tv-cross-tool",
+          "category": "tv_workflow",
+          "reason": "TV commands combined with media, timers, layout, or channel correction need planning"
+        },
+        "route": "model",
+        "commandPlan": {
+          "id": "e2e_plan_109",
+          "createdBy": "realtime-2",
+          "commands": [
+            {
+              "id": "e2e_109_1",
+              "module": "app-shell",
+              "tool": "board.add_widget",
+              "risk": "safe",
+              "source": "realtime",
+              "argKeys": "[truncated]"
+            },
+            {
+              "id": "e2e_109_2",
+              "module": "tv",
+              "tool": "tv.fullscreen",
+              "risk": "safe",
+              "source": "realtime",
+              "argKeys": "[truncated]"
+            },
+            {
+              "id": "e2e_109_3",
+              "module": "tv",
+              "tool": "tv.select_channel",
+              "risk": "safe",
+              "source": "realtime",
+              "argKeys": "[truncated]"
+            }
+          ],
+          "executionGroups": [
+            {
+              "id": "e2e_group_109",
+              "mode": "sequential",
+              "commandIds": "[truncated]"
+            }
+          ]
+        },
+        "learningCandidate": false,
+        "status": "success",
+        "message": "已添加小工具；已全屏电视；已切换电视频道",
+        "pendingConfirmation": false
+      }
+    }
+  },
+  "failures": []
+}

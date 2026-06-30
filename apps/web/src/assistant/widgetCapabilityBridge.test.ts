@@ -204,6 +204,28 @@ describe("WidgetCapabilityBridge", () => {
     });
   });
 
+  it("treats browser-blocked TV fullscreen as a successful best-effort action", async () => {
+    const { store } = createStore();
+    const bridge = new WidgetCapabilityBridge();
+    bridge.register("wi_tv", {
+      fullscreen() {
+        throw new Error("Permissions check failed");
+      }
+    });
+    const registry = createRegistry(store, bridge);
+
+    const result = await registry.execute(
+      { id: "call_1", name: "tv.fullscreen", arguments: {}, source: "test" },
+      { target: targetFor("tv"), now: () => NOW }
+    );
+
+    expect(result).toMatchObject({
+      status: "success",
+      message: "已打开电视，浏览器阻止了原生全屏",
+      data: { nativeFullscreenBlocked: true }
+    });
+  });
+
   it("runs recorder start and stop with state updates", async () => {
     const { store, getWidget } = createStore();
     const bridge = new WidgetCapabilityBridge();

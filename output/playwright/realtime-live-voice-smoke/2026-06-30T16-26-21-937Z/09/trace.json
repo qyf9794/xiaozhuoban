@@ -1,0 +1,1203 @@
+{
+  "id": "09",
+  "command": "打开电视然后全屏",
+  "before": {
+    "bodyText": "桌板\n+ 新建\n我的桌板\n我的桌板\n添加 Widget\n▾\n⚙\n×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送\n⊞\n暂无其他在线用户",
+    "widgets": [
+      {
+        "id": "wi_1782836879456_ghpfa4f1",
+        "text": "×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送",
+        "className": "widget-box"
+      }
+    ],
+    "auditLogs": [],
+    "diagnostics": {
+      "sessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+      "exportedAt": "2026-06-30T16:28:00.490Z",
+      "events": [
+        {
+          "type": "realtime.runtime.disconnect",
+          "status": "manual",
+          "data": {
+            "mode": "local_standby",
+            "connected": false
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:27:59.455Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "disconnected",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:27:59.455Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tools.update",
+          "status": "queued_or_sent",
+          "data": {
+            "toolCount": 52,
+            "tools": [
+              "board.add_widget",
+              "widget.focus",
+              "widget.fullscreen_focus",
+              "widget.remove",
+              "widget.move",
+              "widget.resize",
+              "widget.bring_to_front",
+              "board.auto_align",
+              "board.switch",
+              "board.create",
+              "board.rename",
+              "board.delete"
+            ],
+            "toolCatalogVersion": "cat_sdej7i"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:27:59.469Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "queued_or_dropped",
+          "data": {
+            "eventType": "session.update"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:27:59.469Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_wfo5j2",
+            "widgetCount": 1,
+            "boardId": "board_1782836879456_iy88oek9"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:27:59.470Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        }
+      ],
+      "lastHarnessDiagnostics": null
+    }
+  },
+  "after": {
+    "bodyText": "桌板\n+ 新建\n我的桌板\n我的桌板\n添加 Widget\n▾\n⚙\n×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送\n×\n电视播放\n订阅 m3u 直播源并按频道播放\n↻\nCNN\n#1\nBBC News\n#2\nCNA\n#3\nGB News\n#4\nABC News\n#5\nRT News\n#6\nTV Brics\n#7\nFrance24\n#8\nNHK World\n#9\nSky News\n#10\nAl Jazeera\n#11\nTRT World\n#12\nNEWSMAX\n#13\nReuters\n#14\nGlobal News\n#15\nNBC News Now\n#16\nOne American News\n#17\nDiscovery Channel\n#18\nDisney XD\n#19\nSky Sports Football\n#20\nSky Sports News\n#21\nSky Sports Premier League\n#22\nSportsnet 360\n#23\nBig Ten Network\n#24\nTrace Sport Stars\n#25\nHBO\n#26\nHBO 2\n#27\nLifetime Movie Network\n#28\nNational Geographic\n#29\nWION\n#30\nCartoon Network\n#31\nCMT\n#32\nArirang\n#33\nRT Documentary\n#34\nNewsy\n#35\nRedbull\n#36\nHollyWire\n#37\nComedy Central\n#38\nMovieSphere\n#39\nAMC\n#40\nWild Earth\n#41\nAnimal Planet\n#42\nAction Hollywood\n#43\nMytime Movie\n#44\nBBC Earth\n#45\nThe First\n#46\nKartoon Channel\n#47\nWE TV\n#48\nION Plus\n#49\nHistory Hit\n#50\nOutdoor Channel\n#51\nUniversal Movies\n#52\nUniversal Action\n#53\nUniversal Western\n#54\nUniversal Crime\n#55\nCW Gold\n#56\nCW Forever\n#57\nSony One Action HITS\n#58\nSony One Comedy HITS\n#59\nTop Movies\n#60\nAction Movies\n#61\nComedy Movies\n#62\nThrillers\n#63\nSci-Fi\n#64\nRomance Movies\n#65\nDrama Movies\n#66\nThriller TV\n#67\nComedy TV\n#68\nSony One FAVES\n#69\nSony One Dragons' Den\n#70\nGreat British Menu\n#71\nIcon Film Channel\n#72\nPopflix\n#73\nLG 1 Film\n#74\nLG 1 Spotlight\n#75\nLG 1\n#76\nGoUSA TV\n#77\nInside Outside\n#78\nSBS Drama\n#79\nNew Kmovies\n#80\nTennis Channel\n#81\nUniversal Monsters\n#82\n频道 83\n#83\nShowtime Extreme\n#84\nAdventure Earth\n#85\nAutentic History\n#86\nAutentic Travel\n#87\nAction Movies\n#88\nComedy Movies\n#89\nDrama Movies\n#90\nRomance Movies\n#91\nSci-Fi\n#92\nThrillers\n#93\nTop Movies\n#94\nReality\n#95\nFamily\n#96\nbeIN SPORTS XTRA\n#97\nMTV\n#98\nACC Network\n#99\nUFC\n#100\n⊞\n暂无其他在线用户\n\n打開電視然後全屏\n\n聆听中 · 打開電視然後全屏\n完成：已添加小工具，已打开电视，浏览器阻止了原生全屏\nrealtime_dialogue_window · Realtime 0s · $0.0000\n聆听中 · 打開電視然後全屏\n完成：已添加小工具，已打开电视，浏览器阻止了原生全屏\nrealtime_dialogue_window · Realtime 0s · $0.0000",
+    "widgets": [
+      {
+        "id": "wi_1782836879456_ghpfa4f1",
+        "text": "×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送",
+        "className": "widget-box"
+      },
+      {
+        "id": "wi_1782836889648_mzue1l82",
+        "text": "×\n电视播放\n订阅 m3u 直播源并按频道播放\n↻\nCNN\n#1\nBBC News\n#2\nCNA\n#3\nGB News\n#4\nABC News\n#5\nRT News\n#6\nTV Brics\n#7\nFrance24\n#8\nNHK World\n#9\nSky News\n#10\nAl Jazeera\n#11\nTRT World\n#12\nNEWSMAX\n#13\nReuters\n#14\nGlobal News\n#15\nNBC News Now\n#16\nOne American News\n#17\nDiscovery Channel\n#18\nDisney XD\n#19\nSky Sports Football\n#20\nSky Sports News\n#21\nSky Sports Premier League\n#22\nSportsnet 360\n#23\nBig Ten Network\n#24\nTrace Sport Stars\n#25\nHBO\n#26\nHBO 2\n#27\nLifetime Movie Network\n#28\nNational Geographic\n#29\nWION\n#30\nCartoon Network\n#31\nCMT\n#32\nArirang\n#33\nRT Documentary\n#34\nNewsy\n#35\nRedbull\n#36\nHollyWire\n#37\nComedy Central\n#38\nMovieSphere\n#39\nAMC\n#40\nWild Earth\n#41\nAnimal Planet\n#42\nAction Hollywood\n#43\nMytime Movie\n#44\nBBC Earth\n#45\nThe First\n#46\nKartoon Channel\n#47\nWE TV\n#48\nION Plus\n#49\nHistory Hit\n#50\nOutdoor Channel\n#51\nUniversal Movies\n#52\nUniversal Action\n#53\nUniversal Western\n#54\nUniversal Crime\n#55\nCW Gold\n#56\nCW Forever\n#57\nSony One Action HITS\n#58\nSony One Comedy HITS\n#59\nTop Movies\n#60\nAction Movies\n#61\nComedy Movies\n#62\nThrillers\n#63\nSci-Fi\n#64\nRomance Movies\n#65\nDrama Movies\n#66\nThriller TV\n#67\nComedy TV\n#68\nSony One FAVES\n#69\nSony One Dragons' Den\n#70\nGreat British Menu\n#71\nIcon Film Channel\n#72\nPopflix\n#73\nLG 1 Film\n#74\nLG 1 Spotlight\n#75\nLG 1\n#76\nGoUSA TV\n#77\nInside Outside\n#78\nSBS Drama\n#79\nNew Kmovies\n#80\nTennis Channel\n#81\nUniversal Monsters\n#82\n频道 83\n#83\nShowtime Extreme\n#84\nAdventure Earth\n#85\nAutentic History\n#86\nAutentic Travel\n#87\nAction Movies\n#88\nComedy Movies\n#89\nDrama Movies\n#90\nRomance Movies\n#91\nSci-Fi\n#92\nThrillers\n#93\nTop Movies\n#94\nReality\n#95\nFamily\n#96\nbeIN SPORTS XTRA\n#97\nMTV\n#98\nACC Network\n#99\nUFC\n#100",
+        "className": "widget-box is-focused"
+      }
+    ],
+    "auditLogs": [
+      {
+        "id": "audit_1782836889676_mni9fz",
+        "operationId": "call_gRGE37Zi4jsirZKZ",
+        "boardId": "board_1782836879456_iy88oek9",
+        "route": "function_call",
+        "sourceMode": "realtime",
+        "transcript": "board.add_widget",
+        "learningCandidate": false,
+        "toolName": "board.add_widget",
+        "sanitizedArgs": {
+          "definitionId": "wd_tv_1782836879456_mmq1ckl0",
+          "followUp": {
+            "name": "tv.fullscreen"
+          }
+        },
+        "resultStatus": "success",
+        "resultMessage": "已添加小工具，已打开电视，浏览器阻止了原生全屏",
+        "durationMs": 31,
+        "createdAt": "2026-06-30T16:28:09.676Z"
+      }
+    ],
+    "diagnostics": {
+      "sessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+      "exportedAt": "2026-06-30T16:28:11.182Z",
+      "events": [
+        {
+          "type": "realtime.runtime.disconnect",
+          "status": "manual",
+          "data": {
+            "mode": "local_standby",
+            "connected": false
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:27:59.455Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "disconnected",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:27:59.455Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tools.update",
+          "status": "queued_or_sent",
+          "data": {
+            "toolCount": 52,
+            "tools": [
+              "board.add_widget",
+              "widget.focus",
+              "widget.fullscreen_focus",
+              "widget.remove",
+              "widget.move",
+              "widget.resize",
+              "widget.bring_to_front",
+              "board.auto_align",
+              "board.switch",
+              "board.create",
+              "board.rename",
+              "board.delete"
+            ],
+            "toolCatalogVersion": "cat_sdej7i"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:27:59.469Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "queued_or_dropped",
+          "data": {
+            "eventType": "session.update"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:27:59.469Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_wfo5j2",
+            "widgetCount": 1,
+            "boardId": "board_1782836879456_iy88oek9"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:27:59.470Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.connect.click",
+          "commandTraceId": "voice_connect_489b560a-96d9-49c6-a33d-6d99417fb740",
+          "status": "started",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:00.580Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "connecting",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:00.580Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.connect.start",
+          "status": "connecting",
+          "data": {
+            "mode": "audio"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:00.580Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.microphone.permission",
+          "status": "error",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:00.582Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.microphone.stream",
+          "status": "success",
+          "data": {
+            "audioTracks": "[redacted]"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:00.703Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.session.request",
+          "status": "missing_auth",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:00.714Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.session.created",
+          "status": "success",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:01.302Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "configuring",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:02.875Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.data_channel.open",
+          "status": "configuring",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:02.875Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "data": {
+            "eventType": "session.update"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:02.876Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tools.update",
+          "status": "queued_or_sent",
+          "data": {
+            "toolCount": 52,
+            "tools": [
+              "board.add_widget",
+              "widget.focus",
+              "widget.fullscreen_focus",
+              "widget.remove",
+              "widget.move",
+              "widget.resize",
+              "widget.bring_to_front",
+              "board.auto_align",
+              "board.switch",
+              "board.create",
+              "board.rename",
+              "board.delete"
+            ],
+            "toolCatalogVersion": "cat_sdej7i"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:02.877Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "data": {
+            "eventType": "session.update"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:02.877Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "data": {
+            "eventType": "session.created"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:03.110Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "data": {
+            "eventType": "session.updated"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:03.990Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.session.updated",
+          "status": "connected",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:03.990Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "connected",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:03.990Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.connect.result",
+          "commandTraceId": "voice_connect_489b560a-96d9-49c6-a33d-6d99417fb740",
+          "status": "success",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:03.990Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "data": {
+            "eventType": "session.updated"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:04.221Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.session.updated",
+          "status": "connected",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:04.222Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "connected",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:04.222Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "input_audio_buffer.speech_started"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:04.222Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.voice.speech_started",
+          "status": "listening",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "itemId": "item_DwVbYbFMIEEx4nWP5OBiB",
+            "audioStartMs": "[redacted]"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:04.222Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "input_audio_buffer.speech_stopped"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:06.757Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.voice.speech_stopped",
+          "status": "committed",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "itemId": "item_DwVbYbFMIEEx4nWP5OBiB",
+            "audioEndMs": "[redacted]"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:06.758Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "input_audio_buffer.committed"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:06.758Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:06.758Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:06.758Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "response.created"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:06.760Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "response.output_item.added"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:07.155Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:07.156Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "response.function_call_arguments.done"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:07.533Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.function_call.selection",
+          "status": "received",
+          "operationId": "call_pZhyr3c3SgBnjFrU",
+          "toolName": "assistant.select_tool",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:07.534Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "session.update"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:07.534Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_selection.success",
+          "status": "success",
+          "operationId": "call_pZhyr3c3SgBnjFrU",
+          "toolName": "board.add_widget",
+          "data": {
+            "targetHint": "电视",
+            "selectedModule": "tv",
+            "confidence": 0.9
+          },
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:07.534Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_selection.result_deferred",
+          "status": "pending_session_update",
+          "operationId": "call_pZhyr3c3SgBnjFrU",
+          "toolName": "board.add_widget",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:07.535Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:07.535Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "response.output_item.done"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:07.535Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "response.done"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:07.536Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "data": {
+            "eventType": "session.updated"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:08.006Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.session.updated",
+          "status": "connected",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:08.007Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "connected",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:08.007Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_selection.result_send_after_session_update",
+          "status": "sent",
+          "operationId": "call_pZhyr3c3SgBnjFrU",
+          "toolName": "assistant.select_tool",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:08.007Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_result.send",
+          "status": "success",
+          "operationId": "call_pZhyr3c3SgBnjFrU",
+          "toolName": "assistant.select_tool",
+          "message": "已选择工具，正在读取所需上下文。",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:08.007Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "conversation.item.create"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:08.007Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "response.create"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:08.008Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:08.250Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:08.256Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "response.created"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:08.305Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "conversation.item.input_audio_transcription.completed"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:08.343Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.voice.user_transcript",
+          "status": "success",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "itemId": "item_DwVbYbFMIEEx4nWP5OBiB",
+            "transcript": "打開電視然後全屏"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:08.343Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "response.output_item.added"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:08.704Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:08.706Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "response.function_call_arguments.done"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.643Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.function_call.tool",
+          "status": "received",
+          "operationId": "call_gRGE37Zi4jsirZKZ",
+          "toolName": "board.add_widget",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "definitionId": "wd_tv_1782836879456_mmq1ckl0"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.645Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "status": "running",
+          "operationId": "call_gRGE37Zi4jsirZKZ",
+          "route": "function_call",
+          "toolName": "board.add_widget",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.646Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_qhy02y",
+            "widgetCount": 2,
+            "boardId": "board_1782836879456_iy88oek9"
+          },
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.656Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_qhy02y",
+            "widgetCount": 2,
+            "boardId": "board_1782836879456_iy88oek9"
+          },
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.657Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.658Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "response.output_item.done"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.666Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "response.done"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.667Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.voice.user_transcript_unhandled",
+          "status": "started",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "itemId": "item_DwVbYbFMIEEx4nWP5OBiB",
+            "input": "打開電視然後全屏"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.667Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.voice.user_transcript_unhandled",
+          "status": "success",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "itemId": "item_DwVbYbFMIEEx4nWP5OBiB",
+            "input": "打開電視然後全屏"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.669Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_exposure.plan",
+          "status": "success",
+          "data": {
+            "input": "打開電視然後全屏",
+            "selectedModules": [
+              "tv"
+            ],
+            "exposedTools": [
+              "app.fullscreen.set",
+              "tv.fullscreen",
+              "tv.pause",
+              "tv.play",
+              "tv.select_channel",
+              "widget.fullscreen_focus",
+              "app.ai_dialog.open",
+              "app.command_palette.open",
+              "app.settings.open"
+            ],
+            "confidence": 1,
+            "reasons": {
+              "app.fullscreen.set": [
+                "tool_intent_match",
+                "tool_example_match",
+                "safe_tool",
+                "global_desktop_match"
+              ],
+              "tv.fullscreen": [
+                "selected_module",
+                "mounted_widget",
+                "focused_widget",
+                "safe_tool"
+              ],
+              "tv.pause": [
+                "selected_module",
+                "mounted_widget",
+                "focused_widget",
+                "safe_tool"
+              ],
+              "tv.play": [
+                "selected_module",
+                "mounted_widget",
+                "focused_widget",
+                "safe_tool"
+              ],
+              "tv.select_channel": [
+                "selected_module",
+                "mounted_widget",
+                "focused_widget",
+                "safe_tool"
+              ],
+              "widget.fullscreen_focus": [
+                "tool_intent_match",
+                "safe_tool",
+                "relevant_window_tool"
+              ],
+              "app.ai_dialog.open": [
+                "safe_tool",
+                "global_desktop_match"
+              ],
+              "app.command_palette.open": [
+                "safe_tool",
+                "global_desktop_match"
+              ],
+              "app.settings.open": [
+                "safe_tool",
+                "global_desktop_match"
+              ]
+            },
+            "excludedReasons": {
+              "app.sidebar.set": "module_tool_limit",
+              "board.add_widget": "low_score",
+              "widget.focus": "low_score",
+              "widget.remove": "low_score",
+              "widget.move": "low_score",
+              "widget.resize": "low_score",
+              "widget.bring_to_front": "low_score",
+              "board.auto_align": "low_score",
+              "board.switch": "low_score",
+              "board.create": "low_score",
+              "board.rename": "low_score",
+              "board.delete": "low_score",
+              "note.write": "module_mismatch",
+              "note.clear": "module_mismatch",
+              "todo.add_item": "module_mismatch",
+              "todo.complete_item": "module_mismatch",
+              "todo.clear_completed": "module_mismatch",
+              "countdown.set": "module_mismatch",
+              "countdown.pause": "module_mismatch",
+              "countdown.resume": "module_mismatch",
+              "countdown.reset": "module_mismatch",
+              "weather.set_city": "module_mismatch",
+              "calculator.set_display": "module_mismatch",
+              "headline.request_refresh": "module_mismatch",
+              "market.set_indices": "module_mismatch",
+              "worldClock.set_zones": "module_mismatch",
+              "converter.set": "module_mismatch",
+              "translate.set_draft": "module_mismatch",
+              "clipboard.add_text": "[redacted]",
+              "clipboard.clear": "[redacted]",
+              "music.search": "module_mismatch",
+              "music.play": "module_mismatch"
+            }
+          },
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.674Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.text_plan.select.request",
+          "status": "started",
+          "data": {
+            "input": "打開電視然後全屏",
+            "contextVersion": "ctx_qhy02y",
+            "toolCatalogVersion": "cat_2sumx"
+          },
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.674Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "status": "success",
+          "operationId": "call_gRGE37Zi4jsirZKZ",
+          "route": "function_call",
+          "toolName": "board.add_widget",
+          "message": "已添加小工具，已打开电视，浏览器阻止了原生全屏",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.675Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_result.send",
+          "status": "success",
+          "operationId": "call_gRGE37Zi4jsirZKZ",
+          "toolName": "board.add_widget",
+          "message": "已添加小工具，已打开电视，浏览器阻止了原生全屏",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.676Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "conversation.item.create"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.676Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "data": {
+            "eventType": "response.create"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.676Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_qhy02y",
+            "widgetCount": 2,
+            "boardId": "board_1782836879456_iy88oek9"
+          },
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.677Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_1o2yd2u",
+            "widgetCount": 2,
+            "boardId": "board_1782836879456_iy88oek9"
+          },
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.826Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_1o2yd2u",
+            "widgetCount": 2,
+            "boardId": "board_1782836879456_iy88oek9"
+          },
+          "commandTraceId": "voice_1782836884222_EEx4nWP5OBiB",
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.833Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836889934_2sbRpYpuWrN1",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.934Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836889934_2sbRpYpuWrN1",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.935Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836889934_2sbRpYpuWrN1",
+          "data": {
+            "eventType": "response.created"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:09.952Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836889934_2sbRpYpuWrN1",
+          "data": {
+            "eventType": "response.output_item.added"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:10.185Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836889934_2sbRpYpuWrN1",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:10.186Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836889934_2sbRpYpuWrN1",
+          "data": {
+            "eventType": "response.content_part.added"
+          },
+          "clientSessionId": "diag_652ad981-1577-4f2d-965f-b84b1608c1f2",
+          "clientCreatedAt": "2026-06-30T16:28:10.210Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        }
+      ],
+      "lastHarnessDiagnostics": null
+    }
+  },
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ]
+}

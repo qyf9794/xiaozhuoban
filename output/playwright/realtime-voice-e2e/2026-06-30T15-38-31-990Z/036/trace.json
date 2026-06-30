@@ -1,0 +1,1209 @@
+{
+  "id": "036",
+  "command": "便签记下今天继续回归测试",
+  "route": "shortcut-local",
+  "tools": [
+    "note.write"
+  ],
+  "realtime": [
+    {
+      "phase": "plan_select",
+      "input": "新建便签实例用于测试",
+      "request": {
+        "input": "新建便签实例用于测试",
+        "tools": [
+          {
+            "name": "note.write",
+            "description": "Write or append text in a note widget.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "note",
+            "requiresTarget": true
+          },
+          {
+            "name": "board.add_widget",
+            "description": "Add an existing widget definition to the current board.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "desktop"
+          }
+        ],
+        "moduleCatalog": [
+          {
+            "catalogVersion": "cat_tixwh",
+            "type": "board",
+            "displayName": "桌板",
+            "aliases": [
+              "桌板",
+              "桌面",
+              "布局",
+              "整理",
+              "排列"
+            ],
+            "capabilities": [
+              "board.add_widget | Add an existing widget definition to the current board."
+            ],
+            "shortcutExamples": [],
+            "riskSummary": [],
+            "toolNames": [
+              "board.add_widget"
+            ],
+            "concurrencyKeys": [],
+            "loadLevel": "catalog"
+          },
+          {
+            "catalogVersion": "cat_tixwh",
+            "type": "note",
+            "displayName": "note",
+            "aliases": [
+              "便签",
+              "笔记"
+            ],
+            "capabilities": [
+              "记便签",
+              "追加文本",
+              "清空便签",
+              "关闭窗口",
+              "note.write | Write or append text in a note widget. | requiresTarget"
+            ],
+            "shortcutExamples": [
+              "帮我记一下今天继续测试小桌板",
+              "清一下便签"
+            ],
+            "riskSummary": [
+              "清空便签内容需要确认"
+            ],
+            "toolNames": [
+              "note.write"
+            ],
+            "concurrencyKeys": [],
+            "loadLevel": "catalog"
+          }
+        ],
+        "toolCatalogVersion": "cat_tixwh",
+        "phase": "plan_select"
+      },
+      "response": {
+        "call": null,
+        "planSelection": {
+          "steps": [
+            {
+              "id": "e2e_seed-note_1",
+              "name": "board.add_widget",
+              "selectedModule": "app-shell",
+              "confidence": 0.94
+            },
+            {
+              "id": "e2e_seed-note_2",
+              "name": "note.write",
+              "selectedModule": "note",
+              "confidence": 0.94
+            }
+          ]
+        }
+      }
+    },
+    {
+      "phase": "plan_execute",
+      "input": "新建便签实例用于测试",
+      "request": {
+        "input": "新建便签实例用于测试",
+        "context": {
+          "contextVersion": "ctx_cmcnk2",
+          "boardId": "board_1782833983718_e17tqfdd",
+          "boardName": "我的桌板",
+          "availableBoards": [
+            {
+              "boardId": "board_1782833983718_e17tqfdd",
+              "name": "我的桌板",
+              "active": true
+            }
+          ],
+          "availableDefinitions": [
+            {
+              "definitionId": "wd_note_1782833983718_pu6lc318",
+              "type": "note",
+              "name": "便签"
+            },
+            {
+              "definitionId": "wd_todo_1782833983718_jwqubvkv",
+              "type": "todo",
+              "name": "待办"
+            },
+            {
+              "definitionId": "wd_calculator_1782833983718_8gsk1z77",
+              "type": "calculator",
+              "name": "计算器"
+            },
+            {
+              "definitionId": "wd_countdown_1782833983718_sasf0l72",
+              "type": "countdown",
+              "name": "倒计时"
+            },
+            {
+              "definitionId": "wd_weather_1782833983718_uiqlx15y",
+              "type": "weather",
+              "name": "天气"
+            },
+            {
+              "definitionId": "wd_headline_1782833983718_qa323p48",
+              "type": "headline",
+              "name": "重大新闻"
+            },
+            {
+              "definitionId": "wd_market_1782833983718_pavy8js2",
+              "type": "market",
+              "name": "全球指数"
+            },
+            {
+              "definitionId": "wd_music_1782833983718_wm6d469a",
+              "type": "music",
+              "name": "音乐播放器"
+            },
+            {
+              "definitionId": "wd_tv_1782833983718_jr4ln6mu",
+              "type": "tv",
+              "name": "电视播放"
+            },
+            {
+              "definitionId": "wd_dialClock_1782833983718_y9ej9ipu",
+              "type": "dialClock",
+              "name": "时钟"
+            },
+            {
+              "definitionId": "wd_worldClock_1782833983718_68hbhffn",
+              "type": "worldClock",
+              "name": "世界时钟"
+            },
+            {
+              "definitionId": "wd_translate_1782833983718_rs8u71sy",
+              "type": "translate",
+              "name": "快速翻译"
+            },
+            {
+              "definitionId": "wd_clipboard_1782833983718_urzcm9g3",
+              "type": "clipboard",
+              "name": "剪贴板历史"
+            },
+            {
+              "definitionId": "wd_converter_1782833983718_mdixjkf1",
+              "type": "converter",
+              "name": "单位换算"
+            },
+            {
+              "definitionId": "wd_recorder_1782833983718_ufhpq6yo",
+              "type": "recorder",
+              "name": "录音机"
+            },
+            {
+              "definitionId": "wd_messageBoard_1782833983718_nl1vl1ug",
+              "type": "messageBoard",
+              "name": "留言板"
+            },
+            {
+              "definitionId": "wd_gomoku_1782833983718_kwdnbkx5",
+              "type": "gomoku",
+              "name": "五子棋"
+            },
+            {
+              "definitionId": "wd_monopoly_1782833983718_w1z1swpb",
+              "type": "monopoly",
+              "name": "大富翁"
+            },
+            {
+              "definitionId": "wd_guandan_1782833983718_0a7r3bpd",
+              "type": "guandan",
+              "name": "掼蛋"
+            }
+          ],
+          "widgetCountsByType": {
+            "messageBoard": 1
+          },
+          "widgets": [
+            {
+              "widgetId": "wi_1782833983718_ao235hvv",
+              "definitionId": "wd_messageBoard_1782833983718_nl1vl1ug",
+              "type": "messageBoard",
+              "name": "留言板",
+              "order": 1,
+              "summary": "无摘要",
+              "recent": true
+            }
+          ],
+          "toolCatalogVersion": "cat_tixwh"
+        },
+        "contextVersion": "ctx_cmcnk2",
+        "toolCatalogVersion": "cat_tixwh",
+        "tools": [
+          {
+            "name": "note.write",
+            "description": "Write or append text in a note widget.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "note",
+            "requiresTarget": true
+          },
+          {
+            "name": "board.add_widget",
+            "description": "Add an existing widget definition to the current board.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "desktop"
+          }
+        ],
+        "planSelection": {
+          "steps": [
+            {
+              "id": "e2e_seed-note_1",
+              "name": "board.add_widget",
+              "selectedModule": "app-shell",
+              "confidence": 0.94
+            },
+            {
+              "id": "e2e_seed-note_2",
+              "name": "note.write",
+              "selectedModule": "note",
+              "confidence": 0.94
+            }
+          ]
+        },
+        "moduleContexts": [
+          {
+            "moduleType": "note",
+            "tools": [
+              {
+                "name": "board.add_widget",
+                "description": "Add an existing widget definition to the current board.",
+                "parameters": {
+                  "argumentKeys": [
+                    "definitionId",
+                    "mobileMode",
+                    "followUp"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "definitionId"
+                    ],
+                    "properties": {
+                      "definitionId": {
+                        "type": "string"
+                      },
+                      "mobileMode": {
+                        "type": "boolean"
+                      },
+                      "followUp": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "desktop",
+                "argumentKeys": [
+                  "definitionId",
+                  "mobileMode",
+                  "followUp"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "stateful",
+                "missingArgPolicy": "fail",
+                "examples": [
+                  "帮我记一下今天继续测试小桌板",
+                  "清一下便签",
+                  "记便签"
+                ]
+              },
+              {
+                "name": "widget.focus",
+                "description": "Focus an existing widget on the current board.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "desktop",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "idempotent",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "帮我记一下今天继续测试小桌板",
+                  "清一下便签",
+                  "记便签"
+                ]
+              },
+              {
+                "name": "widget.fullscreen_focus",
+                "description": "Enter fullscreen focus for an existing widget when supported.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "desktop",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "idempotent",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "帮我记一下今天继续测试小桌板",
+                  "清一下便签",
+                  "记便签"
+                ]
+              },
+              {
+                "name": "widget.remove",
+                "description": "Close a widget window on the current board.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "desktop",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "idempotent",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "关闭便签",
+                  "便签关掉",
+                  "把便签收起来"
+                ]
+              },
+              {
+                "name": "note.write",
+                "description": "Write or append text in a note widget.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId",
+                    "content",
+                    "mode"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId",
+                      "content"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      },
+                      "content": {
+                        "type": "string"
+                      },
+                      "mode": {
+                        "type": "string",
+                        "enum": [
+                          "replace",
+                          "append"
+                        ]
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "widget-detail",
+                "widgetType": "note",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId",
+                  "content",
+                  "mode"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "stateful",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "帮我记一下今天继续测试小桌板",
+                  "清一下便签",
+                  "记便签"
+                ]
+              },
+              {
+                "name": "note.clear",
+                "description": "Clear the content of a note widget.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "destructive",
+                "scope": "widget-detail",
+                "widgetType": "note",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "destructive",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "帮我记一下今天继续测试小桌板",
+                  "清一下便签",
+                  "记便签"
+                ]
+              }
+            ],
+            "toolSchemas": {
+              "board.add_widget": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "definitionId"
+                ],
+                "properties": {
+                  "definitionId": {
+                    "type": "string"
+                  },
+                  "mobileMode": {
+                    "type": "boolean"
+                  },
+                  "followUp": {
+                    "type": "object"
+                  }
+                }
+              },
+              "widget.focus": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  }
+                }
+              },
+              "widget.fullscreen_focus": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  }
+                }
+              },
+              "widget.remove": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  }
+                }
+              },
+              "note.write": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId",
+                  "content"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "replace",
+                      "append"
+                    ]
+                  }
+                }
+              },
+              "note.clear": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "instances": [],
+            "stateSummary": {
+              "instanceCount": 0,
+              "selectedToolHint": "note.write"
+            },
+            "shortcutExamples": [
+              "帮我记一下今天继续测试小桌板",
+              "清一下便签"
+            ],
+            "executionPolicy": {
+              "defaultMode": "sequential",
+              "canRunInParallelWith": [
+                "weather",
+                "music",
+                "headline",
+                "worldClock"
+              ]
+            },
+            "riskPolicy": {
+              "safe": [
+                "board.add_widget",
+                "widget.focus",
+                "widget.fullscreen_focus",
+                "widget.remove",
+                "note.write"
+              ],
+              "confirm": [],
+              "destructive": [
+                "note.clear"
+              ]
+            }
+          }
+        ],
+        "phase": "plan_execute"
+      },
+      "response": {
+        "call": null,
+        "plan": {
+          "id": "e2e_plan_seed-note",
+          "sourceText": "新建便签实例用于测试",
+          "normalizedText": "新建便签实例用于测试",
+          "commands": [
+            {
+              "id": "e2e_seed-note_1",
+              "module": "app-shell",
+              "tool": "board.add_widget",
+              "args": {
+                "definitionId": "wd_note"
+              },
+              "risk": "safe",
+              "confidence": 0.94,
+              "source": "realtime",
+              "requiresHarnessValidation": true
+            },
+            {
+              "id": "e2e_seed-note_2",
+              "module": "note",
+              "tool": "note.write",
+              "args": {
+                "widgetId": "wi_note",
+                "content": "新建便签实例用于测试",
+                "mode": "append"
+              },
+              "risk": "safe",
+              "confidence": 0.94,
+              "source": "realtime",
+              "requiresHarnessValidation": true
+            }
+          ],
+          "executionGroups": [
+            {
+              "id": "e2e_group_seed-note",
+              "mode": "sequential",
+              "commandIds": [
+                "e2e_seed-note_1",
+                "e2e_seed-note_2"
+              ]
+            }
+          ],
+          "dependencies": [],
+          "confidence": 0.94,
+          "createdBy": "realtime-2",
+          "requiresHarnessValidation": true
+        }
+      }
+    }
+  ],
+  "consoleErrors": [],
+  "relevantConsoleErrors": [],
+  "before": {
+    "bodyText": "桌板\n+ 新建\n我的桌板\n我的桌板\n添加 Widget\n▾\n⚙\n×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送\n×\n便签\nMarkdown/富文本便签\n×\n便签\nMarkdown/富文本便签\n⊞\n暂无其他在线用户\n聆听中 · 已添加小工具；已添加小工具；已写入便签\n完成：已写入便签\nlocal_standby · Realtime 0s · $0.0000\n新建便签实例用于测试 · 已添加小工具；已添加小工具；已写入便签\n聆听中 · 已添加小工具；已添加小工具；已写入便签\n完成：已写入便签\nlocal_standby · Realtime 0s · $0.0000\n新建便签实例用于测试 · 已添加小工具；已添加小工具；已写入便签",
+    "operation": "完成：已写入便签",
+    "runtime": "local_standby · Realtime 0s · $0.0000",
+    "widgets": [
+      {
+        "id": "wi_1782833983718_ao235hvv",
+        "className": "widget-box",
+        "zIndex": 1,
+        "rect": {
+          "x": 300,
+          "y": 72.796875,
+          "w": 240,
+          "h": 500
+        },
+        "text": "×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送",
+        "inputs": [
+          {
+            "placeholder": "输入留言，按 Enter 发送",
+            "ariaLabel": null,
+            "value": ""
+          }
+        ]
+      },
+      {
+        "id": "wi_1782833985423_urp08j20",
+        "className": "widget-box",
+        "zIndex": 2,
+        "rect": {
+          "x": 320,
+          "y": 92.796875,
+          "w": 240,
+          "h": 174
+        },
+        "text": "×\n便签\nMarkdown/富文本便签",
+        "inputs": [
+          {
+            "placeholder": "在这里记录你的想法...",
+            "ariaLabel": null,
+            "value": ""
+          }
+        ]
+      },
+      {
+        "id": "wi_1782833985426_3lkmb3ku",
+        "className": "widget-box is-focused",
+        "zIndex": 3,
+        "rect": {
+          "x": 340,
+          "y": 112.796875,
+          "w": 240,
+          "h": 174
+        },
+        "text": "×\n便签\nMarkdown/富文本便签",
+        "inputs": [
+          {
+            "placeholder": "在这里记录你的想法...",
+            "ariaLabel": null,
+            "value": "新建便签实例用于测试"
+          }
+        ]
+      }
+    ],
+    "byType": {
+      "calculator": [],
+      "clipboard": [],
+      "converter": [],
+      "countdown": [],
+      "dialClock": [],
+      "headline": [],
+      "market": [],
+      "messageBoard": [
+        {
+          "id": "wi_1782833983718_ao235hvv",
+          "className": "widget-box",
+          "zIndex": 1,
+          "rect": {
+            "x": 300,
+            "y": 72.796875,
+            "w": 240,
+            "h": 500
+          },
+          "text": "×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送",
+          "inputs": [
+            {
+              "placeholder": "输入留言，按 Enter 发送",
+              "ariaLabel": null,
+              "value": ""
+            }
+          ]
+        }
+      ],
+      "music": [],
+      "note": [
+        {
+          "id": "wi_1782833985423_urp08j20",
+          "className": "widget-box",
+          "zIndex": 2,
+          "rect": {
+            "x": 320,
+            "y": 92.796875,
+            "w": 240,
+            "h": 174
+          },
+          "text": "×\n便签\nMarkdown/富文本便签",
+          "inputs": [
+            {
+              "placeholder": "在这里记录你的想法...",
+              "ariaLabel": null,
+              "value": ""
+            }
+          ]
+        },
+        {
+          "id": "wi_1782833985426_3lkmb3ku",
+          "className": "widget-box is-focused",
+          "zIndex": 3,
+          "rect": {
+            "x": 340,
+            "y": 112.796875,
+            "w": 240,
+            "h": 174
+          },
+          "text": "×\n便签\nMarkdown/富文本便签",
+          "inputs": [
+            {
+              "placeholder": "在这里记录你的想法...",
+              "ariaLabel": null,
+              "value": "新建便签实例用于测试"
+            }
+          ]
+        }
+      ],
+      "recorder": [],
+      "todo": [],
+      "translate": [],
+      "tv": [],
+      "weather": [],
+      "worldClock": []
+    },
+    "auditLogs": [],
+    "diagnostics": {
+      "sessionId": "diag_7e31299c-8407-4766-a9d2-20f8bc2f98e0",
+      "exportedAt": "2026-06-30T15:39:47.006Z",
+      "events": [],
+      "lastHarnessDiagnostics": null
+    }
+  },
+  "after": {
+    "bodyText": "桌板\n+ 新建\n我的桌板\n我的桌板\n添加 Widget\n▾\n⚙\n×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送\n×\n便签\nMarkdown/富文本便签\n×\n便签\nMarkdown/富文本便签\n⊞\n暂无其他在线用户\n聆听中 · 已写入便签\n完成：已写入便签\nlocal_standby · Realtime 0s · $0.0000\n便签记下今天继续回归测试 · 已写入便签\n聆听中 · 已写入便签\n完成：已写入便签\nlocal_standby · Realtime 0s · $0.0000\n便签记下今天继续回归测试 · 已写入便签",
+    "operation": "完成：已写入便签",
+    "runtime": "local_standby · Realtime 0s · $0.0000",
+    "widgets": [
+      {
+        "id": "wi_1782833983718_ao235hvv",
+        "className": "widget-box",
+        "zIndex": 1,
+        "rect": {
+          "x": 300,
+          "y": 72.796875,
+          "w": 240,
+          "h": 500
+        },
+        "text": "×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送",
+        "inputs": [
+          {
+            "placeholder": "输入留言，按 Enter 发送",
+            "ariaLabel": null,
+            "value": ""
+          }
+        ]
+      },
+      {
+        "id": "wi_1782833985423_urp08j20",
+        "className": "widget-box",
+        "zIndex": 2,
+        "rect": {
+          "x": 320,
+          "y": 92.796875,
+          "w": 240,
+          "h": 174
+        },
+        "text": "×\n便签\nMarkdown/富文本便签",
+        "inputs": [
+          {
+            "placeholder": "在这里记录你的想法...",
+            "ariaLabel": null,
+            "value": ""
+          }
+        ]
+      },
+      {
+        "id": "wi_1782833985426_3lkmb3ku",
+        "className": "widget-box is-focused",
+        "zIndex": 3,
+        "rect": {
+          "x": 340,
+          "y": 112.796875,
+          "w": 240,
+          "h": 174
+        },
+        "text": "×\n便签\nMarkdown/富文本便签",
+        "inputs": [
+          {
+            "placeholder": "在这里记录你的想法...",
+            "ariaLabel": null,
+            "value": "新建便签实例用于测试\n今天继续回归测试"
+          }
+        ]
+      }
+    ],
+    "byType": {
+      "calculator": [],
+      "clipboard": [],
+      "converter": [],
+      "countdown": [],
+      "dialClock": [],
+      "headline": [],
+      "market": [],
+      "messageBoard": [
+        {
+          "id": "wi_1782833983718_ao235hvv",
+          "className": "widget-box",
+          "zIndex": 1,
+          "rect": {
+            "x": 300,
+            "y": 72.796875,
+            "w": 240,
+            "h": 500
+          },
+          "text": "×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送",
+          "inputs": [
+            {
+              "placeholder": "输入留言，按 Enter 发送",
+              "ariaLabel": null,
+              "value": ""
+            }
+          ]
+        }
+      ],
+      "music": [],
+      "note": [
+        {
+          "id": "wi_1782833985423_urp08j20",
+          "className": "widget-box",
+          "zIndex": 2,
+          "rect": {
+            "x": 320,
+            "y": 92.796875,
+            "w": 240,
+            "h": 174
+          },
+          "text": "×\n便签\nMarkdown/富文本便签",
+          "inputs": [
+            {
+              "placeholder": "在这里记录你的想法...",
+              "ariaLabel": null,
+              "value": ""
+            }
+          ]
+        },
+        {
+          "id": "wi_1782833985426_3lkmb3ku",
+          "className": "widget-box is-focused",
+          "zIndex": 3,
+          "rect": {
+            "x": 340,
+            "y": 112.796875,
+            "w": 240,
+            "h": 174
+          },
+          "text": "×\n便签\nMarkdown/富文本便签",
+          "inputs": [
+            {
+              "placeholder": "在这里记录你的想法...",
+              "ariaLabel": null,
+              "value": "新建便签实例用于测试\n今天继续回归测试"
+            }
+          ]
+        }
+      ],
+      "recorder": [],
+      "todo": [],
+      "translate": [],
+      "tv": [],
+      "weather": [],
+      "worldClock": []
+    },
+    "auditLogs": [
+      {
+        "id": "audit_1782833987129_7gfk1v",
+        "operationId": "shortcut_1782833987126_5mdunb",
+        "boardId": "board_1782833983718_e17tqfdd",
+        "route": "shortcut",
+        "sourceMode": "shortcut",
+        "transcript": "便签记下今天继续回归测试",
+        "normalized": "便签记下今天继续回归测试",
+        "candidateModules": [
+          {
+            "type": "note",
+            "score": 0.8099999999999999,
+            "reason": "alias+action_word+focused_widget"
+          },
+          {
+            "type": "music",
+            "score": 0.18,
+            "reason": "action_word"
+          },
+          {
+            "type": "countdown",
+            "score": 0.18,
+            "reason": "action_word"
+          }
+        ],
+        "selectedModule": "note",
+        "selectedToolHint": "note.write",
+        "selectionConfidence": 0.81,
+        "learningCandidate": false,
+        "toolName": "note.write",
+        "sanitizedArgs": {
+          "widgetId": "wi_1782833985426_3lkmb3ku",
+          "content": "今天继续回归测试",
+          "mode": "append"
+        },
+        "resultStatus": "success",
+        "resultMessage": "已写入便签",
+        "durationMs": 3,
+        "createdAt": "2026-06-30T15:39:47.129Z"
+      }
+    ],
+    "diagnostics": {
+      "sessionId": "diag_7e31299c-8407-4766-a9d2-20f8bc2f98e0",
+      "exportedAt": "2026-06-30T15:39:48.737Z",
+      "events": [
+        {
+          "type": "voice.text_command.submit",
+          "commandTraceId": "cmd_a4186fb9-f6fb-437b-98e2-fba396c367e7",
+          "status": "started",
+          "data": {
+            "input": "便签记下今天继续回归测试"
+          },
+          "clientSessionId": "diag_7e31299c-8407-4766-a9d2-20f8bc2f98e0",
+          "clientCreatedAt": "2026-06-30T15:39:47.126Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "commandTraceId": "cmd_a4186fb9-f6fb-437b-98e2-fba396c367e7",
+          "status": "running",
+          "operationId": "shortcut_1782833987126_5mdunb",
+          "route": "shortcut",
+          "toolName": "note.write",
+          "clientSessionId": "diag_7e31299c-8407-4766-a9d2-20f8bc2f98e0",
+          "clientCreatedAt": "2026-06-30T15:39:47.127Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_12wln3g",
+            "widgetCount": 3,
+            "boardId": "board_1782833983718_e17tqfdd"
+          },
+          "commandTraceId": "cmd_a4186fb9-f6fb-437b-98e2-fba396c367e7",
+          "clientSessionId": "diag_7e31299c-8407-4766-a9d2-20f8bc2f98e0",
+          "clientCreatedAt": "2026-06-30T15:39:47.128Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "commandTraceId": "cmd_a4186fb9-f6fb-437b-98e2-fba396c367e7",
+          "status": "success",
+          "operationId": "shortcut_1782833987126_5mdunb",
+          "route": "shortcut",
+          "toolName": "note.write",
+          "message": "已写入便签",
+          "clientSessionId": "diag_7e31299c-8407-4766-a9d2-20f8bc2f98e0",
+          "clientCreatedAt": "2026-06-30T15:39:47.128Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_result.skip",
+          "status": "skipped",
+          "operationId": "shortcut_1782833987126_5mdunb",
+          "toolName": "note.write",
+          "message": "已写入便签",
+          "commandTraceId": "cmd_a4186fb9-f6fb-437b-98e2-fba396c367e7",
+          "data": {
+            "source": "shortcut"
+          },
+          "clientSessionId": "diag_7e31299c-8407-4766-a9d2-20f8bc2f98e0",
+          "clientCreatedAt": "2026-06-30T15:39:47.129Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_12wln3g",
+            "widgetCount": 3,
+            "boardId": "board_1782833983718_e17tqfdd"
+          },
+          "commandTraceId": "cmd_a4186fb9-f6fb-437b-98e2-fba396c367e7",
+          "clientSessionId": "diag_7e31299c-8407-4766-a9d2-20f8bc2f98e0",
+          "clientCreatedAt": "2026-06-30T15:39:47.129Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.text_command.result",
+          "commandTraceId": "cmd_a4186fb9-f6fb-437b-98e2-fba396c367e7",
+          "status": "success",
+          "route": "shortcut",
+          "toolName": "note.write",
+          "operationId": "shortcut_1782833987126_5mdunb",
+          "message": "已写入便签",
+          "data": {
+            "input": "便签记下今天继续回归测试"
+          },
+          "clientSessionId": "diag_7e31299c-8407-4766-a9d2-20f8bc2f98e0",
+          "clientCreatedAt": "2026-06-30T15:39:47.129Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        }
+      ],
+      "lastHarnessDiagnostics": {
+        "commandTraceId": "cmd_a4186fb9-f6fb-437b-98e2-fba396c367e7",
+        "rawInput": "便签记下今天继续回归测试",
+        "normalizedText": "便签记下今天继续回归测试",
+        "usedRealtime": false,
+        "segments": [
+          {
+            "id": "segment_1",
+            "text": "便签记下今天继续回归测试",
+            "connector": "start"
+          }
+        ],
+        "candidateModules": [
+          {
+            "type": "note",
+            "score": 0.8099999999999999,
+            "reason": "alias+action_word+focused_widget"
+          },
+          {
+            "type": "music",
+            "score": 0.18,
+            "reason": "action_word"
+          },
+          {
+            "type": "countdown",
+            "score": 0.18,
+            "reason": "action_word"
+          }
+        ],
+        "toolResults": [
+          {
+            "id": "shortcut_1782833987126_5mdunb",
+            "tool": "note.write",
+            "status": "success",
+            "message": "已写入便签"
+          }
+        ],
+        "route": "shortcut",
+        "commandPlan": {
+          "id": "plan_1782833987127_8zm7c7",
+          "createdBy": "local",
+          "commands": [
+            {
+              "id": "shortcut_1782833987126_5mdunb",
+              "module": "note",
+              "tool": "note.write",
+              "risk": "safe",
+              "source": "shortcut",
+              "argKeys": "[truncated]"
+            }
+          ],
+          "executionGroups": [
+            {
+              "id": "group_1",
+              "mode": "sequential",
+              "commandIds": "[truncated]"
+            }
+          ]
+        },
+        "learningCandidate": false,
+        "status": "success",
+        "message": "已写入便签",
+        "pendingConfirmation": false
+      }
+    }
+  },
+  "failures": []
+}

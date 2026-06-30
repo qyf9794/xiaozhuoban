@@ -175,7 +175,7 @@ describe("OpenAI realtime adapter helpers", () => {
       { responseMode: "voice" }
     );
 
-    expect(events[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio", "text"] } });
+    expect(events[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio"] } });
   });
 
   it("creates realtime text command events with text-only response output", () => {
@@ -235,7 +235,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "session.update",
         session: expect.objectContaining({
           type: "realtime",
-          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__execute_command" })]),
+          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
           tool_choice: "auto"
         })
       })
@@ -249,7 +249,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "session.update",
         session: expect.objectContaining({
           type: "realtime",
-          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__execute_command" })]),
+          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
           tool_choice: "auto"
         })
       }),
@@ -276,7 +276,7 @@ describe("OpenAI realtime adapter helpers", () => {
       }),
       expect.objectContaining({ type: "realtime.event.send", commandTraceId: "trace_text_2", data: { eventType: "response.cancel" } }),
       expect.objectContaining({
-        type: "realtime.text_command.reset_command_tool",
+        type: "realtime.text_command.reset_selector_tool",
         status: "sent",
         commandTraceId: "trace_text_2",
         data: { toolCount: expect.any(Number) }
@@ -367,7 +367,7 @@ describe("OpenAI realtime adapter helpers", () => {
       }
     ).handleRealtimeLifecycleEvent({ type: "response.done", response: { id: "resp_voice_1" } });
 
-    expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio", "text"] } });
+    expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio"] } });
   });
 
   it("tracks active realtime responses through lifecycle events", () => {
@@ -657,7 +657,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "session.update",
         session: expect.objectContaining({
           type: "realtime",
-          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__execute_command" })]),
+          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
           tool_choice: "auto"
         })
       })
@@ -670,7 +670,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "session.update",
         session: expect.objectContaining({
           type: "realtime",
-          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__execute_command" })]),
+          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
           tool_choice: "auto"
         })
       }),
@@ -689,7 +689,7 @@ describe("OpenAI realtime adapter helpers", () => {
     ]);
     expect(diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        type: "realtime.text_command.reset_command_tool",
+        type: "realtime.text_command.reset_selector_tool",
         status: "sent",
         commandTraceId: "trace_text_1",
         data: { toolCount: expect.any(Number) }
@@ -835,8 +835,8 @@ describe("OpenAI realtime adapter helpers", () => {
       .queuedEvents[0];
     expect(event.type).toBe("session.update");
     expect(event.session.type).toBe("realtime");
-    expect(event.session.instructions).toContain("assistant.execute_command");
-    expect(event.session.tools[0].name).toBe("assistant__dot__execute_command");
+    expect(event.session.instructions).toContain("assistant.select_tool");
+    expect(event.session.tools[0].name).toBe("assistant__dot__select_tool");
   });
 
   it("adds the active command trace id to adapter diagnostics", () => {
@@ -1102,6 +1102,110 @@ describe("OpenAI realtime adapter helpers", () => {
         data: { query: "陈奕迅 十年", kind: "song" }
       })
     ]));
+  });
+
+  it("normalizes realtime countdown duration aliases before Harness validation", () => {
+    const calls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall(call) {
+        calls.push({ id: call.id, name: call.name, arguments: call.arguments as Record<string, unknown> });
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "countdown.set",
+        description: "设置倒计时",
+        parameters: createStrictObjectSchema({
+          widgetId: { type: "string", required: true },
+          hours: { type: "number" },
+          minutes: { type: "number" },
+          seconds: { type: "number" },
+          totalSeconds: { type: "number" },
+          start: { type: "boolean" }
+        }),
+        scope: "widget-detail",
+        widgetType: "countdown",
+        requiresTarget: true
+      },
+      {
+        name: "board.add_widget",
+        description: "添加小工具",
+        parameters: createStrictObjectSchema({
+          definitionId: { type: "string", required: true },
+          followUp: { type: "object" }
+        }),
+        scope: "desktop"
+      },
+      {
+        name: "note.write",
+        description: "写便签",
+        parameters: createStrictObjectSchema({
+          widgetId: { type: "string", required: true },
+          content: { type: "string", required: true },
+          mode: { type: "string" }
+        }),
+        scope: "widget-detail",
+        widgetType: "note",
+        requiresTarget: true
+      }
+    ]);
+    Object.assign(adapter as unknown as { sessionReady: boolean }, { sessionReady: true });
+
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "response.output_item.done",
+      item: {
+        type: "function_call",
+        call_id: "call_countdown_alias",
+        name: "countdown__dot__set",
+        arguments: JSON.stringify({ widgetId: "wi_countdown", durationMs: 600_000, autoStart: true })
+      }
+    });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "response.output_item.done",
+      item: {
+        type: "function_call",
+        call_id: "call_countdown_followup_alias",
+        name: "board__dot__add_widget",
+        arguments: JSON.stringify({
+          definitionId: "wd_countdown",
+          followUp: { name: "countdown.set", arguments: { durationMs: 300_000, autoStart: true } }
+        })
+      }
+    });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "response.output_item.done",
+      item: {
+        type: "function_call",
+        call_id: "call_note_text_alias",
+        name: "note__dot__write",
+        arguments: JSON.stringify({ widgetId: "wi_note", text: "今天测试语音", mode: "append" })
+      }
+    });
+
+    expect(calls).toEqual([
+      { id: "call_countdown_alias", name: "countdown.set", arguments: { widgetId: "wi_countdown", totalSeconds: 600, start: true } },
+      {
+        id: "call_countdown_followup_alias",
+        name: "board.add_widget",
+        arguments: {
+          definitionId: "wd_countdown",
+          followUp: { name: "countdown.set", arguments: { totalSeconds: 300, start: true } }
+        }
+      },
+      { id: "call_note_text_alias", name: "note.write", arguments: { widgetId: "wi_note", content: "今天测试语音", mode: "append" } }
+    ]);
   });
 
   it("records realtime voice speech and transcript diagnostics under the same trace", () => {
@@ -1433,8 +1537,8 @@ describe("OpenAI realtime adapter helpers", () => {
       .queuedEvents[0];
     expect(tools.map((tool) => tool.name)).toContain("board.add_widget");
     expect(event.session.type).toBe("realtime");
-    expect(event.session.tools[0].name).toBe("assistant__dot__execute_command");
-    expect(JSON.stringify(event.session.tools[0].parameters)).toContain("command");
+    expect(event.session.tools[0].name).toBe("assistant__dot__select_tool");
+    expect(JSON.stringify(event.session.tools[0].parameters)).toContain("board.add_widget");
     expect(JSON.stringify(event.session.tools[0].parameters)).not.toContain("widgetId");
   });
 

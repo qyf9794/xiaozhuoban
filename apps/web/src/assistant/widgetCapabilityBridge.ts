@@ -308,8 +308,26 @@ function createTvActions(store: WidgetCapabilityStore, bridge: WidgetCapabilityB
         widgetType: "tv",
         requiresTarget: true
       },
-      execute(args, context) {
-        return invokeCapability(store, bridge, context, "tv", "fullscreen", args, "已全屏电视");
+      async execute(args, context) {
+        const target = getTarget(store, context, "tv");
+        if (isToolResult(target)) return target;
+        try {
+          const result = await bridge.invoke(target.widget.id, "fullscreen", args as Record<string, unknown>, context);
+          if (result.message === "已执行小工具操作") {
+            return success("已全屏电视", { widgetId: target.widget.id, capabilityName: "fullscreen" });
+          }
+          return result;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (/permission|gesture|fullscreen/i.test(message)) {
+            return success("已打开电视，浏览器阻止了原生全屏", {
+              widgetId: target.widget.id,
+              capabilityName: "fullscreen",
+              nativeFullscreenBlocked: true
+            });
+          }
+          throw error;
+        }
       }
     }),
     defineAction<WidgetCapabilityArgs>({

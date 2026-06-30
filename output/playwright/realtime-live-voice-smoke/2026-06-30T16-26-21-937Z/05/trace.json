@@ -1,0 +1,1298 @@
+{
+  "id": "05",
+  "command": "上海天气",
+  "before": {
+    "bodyText": "桌板\n+ 新建\n我的桌板\n我的桌板\n添加 Widget\n▾\n⚙\n×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送\n⊞\n暂无其他在线用户",
+    "widgets": [
+      {
+        "id": "wi_1782836830175_vs5tsjfy",
+        "text": "×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送",
+        "className": "widget-box"
+      }
+    ],
+    "auditLogs": [],
+    "diagnostics": {
+      "sessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+      "exportedAt": "2026-06-30T16:27:11.209Z",
+      "events": [
+        {
+          "type": "realtime.runtime.disconnect",
+          "status": "manual",
+          "data": {
+            "mode": "local_standby",
+            "connected": false
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:10.174Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "disconnected",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:10.175Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tools.update",
+          "status": "queued_or_sent",
+          "data": {
+            "toolCount": 52,
+            "tools": [
+              "board.add_widget",
+              "widget.focus",
+              "widget.fullscreen_focus",
+              "widget.remove",
+              "widget.move",
+              "widget.resize",
+              "widget.bring_to_front",
+              "board.auto_align",
+              "board.switch",
+              "board.create",
+              "board.rename",
+              "board.delete"
+            ],
+            "toolCatalogVersion": "cat_sdej7i"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:10.189Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "queued_or_dropped",
+          "data": {
+            "eventType": "session.update"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:10.189Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_1i4npc8",
+            "widgetCount": 1,
+            "boardId": "board_1782836830175_wbettmzf"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:10.189Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_1i4npc8",
+            "widgetCount": 1,
+            "boardId": "board_1782836830175_wbettmzf"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:10.190Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        }
+      ],
+      "lastHarnessDiagnostics": null
+    }
+  },
+  "after": {
+    "bodyText": "桌板\n+ 新建\n我的桌板\n我的桌板\n添加 Widget\n▾\n⚙\n×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送\n×\n天气\nweather\n⛅\n上海\n▾\n22°C\n多云 · 风速 8 km/h\n明天\n⛅\n少云\n27° / 19°\n周四\n☀️\n晴\n28° / 20°\n⊞\n暂无其他在线用户\n\n上海天氣\n\n聆听中 · 上海天氣\n完成：已切换天气城市\nrealtime_dialogue_window · Realtime 0s · $0.0000\n聆听中 · 上海天氣\n完成：已切换天气城市\nrealtime_dialogue_window · Realtime 0s · $0.0000",
+    "widgets": [
+      {
+        "id": "wi_1782836830175_vs5tsjfy",
+        "text": "×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送",
+        "className": "widget-box"
+      },
+      {
+        "id": "wi_1782836838863_x02x5o6a",
+        "text": "×\n天气\nweather\n⛅\n上海\n▾\n22°C\n多云 · 风速 8 km/h\n明天\n⛅\n少云\n27° / 19°\n周四\n☀️\n晴\n28° / 20°",
+        "className": "widget-box is-focused"
+      }
+    ],
+    "auditLogs": [
+      {
+        "id": "audit_1782836839931_a3jmfb",
+        "operationId": "call_RYfYwbu8Tb55Ibeh",
+        "boardId": "board_1782836830175_wbettmzf",
+        "route": "function_call",
+        "sourceMode": "realtime",
+        "transcript": "weather.set_city",
+        "learningCandidate": false,
+        "toolName": "weather.set_city",
+        "sanitizedArgs": {
+          "widgetId": "wi_1782836838863_x02x5o6a",
+          "city": "上海"
+        },
+        "resultStatus": "success",
+        "resultMessage": "已切换天气城市",
+        "durationMs": 2,
+        "createdAt": "2026-06-30T16:27:19.931Z"
+      },
+      {
+        "id": "audit_1782836838872_v8tzaz",
+        "operationId": "call_JTB834KK2xt2k740",
+        "boardId": "board_1782836830175_wbettmzf",
+        "route": "function_call",
+        "sourceMode": "realtime",
+        "transcript": "board.add_widget",
+        "learningCandidate": false,
+        "toolName": "board.add_widget",
+        "sanitizedArgs": {
+          "definitionId": "wd_weather_1782836830175_bkcxx174",
+          "followUp": {
+            "name": "weather.set_city",
+            "arguments": {
+              "city": "上海"
+            }
+          }
+        },
+        "resultStatus": "success",
+        "resultMessage": "已添加小工具，已切换天气城市",
+        "durationMs": 11,
+        "createdAt": "2026-06-30T16:27:18.872Z"
+      }
+    ],
+    "diagnostics": {
+      "sessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+      "exportedAt": "2026-06-30T16:27:20.377Z",
+      "events": [
+        {
+          "type": "realtime.runtime.disconnect",
+          "status": "manual",
+          "data": {
+            "mode": "local_standby",
+            "connected": false
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:10.174Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "disconnected",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:10.175Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tools.update",
+          "status": "queued_or_sent",
+          "data": {
+            "toolCount": 52,
+            "tools": [
+              "board.add_widget",
+              "widget.focus",
+              "widget.fullscreen_focus",
+              "widget.remove",
+              "widget.move",
+              "widget.resize",
+              "widget.bring_to_front",
+              "board.auto_align",
+              "board.switch",
+              "board.create",
+              "board.rename",
+              "board.delete"
+            ],
+            "toolCatalogVersion": "cat_sdej7i"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:10.189Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "queued_or_dropped",
+          "data": {
+            "eventType": "session.update"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:10.189Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_1i4npc8",
+            "widgetCount": 1,
+            "boardId": "board_1782836830175_wbettmzf"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:10.189Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_1i4npc8",
+            "widgetCount": 1,
+            "boardId": "board_1782836830175_wbettmzf"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:10.190Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.connect.click",
+          "commandTraceId": "voice_connect_29718c75-c7a1-4c70-8745-b88bcda37ead",
+          "status": "started",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:11.288Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "connecting",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:11.288Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.connect.start",
+          "status": "connecting",
+          "data": {
+            "mode": "audio"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:11.288Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.microphone.permission",
+          "status": "error",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:11.289Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.microphone.stream",
+          "status": "success",
+          "data": {
+            "audioTracks": "[redacted]"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:11.410Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.session.request",
+          "status": "missing_auth",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:11.421Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.session.created",
+          "status": "success",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:11.879Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "configuring",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:13.426Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.data_channel.open",
+          "status": "configuring",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:13.426Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "data": {
+            "eventType": "session.update"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:13.426Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tools.update",
+          "status": "queued_or_sent",
+          "data": {
+            "toolCount": 52,
+            "tools": [
+              "board.add_widget",
+              "widget.focus",
+              "widget.fullscreen_focus",
+              "widget.remove",
+              "widget.move",
+              "widget.resize",
+              "widget.bring_to_front",
+              "board.auto_align",
+              "board.switch",
+              "board.create",
+              "board.rename",
+              "board.delete"
+            ],
+            "toolCatalogVersion": "cat_sdej7i"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:13.428Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "data": {
+            "eventType": "session.update"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:13.428Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "data": {
+            "eventType": "session.created"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:13.652Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "data": {
+            "eventType": "session.updated"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:14.565Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.session.updated",
+          "status": "connected",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:14.566Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "connected",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:14.566Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.connect.result",
+          "commandTraceId": "voice_connect_29718c75-c7a1-4c70-8745-b88bcda37ead",
+          "status": "success",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:14.566Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "data": {
+            "eventType": "session.updated"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:14.590Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.session.updated",
+          "status": "connected",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:14.590Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "connected",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:14.590Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "eventType": "input_audio_buffer.speech_started"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:14.744Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.voice.speech_started",
+          "status": "listening",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "itemId": "item_DwVakCPwaRgCxJLHp5a30",
+            "audioStartMs": "[redacted]"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:14.744Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "eventType": "input_audio_buffer.speech_stopped"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:16.533Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.voice.speech_stopped",
+          "status": "committed",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "itemId": "item_DwVakCPwaRgCxJLHp5a30",
+            "audioEndMs": "[redacted]"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:16.533Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "eventType": "input_audio_buffer.committed"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:16.533Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:16.533Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:16.534Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "eventType": "response.created"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:16.536Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "eventType": "conversation.item.input_audio_transcription.completed"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.035Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.voice.user_transcript",
+          "status": "success",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "itemId": "item_DwVakCPwaRgCxJLHp5a30",
+            "transcript": "上海天氣"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.036Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "eventType": "response.output_item.added"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.076Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.078Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "eventType": "response.function_call_arguments.done"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.393Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.function_call.selection",
+          "status": "received",
+          "operationId": "call_Yn75LPHFbSAPStvC",
+          "toolName": "assistant.select_tool",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.393Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "eventType": "session.update"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.394Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_selection.success",
+          "status": "success",
+          "operationId": "call_Yn75LPHFbSAPStvC",
+          "toolName": "weather.set_city",
+          "data": {
+            "targetHint": "上海",
+            "selectedModule": "weather",
+            "confidence": 0.95
+          },
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.394Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_selection.result_deferred",
+          "status": "pending_session_update",
+          "operationId": "call_Yn75LPHFbSAPStvC",
+          "toolName": "weather.set_city",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.395Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.395Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "eventType": "response.output_item.done"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.395Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "eventType": "response.done"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.398Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.voice.user_transcript_unhandled",
+          "status": "started",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "itemId": "item_DwVakCPwaRgCxJLHp5a30",
+            "input": "上海天氣"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.398Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.voice.user_transcript_unhandled",
+          "status": "success",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "itemId": "item_DwVakCPwaRgCxJLHp5a30",
+            "input": "上海天氣"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.398Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "data": {
+            "eventType": "session.updated"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.867Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.session.updated",
+          "status": "connected",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.868Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "connected",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.869Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_selection.result_send_after_session_update",
+          "status": "sent",
+          "operationId": "call_Yn75LPHFbSAPStvC",
+          "toolName": "assistant.select_tool",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.869Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_result.send",
+          "status": "success",
+          "operationId": "call_Yn75LPHFbSAPStvC",
+          "toolName": "assistant.select_tool",
+          "message": "已选择工具，正在读取所需上下文。",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.869Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "eventType": "conversation.item.create"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.870Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "commandTraceId": "voice_1782836834744_RgCxJLHp5a30",
+          "data": {
+            "eventType": "response.create"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:17.870Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836838118_Ly1AUl1CDKPV",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.118Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836838118_Ly1AUl1CDKPV",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.119Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836838118_Ly1AUl1CDKPV",
+          "data": {
+            "eventType": "response.created"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.137Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836838118_Ly1AUl1CDKPV",
+          "data": {
+            "eventType": "response.output_item.added"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.505Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836838118_Ly1AUl1CDKPV",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.505Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836838118_Ly1AUl1CDKPV",
+          "data": {
+            "eventType": "response.function_call_arguments.done"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.860Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.function_call.tool",
+          "status": "received",
+          "operationId": "call_JTB834KK2xt2k740",
+          "toolName": "board.add_widget",
+          "commandTraceId": "voice_1782836838118_Ly1AUl1CDKPV",
+          "data": {
+            "definitionId": "wd_weather_1782836830175_bkcxx174"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.861Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "status": "running",
+          "operationId": "call_JTB834KK2xt2k740",
+          "route": "function_call",
+          "toolName": "board.add_widget",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.862Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_sfyzw0",
+            "widgetCount": 2,
+            "boardId": "board_1782836830175_wbettmzf"
+          },
+          "commandTraceId": "voice_1782836838118_Ly1AUl1CDKPV",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.868Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_1qclc9i",
+            "widgetCount": 2,
+            "boardId": "board_1782836830175_wbettmzf"
+          },
+          "commandTraceId": "voice_1782836838118_Ly1AUl1CDKPV",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.870Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "status": "success",
+          "operationId": "call_JTB834KK2xt2k740",
+          "route": "function_call",
+          "toolName": "board.add_widget",
+          "message": "已添加小工具，已切换天气城市",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.871Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_result.send",
+          "status": "success",
+          "operationId": "call_JTB834KK2xt2k740",
+          "toolName": "board.add_widget",
+          "message": "已添加小工具，已切换天气城市",
+          "commandTraceId": "voice_1782836838118_Ly1AUl1CDKPV",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.871Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "commandTraceId": "voice_1782836838118_Ly1AUl1CDKPV",
+          "data": {
+            "eventType": "conversation.item.create"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.872Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_1qclc9i",
+            "widgetCount": 2,
+            "boardId": "board_1782836830175_wbettmzf"
+          },
+          "commandTraceId": "voice_1782836838118_Ly1AUl1CDKPV",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.873Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836838118_Ly1AUl1CDKPV",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.873Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836838118_Ly1AUl1CDKPV",
+          "data": {
+            "eventType": "response.output_item.done"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.873Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836838118_Ly1AUl1CDKPV",
+          "data": {
+            "eventType": "response.done"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.874Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.response.create_after_tool_result",
+          "status": "sent",
+          "commandTraceId": "voice_1782836838118_Ly1AUl1CDKPV",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.874Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "commandTraceId": "voice_1782836838118_Ly1AUl1CDKPV",
+          "data": {
+            "eventType": "response.create"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.874Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_1qclc9i",
+            "widgetCount": 2,
+            "boardId": "board_1782836830175_wbettmzf"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:18.891Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836839309_Eisf1o4xblnK",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:19.310Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836839309_Eisf1o4xblnK",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:19.312Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836839309_Eisf1o4xblnK",
+          "data": {
+            "eventType": "response.created"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:19.327Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836839309_Eisf1o4xblnK",
+          "data": {
+            "eventType": "response.output_item.added"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:19.692Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836839309_Eisf1o4xblnK",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:19.693Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836839309_Eisf1o4xblnK",
+          "data": {
+            "eventType": "response.function_call_arguments.done"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:19.928Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.function_call.tool",
+          "status": "received",
+          "operationId": "call_RYfYwbu8Tb55Ibeh",
+          "toolName": "weather.set_city",
+          "commandTraceId": "voice_1782836839309_Eisf1o4xblnK",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:19.929Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "status": "running",
+          "operationId": "call_RYfYwbu8Tb55Ibeh",
+          "route": "function_call",
+          "toolName": "weather.set_city",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:19.929Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_1qclc9i",
+            "widgetCount": 2,
+            "boardId": "board_1782836830175_wbettmzf"
+          },
+          "commandTraceId": "voice_1782836839309_Eisf1o4xblnK",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:19.930Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "status": "success",
+          "operationId": "call_RYfYwbu8Tb55Ibeh",
+          "route": "function_call",
+          "toolName": "weather.set_city",
+          "message": "已切换天气城市",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:19.931Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_result.send",
+          "status": "success",
+          "operationId": "call_RYfYwbu8Tb55Ibeh",
+          "toolName": "weather.set_city",
+          "message": "已切换天气城市",
+          "commandTraceId": "voice_1782836839309_Eisf1o4xblnK",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:19.931Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "commandTraceId": "voice_1782836839309_Eisf1o4xblnK",
+          "data": {
+            "eventType": "conversation.item.create"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:19.931Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_1qclc9i",
+            "widgetCount": 2,
+            "boardId": "board_1782836830175_wbettmzf"
+          },
+          "commandTraceId": "voice_1782836839309_Eisf1o4xblnK",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:19.931Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836839309_Eisf1o4xblnK",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:19.931Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836839309_Eisf1o4xblnK",
+          "data": {
+            "eventType": "response.output_item.done"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:19.932Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836839309_Eisf1o4xblnK",
+          "data": {
+            "eventType": "response.done"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:19.933Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.response.create_after_tool_result",
+          "status": "sent",
+          "commandTraceId": "voice_1782836839309_Eisf1o4xblnK",
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:19.933Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "commandTraceId": "voice_1782836839309_Eisf1o4xblnK",
+          "data": {
+            "eventType": "response.create"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:19.933Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836840165_HlEbfqVIXD2A",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:20.165Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836840165_HlEbfqVIXD2A",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:20.166Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836840165_HlEbfqVIXD2A",
+          "data": {
+            "eventType": "response.created"
+          },
+          "clientSessionId": "diag_e788a0b4-71ae-40e1-b63a-535460c0e31d",
+          "clientCreatedAt": "2026-06-30T16:27:20.199Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        }
+      ],
+      "lastHarnessDiagnostics": null
+    }
+  },
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ]
+}

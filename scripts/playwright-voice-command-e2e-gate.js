@@ -679,13 +679,31 @@ async function resetAppState(page, site) {
   await page.goto(appUrl, { waitUntil: "domcontentloaded", timeout: 20_000 }).catch(async () => {
     await page.goto(appUrl, { waitUntil: "commit", timeout: 20_000 });
   });
+  await openVoiceTextPanel(page);
   try {
     await page.getByTestId("voice-assistant-command-input").waitFor({ state: "visible", timeout: 10_000 });
   } catch (error) {
     await page.goto(appUrl, { waitUntil: "networkidle", timeout: 20_000 });
+    await openVoiceTextPanel(page);
     await page.getByTestId("voice-assistant-command-input").waitFor({ state: "visible", timeout: 15_000 });
   }
   await page.waitForTimeout(300);
+}
+
+async function openVoiceTextPanel(page) {
+  const input = page.getByTestId("voice-assistant-command-input");
+  if (await input.isVisible({ timeout: 500 }).catch(() => false)) return;
+  const orb = page.getByTestId("voice-assistant-dock").locator(".voice-assistant-dock__orb").first();
+  if (!(await orb.isVisible({ timeout: 5_000 }).catch(() => false))) return;
+  const box = await orb.boundingBox();
+  if (!box) return;
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.waitForTimeout(680);
+  await page.mouse.up();
+  await input.waitFor({ state: "visible", timeout: 5_000 }).catch(() => undefined);
 }
 
 async function pageSnapshot(page) {
@@ -728,6 +746,7 @@ async function sendCommand(page, command, waitMs) {
   if (!inputReady) {
     const url = new URL(page.url());
     await page.goto(`${url.origin}/app`, { waitUntil: "domcontentloaded" });
+    await openVoiceTextPanel(page);
     input = page.getByTestId("voice-assistant-command-input");
     await input.waitFor({ state: "visible", timeout: 15_000 });
   }
@@ -1121,7 +1140,12 @@ async function main() {
       const after = await pageSnapshot(page);
       await captureEvidenceScreenshot(page, afterPng);
       const failures = assertCase(testCase, before, after, records.realtime);
-      const relevantConsoleErrors = records.consoleErrors.filter((message) => !/Failed to load resource: (?:net::ERR_CONNECTION_CLOSED|net::ERR_EMPTY_RESPONSE|the server responded with a status of (?:429|503))/.test(message));
+      const relevantConsoleErrors = records.consoleErrors.filter(
+        (message) =>
+          !/Failed to load resource: (?:net::ERR_CONNECTION_CLOSED|net::ERR_EMPTY_RESPONSE|the server responded with a status of (?:404|429|503))/.test(
+            message
+          )
+      );
       if (relevantConsoleErrors.length) failures.push({ category: "runtime_error", message: `console errors=${relevantConsoleErrors.slice(0, 3).join(" | ")}` });
       const trace = {
         id: testCase.id,

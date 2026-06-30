@@ -4,7 +4,7 @@
 - audioFixtureDir: /Users/qianyifeng/CodexProjects/xiaozhuoban/tests/audio/realtime
 - audioFixtures: 0
 - holdoutCommands: 20
-- generatedAt: 2026-06-19T16:50:12.086Z
+- generatedAt: 2026-06-30T15:23:42.599Z
 
 ## Result
 

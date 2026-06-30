@@ -36,6 +36,7 @@ import {
   type RealtimeTextToolSelection
 } from "./realtimeTextToolCall";
 import { createRealtimeCapabilityCatalog } from "./capabilityCatalog";
+import { buildRealtimeToolExposurePlan } from "./realtimeToolExposurePlanner";
 
 export type RealtimeConnectionStatus =
   | "disconnected"
@@ -192,6 +193,99 @@ function normalizeMusicToolArguments(args: Record<string, unknown>): Record<stri
   return nextArgs;
 }
 
+function normalizeCountdownToolArguments(args: Record<string, unknown>): Record<string, unknown> {
+  const nextArgs = { ...args };
+  if (typeof nextArgs.totalSeconds !== "number") {
+    if (typeof nextArgs.durationMs === "number") {
+      nextArgs.totalSeconds = Math.max(0, Math.round(nextArgs.durationMs / 1000));
+    } else if (typeof nextArgs.durationSeconds === "number") {
+      nextArgs.totalSeconds = Math.max(0, Math.round(nextArgs.durationSeconds));
+    }
+  }
+  if (typeof nextArgs.start !== "boolean" && typeof nextArgs.autoStart === "boolean") {
+    nextArgs.start = nextArgs.autoStart;
+  }
+  delete nextArgs.durationMs;
+  delete nextArgs.durationSeconds;
+  delete nextArgs.autoStart;
+  return nextArgs;
+}
+
+function parseCountdownSecondsFromText(text: string): number | undefined {
+  const compact = text.replace(/\s+/g, "");
+  if (/十(?:分钟|分鐘|分)/.test(compact) || /10(?:分钟|分鐘|分)/.test(compact)) return 600;
+  if (/十五(?:分钟|分鐘|分)/.test(compact) || /15(?:分钟|分鐘|分)/.test(compact)) return 900;
+  if (/三(?:分钟|分鐘|分)/.test(compact) || /3(?:分钟|分鐘|分)/.test(compact)) return 180;
+  if (/半小时|半小時/.test(compact)) return 1800;
+  return undefined;
+}
+
+function normalizeNoteToolArguments(args: Record<string, unknown>): Record<string, unknown> {
+  const nextArgs = { ...args };
+  if (typeof nextArgs.content !== "string" && typeof nextArgs.text === "string") {
+    nextArgs.content = nextArgs.text;
+  }
+  delete nextArgs.text;
+  return nextArgs;
+}
+
+function normalizeRealtimeToolArguments(toolName: string, args: Record<string, unknown>, fallbackText = ""): Record<string, unknown> {
+  let nextArgs = args;
+  if (toolName === "music.search" || toolName === "music.play") {
+    nextArgs = normalizeMusicToolArguments(nextArgs);
+  }
+  if (toolName === "countdown.set") {
+    nextArgs = normalizeCountdownToolArguments(nextArgs);
+  }
+  if (toolName === "note.write") {
+    nextArgs = normalizeNoteToolArguments(nextArgs);
+  }
+  if (toolName === "board.add_widget" && typeof nextArgs.raw === "string") {
+    const raw = nextArgs.raw;
+    const definitionId = /"definitionId"\s*:\s*"([^"]+)"/.exec(raw)?.[1];
+    if (definitionId && /countdown/.test(raw)) {
+      nextArgs = {
+        definitionId,
+        followUp: {
+          name: "countdown.set",
+          arguments: { totalSeconds: parseCountdownSecondsFromText(fallbackText) ?? 600, start: true }
+        }
+      };
+    }
+  }
+  if (toolName === "board.add_widget" && isRecord(nextArgs.followUp)) {
+    const followUp = nextArgs.followUp;
+    const followUpName =
+      typeof followUp.name === "string" ? followUp.name : typeof followUp.tool === "string" ? followUp.tool : "";
+    const followUpArgs = isRecord(followUp.arguments)
+      ? followUp.arguments
+      : isRecord(followUp.args)
+        ? followUp.args
+        : {};
+    if (followUpName === "countdown.set") {
+      nextArgs = {
+        ...nextArgs,
+        followUp: {
+          ...followUp,
+          name: followUpName,
+          arguments: normalizeCountdownToolArguments(followUpArgs)
+        }
+      };
+    }
+    if (followUpName === "note.write") {
+      nextArgs = {
+        ...nextArgs,
+        followUp: {
+          ...followUp,
+          name: followUpName,
+          arguments: normalizeNoteToolArguments(followUpArgs)
+        }
+      };
+    }
+  }
+  return nextArgs;
+}
+
 function compactTargetText(value: unknown) {
   return typeof value === "string" ? value.replace(/\s+/g, "") : "";
 }
@@ -317,8 +411,8 @@ function normalizeRealtimePlanArguments(
       }
     }
 
-    const normalizedArgs = command.tool === "music.search" || command.tool === "music.play" ? normalizeMusicToolArguments(args) : args;
-    if (command.tool === "music.search" || command.tool === "music.play") {
+    const normalizedArgs = normalizeRealtimeToolArguments(command.tool, args);
+    if (normalizedArgs !== args) {
       Object.keys(args).forEach((key) => delete args[key]);
       Object.assign(args, normalizedArgs);
     }
@@ -510,18 +604,16 @@ function getDeclaredToolParameterKeys(tool: AssistantToolSpec | undefined): Set<
 
 function sanitizeRealtimeToolCallArguments(
   call: AssistantToolCall,
-  tool: AssistantToolSpec | undefined
+  tool: AssistantToolSpec | undefined,
+  fallbackText = ""
 ): { call: AssistantToolCall; removedKeys: string[] } {
   const originalArgs = isRecord(call.arguments) ? call.arguments : {};
-  const args =
-    (call.name === "music.search" || call.name === "music.play") && isRecord(call.arguments)
-      ? normalizeMusicToolArguments(call.arguments)
-      : isRecord(call.arguments)
-        ? call.arguments
-        : {};
+  const args = isRecord(call.arguments) ? normalizeRealtimeToolArguments(call.name, call.arguments, fallbackText) : {};
   const normalized = args !== originalArgs;
   const declaredKeys = getDeclaredToolParameterKeys(tool);
-  if (!declaredKeys) return { call, removedKeys: [] };
+  if (!declaredKeys) {
+    return normalized ? { call: { ...call, arguments: args }, removedKeys: [] } : { call, removedKeys: [] };
+  }
   const nextArgs: Record<string, unknown> = {};
   const removedKeys: string[] = [];
   for (const [key, value] of Object.entries(args)) {
@@ -619,7 +711,7 @@ function createRealtimeResponseCreateEvent(mode: RealtimeResponseMode = "text"):
   return {
     type: "response.create",
     response: {
-      output_modalities: mode === "voice" ? ["audio", "text"] : ["text"]
+      output_modalities: mode === "voice" ? ["audio"] : ["text"]
     }
   };
 }
@@ -1291,7 +1383,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
 
   updateTools(tools: AssistantToolSpec[]): void {
     this.currentTools = tools;
-    const commandToolUpdate = this.createCommandExecutionSessionUpdate();
+    const toolSelectionUpdate = this.createToolSelectionSessionUpdate(tools);
     const capabilityCatalog = this.createCapabilityCatalog(tools);
     const toolCatalogVersion = capabilityCatalog[0]?.catalogVersion;
     this.emitDiagnostic({
@@ -1299,7 +1391,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       status: "queued_or_sent",
       data: { toolCount: tools.length, tools: tools.map((tool) => tool.name), toolCatalogVersion }
     });
-    this.sendEvent(commandToolUpdate);
+    this.sendEvent(toolSelectionUpdate);
   }
 
   private createCommandExecutionSessionUpdate(): RealtimeEvent {
@@ -1355,6 +1447,23 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
 
   private createCapabilityCatalog(tools: AssistantToolSpec[]) {
     return createRealtimeCapabilityCatalog(tools, this.moduleRegistry?.getRealtimeCatalog());
+  }
+
+  private createToolExposurePlan(input: string, context: CompactAssistantContext, tools: AssistantToolSpec[]) {
+    const plan = buildRealtimeToolExposurePlan(input, context, tools, this.moduleRegistry ?? undefined);
+    this.emitDiagnostic({
+      type: "realtime.tool_exposure.plan",
+      status: plan.exposedTools.length ? "success" : "empty",
+      data: {
+        input,
+        selectedModules: plan.selectedModules,
+        exposedTools: plan.exposedTools.map((tool) => tool.name),
+        confidence: plan.confidence,
+        reasons: plan.reasons,
+        excludedReasons: plan.excludedReasons
+      }
+    });
+    return plan;
   }
 
   private attachContextVersions(context: CompactAssistantContext, tools: AssistantToolSpec[]): CompactAssistantContext {
@@ -1436,12 +1545,12 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.activeScopedToolSelection = null;
     }
     this.emitDiagnostic({
-      type: "realtime.text_command.reset_command_tool",
+      type: "realtime.text_command.reset_selector_tool",
       status: "sent",
       commandTraceId,
       data: { toolCount: this.getEffectiveSessionTools().length }
     });
-    this.sendEvent(this.createCommandExecutionSessionUpdate(), { queueWhenClosed: false, commandTraceId });
+    this.sendEvent(this.createToolSelectionSessionUpdate(), { queueWhenClosed: false, commandTraceId });
     this.pendingTextCommandAfterSelectorUpdate = {
       events: createRealtimeTextCommandEvents(text),
       commandTraceId,
@@ -1463,8 +1572,14 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const fetchImpl = this.options.fetchImpl ?? fetch;
     const endpoint = this.options.textToolCallEndpoint ?? "/api/realtime/tool-call";
     const accessToken = await this.options.getAccessToken?.();
-    const capabilityCatalog = this.createCapabilityCatalog(tools);
-    const contextWithVersions = this.attachContextVersions(context, tools);
+    const baseContext = this.attachContextVersions(context, tools);
+    const exposurePlan = this.createToolExposurePlan(input, baseContext, tools);
+    const effectiveTools = exposurePlan.exposedTools.length ? exposurePlan.exposedTools : tools;
+    const capabilityCatalog = this.createCapabilityCatalog(effectiveTools);
+    const contextWithVersions = {
+      ...baseContext,
+      toolCatalogVersion: capabilityCatalog[0]?.catalogVersion ?? baseContext.toolCatalogVersion
+    };
     this.emitDiagnostic({
       type: "realtime.text_plan.select.request",
       status: "started",
@@ -1473,7 +1588,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const selectionResponse = await fetchImpl(endpoint, {
       method: "POST",
       headers: createBearerHeaders(accessToken, { "content-type": "application/json" }),
-      body: createRealtimePlanSelectionRequestBody(input, tools, capabilityCatalog)
+      body: createRealtimePlanSelectionRequestBody(input, effectiveTools, capabilityCatalog)
     });
     if (!selectionResponse.ok) {
       throw await readRealtimeEndpointError(selectionResponse, "REALTIME_PLAN_SELECTION_FAILED");
@@ -1487,32 +1602,32 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (!planSelection?.steps.length) return null;
     const moduleContexts = planSelection.steps
       .map((step) => {
-        const selectedTool = tools.find((tool) => tool.name === step.name);
+        const selectedTool = effectiveTools.find((tool) => tool.name === step.name);
         const selectedModule =
           step.selectedModule ??
           selectedTool?.widgetType ??
           (selectedTool ? this.moduleRegistry?.findModuleForTool(selectedTool.name)?.type : undefined) ??
           selectedTool?.name.split(".")[0];
-        return selectedModule
-          ? this.moduleRegistry?.getScopedContextForModule(selectedModule, {
-              userText: input,
-              selectedToolHint: selectedTool?.name,
-              compactContext: contextWithVersions,
-              tools
-            })
-          : undefined;
+	        return selectedModule
+	          ? this.moduleRegistry?.getScopedContextForModule(selectedModule, {
+	              userText: input,
+	              selectedToolHint: selectedTool?.name,
+	              compactContext: contextWithVersions,
+	              tools: effectiveTools
+	            })
+	          : undefined;
       })
       .filter((moduleContext): moduleContext is NonNullable<typeof moduleContext> => Boolean(moduleContext));
     const planResponse = await fetchImpl(endpoint, {
       method: "POST",
       headers: createBearerHeaders(accessToken, { "content-type": "application/json" }),
-      body: createRealtimeCommandPlanRequestBody(input, contextWithVersions, tools, planSelection, moduleContexts)
+      body: createRealtimeCommandPlanRequestBody(input, contextWithVersions, effectiveTools, planSelection, moduleContexts)
     });
     if (!planResponse.ok) {
       throw await readRealtimeEndpointError(planResponse, "REALTIME_PLAN_EXECUTION_FAILED");
     }
     const parsedPlan = parseRealtimeCommandPlanResponse(await planResponse.json());
-    const plan = parsedPlan ? normalizeRealtimePlanArguments(parsedPlan, contextWithVersions, tools, planSelection.steps) : null;
+    const plan = parsedPlan ? normalizeRealtimePlanArguments(parsedPlan, contextWithVersions, effectiveTools, planSelection.steps) : null;
     this.emitDiagnostic({
       type: "realtime.text_plan.execute.result",
       status: plan ? "success" : "empty",
@@ -1535,8 +1650,14 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const fetchImpl = this.options.fetchImpl ?? fetch;
     const endpoint = this.options.textToolCallEndpoint ?? "/api/realtime/tool-call";
     const accessToken = await this.options.getAccessToken?.();
-    const capabilityCatalog = this.createCapabilityCatalog(tools);
-    const contextWithVersions = this.attachContextVersions(context, tools);
+    const baseContext = this.attachContextVersions(context, tools);
+    const exposurePlan = this.createToolExposurePlan(input, baseContext, tools);
+    const effectiveTools = exposurePlan.exposedTools.length ? exposurePlan.exposedTools : tools;
+    const capabilityCatalog = this.createCapabilityCatalog(effectiveTools);
+    const contextWithVersions = {
+      ...baseContext,
+      toolCatalogVersion: capabilityCatalog[0]?.catalogVersion ?? baseContext.toolCatalogVersion
+    };
     this.emitDiagnostic({
       type: "realtime.text_tool.select.request",
       status: "started",
@@ -1545,13 +1666,13 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const selectionResponse = await fetchImpl(endpoint, {
       method: "POST",
       headers: createBearerHeaders(accessToken, { "content-type": "application/json" }),
-      body: createRealtimeToolSelectionRequestBody(input, tools, capabilityCatalog)
+      body: createRealtimeToolSelectionRequestBody(input, effectiveTools, capabilityCatalog)
     });
     if (!selectionResponse.ok) {
       throw await readRealtimeEndpointError(selectionResponse, "REALTIME_TOOL_SELECTION_FAILED");
     }
     const selection = parseRealtimeTextToolSelectionResponse(await selectionResponse.json());
-    const selectedTool = selection ? tools.find((tool) => tool.name === selection.name) : undefined;
+    const selectedTool = selection ? effectiveTools.find((tool) => tool.name === selection.name) : undefined;
     this.emitDiagnostic({
       type: "realtime.text_tool.select.result",
       status: selection && selectedTool ? "success" : "empty",
@@ -1577,23 +1698,23 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       selectedTool.name.split(".")[0];
     const moduleContext = selectedModule
       ? this.moduleRegistry?.getScopedContextForModule(selectedModule, {
-              userText: input,
-              selectedToolHint: selectedTool.name,
-              compactContext: contextWithVersions,
-              tools
-            })
+          userText: input,
+          selectedToolHint: selectedTool.name,
+          compactContext: contextWithVersions,
+          tools: effectiveTools
+        })
       : undefined;
     const toolCallResponse = await fetchImpl(endpoint, {
       method: "POST",
       headers: createBearerHeaders(accessToken, { "content-type": "application/json" }),
-      body: createRealtimeScopedToolCallRequestBody(input, scopedContext, tools, selection, moduleContext ?? undefined)
+      body: createRealtimeScopedToolCallRequestBody(input, scopedContext, effectiveTools, selection, moduleContext ?? undefined)
     });
     if (!toolCallResponse.ok) {
       throw await readRealtimeEndpointError(toolCallResponse, "REALTIME_TOOL_CALL_FAILED");
     }
     const parsedCall = parseRealtimeTextToolCallResponse(await toolCallResponse.json());
     const call = parsedCall
-      ? bindWindowToolTargetForCall(parsedCall, contextWithVersions, tools, { ...selection, userCommand: input })
+      ? bindWindowToolTargetForCall(parsedCall, contextWithVersions, effectiveTools, { ...selection, userCommand: input })
       : null;
     this.emitDiagnostic({
       type: "realtime.text_tool.execute.result",
@@ -1628,7 +1749,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.handleToolSelection(call);
       return;
     }
-    const sanitized = sanitizeRealtimeToolCallArguments(call, this.currentTools.find((tool) => tool.name === call.name));
+    const fallbackText = commandTraceId ? this.realtimeTraceUserTranscripts.get(commandTraceId)?.input ?? "" : "";
+    const sanitized = sanitizeRealtimeToolCallArguments(call, this.currentTools.find((tool) => tool.name === call.name), fallbackText);
     const toolCall = bindWindowToolTargetForCall(sanitized.call, this.currentContext, this.currentTools, this.activeScopedToolSelection ?? undefined);
     this.activeScopedToolSelection = null;
     if (sanitized.removedKeys.length) {

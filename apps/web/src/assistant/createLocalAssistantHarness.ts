@@ -111,7 +111,7 @@ export function createLocalAssistantHarness(options?: {
       await useAppStore.getState().fullscreenWidget(widgetId, persistOptions);
       if (typeof document === "undefined") return;
       const element = document.querySelector<HTMLElement>(`[data-widget-id="${CSS.escape(widgetId)}"]`);
-      await element?.requestFullscreen?.();
+      await element?.requestFullscreen?.().catch(() => undefined);
     },
     bringWidgetToFront: (widgetId: string, persistOptions?: { operationId?: string }) =>
       useAppStore.getState().bringWidgetToFront(widgetId, persistOptions),

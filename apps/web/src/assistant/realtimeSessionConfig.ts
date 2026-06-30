@@ -278,7 +278,7 @@ export function createInitialRealtimeToolSpecs(): AssistantToolSpec[] {
 }
 
 export function createInitialRealtimeTools(): RealtimeFunctionTool[] {
-  return [createRealtimeCommandExecutionTool()];
+  return [createRealtimeToolSelectionTool(createInitialRealtimeToolSpecs()), createRealtimeCommandExecutionTool()];
 }
 
 export function createInitialRegisteredRealtimeTools(): RealtimeFunctionTool[] {

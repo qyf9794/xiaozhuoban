@@ -1,0 +1,1592 @@
+{
+  "id": "03",
+  "command": "我想听王菲的歌",
+  "before": {
+    "bodyText": "桌板\n+ 新建\n我的桌板\n我的桌板\n添加 Widget\n▾\n⚙\n×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送\n⊞\n暂无其他在线用户",
+    "widgets": [
+      {
+        "id": "wi_1782836805092_2f0pf42e",
+        "text": "×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送",
+        "className": "widget-box"
+      }
+    ],
+    "auditLogs": [],
+    "diagnostics": {
+      "sessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+      "exportedAt": "2026-06-30T16:26:46.126Z",
+      "events": [
+        {
+          "type": "realtime.runtime.disconnect",
+          "status": "manual",
+          "data": {
+            "mode": "local_standby",
+            "connected": false
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:45.091Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "disconnected",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:45.092Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tools.update",
+          "status": "queued_or_sent",
+          "data": {
+            "toolCount": 52,
+            "tools": [
+              "board.add_widget",
+              "widget.focus",
+              "widget.fullscreen_focus",
+              "widget.remove",
+              "widget.move",
+              "widget.resize",
+              "widget.bring_to_front",
+              "board.auto_align",
+              "board.switch",
+              "board.create",
+              "board.rename",
+              "board.delete"
+            ],
+            "toolCatalogVersion": "cat_sdej7i"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:45.106Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "queued_or_dropped",
+          "data": {
+            "eventType": "session.update"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:45.106Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_del76c",
+            "widgetCount": 1,
+            "boardId": "board_1782836805092_b6ufcp0i"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:45.107Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        }
+      ],
+      "lastHarnessDiagnostics": null
+    }
+  },
+  "after": {
+    "bodyText": "桌板\n+ 新建\n我的桌板\n我的桌板\n添加 Widget\n▾\n⚙\n×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送\n×\n音乐播放器\nmusic\niTunes 试听模式\n红豆\n王菲\n⏮\n⏭\n⌕\n红豆\n歌曲 · 王菲\n⊞\n暂无其他在线用户\n\n我想听王菲的歌。\n\n聆听中 · 我想听王菲的歌。\n完成：已找到音乐，请手动点击播放\nrealtime_dialogue_window · Realtime 0s · $0.0000\n聆听中 · 我想听王菲的歌。\n完成：已找到音乐，请手动点击播放\nrealtime_dialogue_window · Realtime 0s · $0.0000",
+    "widgets": [
+      {
+        "id": "wi_1782836805092_2f0pf42e",
+        "text": "×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送",
+        "className": "widget-box"
+      },
+      {
+        "id": "wi_1782836815558_7at9psjy",
+        "text": "×\n音乐播放器\nmusic\niTunes 试听模式\n红豆\n王菲\n⏮\n⏭\n⌕\n红豆\n歌曲 · 王菲",
+        "className": "widget-box is-focused"
+      }
+    ],
+    "auditLogs": [
+      {
+        "id": "audit_1782836816745_i9fttp",
+        "operationId": "call_JyOXKNgkp8IpnOfz",
+        "boardId": "board_1782836805092_b6ufcp0i",
+        "route": "function_call",
+        "sourceMode": "realtime",
+        "transcript": "music.play",
+        "learningCandidate": false,
+        "toolName": "music.play",
+        "sanitizedArgs": {
+          "widgetId": "wi_1782836815558_7at9psjy",
+          "query": "王菲"
+        },
+        "resultStatus": "success",
+        "resultMessage": "已找到音乐，请手动点击播放",
+        "durationMs": 16,
+        "createdAt": "2026-06-30T16:26:56.745Z"
+      },
+      {
+        "id": "audit_1782836815582_eil14j",
+        "operationId": "call_ZJmpOvPN55ybc5Kn",
+        "boardId": "board_1782836805092_b6ufcp0i",
+        "route": "function_call",
+        "sourceMode": "realtime",
+        "transcript": "board.add_widget",
+        "learningCandidate": false,
+        "toolName": "board.add_widget",
+        "sanitizedArgs": {
+          "definitionId": "wd_music_1782836805092_9cj7u7np",
+          "followUp": {
+            "name": "music.play",
+            "arguments": {
+              "query": "王菲"
+            }
+          }
+        },
+        "resultStatus": "success",
+        "resultMessage": "已添加小工具，已找到音乐，请手动点击播放",
+        "durationMs": 25,
+        "createdAt": "2026-06-30T16:26:55.582Z"
+      }
+    ],
+    "diagnostics": {
+      "sessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+      "exportedAt": "2026-06-30T16:26:57.096Z",
+      "events": [
+        {
+          "type": "realtime.runtime.disconnect",
+          "status": "manual",
+          "data": {
+            "mode": "local_standby",
+            "connected": false
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:45.091Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "disconnected",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:45.092Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tools.update",
+          "status": "queued_or_sent",
+          "data": {
+            "toolCount": 52,
+            "tools": [
+              "board.add_widget",
+              "widget.focus",
+              "widget.fullscreen_focus",
+              "widget.remove",
+              "widget.move",
+              "widget.resize",
+              "widget.bring_to_front",
+              "board.auto_align",
+              "board.switch",
+              "board.create",
+              "board.rename",
+              "board.delete"
+            ],
+            "toolCatalogVersion": "cat_sdej7i"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:45.106Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "queued_or_dropped",
+          "data": {
+            "eventType": "session.update"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:45.106Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_del76c",
+            "widgetCount": 1,
+            "boardId": "board_1782836805092_b6ufcp0i"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:45.107Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.connect.click",
+          "commandTraceId": "voice_connect_70cbd978-7752-4f8f-81ce-597374c92f97",
+          "status": "started",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:46.249Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "connecting",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:46.249Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.connect.start",
+          "status": "connecting",
+          "data": {
+            "mode": "audio"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:46.249Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.microphone.permission",
+          "status": "error",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:46.250Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.microphone.stream",
+          "status": "success",
+          "data": {
+            "audioTracks": "[redacted]"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:46.376Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.session.request",
+          "status": "missing_auth",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:46.388Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.session.created",
+          "status": "success",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:46.894Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "configuring",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:48.566Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.data_channel.open",
+          "status": "configuring",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:48.566Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "data": {
+            "eventType": "session.update"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:48.566Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tools.update",
+          "status": "queued_or_sent",
+          "data": {
+            "toolCount": 52,
+            "tools": [
+              "board.add_widget",
+              "widget.focus",
+              "widget.fullscreen_focus",
+              "widget.remove",
+              "widget.move",
+              "widget.resize",
+              "widget.bring_to_front",
+              "board.auto_align",
+              "board.switch",
+              "board.create",
+              "board.rename",
+              "board.delete"
+            ],
+            "toolCatalogVersion": "cat_sdej7i"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:48.568Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "data": {
+            "eventType": "session.update"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:48.569Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "data": {
+            "eventType": "session.created"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:48.790Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "data": {
+            "eventType": "session.updated"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:49.668Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.session.updated",
+          "status": "connected",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:49.668Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "connected",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:49.668Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.connect.result",
+          "commandTraceId": "voice_connect_70cbd978-7752-4f8f-81ce-597374c92f97",
+          "status": "success",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:49.669Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "data": {
+            "eventType": "session.updated"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:49.709Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.session.updated",
+          "status": "connected",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:49.709Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "connected",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:49.709Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "input_audio_buffer.speech_started"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:49.710Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.voice.speech_started",
+          "status": "listening",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "itemId": "item_DwVaLPdMfglK3b89Gbzdt",
+            "audioStartMs": "[redacted]"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:49.710Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "input_audio_buffer.speech_stopped"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:51.867Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.voice.speech_stopped",
+          "status": "committed",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "itemId": "item_DwVaLPdMfglK3b89Gbzdt",
+            "audioEndMs": "[redacted]"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:51.867Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "input_audio_buffer.committed"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:51.867Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:51.867Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:51.867Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "response.created"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:51.872Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "response.output_item.added"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:52.226Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:52.226Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "response.content_part.added"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:52.244Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "conversation.item.input_audio_transcription.completed"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:52.272Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.voice.user_transcript",
+          "status": "success",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "itemId": "item_DwVaLPdMfglK3b89Gbzdt",
+            "transcript": "我想听王菲的歌。"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:52.272Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "response.output_item.added"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:53.442Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:53.442Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "response.output_audio.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:53.769Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "response.output_audio_transcript.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:53.769Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "response.content_part.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:53.769Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:53.769Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "response.output_item.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:53.769Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "response.function_call_arguments.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:53.769Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.function_call.selection",
+          "status": "received",
+          "operationId": "call_tsyl6p7ULhOsO9LN",
+          "toolName": "assistant.select_tool",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:53.770Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "session.update"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:53.771Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_selection.success",
+          "status": "success",
+          "operationId": "call_tsyl6p7ULhOsO9LN",
+          "toolName": "music.play",
+          "data": {
+            "targetHint": "王菲",
+            "selectedModule": "music",
+            "confidence": 0.98
+          },
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:53.771Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_selection.result_deferred",
+          "status": "pending_session_update",
+          "operationId": "call_tsyl6p7ULhOsO9LN",
+          "toolName": "music.play",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:53.771Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:53.771Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "response.output_item.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:53.771Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "response.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:53.773Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.voice.user_transcript_unhandled",
+          "status": "started",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "itemId": "item_DwVaLPdMfglK3b89Gbzdt",
+            "input": "我想听王菲的歌。"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:53.773Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.voice.user_transcript_unhandled",
+          "status": "success",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "itemId": "item_DwVaLPdMfglK3b89Gbzdt",
+            "input": "我想听王菲的歌。"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:53.773Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "data": {
+            "eventType": "session.updated"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:54.243Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.session.updated",
+          "status": "connected",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:54.243Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.status",
+          "status": "connected",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:54.244Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_selection.result_send_after_session_update",
+          "status": "sent",
+          "operationId": "call_tsyl6p7ULhOsO9LN",
+          "toolName": "assistant.select_tool",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:54.244Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_result.send",
+          "status": "success",
+          "operationId": "call_tsyl6p7ULhOsO9LN",
+          "toolName": "assistant.select_tool",
+          "message": "已选择工具，正在读取所需上下文。",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:54.244Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "conversation.item.create"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:54.245Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "commandTraceId": "voice_1782836809710_glK3b89Gbzdt",
+          "data": {
+            "eventType": "response.create"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:54.245Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836814476_BiVSPq7Wj9Im",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:54.476Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836814476_BiVSPq7Wj9Im",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:54.476Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836814476_BiVSPq7Wj9Im",
+          "data": {
+            "eventType": "response.created"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:54.521Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836814476_BiVSPq7Wj9Im",
+          "data": {
+            "eventType": "response.output_item.added"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.202Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836814476_BiVSPq7Wj9Im",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.203Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836814476_BiVSPq7Wj9Im",
+          "data": {
+            "eventType": "response.function_call_arguments.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.554Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.function_call.tool",
+          "status": "received",
+          "operationId": "call_ZJmpOvPN55ybc5Kn",
+          "toolName": "board.add_widget",
+          "commandTraceId": "voice_1782836814476_BiVSPq7Wj9Im",
+          "data": {
+            "definitionId": "wd_music_1782836805092_9cj7u7np"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.555Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "status": "running",
+          "operationId": "call_ZJmpOvPN55ybc5Kn",
+          "route": "function_call",
+          "toolName": "board.add_widget",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.557Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_bg7p75",
+            "widgetCount": 2,
+            "boardId": "board_1782836805092_b6ufcp0i"
+          },
+          "commandTraceId": "voice_1782836814476_BiVSPq7Wj9Im",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.562Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "music.tool.play.request",
+          "status": "started",
+          "toolName": "music",
+          "data": {
+            "widgetId": "wi_1782836815558_7at9psjy",
+            "musicKitAvailable": false,
+            "musicKitAuthorized": false,
+            "query": "王菲",
+            "args": {
+              "query": "王菲",
+              "widgetId": "wi_1782836815558_7at9psjy"
+            }
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.563Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "music.search.start",
+          "status": "started",
+          "toolName": "music",
+          "data": {
+            "widgetId": "wi_1782836815558_7at9psjy",
+            "musicKitAvailable": false,
+            "musicKitAuthorized": false,
+            "query": "王菲",
+            "source": "itunes"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.563Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836814476_BiVSPq7Wj9Im",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.564Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836814476_BiVSPq7Wj9Im",
+          "data": {
+            "eventType": "response.output_item.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.564Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836814476_BiVSPq7Wj9Im",
+          "data": {
+            "eventType": "response.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.566Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "music.search.result",
+          "status": "success",
+          "toolName": "music",
+          "data": {
+            "widgetId": "wi_1782836815558_7at9psjy",
+            "musicKitAvailable": false,
+            "musicKitAuthorized": false,
+            "query": "王菲",
+            "source": "itunes",
+            "count": 1,
+            "firstSource": "itunes",
+            "firstKind": "song",
+            "firstTitle": "红豆"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.567Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "music.play.start",
+          "status": "started",
+          "toolName": "music",
+          "data": {
+            "widgetId": "wi_1782836815558_7at9psjy",
+            "musicKitAvailable": false,
+            "musicKitAuthorized": false,
+            "itemId": "10001",
+            "title": "红豆",
+            "source": "itunes",
+            "kind": "song",
+            "hasPreview": true,
+            "requestedArgs": {
+              "query": "王菲",
+              "widgetId": "wi_1782836815558_7at9psjy"
+            }
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.568Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_15fuc95",
+            "widgetCount": 2,
+            "boardId": "board_1782836805092_b6ufcp0i"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.569Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "music.play.result",
+          "status": "success_blocked",
+          "toolName": "music",
+          "data": {
+            "widgetId": "wi_1782836815558_7at9psjy",
+            "musicKitAvailable": false,
+            "musicKitAuthorized": false,
+            "itemId": "10001",
+            "title": "红豆",
+            "source": "itunes",
+            "errorCode": "BROWSER_PLAYBACK_BLOCKED",
+            "message": "Failed to load because no supported source was found."
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.579Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_15fuc95",
+            "widgetCount": 2,
+            "boardId": "board_1782836805092_b6ufcp0i"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.580Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "status": "success",
+          "operationId": "call_ZJmpOvPN55ybc5Kn",
+          "route": "function_call",
+          "toolName": "board.add_widget",
+          "message": "已添加小工具，已找到音乐，请手动点击播放",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.581Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_result.send",
+          "status": "success",
+          "operationId": "call_ZJmpOvPN55ybc5Kn",
+          "toolName": "board.add_widget",
+          "message": "已添加小工具，已找到音乐，请手动点击播放",
+          "commandTraceId": "voice_1782836814476_BiVSPq7Wj9Im",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.581Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "commandTraceId": "voice_1782836814476_BiVSPq7Wj9Im",
+          "data": {
+            "eventType": "conversation.item.create"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.581Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "commandTraceId": "voice_1782836814476_BiVSPq7Wj9Im",
+          "data": {
+            "eventType": "response.create"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.581Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_15fuc95",
+            "widgetCount": 2,
+            "boardId": "board_1782836805092_b6ufcp0i"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.582Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836815819_cmxZqwWaAMVY",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.819Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836815819_cmxZqwWaAMVY",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.820Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836815819_cmxZqwWaAMVY",
+          "data": {
+            "eventType": "response.created"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.860Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "music.search.start",
+          "status": "started",
+          "toolName": "music",
+          "data": {
+            "widgetId": "wi_1782836815558_7at9psjy",
+            "musicKitAvailable": false,
+            "musicKitAuthorized": false,
+            "query": "王菲",
+            "source": "itunes"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.869Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "music.search.result",
+          "status": "success",
+          "toolName": "music",
+          "data": {
+            "widgetId": "wi_1782836815558_7at9psjy",
+            "musicKitAvailable": false,
+            "musicKitAuthorized": false,
+            "query": "王菲",
+            "source": "itunes",
+            "count": 1,
+            "firstSource": "itunes",
+            "firstKind": "song",
+            "firstTitle": "红豆"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:55.873Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836815819_cmxZqwWaAMVY",
+          "data": {
+            "eventType": "response.output_item.added"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.496Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836815819_cmxZqwWaAMVY",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.496Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836815819_cmxZqwWaAMVY",
+          "data": {
+            "eventType": "response.function_call_arguments.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.727Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.function_call.tool",
+          "status": "received",
+          "operationId": "call_JyOXKNgkp8IpnOfz",
+          "toolName": "music.play",
+          "commandTraceId": "voice_1782836815819_cmxZqwWaAMVY",
+          "data": {
+            "query": "王菲"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.729Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "status": "running",
+          "operationId": "call_JyOXKNgkp8IpnOfz",
+          "route": "function_call",
+          "toolName": "music.play",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.730Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "music.tool.play.request",
+          "status": "started",
+          "toolName": "music",
+          "data": {
+            "widgetId": "wi_1782836815558_7at9psjy",
+            "musicKitAvailable": false,
+            "musicKitAuthorized": false,
+            "query": "王菲",
+            "args": {
+              "widgetId": "wi_1782836815558_7at9psjy",
+              "query": "王菲"
+            }
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.731Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "music.search.start",
+          "status": "started",
+          "toolName": "music",
+          "data": {
+            "widgetId": "wi_1782836815558_7at9psjy",
+            "musicKitAvailable": false,
+            "musicKitAuthorized": false,
+            "query": "王菲",
+            "source": "itunes"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.732Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836815819_cmxZqwWaAMVY",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.734Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836815819_cmxZqwWaAMVY",
+          "data": {
+            "eventType": "response.output_item.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.735Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836815819_cmxZqwWaAMVY",
+          "data": {
+            "eventType": "response.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.736Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "music.search.result",
+          "status": "success",
+          "toolName": "music",
+          "data": {
+            "widgetId": "wi_1782836815558_7at9psjy",
+            "musicKitAvailable": false,
+            "musicKitAuthorized": false,
+            "query": "王菲",
+            "source": "itunes",
+            "count": 1,
+            "firstSource": "itunes",
+            "firstKind": "song",
+            "firstTitle": "红豆"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.739Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "music.play.start",
+          "status": "started",
+          "toolName": "music",
+          "data": {
+            "widgetId": "wi_1782836815558_7at9psjy",
+            "musicKitAvailable": false,
+            "musicKitAuthorized": false,
+            "itemId": "10001",
+            "title": "红豆",
+            "source": "itunes",
+            "kind": "song",
+            "hasPreview": true,
+            "requestedArgs": {
+              "widgetId": "wi_1782836815558_7at9psjy",
+              "query": "王菲"
+            }
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.739Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_15fuc95",
+            "widgetCount": 2,
+            "boardId": "board_1782836805092_b6ufcp0i"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.741Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "music.play.result",
+          "status": "success_blocked",
+          "toolName": "music",
+          "data": {
+            "widgetId": "wi_1782836815558_7at9psjy",
+            "musicKitAvailable": false,
+            "musicKitAuthorized": false,
+            "itemId": "10001",
+            "title": "红豆",
+            "source": "itunes",
+            "errorCode": "BROWSER_PLAYBACK_BLOCKED",
+            "message": "The element has no supported sources."
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.741Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_15fuc95",
+            "widgetCount": 2,
+            "boardId": "board_1782836805092_b6ufcp0i"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.743Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "status": "success",
+          "operationId": "call_JyOXKNgkp8IpnOfz",
+          "route": "function_call",
+          "toolName": "music.play",
+          "message": "已找到音乐，请手动点击播放",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.744Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_result.send",
+          "status": "success",
+          "operationId": "call_JyOXKNgkp8IpnOfz",
+          "toolName": "music.play",
+          "message": "已找到音乐，请手动点击播放",
+          "commandTraceId": "voice_1782836815819_cmxZqwWaAMVY",
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.744Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "commandTraceId": "voice_1782836815819_cmxZqwWaAMVY",
+          "data": {
+            "eventType": "conversation.item.create"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.744Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.send",
+          "status": "sent",
+          "commandTraceId": "voice_1782836815819_cmxZqwWaAMVY",
+          "data": {
+            "eventType": "response.create"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.745Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_15fuc95",
+            "widgetCount": 2,
+            "boardId": "board_1782836805092_b6ufcp0i"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.745Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836816995_lNkDZKm0Nm4k",
+          "data": {
+            "eventType": "conversation.item.added"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.995Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836816995_lNkDZKm0Nm4k",
+          "data": {
+            "eventType": "conversation.item.done"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:56.996Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.event.receive",
+          "status": "received",
+          "commandTraceId": "voice_1782836816995_lNkDZKm0Nm4k",
+          "data": {
+            "eventType": "response.created"
+          },
+          "clientSessionId": "diag_2d462fde-7245-422b-a072-317fc62cbb7f",
+          "clientCreatedAt": "2026-06-30T16:26:57.006Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        }
+      ],
+      "lastHarnessDiagnostics": null
+    }
+  },
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ]
+}

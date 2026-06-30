@@ -297,9 +297,10 @@ function isDiagnosticOrPreferenceIntent(input: string) {
     return false;
   }
   return (
-    /(?:记录|日志|监控|诊断|前端成功状态|路由|恢复来源|重复次数|弱网|断线|恢复会话|多轮对话|不要忘记)/.test(normalized) ||
+    /(?:记录|日志|监控|诊断|前端成功状态|路由|恢复来源|重复次数|弱网|断线|恢复会话|多轮对话|不要忘记|不要重复|不能播放|不要一直找|开发者token|只能试听)/.test(normalized) ||
     /(?:我说|以后我说|下次我说).{0,18}(?:时|优先|就)/.test(normalized) ||
-    /(?:前|之前|先).{0,10}(?:告诉我|回复|确认|查看|检查).{0,10}(?:状态|有没有|是否)/.test(normalized)
+    /(?:前|之前|先).{0,10}(?:告诉我|回复|确认|查看|检查).{0,10}(?:状态|有没有|是否|可用)/.test(normalized) ||
+    /(?:提示|告诉我).{0,16}(?:token|原因|试听|需要)/.test(normalized)
   );
 }
 
@@ -459,7 +460,7 @@ export class AssistantHarness {
     try {
       const response = this.pendingConfirmation
         ? await this.handleUserInputInternal(input, startedAt)
-        : await this.handleUserInputInternal(input, startedAt);
+        : await this.handleRealtimeModelInput(input, startedAt, this.getCurrentContext());
       this.finishDiagnostics(response);
       return response;
     } catch (error) {

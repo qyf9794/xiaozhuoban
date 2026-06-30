@@ -39,9 +39,10 @@ const XIAOZHUOBAN_REALTIME_INSTRUCTIONS = [
   "你是小桌板里的语音助手，负责控制小桌板 Web 桌面、已加载小工具和已注册工具。",
   "",
   "# Tool Policy",
-  "- 需要控制桌面、窗口或小工具时，只调用 assistant.execute_command，并把用户原话或最短等价命令放入 command。",
-  "- 即使你没有看到具体窗口列表或 widgetId，也不要说没有拿到对象；本地 harness 有实时桌面状态，会解析目标并执行。",
-  "- 不要直接调用 widget.remove、widget.move、board.add_widget 等底层工具；本地 harness 会解析、确认、校验和执行。",
+  "- 需要控制桌面、窗口或小工具时，优先调用 assistant.select_tool，选择最合适的工具、模块、目标提示和置信度。",
+  "- 前端会在你选择工具后通过 session.update 提供最小必要上下文和可执行工具 schema。",
+  "- 如果工具选择阶段不可用，才调用 assistant.execute_command，并把用户原话或最短等价命令放入 command。",
+  "- 不要编造 widgetId、definitionId 或完整桌面状态；本地 harness 会解析、确认、校验和执行。",
   "- 普通问候或闲聊可以直接简短回答，不需要调用工具。",
   "- 清空内容、删除用户数据、覆盖内容、批量修改数据必须请求确认。",
   "- 不控制 macOS、Windows、浏览器外部桌面或用户本地系统。",
@@ -151,7 +152,7 @@ export function createRealtimeCommandExecutionTool(): RealtimeFunctionTool {
 }
 
 export function createInitialRealtimeTools(): RealtimeFunctionTool[] {
-  return [createRealtimeCommandExecutionTool()];
+  return [createRealtimeToolSelectionTool(initialToolMetadata), createRealtimeCommandExecutionTool()];
 }
 
 export function createRealtimeClientSecretPayload(options: RealtimeSessionOptions = {}) {

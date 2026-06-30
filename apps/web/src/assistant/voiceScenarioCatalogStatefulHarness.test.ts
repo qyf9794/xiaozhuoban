@@ -23,6 +23,7 @@ import { createAppShellActions } from "./appShellActions";
 import { AssistantHarness, type AssistantRealtimeAdapter } from "./AssistantHarness";
 import { registerBoardActions } from "./boardActions";
 import { OpenAIRealtimeWebRtcAdapter } from "./openaiRealtimeAdapter";
+import { buildRealtimeToolExposurePlan } from "./realtimeToolExposurePlanner";
 import type { RealtimeTextPlanSelection } from "./realtimeTextToolCall";
 import { WidgetCapabilityBridge, createWidgetCapabilityActions } from "./widgetCapabilityBridge";
 import { createWidgetStateActions } from "./widgetStateActions";
@@ -32,6 +33,7 @@ const repoRoot = path.resolve(__dirname, "../../../../");
 const simulationReportPath = path.join(repoRoot, "docs/realtime-voice-scenario-catalog-simulation-report.md");
 const statefulReportPath = path.join(repoRoot, "docs/realtime-voice-scenario-catalog-stateful-harness-report.md");
 const widgetIdAuditReportPath = path.join(repoRoot, "docs/realtime-voice-scenario-catalog-widget-id-audit-report.md");
+const toolExposureReportPath = path.join(repoRoot, "docs/realtime-tool-exposure-700-report.md");
 const NOW = "2026-06-21T08:30:00.000Z";
 
 type CatalogCase = {
@@ -682,6 +684,51 @@ function shouldMutate(tool: string) {
 }
 
 describe("700 voice scenario catalog through stateful AssistantHarness execution", () => {
+  it("exposes every expected realtime tool before mocked plan execution", () => {
+    const cases = parseSimulationReport();
+    expect(cases).toHaveLength(700);
+
+    const rows = [
+      "# Realtime Tool Exposure 700 Report",
+      "",
+      [
+        "Every row below was evaluated by `RealtimeToolExposurePlanner` before the mocked",
+        "Realtime plan is allowed to execute. A pass means every expected command tool from",
+        "the 700-command semantic catalog is available in the scoped Realtime tool set."
+      ].join(" "),
+      ""
+    ];
+    const failures: string[] = [];
+
+    for (const testCase of cases) {
+      const env = createStatefulHarness(testCase);
+      const plan = buildRealtimeToolExposurePlan(testCase.text, env.getCompactContext(), env.registry.list());
+      const exposed = plan.exposedTools.map((tool) => tool.name);
+      const missing = testCase.tools.filter((tool) => !exposed.includes(tool));
+      const ok = missing.length === 0 && plan.exposedTools.every((tool) => plan.reasons[tool.name]?.length);
+
+      rows.push(
+        [
+          `${String(testCase.id).padStart(3, "0")}. [${ok ? "pass" : "fail"}]`,
+          `selected=${plan.selectedModules.join(",") || "none"}`,
+          `expected=${testCase.tools.join(",")}`,
+          `exposed=${exposed.join(",") || "NONE"}`,
+          `missing=${missing.join(",") || "none"}`,
+          `command=${testCase.text}`
+        ].join("; ")
+      );
+
+      if (!ok) {
+        failures.push(
+          `${String(testCase.id).padStart(3, "0")} ${testCase.text}: selected=${plan.selectedModules.join(",") || "none"}; expected=${testCase.tools.join(",")}; exposed=${exposed.join(",")}; missing=${missing.join(",")}; excluded=${JSON.stringify(plan.excludedReasons)}`
+        );
+      }
+    }
+
+    fs.writeFileSync(toolExposureReportPath, `${rows.join("\n")}\n`, "utf8");
+    expect(failures).toEqual([]);
+  });
+
   it("executes catalog commands with real action schemas and state mutations", async () => {
     const cases = parseSimulationReport();
     expect(cases).toHaveLength(700);

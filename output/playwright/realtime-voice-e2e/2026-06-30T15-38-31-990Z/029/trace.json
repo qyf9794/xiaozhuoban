@@ -1,0 +1,1320 @@
+{
+  "id": "029",
+  "command": "十分钟后提醒我",
+  "route": "realtime-2-required",
+  "tools": [
+    "countdown.set",
+    "todo.add_item"
+  ],
+  "realtime": [
+    {
+      "phase": "plan_select",
+      "input": "明早九点提醒我买牛奶",
+      "request": {
+        "input": "明早九点提醒我买牛奶",
+        "tools": [
+          {
+            "name": "countdown.set",
+            "description": "Set a countdown duration and optionally start it.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "countdown",
+            "requiresTarget": true
+          },
+          {
+            "name": "todo.add_item",
+            "description": "Add a todo item to a todo widget.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "todo",
+            "requiresTarget": true
+          },
+          {
+            "name": "countdown.pause",
+            "description": "Pause a running countdown widget without closing it.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "countdown",
+            "requiresTarget": true
+          },
+          {
+            "name": "countdown.reset",
+            "description": "Reset a countdown widget to its configured duration without closing it.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "countdown",
+            "requiresTarget": true
+          },
+          {
+            "name": "countdown.resume",
+            "description": "Resume a countdown widget from its remaining time.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "countdown",
+            "requiresTarget": true
+          },
+          {
+            "name": "todo.complete_item",
+            "description": "Complete and remove a matching todo item from a todo widget.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "todo",
+            "requiresTarget": true
+          }
+        ],
+        "moduleCatalog": [
+          {
+            "catalogVersion": "cat_d4v30p",
+            "type": "countdown",
+            "displayName": "倒计时",
+            "aliases": [
+              "倒计时",
+              "计时器",
+              "定时器",
+              "定时"
+            ],
+            "capabilities": [
+              "设置倒计时",
+              "暂停",
+              "继续",
+              "重置",
+              "关闭窗口",
+              "countdown.set | Set a countdown duration and optionally start it. | requiresTarget",
+              "countdown.pause | Pause a running countdown widget without closing it. | requiresTarget",
+              "countdown.reset | Reset a countdown widget to its configured duration without closing it. | requiresTarget",
+              "countdown.resume | Resume a countdown widget from its remaining time. | requiresTarget"
+            ],
+            "shortcutExamples": [
+              "定时十分钟",
+              "暂停计时",
+              "继续定时器",
+              "重置定时",
+              "取消倒计时"
+            ],
+            "riskSummary": [
+              "暂停计时是 countdown.pause，不是关闭窗口",
+              "取消倒计时/关闭倒计时是 widget.remove"
+            ],
+            "toolNames": [
+              "countdown.set",
+              "countdown.pause",
+              "countdown.reset",
+              "countdown.resume"
+            ],
+            "concurrencyKeys": [],
+            "loadLevel": "catalog"
+          },
+          {
+            "catalogVersion": "cat_d4v30p",
+            "type": "todo",
+            "displayName": "待办",
+            "aliases": [
+              "待办",
+              "任务",
+              "清单"
+            ],
+            "capabilities": [
+              "添加待办",
+              "完成待办",
+              "提醒",
+              "关闭窗口",
+              "todo.add_item | Add a todo item to a todo widget. | requiresTarget",
+              "todo.complete_item | Complete and remove a matching todo item from a todo widget. | requiresTarget"
+            ],
+            "shortcutExamples": [
+              "下午三点叫我开会",
+              "把买牛奶勾掉",
+              "一会儿提醒我喝水",
+              "唤出清单"
+            ],
+            "riskSummary": [
+              "scoped context 只发送待办数量和短摘要",
+              "不发送完整待办列表或敏感提醒内容"
+            ],
+            "toolNames": [
+              "todo.add_item",
+              "todo.complete_item"
+            ],
+            "concurrencyKeys": [],
+            "loadLevel": "catalog"
+          }
+        ],
+        "toolCatalogVersion": "cat_d4v30p",
+        "phase": "plan_select"
+      },
+      "response": {
+        "call": null,
+        "planSelection": {
+          "steps": [
+            {
+              "id": "e2e_seed-todo_1",
+              "name": "board.add_widget",
+              "selectedModule": "app-shell",
+              "confidence": 0.94
+            },
+            {
+              "id": "e2e_seed-todo_2",
+              "name": "todo.add_item",
+              "selectedModule": "todo",
+              "confidence": 0.94
+            }
+          ]
+        }
+      }
+    },
+    {
+      "phase": "plan_execute",
+      "input": "明早九点提醒我买牛奶",
+      "request": {
+        "input": "明早九点提醒我买牛奶",
+        "context": {
+          "contextVersion": "ctx_nk5gbo",
+          "boardId": "board_1782833968055_daoapixu",
+          "boardName": "我的桌板",
+          "availableBoards": [
+            {
+              "boardId": "board_1782833968055_daoapixu",
+              "name": "我的桌板",
+              "active": true
+            }
+          ],
+          "availableDefinitions": [
+            {
+              "definitionId": "wd_note_1782833968055_1smegpl5",
+              "type": "note",
+              "name": "便签"
+            },
+            {
+              "definitionId": "wd_todo_1782833968055_g23cva1n",
+              "type": "todo",
+              "name": "待办"
+            },
+            {
+              "definitionId": "wd_calculator_1782833968055_0euvubaa",
+              "type": "calculator",
+              "name": "计算器"
+            },
+            {
+              "definitionId": "wd_countdown_1782833968055_6r5gw5vy",
+              "type": "countdown",
+              "name": "倒计时"
+            },
+            {
+              "definitionId": "wd_weather_1782833968055_tjjuw7iw",
+              "type": "weather",
+              "name": "天气"
+            },
+            {
+              "definitionId": "wd_headline_1782833968055_tryvrcv6",
+              "type": "headline",
+              "name": "重大新闻"
+            },
+            {
+              "definitionId": "wd_market_1782833968055_mwyp72yx",
+              "type": "market",
+              "name": "全球指数"
+            },
+            {
+              "definitionId": "wd_music_1782833968055_4u6ulw5x",
+              "type": "music",
+              "name": "音乐播放器"
+            },
+            {
+              "definitionId": "wd_tv_1782833968055_npn5eug7",
+              "type": "tv",
+              "name": "电视播放"
+            },
+            {
+              "definitionId": "wd_dialClock_1782833968055_jqcpbqcx",
+              "type": "dialClock",
+              "name": "时钟"
+            },
+            {
+              "definitionId": "wd_worldClock_1782833968055_66920iwc",
+              "type": "worldClock",
+              "name": "世界时钟"
+            },
+            {
+              "definitionId": "wd_translate_1782833968055_ftb04r5k",
+              "type": "translate",
+              "name": "快速翻译"
+            },
+            {
+              "definitionId": "wd_clipboard_1782833968055_r9kbvsgb",
+              "type": "clipboard",
+              "name": "剪贴板历史"
+            },
+            {
+              "definitionId": "wd_converter_1782833968055_oreb3ryy",
+              "type": "converter",
+              "name": "单位换算"
+            },
+            {
+              "definitionId": "wd_recorder_1782833968055_d556qv0j",
+              "type": "recorder",
+              "name": "录音机"
+            },
+            {
+              "definitionId": "wd_messageBoard_1782833968055_si1q0zbq",
+              "type": "messageBoard",
+              "name": "留言板"
+            },
+            {
+              "definitionId": "wd_gomoku_1782833968055_n2wbzzo0",
+              "type": "gomoku",
+              "name": "五子棋"
+            },
+            {
+              "definitionId": "wd_monopoly_1782833968055_idjl10qi",
+              "type": "monopoly",
+              "name": "大富翁"
+            },
+            {
+              "definitionId": "wd_guandan_1782833968055_tqdymdx9",
+              "type": "guandan",
+              "name": "掼蛋"
+            }
+          ],
+          "widgetCountsByType": {
+            "messageBoard": 1
+          },
+          "widgets": [
+            {
+              "widgetId": "wi_1782833968055_f4ohls6x",
+              "definitionId": "wd_messageBoard_1782833968055_si1q0zbq",
+              "type": "messageBoard",
+              "name": "留言板",
+              "order": 1,
+              "summary": "无摘要",
+              "recent": true
+            }
+          ],
+          "toolCatalogVersion": "cat_d4v30p"
+        },
+        "contextVersion": "ctx_nk5gbo",
+        "toolCatalogVersion": "cat_d4v30p",
+        "tools": [
+          {
+            "name": "countdown.set",
+            "description": "Set a countdown duration and optionally start it.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "countdown",
+            "requiresTarget": true
+          },
+          {
+            "name": "todo.add_item",
+            "description": "Add a todo item to a todo widget.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "todo",
+            "requiresTarget": true
+          },
+          {
+            "name": "countdown.pause",
+            "description": "Pause a running countdown widget without closing it.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "countdown",
+            "requiresTarget": true
+          },
+          {
+            "name": "countdown.reset",
+            "description": "Reset a countdown widget to its configured duration without closing it.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "countdown",
+            "requiresTarget": true
+          },
+          {
+            "name": "countdown.resume",
+            "description": "Resume a countdown widget from its remaining time.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "countdown",
+            "requiresTarget": true
+          },
+          {
+            "name": "todo.complete_item",
+            "description": "Complete and remove a matching todo item from a todo widget.",
+            "parameters": {},
+            "risk": "safe",
+            "scope": "widget-detail",
+            "widgetType": "todo",
+            "requiresTarget": true
+          }
+        ],
+        "planSelection": {
+          "steps": [
+            {
+              "id": "e2e_seed-todo_1",
+              "name": "board.add_widget",
+              "selectedModule": "app-shell",
+              "confidence": 0.94
+            },
+            {
+              "id": "e2e_seed-todo_2",
+              "name": "todo.add_item",
+              "selectedModule": "todo",
+              "confidence": 0.94
+            }
+          ]
+        },
+        "moduleContexts": [
+          {
+            "moduleType": "todo",
+            "tools": [
+              {
+                "name": "board.add_widget",
+                "description": "Add an existing widget definition to the current board.",
+                "parameters": {
+                  "argumentKeys": [
+                    "definitionId",
+                    "mobileMode",
+                    "followUp"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "definitionId"
+                    ],
+                    "properties": {
+                      "definitionId": {
+                        "type": "string"
+                      },
+                      "mobileMode": {
+                        "type": "boolean"
+                      },
+                      "followUp": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "desktop",
+                "argumentKeys": [
+                  "definitionId",
+                  "mobileMode",
+                  "followUp"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "stateful",
+                "missingArgPolicy": "fail",
+                "examples": [
+                  "打开待办",
+                  "唤出清单",
+                  "打开任务清单"
+                ]
+              },
+              {
+                "name": "widget.focus",
+                "description": "Focus an existing widget on the current board.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "desktop",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "idempotent",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "聚焦待办",
+                  "切到清单",
+                  "打开待办"
+                ]
+              },
+              {
+                "name": "widget.fullscreen_focus",
+                "description": "Enter fullscreen focus for an existing widget when supported.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "desktop",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "idempotent",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "全屏待办",
+                  "放大清单",
+                  "专注看任务"
+                ]
+              },
+              {
+                "name": "widget.remove",
+                "description": "Close a widget window on the current board.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "desktop",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "idempotent",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "关闭待办",
+                  "关掉清单",
+                  "把待办收起来"
+                ]
+              },
+              {
+                "name": "todo.add_item",
+                "description": "Add a todo item to a todo widget.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId",
+                    "text",
+                    "dueAt"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId",
+                      "text"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      },
+                      "dueAt": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "widget-detail",
+                "widgetType": "todo",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId",
+                  "text",
+                  "dueAt"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "stateful",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "下午三点叫我开会",
+                  "一会儿提醒我喝水",
+                  "添加待办明天买牛奶"
+                ]
+              },
+              {
+                "name": "todo.complete_item",
+                "description": "Complete and remove a matching todo item from a todo widget.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId",
+                    "text"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId",
+                      "text"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "safe",
+                "scope": "widget-detail",
+                "widgetType": "todo",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId",
+                  "text"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "stateful",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "把买牛奶勾掉",
+                  "把任务做完",
+                  "标记买牛奶完成"
+                ]
+              },
+              {
+                "name": "todo.clear_completed",
+                "description": "Clear completed todo items from a todo widget.",
+                "parameters": {
+                  "argumentKeys": [
+                    "widgetId"
+                  ],
+                  "jsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "widgetId"
+                    ],
+                    "properties": {
+                      "widgetId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "risk": "destructive",
+                "scope": "widget-detail",
+                "widgetType": "todo",
+                "requiresTarget": true,
+                "argumentKeys": [
+                  "widgetId"
+                ],
+                "resultSchema": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "idempotency": "stateful",
+                "missingArgPolicy": "ask",
+                "examples": [
+                  "清理已完成待办",
+                  "清空做完的任务",
+                  "删除已完成事项前先确认"
+                ]
+              }
+            ],
+            "toolSchemas": {
+              "board.add_widget": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "definitionId"
+                ],
+                "properties": {
+                  "definitionId": {
+                    "type": "string"
+                  },
+                  "mobileMode": {
+                    "type": "boolean"
+                  },
+                  "followUp": {
+                    "type": "object"
+                  }
+                }
+              },
+              "widget.focus": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  }
+                }
+              },
+              "widget.fullscreen_focus": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  }
+                }
+              },
+              "widget.remove": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  }
+                }
+              },
+              "todo.add_item": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId",
+                  "text"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "dueAt": {
+                    "type": "string"
+                  }
+                }
+              },
+              "todo.complete_item": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId",
+                  "text"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              },
+              "todo.clear_completed": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "widgetId"
+                ],
+                "properties": {
+                  "widgetId": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "instances": [],
+            "stateSummary": {
+              "instanceCount": 0,
+              "selectedToolHint": "todo.add_item",
+              "fullTodoListIncluded": false,
+              "shortTargetSummariesOnly": true
+            },
+            "shortcutExamples": [
+              "下午三点叫我开会",
+              "把买牛奶勾掉",
+              "一会儿提醒我喝水",
+              "唤出清单"
+            ],
+            "executionPolicy": {
+              "defaultMode": "sequential",
+              "exclusiveActions": [
+                "todo.add_item",
+                "todo.complete_item",
+                "todo.clear_completed"
+              ],
+              "requiresMountedWidget": true,
+              "canRunInParallelWith": [
+                "weather",
+                "music",
+                "clipboard",
+                "headline",
+                "worldClock"
+              ]
+            },
+            "riskPolicy": {
+              "safe": [
+                "board.add_widget",
+                "widget.focus",
+                "widget.fullscreen_focus",
+                "widget.remove",
+                "todo.add_item",
+                "todo.complete_item"
+              ],
+              "confirm": [],
+              "destructive": [
+                "todo.clear_completed"
+              ]
+            }
+          }
+        ],
+        "phase": "plan_execute"
+      },
+      "response": {
+        "call": null,
+        "plan": {
+          "id": "e2e_plan_seed-todo",
+          "sourceText": "明早九点提醒我买牛奶",
+          "normalizedText": "明早九点提醒我买牛奶",
+          "commands": [
+            {
+              "id": "e2e_seed-todo_1",
+              "module": "app-shell",
+              "tool": "board.add_widget",
+              "args": {
+                "definitionId": "wd_todo"
+              },
+              "risk": "safe",
+              "confidence": 0.94,
+              "source": "realtime",
+              "requiresHarnessValidation": true
+            },
+            {
+              "id": "e2e_seed-todo_2",
+              "module": "todo",
+              "tool": "todo.add_item",
+              "args": {
+                "widgetId": "wi_todo",
+                "text": "明早九点提醒我买牛奶",
+                "dueAt": "2026-06-22T09:00:00.000Z"
+              },
+              "risk": "safe",
+              "confidence": 0.94,
+              "source": "realtime",
+              "requiresHarnessValidation": true
+            }
+          ],
+          "executionGroups": [
+            {
+              "id": "e2e_group_seed-todo",
+              "mode": "sequential",
+              "commandIds": [
+                "e2e_seed-todo_1",
+                "e2e_seed-todo_2"
+              ]
+            }
+          ],
+          "dependencies": [],
+          "confidence": 0.94,
+          "createdBy": "realtime-2",
+          "requiresHarnessValidation": true
+        }
+      }
+    }
+  ],
+  "consoleErrors": [],
+  "relevantConsoleErrors": [],
+  "before": {
+    "bodyText": "桌板\n+ 新建\n我的桌板\n我的桌板\n添加 Widget\n▾\n⚙\n×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送\n×\n待办\n支持子任务的待办清单\n+\n明早九点提醒我买牛奶\n截止 2026/6/22 17:00:00 · 已到期\n⊞\n暂无其他在线用户\n聆听中 · 已添加小工具；已新增待办\n完成：已新增待办\nlocal_standby · Realtime 0s · $0.0000\n明早九点提醒我买牛奶 · 已添加小工具；已新增待办\n聆听中 · 已添加小工具；已新增待办\n完成：已新增待办\nlocal_standby · Realtime 0s · $0.0000\n明早九点提醒我买牛奶 · 已添加小工具；已新增待办",
+    "operation": "完成：已新增待办",
+    "runtime": "local_standby · Realtime 0s · $0.0000",
+    "widgets": [
+      {
+        "id": "wi_1782833968055_f4ohls6x",
+        "className": "widget-box",
+        "zIndex": 1,
+        "rect": {
+          "x": 300,
+          "y": 72.796875,
+          "w": 240,
+          "h": 500
+        },
+        "text": "×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送",
+        "inputs": [
+          {
+            "placeholder": "输入留言，按 Enter 发送",
+            "ariaLabel": null,
+            "value": ""
+          }
+        ]
+      },
+      {
+        "id": "wi_1782833969840_4xcdch0b",
+        "className": "widget-box is-focused",
+        "zIndex": 2,
+        "rect": {
+          "x": 320,
+          "y": 92.796875,
+          "w": 240,
+          "h": 281
+        },
+        "text": "×\n待办\n支持子任务的待办清单\n+\n明早九点提醒我买牛奶\n截止 2026/6/22 17:00:00 · 已到期",
+        "inputs": [
+          {
+            "placeholder": "添加任务",
+            "ariaLabel": null,
+            "value": ""
+          },
+          {
+            "placeholder": null,
+            "ariaLabel": null,
+            "value": ""
+          },
+          {
+            "placeholder": null,
+            "ariaLabel": null,
+            "value": ""
+          }
+        ]
+      }
+    ],
+    "byType": {
+      "calculator": [],
+      "clipboard": [],
+      "converter": [],
+      "countdown": [],
+      "dialClock": [],
+      "headline": [],
+      "market": [],
+      "messageBoard": [
+        {
+          "id": "wi_1782833968055_f4ohls6x",
+          "className": "widget-box",
+          "zIndex": 1,
+          "rect": {
+            "x": 300,
+            "y": 72.796875,
+            "w": 240,
+            "h": 500
+          },
+          "text": "×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送",
+          "inputs": [
+            {
+              "placeholder": "输入留言，按 Enter 发送",
+              "ariaLabel": null,
+              "value": ""
+            }
+          ]
+        }
+      ],
+      "music": [],
+      "note": [],
+      "recorder": [],
+      "todo": [
+        {
+          "id": "wi_1782833969840_4xcdch0b",
+          "className": "widget-box is-focused",
+          "zIndex": 2,
+          "rect": {
+            "x": 320,
+            "y": 92.796875,
+            "w": 240,
+            "h": 281
+          },
+          "text": "×\n待办\n支持子任务的待办清单\n+\n明早九点提醒我买牛奶\n截止 2026/6/22 17:00:00 · 已到期",
+          "inputs": [
+            {
+              "placeholder": "添加任务",
+              "ariaLabel": null,
+              "value": ""
+            },
+            {
+              "placeholder": null,
+              "ariaLabel": null,
+              "value": ""
+            },
+            {
+              "placeholder": null,
+              "ariaLabel": null,
+              "value": ""
+            }
+          ]
+        }
+      ],
+      "translate": [],
+      "tv": [],
+      "weather": [],
+      "worldClock": []
+    },
+    "auditLogs": [],
+    "diagnostics": {
+      "sessionId": "diag_60d427c3-9ae7-4216-9c45-a00120cd7135",
+      "exportedAt": "2026-06-30T15:39:31.438Z",
+      "events": [],
+      "lastHarnessDiagnostics": null
+    }
+  },
+  "after": {
+    "bodyText": "桌板\n+ 新建\n我的桌板\n我的桌板\n添加 Widget\n▾\n⚙\n×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送\n×\n待办\n支持子任务的待办清单\n+\n明早九点提醒我买牛奶\n截止 2026/6/22 17:00:00 · 已到期\n提醒我\n截止 2026/6/30 23:49:31 · 00:09:58\n⊞\n暂无其他在线用户\n聆听中 · 已新增待办\n完成：已新增待办\nlocal_standby · Realtime 0s · $0.0000\n十分钟后提醒我 · 已新增待办\n聆听中 · 已新增待办\n完成：已新增待办\nlocal_standby · Realtime 0s · $0.0000\n十分钟后提醒我 · 已新增待办",
+    "operation": "完成：已新增待办",
+    "runtime": "local_standby · Realtime 0s · $0.0000",
+    "widgets": [
+      {
+        "id": "wi_1782833968055_f4ohls6x",
+        "className": "widget-box",
+        "zIndex": 1,
+        "rect": {
+          "x": 300,
+          "y": 72.796875,
+          "w": 240,
+          "h": 500
+        },
+        "text": "×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送",
+        "inputs": [
+          {
+            "placeholder": "输入留言，按 Enter 发送",
+            "ariaLabel": null,
+            "value": ""
+          }
+        ]
+      },
+      {
+        "id": "wi_1782833969840_4xcdch0b",
+        "className": "widget-box is-focused",
+        "zIndex": 2,
+        "rect": {
+          "x": 320,
+          "y": 92.796875,
+          "w": 240,
+          "h": 361
+        },
+        "text": "×\n待办\n支持子任务的待办清单\n+\n明早九点提醒我买牛奶\n截止 2026/6/22 17:00:00 · 已到期\n提醒我\n截止 2026/6/30 23:49:31 · 00:09:58",
+        "inputs": [
+          {
+            "placeholder": "添加任务",
+            "ariaLabel": null,
+            "value": ""
+          },
+          {
+            "placeholder": null,
+            "ariaLabel": null,
+            "value": ""
+          },
+          {
+            "placeholder": null,
+            "ariaLabel": null,
+            "value": ""
+          }
+        ]
+      }
+    ],
+    "byType": {
+      "calculator": [],
+      "clipboard": [],
+      "converter": [],
+      "countdown": [],
+      "dialClock": [],
+      "headline": [],
+      "market": [],
+      "messageBoard": [
+        {
+          "id": "wi_1782833968055_f4ohls6x",
+          "className": "widget-box",
+          "zIndex": 1,
+          "rect": {
+            "x": 300,
+            "y": 72.796875,
+            "w": 240,
+            "h": 500
+          },
+          "text": "×\n留言板\n在线用户可实时同步留言\n状态：已连接（当前用户：E2E 测试用户）\n还没有留言，来发布第一条吧。\n发送",
+          "inputs": [
+            {
+              "placeholder": "输入留言，按 Enter 发送",
+              "ariaLabel": null,
+              "value": ""
+            }
+          ]
+        }
+      ],
+      "music": [],
+      "note": [],
+      "recorder": [],
+      "todo": [
+        {
+          "id": "wi_1782833969840_4xcdch0b",
+          "className": "widget-box is-focused",
+          "zIndex": 2,
+          "rect": {
+            "x": 320,
+            "y": 92.796875,
+            "w": 240,
+            "h": 361
+          },
+          "text": "×\n待办\n支持子任务的待办清单\n+\n明早九点提醒我买牛奶\n截止 2026/6/22 17:00:00 · 已到期\n提醒我\n截止 2026/6/30 23:49:31 · 00:09:58",
+          "inputs": [
+            {
+              "placeholder": "添加任务",
+              "ariaLabel": null,
+              "value": ""
+            },
+            {
+              "placeholder": null,
+              "ariaLabel": null,
+              "value": ""
+            },
+            {
+              "placeholder": null,
+              "ariaLabel": null,
+              "value": ""
+            }
+          ]
+        }
+      ],
+      "translate": [],
+      "tv": [],
+      "weather": [],
+      "worldClock": []
+    },
+    "auditLogs": [
+      {
+        "id": "audit_1782833971563_quc28e",
+        "operationId": "shortcut_1782833971561_qlbq85",
+        "boardId": "board_1782833968055_daoapixu",
+        "route": "shortcut",
+        "sourceMode": "shortcut",
+        "transcript": "十分钟后提醒我",
+        "normalized": "十分钟后提醒我",
+        "candidateModules": [
+          {
+            "type": "todo",
+            "score": 0.26,
+            "reason": "action_word+focused_widget"
+          }
+        ],
+        "selectedModule": "todo",
+        "selectedToolHint": "todo.add_item",
+        "selectionConfidence": 0.26,
+        "learningCandidate": false,
+        "toolName": "todo.add_item",
+        "sanitizedArgs": {
+          "widgetId": "wi_1782833969840_4xcdch0b",
+          "text": "提醒我",
+          "dueAt": "2026-06-30T15:49:31.560Z"
+        },
+        "resultStatus": "success",
+        "resultMessage": "已新增待办",
+        "durationMs": 4,
+        "createdAt": "2026-06-30T15:39:31.563Z"
+      }
+    ],
+    "diagnostics": {
+      "sessionId": "diag_60d427c3-9ae7-4216-9c45-a00120cd7135",
+      "exportedAt": "2026-06-30T15:39:33.174Z",
+      "events": [
+        {
+          "type": "voice.text_command.submit",
+          "commandTraceId": "cmd_f9b718d2-21c7-4458-8520-7aa2504bd25f",
+          "status": "started",
+          "data": {
+            "input": "十分钟后提醒我"
+          },
+          "clientSessionId": "diag_60d427c3-9ae7-4216-9c45-a00120cd7135",
+          "clientCreatedAt": "2026-06-30T15:39:31.559Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "commandTraceId": "cmd_f9b718d2-21c7-4458-8520-7aa2504bd25f",
+          "status": "running",
+          "operationId": "shortcut_1782833971561_qlbq85",
+          "route": "shortcut",
+          "toolName": "todo.add_item",
+          "clientSessionId": "diag_60d427c3-9ae7-4216-9c45-a00120cd7135",
+          "clientCreatedAt": "2026-06-30T15:39:31.561Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_omo6oq",
+            "widgetCount": 2,
+            "boardId": "board_1782833968055_daoapixu"
+          },
+          "commandTraceId": "cmd_f9b718d2-21c7-4458-8520-7aa2504bd25f",
+          "clientSessionId": "diag_60d427c3-9ae7-4216-9c45-a00120cd7135",
+          "clientCreatedAt": "2026-06-30T15:39:31.562Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "assistant.operation",
+          "commandTraceId": "cmd_f9b718d2-21c7-4458-8520-7aa2504bd25f",
+          "status": "success",
+          "operationId": "shortcut_1782833971561_qlbq85",
+          "route": "shortcut",
+          "toolName": "todo.add_item",
+          "message": "已新增待办",
+          "clientSessionId": "diag_60d427c3-9ae7-4216-9c45-a00120cd7135",
+          "clientCreatedAt": "2026-06-30T15:39:31.563Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.tool_result.skip",
+          "status": "skipped",
+          "operationId": "shortcut_1782833971561_qlbq85",
+          "toolName": "todo.add_item",
+          "message": "已新增待办",
+          "commandTraceId": "cmd_f9b718d2-21c7-4458-8520-7aa2504bd25f",
+          "data": {
+            "source": "shortcut"
+          },
+          "clientSessionId": "diag_60d427c3-9ae7-4216-9c45-a00120cd7135",
+          "clientCreatedAt": "2026-06-30T15:39:31.563Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "realtime.context.update",
+          "status": "stored",
+          "data": {
+            "contextVersion": "ctx_omo6oq",
+            "widgetCount": 2,
+            "boardId": "board_1782833968055_daoapixu"
+          },
+          "commandTraceId": "cmd_f9b718d2-21c7-4458-8520-7aa2504bd25f",
+          "clientSessionId": "diag_60d427c3-9ae7-4216-9c45-a00120cd7135",
+          "clientCreatedAt": "2026-06-30T15:39:31.563Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        },
+        {
+          "type": "voice.text_command.result",
+          "commandTraceId": "cmd_f9b718d2-21c7-4458-8520-7aa2504bd25f",
+          "status": "success",
+          "route": "shortcut",
+          "toolName": "todo.add_item",
+          "operationId": "shortcut_1782833971561_qlbq85",
+          "message": "已新增待办",
+          "data": {
+            "input": "十分钟后提醒我"
+          },
+          "clientSessionId": "diag_60d427c3-9ae7-4216-9c45-a00120cd7135",
+          "clientCreatedAt": "2026-06-30T15:39:31.563Z",
+          "pagePath": "/app",
+          "visibilityState": "visible"
+        }
+      ],
+      "lastHarnessDiagnostics": {
+        "commandTraceId": "cmd_f9b718d2-21c7-4458-8520-7aa2504bd25f",
+        "rawInput": "十分钟后提醒我",
+        "normalizedText": "十分钟后提醒我",
+        "usedRealtime": false,
+        "segments": [
+          {
+            "id": "segment_1",
+            "text": "十分钟后提醒我",
+            "connector": "start"
+          }
+        ],
+        "candidateModules": [
+          {
+            "type": "todo",
+            "score": 0.26,
+            "reason": "action_word+focused_widget"
+          }
+        ],
+        "toolResults": [
+          {
+            "id": "shortcut_1782833971561_qlbq85",
+            "tool": "todo.add_item",
+            "status": "success",
+            "message": "已新增待办"
+          }
+        ],
+        "route": "shortcut",
+        "commandPlan": {
+          "id": "plan_1782833971561_tmcu3i",
+          "createdBy": "local",
+          "commands": [
+            {
+              "id": "shortcut_1782833971561_qlbq85",
+              "module": "todo",
+              "tool": "todo.add_item",
+              "risk": "safe",
+              "source": "shortcut",
+              "argKeys": "[truncated]"
+            }
+          ],
+          "executionGroups": [
+            {
+              "id": "group_1",
+              "mode": "sequential",
+              "commandIds": "[truncated]"
+            }
+          ]
+        },
+        "learningCandidate": false,
+        "status": "success",
+        "message": "已新增待办",
+        "pendingConfirmation": false
+      }
+    }
+  },
+  "failures": []
+}

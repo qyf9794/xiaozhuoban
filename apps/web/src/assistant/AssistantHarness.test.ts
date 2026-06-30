@@ -6,6 +6,7 @@ import {
   WidgetTargetResolver,
   LearnedCommandStore,
   createDefaultIntentShortcutRouter,
+  createCommandPlanFromToolCalls,
   createPassthroughSchema,
   type AssistantToolCall,
   type AssistantToolResult,
@@ -303,6 +304,25 @@ function createRealtimePlanWithTool(sourceText: string, tool: string): CommandPl
   };
 }
 
+function createRealtimePlanWithCalls(sourceText: string, calls: Array<{ name: string; arguments: Record<string, unknown> }>): CommandPlan {
+  const toolCalls: AssistantToolCall[] = calls.map((call, index) => ({
+    id: `cmd_${index + 1}`,
+    name: call.name,
+    arguments: call.arguments,
+    source: "realtime",
+    transcript: sourceText
+  }));
+  const plan = createCommandPlanFromToolCalls(sourceText, toolCalls);
+  plan.createdBy = "realtime-2";
+  plan.commands = plan.commands.map((command) => ({ ...command, source: "realtime", confidence: 0.91 }));
+  plan.executionGroups = toolCalls.map((call, index) => ({
+    id: `group_${index + 1}`,
+    mode: "sequential",
+    commandIds: [call.id]
+  }));
+  return plan;
+}
+
 describe("AssistantHarness", () => {
   it("initializes with all active tools for realtime selection", async () => {
     const { harness, toolUpdates, contextUpdates } = createHarness();
@@ -442,19 +462,25 @@ describe("AssistantHarness", () => {
     expect(executed).toEqual(["board.add_widget:none", "music.play:wi_added_music"]);
   });
 
-  it("executes realtime artist-specific listen requests through the same local shortcut path", async () => {
-    const { harness, executed } = createHarness();
+  it("executes realtime artist-specific listen requests through the realtime plan path", async () => {
+    const input = "我想听王菲的歌";
+    const { harness, executed } = createHarness({
+      modelPlan: createRealtimePlanWithCalls(input, [
+        { name: "board.add_widget", arguments: { definitionId: "wd_music" } },
+        { name: "music.play", arguments: { widgetId: "planned_widget_music", query: "王菲" } }
+      ])
+    });
     await harness.initialize();
 
-    const response = await harness.handleRealtimeUserInput("我想听王菲的歌", { commandTraceId: "voice_wangfei" });
+    const response = await harness.handleRealtimeUserInput(input, { commandTraceId: "voice_wangfei" });
 
-    expect(response.route).toBe("shortcut");
+    expect(response.route).toBe("model");
     expect(response.result.status).toBe("success");
-    expect(response.result.message).toBe("board.add_widget done，music.play done");
+    expect(response.result.message).toBe("board.add_widget done；music.play done");
     expect(executed).toEqual(["board.add_widget:none", "music.play:wi_added_music"]);
     expect(harness.getLastDiagnostics()).toMatchObject({
       commandTraceId: "voice_wangfei",
-      route: "shortcut"
+      route: "model"
     });
   });
 
@@ -1632,8 +1658,13 @@ describe("AssistantHarness", () => {
     ]);
   });
 
-  it("runs realtime command text through local shortcuts before model planning", async () => {
+  it("runs realtime command text through realtime planning before local shortcuts", async () => {
+    const input = "打开音乐，同时查北京天气";
     const { harness, executed } = createHarness({
+      modelPlan: createRealtimePlanWithCalls(input, [
+        { name: "widget.focus", arguments: { widgetId: "wi_music" } },
+        { name: "weather.set_city", arguments: { widgetId: "wi_weather", city: "北京" } }
+      ]),
       getContextInput: () => ({
         ...createContextInput(),
         focusedWidgetId: "wi_music",
@@ -1645,15 +1676,15 @@ describe("AssistantHarness", () => {
     });
     await harness.initialize();
 
-    const response = await harness.handleRealtimeUserInput("打开音乐，同时查北京天气", { commandTraceId: "trace_realtime_text" });
+    const response = await harness.handleRealtimeUserInput(input, { commandTraceId: "trace_realtime_text" });
 
-    expect(response.route).toBe("shortcut");
+    expect(response.route).toBe("model");
     expect(response.result.status).toBe("success");
     expect(response.result.message).toBe("widget.focus done；weather.set_city done");
     expect(executed).toEqual(["widget.focus:wi_music", "weather.set_city:wi_weather"]);
     expect(harness.getLastDiagnostics()).toMatchObject({
       commandTraceId: "trace_realtime_text",
-      route: "shortcut"
+      route: "model"
     });
   });
 
