@@ -17,7 +17,7 @@ import {
   XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
   decodeRealtimeToolName
 } from "./realtimeSessionConfig";
-import { realtimeWidgetAliases } from "./realtimeRoutingPolicy";
+import { REALTIME_ADD_WIDGET_TOOL_NAME, realtimeWidgetAliases } from "./realtimeRoutingPolicy";
 import {
   REALTIME_TOOL_SELECTION_TOOL_NAME,
   createRealtimeCommandPlanRequestBody,
@@ -103,6 +103,7 @@ type PendingTextCommandAfterSelectorUpdate = {
 };
 type RealtimeTargetHint = Pick<RealtimeTextToolSelection, "selectedModule" | "targetHint"> & {
   userCommand?: string;
+  selectedToolName?: string;
 };
 type RealtimeDefinitionSummary = NonNullable<CompactAssistantContext["availableDefinitions"]>[number];
 type MicrophoneLevelMonitor = {
@@ -162,6 +163,7 @@ function normalizeMusicToolArguments(args: Record<string, unknown>): Record<stri
   const nextArgs = { ...args };
   const queryParts = [
     nextArgs.query,
+    nextArgs.q,
     nextArgs.keyword,
     nextArgs.term,
     nextArgs.search,
@@ -180,6 +182,7 @@ function normalizeMusicToolArguments(args: Record<string, unknown>): Record<stri
     nextArgs.query = query;
   }
   delete nextArgs.keyword;
+  delete nextArgs.q;
   delete nextArgs.term;
   delete nextArgs.search;
   delete nextArgs.artist;
@@ -228,8 +231,8 @@ function parseCountdownSecondsFromText(text: string): number | undefined {
 function isPureOpenWidgetText(text: string): boolean {
   const compact = text.replace(/\s+/g, "");
   if (!compact) return false;
-  if (!/^(打开|开启|唤出|调出|新建|添加|加一个)/.test(compact)) return false;
-  return !/(然后|然後|再|同时|同時|并且|並且|全屏|切到|播放|暂停|搜索|查|设置|设为|倒计时|倒計時|分钟|分鐘|秒|小时|小時|提醒|记一下|写|翻译)/.test(compact);
+  if (!/^(打开|打開|开启|開啟|唤出|喚出|调出|調出|新建|添加|加一个|加一個)/.test(compact)) return false;
+  return !/(然后|然後|再|同时|同時|并且|並且|全屏|切到|播放(?!器)|暂停|暫停|搜索|查|设置|設置|设为|設為|倒计时|倒計時|分钟|分鐘|秒|小时|小時|提醒|记一下|記一下|写|寫|翻译|翻譯)/.test(compact);
 }
 
 function normalizeNoteToolArguments(args: Record<string, unknown>): Record<string, unknown> {
@@ -238,6 +241,45 @@ function normalizeNoteToolArguments(args: Record<string, unknown>): Record<strin
     nextArgs.content = nextArgs.text;
   }
   delete nextArgs.text;
+  return nextArgs;
+}
+
+function looksLikeTvDefinitionId(value: unknown): boolean {
+  return typeof value === "string" && /(^|[_-])tv([_-]|$)/i.test(value);
+}
+
+function hasExplicitTvChannelText(value: string): boolean {
+  return /(BBC|CNN|CCTV|CGTN|央视|频道|台|电影|新闻|体育|财经|少儿|卫视|\d+)/i.test(value);
+}
+
+function extractTvChannelNameFromText(value: string): string {
+  if (/BBC/i.test(value)) return "BBC";
+  if (/CNN/i.test(value)) return "CNN";
+  if (/CGTN/i.test(value)) return "CGTN";
+  const cctv = value.match(/CCTV\s*[-_]?\s*(\d{1,2})/i);
+  if (cctv) return `CCTV${cctv[1]}`;
+  if (/央视.*新闻|新闻.*央视|CCTV\s*13/i.test(value)) return "CCTV13";
+  if (/电影/.test(value)) return "CCTV6";
+  if (/体育|五套|5套/.test(value)) return "CCTV5";
+  return "";
+}
+
+function normalizeTvToolArguments(args: Record<string, unknown>, fallbackText = ""): Record<string, unknown> {
+  const nextArgs = { ...args };
+  const rawChannel =
+    typeof nextArgs.channelName === "string"
+      ? nextArgs.channelName
+      : typeof nextArgs.channel === "string"
+        ? nextArgs.channel
+        : typeof nextArgs.station === "string"
+          ? nextArgs.station
+          : "";
+  const channelName = extractTvChannelNameFromText([rawChannel, fallbackText].filter(Boolean).join(" "));
+  if (channelName) {
+    nextArgs.channelName = channelName;
+  }
+  delete nextArgs.channel;
+  delete nextArgs.station;
   return nextArgs;
 }
 
@@ -251,6 +293,9 @@ function normalizeRealtimeToolArguments(toolName: string, args: Record<string, u
   }
   if (toolName === "note.write") {
     nextArgs = normalizeNoteToolArguments(nextArgs);
+  }
+  if (toolName === "tv.play" || toolName === "tv.select_channel") {
+    nextArgs = normalizeTvToolArguments(nextArgs, fallbackText);
   }
   if (toolName === "board.add_widget" && typeof nextArgs.raw === "string") {
     const raw = nextArgs.raw;
@@ -294,6 +339,45 @@ function normalizeRealtimeToolArguments(toolName: string, args: Record<string, u
         }
       };
     }
+    if ((followUpName === "tv.play" || followUpName === "tv.select_channel") && looksLikeTvDefinitionId(nextArgs.definitionId)) {
+      nextArgs = {
+        ...nextArgs,
+        followUp: {
+          ...followUp,
+          name: followUpName,
+          arguments: normalizeTvToolArguments(followUpArgs, fallbackText)
+        }
+      };
+    }
+    if (
+      followUpName === "tv.play" &&
+      looksLikeTvDefinitionId(nextArgs.definitionId) &&
+      /全屏|fullscreen/i.test(fallbackText) &&
+      !hasExplicitTvChannelText(fallbackText)
+    ) {
+      nextArgs = {
+        ...nextArgs,
+        followUp: {
+          name: "tv.fullscreen",
+          arguments: {}
+        }
+      };
+    }
+  }
+  if (
+    toolName === "board.add_widget" &&
+    !isRecord(nextArgs.followUp) &&
+    looksLikeTvDefinitionId(nextArgs.definitionId) &&
+    /全屏|fullscreen/i.test(fallbackText) &&
+    !hasExplicitTvChannelText(fallbackText)
+  ) {
+    nextArgs = {
+      ...nextArgs,
+      followUp: {
+        name: "tv.fullscreen",
+        arguments: {}
+      }
+    };
   }
   return nextArgs;
 }
@@ -412,6 +496,42 @@ function bindWindowToolTargetForCall(
   );
   const widget = targetType ? context.widgets.find((item) => item.type === targetType) : undefined;
   return widget ? { ...call, arguments: { ...call.arguments, widgetId: widget.widgetId } } : call;
+}
+
+function inferAddWidgetDefinitionForCall(
+  call: AssistantToolCall,
+  context: CompactAssistantContext | null,
+  tools: AssistantToolSpec[],
+  hint: RealtimeTargetHint | undefined,
+  fallbackText: string
+): AssistantToolCall {
+  if (!context || call.name !== "board.add_widget" || !isRecord(call.arguments) || typeof call.arguments.definitionId === "string") {
+    return call;
+  }
+  const selectedTool = hint?.selectedToolName ? tools.find((tool) => tool.name === hint.selectedToolName) : undefined;
+  const targetType =
+    (hint?.selectedModule && context.availableDefinitions?.some((definition) => definition.type === hint.selectedModule)
+      ? hint.selectedModule
+      : "") ||
+    selectedTool?.widgetType ||
+    "";
+  const definition = targetType ? context.availableDefinitions?.find((item) => item.type === targetType) : undefined;
+  if (!definition) return call;
+  const nextArgs: Record<string, unknown> = { ...call.arguments, definitionId: definition.definitionId };
+  const followUpName = selectedTool?.scope === "widget-detail" ? selectedTool.name : "";
+  const input = Array.from(new Set([fallbackText, hint?.userCommand, hint?.targetHint].filter(Boolean))).join(" ");
+  if (followUpName === "music.search" || followUpName === "music.play") {
+    nextArgs.followUp = {
+      name: followUpName,
+      arguments: normalizeMusicToolArguments({ query: input })
+    };
+  } else if (followUpName === "tv.play" || followUpName === "tv.select_channel") {
+    nextArgs.followUp = {
+      name: followUpName,
+      arguments: normalizeTvToolArguments({}, input)
+    };
+  }
+  return { ...call, arguments: nextArgs };
 }
 
 function normalizeRealtimePlanArguments(
@@ -610,6 +730,13 @@ function createSafeRealtimeToolCallDiagnosticData(call: AssistantToolCall): Reco
     ) {
       data[key] = value;
     }
+  }
+  if (call.name === "board.add_widget" && isRecord(args.followUp)) {
+    const followUpName = typeof args.followUp.name === "string" ? args.followUp.name : "";
+    const followUpArgs = isRecord(args.followUp.arguments) ? args.followUp.arguments : {};
+    if (followUpName) data.followUpName = followUpName;
+    if (typeof followUpArgs.channelName === "string") data.channelName = followUpArgs.channelName;
+    if (typeof followUpArgs.query === "string") data.query = followUpArgs.query;
   }
   return Object.keys(data).length ? data : undefined;
 }
@@ -1506,7 +1633,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         type: "realtime",
         instructions: createRealtimeToolSelectionInstructions(tools, capabilityCatalog),
         audio: createRealtimeSessionAudioConfig(),
-        tools: [createRealtimeToolSelectionTool(tools)],
+        tools: [createRealtimeToolSelectionTool(tools, capabilityCatalog)],
         tool_choice: "auto",
         parallel_tool_calls: false
       }
@@ -1554,6 +1681,44 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       }
     });
     return plan;
+  }
+
+  private resolveToolSelectionInput(
+    selection: NonNullable<ReturnType<typeof parseToolSelectionArguments>>,
+    commandTraceId?: string
+  ): string {
+    const tracedInput = commandTraceId ? this.realtimeTraceUserTranscripts.get(commandTraceId)?.input ?? "" : "";
+    return selection.userCommand || tracedInput || selection.targetHint || selection.name;
+  }
+
+  private validateSelectedToolExposure(
+    selectedTool: AssistantToolSpec,
+    selection: NonNullable<ReturnType<typeof parseToolSelectionArguments>>,
+    commandTraceId?: string
+  ): { ok: true; input: string; selectedModule?: string } | { ok: false; input: string; exposedTools: string[]; excludedReasons: Record<string, string> } {
+    if (!this.currentContext) {
+      return { ok: false, input: selection.userCommand || selection.targetHint || selection.name, exposedTools: [], excludedReasons: {} };
+    }
+    const input = this.resolveToolSelectionInput(selection, commandTraceId);
+    const exposurePlan = this.createToolExposurePlan(input, this.currentContext, this.currentTools);
+    const exposedTools = exposurePlan.exposedTools.map((tool) => tool.name);
+    const selectedModule = selection.selectedModule ?? exposurePlan.selectedModules[0];
+    if (exposedTools.includes(selectedTool.name)) {
+      return { ok: true, input, selectedModule };
+    }
+    if (
+      selectedTool.name === REALTIME_ADD_WIDGET_TOOL_NAME &&
+      selectedModule &&
+      this.currentContext.availableDefinitions?.some((definition) => definition.type === selectedModule)
+    ) {
+      return { ok: true, input, selectedModule };
+    }
+    return {
+      ok: false,
+      input,
+      exposedTools,
+      excludedReasons: exposurePlan.excludedReasons
+    };
   }
 
   private attachContextVersions(context: CompactAssistantContext, tools: AssistantToolSpec[]): CompactAssistantContext {
@@ -1852,9 +2017,19 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.handleToolSelection(call);
       return;
     }
-    const fallbackText = commandTraceId ? this.realtimeTraceUserTranscripts.get(commandTraceId)?.input ?? "" : "";
+    const fallbackText =
+      (commandTraceId ? this.realtimeTraceUserTranscripts.get(commandTraceId)?.input ?? "" : "") ||
+      this.activeScopedToolSelection?.userCommand ||
+      "";
     const sanitized = sanitizeRealtimeToolCallArguments(call, this.currentTools.find((tool) => tool.name === call.name), fallbackText);
-    const toolCall = bindWindowToolTargetForCall(sanitized.call, this.currentContext, this.currentTools, this.activeScopedToolSelection ?? undefined);
+    const addWidgetBoundCall = inferAddWidgetDefinitionForCall(
+      sanitized.call,
+      this.currentContext,
+      this.currentTools,
+      this.activeScopedToolSelection ?? undefined,
+      fallbackText
+    );
+    const toolCall = bindWindowToolTargetForCall(addWidgetBoundCall, this.currentContext, this.currentTools, this.activeScopedToolSelection ?? undefined);
     this.activeScopedToolSelection = null;
     if (sanitized.removedKeys.length) {
       this.emitDiagnostic({
@@ -1981,6 +2156,44 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       return;
     }
 
+    const exposureValidation = this.validateSelectedToolExposure(selectedTool, selection, commandTraceId);
+    if (!exposureValidation.ok) {
+      const capabilityCatalog = this.createCapabilityCatalog(this.currentTools);
+      const toolCatalogVersion = capabilityCatalog[0]?.catalogVersion ?? this.currentContext.toolCatalogVersion;
+      this.emitDiagnostic({
+        type: "realtime.tool_selection.not_exposed",
+        status: "failed",
+        operationId: call.id,
+        toolName: selectedTool.name,
+        commandTraceId,
+        errorCode: "REALTIME_SELECTED_TOOL_NOT_EXPOSED",
+        data: {
+          input: exposureValidation.input,
+          selectedModule: selection.selectedModule,
+          targetHint: selection.targetHint,
+          confidence: selection.confidence,
+          exposedTools: exposureValidation.exposedTools,
+          excludedReasons: exposureValidation.excludedReasons,
+          currentToolsCount: this.currentTools.length,
+          contextVersion: this.currentContext.contextVersion,
+          toolCatalogVersion,
+          sessionReady: this.sessionReady,
+          dataChannelState: this.dataChannel?.readyState ?? "missing"
+        }
+      });
+      this.sendToolResult(call, {
+        status: "failed",
+        message: "Realtime 选择了当前命令未暴露的工具，已停止执行。",
+        errorCode: "REALTIME_SELECTED_TOOL_NOT_EXPOSED",
+        data: {
+          selectedTool: selectedTool.name,
+          exposedTools: exposureValidation.exposedTools,
+          input: exposureValidation.input
+        }
+      });
+      return;
+    }
+
     if (
       selectedTool.name === "widget.remove" &&
       isBulkWindowSelectionText(selection.userCommand, selection.targetHint)
@@ -2031,7 +2244,17 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
           data: {
             definitionId: addWidgetShortcut.definition.definitionId,
             definitionType: addWidgetShortcut.definition.type,
-            targetText: addWidgetShortcut.targetText
+            targetText: addWidgetShortcut.targetText,
+            followUpName: isRecord(addWidgetShortcut.call.arguments) && isRecord(addWidgetShortcut.call.arguments.followUp)
+              ? addWidgetShortcut.call.arguments.followUp.name
+              : undefined,
+            channelName:
+              isRecord(addWidgetShortcut.call.arguments) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp.arguments) &&
+              typeof addWidgetShortcut.call.arguments.followUp.arguments.channelName === "string"
+                ? addWidgetShortcut.call.arguments.followUp.arguments.channelName
+                : undefined
           }
         });
         void Promise.resolve(this.options.onFunctionCall?.(addWidgetShortcut.call))
@@ -2058,20 +2281,21 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       }
     }
 
-    const selectedModule = this.resolveSelectedModuleForToolSelection(selectedTool, selection);
+    const selectedModule = selection.selectedModule ?? exposureValidation.selectedModule ?? this.resolveSelectedModuleForToolSelection(selectedTool, selection);
     this.activeScopedToolSelection = {
       selectedModule,
       targetHint: selection.targetHint,
-      userCommand: selection.userCommand || selection.targetHint || selection.name
+      userCommand: exposureValidation.input,
+      selectedToolName: selectedTool.name
     };
     const update = createScopedRealtimeToolUpdate(
       {
-        input: selection.userCommand || selection.targetHint || selection.name,
+        input: exposureValidation.input,
         context: this.currentContext,
         tools: this.currentTools,
         moduleContext: selectedModule
           ? this.moduleRegistry?.getScopedContextForModule(selectedModule, {
-              userText: selection.userCommand || selection.targetHint || selection.name,
+              userText: exposureValidation.input,
               selectedToolHint: selection.name,
               compactContext: this.currentContext,
               tools: this.currentTools
@@ -2174,6 +2398,14 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         name: "countdown.set",
         arguments: { totalSeconds: countdownSeconds, start: true }
       };
+    } else if (definition.type === "tv") {
+      const channelName = extractTvChannelNameFromText(input);
+      if (channelName) {
+        argumentsWithOptionalFollowUp.followUp = {
+          name: "tv.play",
+          arguments: { channelName }
+        };
+      }
     }
     return {
       definition,

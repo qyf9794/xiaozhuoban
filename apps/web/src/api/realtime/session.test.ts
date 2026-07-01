@@ -136,8 +136,13 @@ describe("realtime session API", () => {
       "assistant__dot__execute_command"
     ]);
     expect(JSON.stringify(payload.session.tools[0].parameters)).toContain("board.add_widget");
+    expect(JSON.stringify(payload.session.tools[0].parameters)).toContain("countdown");
+    expect(JSON.stringify(payload.session.tools[0].parameters)).toContain("music");
+    expect(JSON.stringify(payload.session.tools[0].parameters)).toContain("tv");
     expect(JSON.stringify(payload.session.tools[1].parameters)).toContain("command");
     expect(JSON.stringify(payload.session.tools[0].parameters)).not.toContain("widgetId");
+    expect(payload.session.instructions).toContain("scoped session.update 失败");
+    expect(payload.session.instructions).toContain("优先选择最接近的模块和工具");
   });
 
   it("derives the OpenAI safety identifier from auth even when the request has none", async () => {

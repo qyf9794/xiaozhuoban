@@ -194,6 +194,15 @@ function moduleCatalogText(moduleCatalog: RealtimeModuleCatalogItem[] | undefine
     .join("\n");
 }
 
+function selectionModuleTypes(tools: AssistantToolSpec[], moduleCatalog?: RealtimeModuleCatalogItem[]): string[] {
+  return [
+    ...new Set([
+      ...(moduleCatalog ?? []).map((module) => module.type),
+      ...tools.map((tool) => tool.widgetType).filter((type): type is string => Boolean(type))
+    ])
+  ].sort((left, right) => left.localeCompare(right));
+}
+
 export function createRealtimeToolSelectionPrompt(
   input: string,
   tools: AssistantToolSpec[],
@@ -239,7 +248,8 @@ export function createRealtimeToolSelectionInstructions(tools: AssistantToolSpec
   ].join("\n");
 }
 
-export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[]): RealtimeFunctionTool {
+export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[], moduleCatalog?: RealtimeModuleCatalogItem[]): RealtimeFunctionTool {
+  const moduleTypes = selectionModuleTypes(tools, moduleCatalog);
   return {
     type: "function",
     name: SELECT_TOOL_NAME.replace(/\./g, "__dot__"),
@@ -254,7 +264,7 @@ export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[]): Rea
         },
         selectedModule: {
           type: "string",
-          enum: (tools.length > 0 ? [...new Set(tools.map((tool) => tool.widgetType).filter(Boolean))] : []) as string[],
+          enum: moduleTypes,
           description: "Selected module type when known."
         },
         targetHint: {

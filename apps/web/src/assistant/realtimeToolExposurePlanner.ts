@@ -61,7 +61,7 @@ const MODULE_INTENT_PATTERNS: Record<string, RegExp> = {
   recorder: /(录音|录一段|刚才录音|回放)/,
   todo: /(待办|任务|清单|提醒|叫我|复盘|买牛奶|买咖啡豆|订酒店|提交报告|勾掉|完成)/,
   translate: /(翻译|中文|英文|good night)/i,
-  tv: /(电视|直播|CCTV|电影频道|央视)/i,
+  tv: /(电视|直播|CCTV|BBC|CNN|频道|电视台|电影频道|央视)/i,
   weather: /(天气|气温|冷不冷|冷|热|下雨|带伞|出门|北京|上海|杭州|广州|成都|武汉|波士顿|洛杉矶)/
 };
 
@@ -117,8 +117,8 @@ const TOOL_INTENT_PATTERNS: Record<string, RegExp> = {
   "translate.set_draft": /(翻译|中文|英文|good night)/i,
   "tv.fullscreen": /(电视.*全屏|全屏.*电视)/,
   "tv.pause": /(暂停电视|电视.*暂停)/,
-  "tv.play": /(播放 CCTV|打开.*电视|看.*电视|电影频道|央视|直播)/i,
-  "tv.select_channel": /(CCTV|电影频道|切到.*电视|电视切到)/i,
+  "tv.play": /(播放 CCTV|打开.*电视|看.*电视|想看|BBC|CNN|频道|电视台|电影频道|央视|直播)/i,
+  "tv.select_channel": /(CCTV|BBC|CNN|频道|电视台|电影频道|切到.*电视|电视切到|想看)/i,
   "weather.set_city": /(天气|冷不冷|冷|热|下雨|带伞|出门|北京|上海|杭州|广州|成都|武汉|波士顿|洛杉矶)/,
   "worldClock.set_zones": /(世界时钟|世界时间|本地时间|当地时间|时间|时区|几点|东京|巴黎|纽约|伦敦|北京)/
 };

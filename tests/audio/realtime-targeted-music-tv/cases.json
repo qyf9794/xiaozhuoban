@@ -1,0 +1,42 @@
+[
+  {
+    "id": "M01",
+    "command": "搜一点轻松的音乐",
+    "audio": "M01-vad.wav",
+    "expected": ["music.search", "music.play", "board.add_widget"],
+    "expectedModules": ["music"],
+    "expectedQueryIncludes": ["轻松"]
+  },
+  {
+    "id": "M02",
+    "command": "播放王菲的红豆",
+    "audio": "M02-vad.wav",
+    "expected": ["music.play", "music.search"],
+    "expectedModules": ["music"],
+    "expectedQueryIncludes": ["王菲", "红豆"]
+  },
+  {
+    "id": "M03",
+    "command": "我想听点放松的不一定播放",
+    "audio": "M03-vad.wav",
+    "expected": ["music.search", "music.play", "board.add_widget"],
+    "expectedModules": ["music"],
+    "expectedQueryIncludes": ["放松"]
+  },
+  {
+    "id": "M04",
+    "command": "来个周杰伦经典",
+    "audio": "M04-vad.wav",
+    "expected": ["music.search", "music.play", "board.add_widget"],
+    "expectedModules": ["music"],
+    "expectedQueryIncludes": ["周杰伦"]
+  },
+  {
+    "id": "T01",
+    "command": "打开电视看BBC",
+    "audio": "T01-vad.wav",
+    "expected": ["tv.select_channel", "tv.play", "board.add_widget"],
+    "expectedModules": ["tv"],
+    "expectedChannelIncludes": ["BBC"]
+  }
+]

@@ -152,6 +152,7 @@ export interface CompactWidgetSummary {
   name: string;
   order: number;
   summary: string;
+  assistantState?: Record<string, unknown>;
   recent?: boolean;
   focused?: boolean;
 }
@@ -449,6 +450,40 @@ function summarizeWidgetState(type: string, state: Record<string, unknown> | und
   return firstUseful ? truncateSummary(summarizeStateValue(firstUseful[1])) : "有状态";
 }
 
+function readAssistantStringList(value: unknown, limit: number): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const items: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const compact = item.replace(/\s+/g, " ").trim();
+    if (!compact || seen.has(compact)) continue;
+    seen.add(compact);
+    items.push(compact);
+    if (items.length >= limit) break;
+  }
+  return items;
+}
+
+function extractAssistantWidgetState(type: string, state: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (type !== "tv" || !state) return undefined;
+  const channelNames = readAssistantStringList(state.assistantChannelNames, 240);
+  const selectedChannelName = summarizeStateValue(state.selectedChannelName).replace(/\s+/g, " ").trim();
+  const rawCount = state.assistantChannelCount;
+  const channelCount =
+    typeof rawCount === "number" && Number.isFinite(rawCount) && rawCount >= 0 ? Math.round(rawCount) : channelNames.length;
+
+  if (!selectedChannelName && channelNames.length === 0 && channelCount === 0) return undefined;
+
+  return {
+    selectedChannelName: selectedChannelName || undefined,
+    channelNames,
+    channelCount,
+    channelListTruncated: channelCount > channelNames.length || undefined,
+    channelUrlsExposed: false
+  };
+}
+
 export class ContextSummarizer {
   summarize(input: ContextSummarizerInput): CompactAssistantContext {
     const recentSet = new Set(input.recentWidgetIds ?? []);
@@ -470,6 +505,7 @@ export class ContextSummarizer {
     const maxWidgets = Math.max(1, input.maxWidgets ?? 8);
     const widgets = orderedWidgets.slice(0, maxWidgets).map((widget): CompactWidgetSummary => {
       const summary = widget.summary ?? summarizeWidgetState(widget.type, widget.state);
+      const assistantState = extractAssistantWidgetState(widget.type, widget.state);
       return {
         widgetId: widget.widgetId,
         definitionId: widget.definitionId,
@@ -477,6 +513,7 @@ export class ContextSummarizer {
         name: widget.name,
         order: widget.order,
         summary: truncateSummary(summary || "无摘要"),
+        assistantState,
         recent: recentSet.has(widget.widgetId) || undefined,
         focused: widget.widgetId === input.focusedWidgetId || undefined
       };

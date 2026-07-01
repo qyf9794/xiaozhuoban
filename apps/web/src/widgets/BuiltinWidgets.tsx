@@ -29,7 +29,15 @@ import {
   type MusicKitInstanceLike,
   type MusicSearchItem
 } from "./musicKitClient";
-import { DEFAULT_TV_PLAYLIST_URL, findFallbackTvChannel, findTvChannel, parseM3UPlaylist, resolveTvPlaylistSelection, type TvChannel } from "./tvShared";
+import {
+  DEFAULT_TV_PLAYLIST_URL,
+  findFallbackTvChannel,
+  findTvChannel,
+  parseM3UPlaylist,
+  resolveTvPlaylistSelection,
+  summarizeTvChannelNamesForAssistant,
+  type TvChannel
+} from "./tvShared";
 import {
   CHINA_TIME_ZONE,
   DEFAULT_WORLD_CLOCK_ZONES,
@@ -3927,7 +3935,9 @@ export function BuiltinWidgetView({
                 ...latestStateRef.current,
                 playlistUrl: source,
                 selectedChannelUrl: preserved.selected.url,
-                selectedChannelName: preserved.selected.name
+                selectedChannelName: preserved.selected.name,
+                assistantChannelNames: summarizeTvChannelNamesForAssistant(preserved.channels),
+                assistantChannelCount: preserved.channels.length
               });
               return;
             }
@@ -3935,7 +3945,9 @@ export function BuiltinWidgetView({
               ...latestStateRef.current,
               playlistUrl: source,
               selectedChannelUrl: "",
-              selectedChannelName: ""
+              selectedChannelName: "",
+              assistantChannelNames: [],
+              assistantChannelCount: 0
             });
             setError("未解析到频道");
             return;
@@ -3953,7 +3965,9 @@ export function BuiltinWidgetView({
             ...latestStateRef.current,
             playlistUrl: source,
             selectedChannelUrl: selected.url,
-            selectedChannelName: selected.name
+            selectedChannelName: selected.name,
+            assistantChannelNames: summarizeTvChannelNamesForAssistant(nextChannels),
+            assistantChannelCount: nextChannels.length
           });
         })
         .catch((fetchError) => {
@@ -4000,14 +4014,18 @@ export function BuiltinWidgetView({
 
         const nextUrl = selected?.url ?? channelUrl;
         const nextName = selected?.name ?? channelName;
-        if (selected && !channels.some((channel) => channel.url === selected.url)) {
+        const channelsForAssistant =
+          selected && !channels.some((channel) => channel.url === selected.url) ? [selected, ...channels] : channels;
+        if (selected && channelsForAssistant !== channels) {
           setChannels((current) => (current.some((channel) => channel.url === selected.url) ? current : [selected, ...current]));
         }
         setPlaybackError("");
         onStateChange({
           ...latestStateRef.current,
           selectedChannelUrl: nextUrl,
-          selectedChannelName: nextName
+          selectedChannelName: nextName,
+          assistantChannelNames: summarizeTvChannelNamesForAssistant(channelsForAssistant),
+          assistantChannelCount: channelsForAssistant.length
         });
         return { status: "success" as const, message: "已切换电视频道", data: { channelName: nextName, channelUrl: nextUrl } };
       };
@@ -4182,7 +4200,9 @@ export function BuiltinWidgetView({
                     onStateChange({
                       ...latestStateRef.current,
                       selectedChannelUrl: channel.url,
-                      selectedChannelName: channel.name
+                      selectedChannelName: channel.name,
+                      assistantChannelNames: summarizeTvChannelNamesForAssistant(channels),
+                      assistantChannelCount: channels.length
                     });
                   }}
                 >

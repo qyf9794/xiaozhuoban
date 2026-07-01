@@ -5,11 +5,11 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const repoRoot = path.resolve(__dirname, "..");
-const reportPath = path.join(repoRoot, "docs/realtime-live-voice-smoke-report.md");
-const outputRoot = path.join(repoRoot, "output/playwright/realtime-live-voice-smoke");
-const audioRoot = path.join(repoRoot, "tests/audio/realtime-live-smoke");
+const defaultReportPath = path.join(repoRoot, "docs/realtime-live-voice-smoke-report.md");
+const defaultOutputRoot = path.join(repoRoot, "output/playwright/realtime-live-voice-smoke");
+const defaultAudioRoot = path.join(repoRoot, "tests/audio/realtime-live-smoke");
 
-const cases = [
+const defaultCases = [
   { id: "01", command: "关闭留言板", audio: "01-vad.wav", expected: ["widget.remove"] },
   { id: "02", command: "打开音乐播放器", audio: "02-vad.wav", expected: ["board.add_widget"] },
   { id: "03", command: "我想听王菲的歌", audio: "03-vad.wav", expected: ["music.search", "music.play"] },
@@ -27,7 +27,11 @@ function parseArgs(argv) {
     site: "http://127.0.0.1:5176/app",
     headed: false,
     startDev: true,
-    waitMs: 60_000
+    waitMs: 60_000,
+    audioRoot: defaultAudioRoot,
+    outputRoot: defaultOutputRoot,
+    reportPath: defaultReportPath,
+    casesFile: ""
   };
   for (let index = 2; index < argv.length; index += 1) {
     const item = argv[index];
@@ -37,8 +41,33 @@ function parseArgs(argv) {
     else if (item === "--no-start-dev") options.startDev = false;
     else if (item === "--wait-ms") options.waitMs = Number(argv[++index]);
     else if (item.startsWith("--wait-ms=")) options.waitMs = Number(item.slice("--wait-ms=".length));
+    else if (item === "--audio-root") options.audioRoot = path.resolve(argv[++index]);
+    else if (item.startsWith("--audio-root=")) options.audioRoot = path.resolve(item.slice("--audio-root=".length));
+    else if (item === "--output-root") options.outputRoot = path.resolve(argv[++index]);
+    else if (item.startsWith("--output-root=")) options.outputRoot = path.resolve(item.slice("--output-root=".length));
+    else if (item === "--report") options.reportPath = path.resolve(argv[++index]);
+    else if (item.startsWith("--report=")) options.reportPath = path.resolve(item.slice("--report=".length));
+    else if (item === "--cases-file") options.casesFile = path.resolve(argv[++index]);
+    else if (item.startsWith("--cases-file=")) options.casesFile = path.resolve(item.slice("--cases-file=".length));
   }
   return options;
+}
+
+function loadCases(casesFile) {
+  if (!casesFile) return defaultCases;
+  const parsed = JSON.parse(fs.readFileSync(casesFile, "utf8"));
+  if (!Array.isArray(parsed)) throw new Error(`Cases file must contain an array: ${casesFile}`);
+  return parsed.map((item, index) => {
+    if (!item || typeof item !== "object") throw new Error(`Invalid case at index ${index}`);
+    const testCase = item;
+    if (typeof testCase.id !== "string" || typeof testCase.command !== "string" || typeof testCase.audio !== "string") {
+      throw new Error(`Case ${index} must include id, command, and audio`);
+    }
+    if (!Array.isArray(testCase.expected) || !testCase.expected.every((value) => typeof value === "string")) {
+      throw new Error(`Case ${testCase.id} must include expected tool names`);
+    }
+    return testCase;
+  });
 }
 
 function requirePlaywright() {
@@ -71,11 +100,17 @@ async function startDevServerIfNeeded(site, enabled) {
   if (!enabled) return null;
   if (await waitForServer(site, 1_000)) return null;
   const url = new URL(site);
-  const child = spawn("pnpm", ["--dir", "apps/web", "exec", "vite", "--host", url.hostname, "--port", url.port || "5176"], {
-    cwd: repoRoot,
+  const localViteBin = path.join(repoRoot, "apps/web/node_modules/vite/bin/vite.js");
+  const command = fs.existsSync(localViteBin) ? process.execPath : "pnpm";
+  const args = fs.existsSync(localViteBin)
+    ? [localViteBin, "--host", url.hostname, "--port", url.port || "5176"]
+    : ["--dir", "apps/web", "exec", "vite", "--host", url.hostname, "--port", url.port || "5176"];
+  const child = spawn(command, args, {
+    cwd: path.join(repoRoot, "apps/web"),
     stdio: ["ignore", "pipe", "pipe"],
     env: {
       ...process.env,
+      CI: process.env.CI || "true",
       VITE_XIAOZHUOBAN_E2E_AUTH_BYPASS: "true",
       XIAOZHUOBAN_E2E_REALTIME_AUTH_BYPASS: "true"
     }
@@ -241,13 +276,205 @@ function eventTypes(events, type) {
   return events.filter((event) => event.type === type);
 }
 
+function eventIndex(events, predicate) {
+  return events.findIndex(predicate);
+}
+
+function eventData(event) {
+  return event && typeof event.data === "object" && event.data !== null ? event.data : {};
+}
+
 function executedToolNames(snapshotAfter, events) {
   const fromAudit = (snapshotAfter.auditLogs ?? []).map((log) => log.toolName).filter(Boolean);
   const fromEvents = events.map((event) => event.toolName).filter(Boolean);
   return [...new Set([...fromAudit, ...fromEvents])];
 }
 
-function classifyFailure({ events, after, expected }) {
+function stringValuesFromEventData(events, keys) {
+  const values = [];
+  for (const event of events) {
+    const data = eventData(event);
+    for (const key of keys) {
+      const value = data[key];
+      if (typeof value === "string" && value.trim()) values.push(value.trim());
+    }
+    const args = eventData({ data: data.args });
+    for (const key of keys) {
+      const value = args[key];
+      if (typeof value === "string" && value.trim()) values.push(value.trim());
+    }
+    const requestedArgs = eventData({ data: data.requestedArgs });
+    for (const key of keys) {
+      const value = requestedArgs[key];
+      if (typeof value === "string" && value.trim()) values.push(value.trim());
+    }
+  }
+  return [...new Set(values)];
+}
+
+function collectStringValuesFromObject(value, keys, values = []) {
+  if (Array.isArray(value)) {
+    for (const item of value) collectStringValuesFromObject(item, keys, values);
+    return values;
+  }
+  if (!value || typeof value !== "object") return values;
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (keys.includes(key) && typeof nestedValue === "string" && nestedValue.trim()) {
+      values.push(nestedValue.trim());
+    }
+    collectStringValuesFromObject(nestedValue, keys, values);
+  }
+  return values;
+}
+
+function stringValuesFromAuditLogs(auditLogs, keys) {
+  const values = [];
+  for (const log of auditLogs ?? []) {
+    collectStringValuesFromObject(log, keys, values);
+  }
+  return [...new Set(values)];
+}
+
+function expectedTextHit(values, expectedParts) {
+  if (!Array.isArray(expectedParts) || expectedParts.length === 0) return true;
+  const compactValues = values.map((value) => value.replace(/\s+/g, "").toLowerCase());
+  return expectedParts.every((part) => {
+    const compactPart = String(part).replace(/\s+/g, "").toLowerCase();
+    return compactValues.some((value) => value.includes(compactPart));
+  });
+}
+
+function analyzeDetailedChecks(testCase, before, after, events) {
+  const exposurePlans = eventTypes(events, "realtime.tool_exposure.plan");
+  const exposureData = exposurePlans.map((event) => eventData(event));
+  const exposedModules = [
+    ...new Set(exposureData.flatMap((data) => (Array.isArray(data.selectedModules) ? data.selectedModules : [])).filter(Boolean))
+  ];
+  const exposedTools = [
+    ...new Set(exposureData.flatMap((data) => (Array.isArray(data.exposedTools) ? data.exposedTools : [])).filter(Boolean))
+  ];
+  const functionToolCalls = eventTypes(events, "realtime.function_call.tool");
+  const functionToolNames = functionToolCalls.map((event) => event.toolName).filter(Boolean);
+  const queryValues = [
+    ...new Set([...stringValuesFromEventData(events, ["query"]), ...stringValuesFromAuditLogs(after.auditLogs, ["query"])])
+  ];
+  const channelValues = [
+    ...new Set([
+      ...stringValuesFromEventData(events, ["channelName", "selectedChannelName"]),
+      ...stringValuesFromAuditLogs(after.auditLogs, ["channelName", "selectedChannelName"])
+    ])
+  ];
+  const widgetIds = [
+    ...new Set([...stringValuesFromEventData(events, ["widgetId"]), ...stringValuesFromAuditLogs(after.auditLogs, ["widgetId"])])
+  ];
+  const musicEvents = events.filter((event) => typeof event.type === "string" && event.type.startsWith("music."));
+  const tvEvents = events.filter((event) => typeof event.type === "string" && event.type.startsWith("tv."));
+  const musicPlayback = musicEvents
+    .filter((event) => event.type === "music.play.result" || event.type === "music.play.start" || event.type === "music.search.result")
+    .map((event) => {
+      const data = eventData(event);
+      return [
+        event.type,
+        event.status,
+        typeof data.source === "string" ? `source=${data.source}` : "",
+        typeof data.musicKitAvailable === "boolean" ? `musicKit=${data.musicKitAvailable}` : "",
+        typeof data.musicKitAuthorized === "boolean" ? `authorized=${data.musicKitAuthorized}` : "",
+        typeof data.hasPreview === "boolean" ? `preview=${data.hasPreview}` : "",
+        typeof data.errorCode === "string" ? `error=${data.errorCode}` : ""
+      ]
+        .filter(Boolean)
+        .join(" ");
+    });
+  const tvOperationEvents = events.filter((event) => {
+    if (typeof event.toolName === "string" && event.toolName.startsWith("tv.")) return true;
+    if (event.toolName === "board.add_widget" && typeof event.message === "string" && /电视|频道/.test(event.message)) return true;
+    return false;
+  });
+  const tvPlayback = [...tvEvents, ...tvOperationEvents]
+    .map((event) => {
+      const data = eventData(event);
+      return [
+        event.type,
+        event.status,
+        event.toolName ? `tool=${event.toolName}` : "",
+        typeof event.message === "string" ? event.message : "",
+        typeof data.channelName === "string" ? `channel=${data.channelName}` : "",
+        typeof data.selectedChannelName === "string" ? `selected=${data.selectedChannelName}` : "",
+        typeof data.errorCode === "string" ? `error=${data.errorCode}` : ""
+      ]
+        .filter(Boolean)
+        .join(" ");
+    })
+    .slice(-5);
+  const expectedModulesOk = expectedTextHit(exposedModules, testCase.expectedModules);
+  const expectedQueryOk = expectedTextHit(queryValues, testCase.expectedQueryIncludes);
+  const expectedChannelOk = expectedTextHit(channelValues, testCase.expectedChannelIncludes);
+  return {
+    exposedModules,
+    exposedTools,
+    functionToolNames,
+    queryValues,
+    channelValues,
+    widgetIds,
+    expectedModulesOk,
+    expectedQueryOk,
+    expectedChannelOk,
+    musicPlayback,
+    tvPlayback,
+    uiBeforeWidgetCount: before.widgets.length,
+    uiAfterWidgetCount: after.widgets.length
+  };
+}
+
+function analyzeRealtimeToolPath(events) {
+  const exposurePlans = eventTypes(events, "realtime.tool_exposure.plan");
+  const selectionSuccess = events.find((event) => event.type === "realtime.tool_selection.success");
+  const localShortcutEvent = events.find(
+    (event) =>
+      event.type === "realtime.tool_selection.local_bulk_shortcut" ||
+      event.type === "realtime.tool_selection.local_add_widget_shortcut"
+  );
+  const selectedTool = selectionSuccess?.toolName || localShortcutEvent?.toolName || "";
+  const matchingExposurePlan = exposurePlans.find((event) => {
+    const exposedTools = eventData(event).exposedTools;
+    return Array.isArray(exposedTools) && (!selectedTool || exposedTools.includes(selectedTool));
+  });
+  const selectionIndex = eventIndex(events, (event) => event.type === "realtime.function_call.selection");
+  const selectionSuccessIndex = eventIndex(events, (event) => event.type === "realtime.tool_selection.success");
+  const resultDeferredIndex = eventIndex(events, (event) => event.type === "realtime.tool_selection.result_deferred");
+  const resultSentIndex = eventIndex(events, (event) => event.type === "realtime.tool_selection.result_send_after_session_update");
+  const sessionUpdatedAfterSelection = events.some(
+    (event, index) =>
+      event.type === "realtime.session.updated" &&
+      event.status === "connected" &&
+      index > Math.max(selectionSuccessIndex, resultDeferredIndex)
+  );
+  const localShortcut = Boolean(localShortcutEvent);
+  const fallbackExecuteCommand = events.some(
+    (event) =>
+      event.toolName === "assistant.execute_command" ||
+      event.toolName === "assistant__dot__execute_command" ||
+      (event.type === "realtime.function_call.tool" && event.toolName === "assistant.execute_command")
+  );
+  const selectedToolExposed = Boolean(selectedTool && matchingExposurePlan);
+  return {
+    exposurePlan: exposurePlans.length > 0,
+    selectedTool,
+    selectedToolExposed,
+    scopedSessionUpdated: resultSentIndex >= 0 && sessionUpdatedAfterSelection,
+    localShortcut,
+    fallbackExecuteCommand,
+    selectionIndex,
+    selectionSuccessIndex,
+    resultSentIndex,
+    exposedTools: Array.isArray(eventData(matchingExposurePlan).exposedTools)
+      ? eventData(matchingExposurePlan).exposedTools
+      : []
+  };
+}
+
+function classifyFailure({ events, expected, uiChanged }) {
+  const realtimePath = analyzeRealtimeToolPath(events);
   if (
     !eventTypes(events, "realtime.microphone.stream").some((event) => event.status === "success") &&
     !eventTypes(events, "realtime.voice.speech_started").length
@@ -259,10 +486,14 @@ function classifyFailure({ events, after, expected }) {
   if (!eventTypes(events, "realtime.voice.user_transcript").some((event) => event.status === "success")) return "transcript_empty";
   if (!eventTypes(events, "realtime.session.updated").some((event) => event.status === "connected")) return "session_update_missing";
   if (!events.some((event) => event.type === "realtime.function_call.selection" || event.type === "realtime.function_call.tool")) return "function_call_missing";
+  if (!realtimePath.exposurePlan) return "tool_exposure_missing";
+  if (realtimePath.selectedTool && !realtimePath.selectedToolExposed) return "selected_tool_not_exposed";
+  if (!realtimePath.localShortcut && realtimePath.resultSentIndex < 0) return "scoped_session_update_timeout";
+  if (realtimePath.fallbackExecuteCommand) return "fallback_execute_command_used";
   if (!events.some((event) => event.type === "assistant.operation" && event.status === "success")) return "harness_rejected";
-  const tools = executedToolNames(after, events);
+  const tools = executedToolNames({ auditLogs: [] }, events);
   if (!expected.some((name) => tools.includes(name))) return "tool_execution_failed";
-  if (!after.widgets.length && !/关闭|删除|移除/.test(after.bodyText)) return "ui_state_not_changed";
+  if (!uiChanged) return "ui_state_not_changed";
   return "";
 }
 
@@ -276,10 +507,20 @@ function assertCase(testCase, before, after) {
   const operationSuccess = events.some((event) => event.type === "assistant.operation" && event.status === "success");
   const expectedHit = testCase.expected.some((name) => tools.includes(name));
   const uiChanged = before.bodyText !== after.bodyText || before.widgets.length !== after.widgets.length;
-  const failure = classifyFailure({ events, after, expected: testCase.expected });
+  const realtimePath = analyzeRealtimeToolPath(events);
+  const detailed = analyzeDetailedChecks(testCase, before, after, events);
+  const failure = classifyFailure({ events, expected: testCase.expected, uiChanged });
+  const detailFailure =
+    !failure && !detailed.expectedModulesOk
+      ? "expected_module_not_exposed"
+      : !failure && !detailed.expectedQueryOk
+        ? "query_missing_or_wrong"
+        : !failure && !detailed.expectedChannelOk
+          ? "channel_missing_or_wrong"
+          : failure;
   return {
-    passed: !failure && operationSuccess && expectedHit && uiChanged,
-    failure,
+    passed: !detailFailure && operationSuccess && expectedHit && uiChanged,
+    failure: detailFailure,
     transcript,
     speechStarted,
     speechStopped,
@@ -287,14 +528,22 @@ function assertCase(testCase, before, after) {
     operationSuccess,
     expectedHit,
     uiChanged,
-    tools
+    tools,
+    exposurePlan: realtimePath.exposurePlan,
+    selectedTool: realtimePath.selectedTool,
+    selectedToolExposed: realtimePath.selectedToolExposed,
+    scopedSessionUpdated: realtimePath.scopedSessionUpdated,
+    localShortcut: realtimePath.localShortcut,
+    fallbackExecuteCommand: realtimePath.fallbackExecuteCommand,
+    exposedTools: realtimePath.exposedTools,
+    detailed
   };
 }
 
 async function runCase(playwright, options, runDir, userDataDir, testCase, isFirstCase) {
   const caseDir = path.join(runDir, testCase.id);
   fs.mkdirSync(caseDir, { recursive: true });
-  const audioPath = path.join(audioRoot, testCase.audio);
+  const audioPath = path.join(options.audioRoot, testCase.audio);
   if (!fs.existsSync(audioPath)) {
     throw new Error(`Missing audio fixture: ${audioPath}`);
   }
@@ -383,15 +632,27 @@ async function runCase(playwright, options, runDir, userDataDir, testCase, isFir
   return { ...testCase, ...assertion, consoleErrors, evidenceDir: path.relative(repoRoot, caseDir) };
 }
 
-function writeReport(runId, results) {
+function writeReport(runId, results, options) {
   const passed = results.filter((item) => item.passed).length;
   const functionCallCount = results.filter((item) => item.functionCallCount > 0).length;
+  const exposurePlanCount = results.filter((item) => item.exposurePlan).length;
+  const selectedToolExposedCount = results.filter((item) => item.selectedToolExposed).length;
+  const scopedSessionUpdateCount = results.filter((item) => item.scopedSessionUpdated).length;
+  const localShortcutCount = results.filter((item) => item.localShortcut).length;
+  const fallbackExecuteCommandCount = results.filter((item) => item.fallbackExecuteCommand).length;
   const rows = results
     .map((item) => {
       const screenshots = `[before](${item.evidenceDir}/before.png) / [after](${item.evidenceDir}/after.png) / [trace](${item.evidenceDir}/trace.json)`;
-      return `| ${item.id} | ${item.passed ? "pass" : "fail"} | ${item.command} | ${String(item.transcript).replace(/\|/g, "/")} | ${item.tools.join(", ")} | ${item.failure || "-"} | ${screenshots} |`;
+      const path = [
+        item.exposurePlan ? "exposure" : "no_exposure",
+        item.selectedToolExposed ? "selected_exposed" : "selected_unchecked",
+        item.scopedSessionUpdated ? "scoped_updated" : item.localShortcut ? "local_shortcut" : "no_scoped_update"
+      ].join(" / ");
+      return `| ${item.id} | ${item.passed ? "pass" : "fail"} | ${item.command} | ${String(item.transcript).replace(/\|/g, "/")} | ${item.detailed.exposedModules.join(", ") || "-"} | ${item.detailed.exposedTools.join(", ") || "-"} | ${item.selectedTool || "-"} | ${item.detailed.functionToolNames.join(", ") || "-"} | ${item.detailed.queryValues.join(", ") || "-"} | ${item.detailed.channelValues.join(", ") || "-"} | ${item.detailed.widgetIds.join(", ") || "-"} | ${item.detailed.musicPlayback.join("<br>") || "-"} | ${item.detailed.tvPlayback.join("<br>") || "-"} | ${item.uiChanged ? "yes" : "no"} (${item.detailed.uiBeforeWidgetCount}->${item.detailed.uiAfterWidgetCount}) | ${path} | ${item.failure || "-"} | ${screenshots} |`;
     })
     .join("\n");
+  const relativeAudioRoot = path.relative(repoRoot, options.audioRoot) || ".";
+  const relativeOutputRoot = path.relative(repoRoot, options.outputRoot) || ".";
   const body = `# Realtime Live Voice Smoke Report
 
 - Run: ${runId}
@@ -401,28 +662,35 @@ function writeReport(runId, results) {
 - Passed: ${passed}
 - Failed: ${results.length - passed}
 - Function-call commands: ${functionCallCount}/${results.length}
-- Audio fixtures: tests/audio/realtime-live-smoke/*-vad.wav
-- Evidence root: output/playwright/realtime-live-voice-smoke/${runId}
+- Tool exposure traces: ${exposurePlanCount}/${results.length}
+- Selected tools inside exposedTools: ${selectedToolExposedCount}/${results.length}
+- Scoped session.updated closures: ${scopedSessionUpdateCount}/${results.length}
+- Local shortcut closures after selection: ${localShortcutCount}/${results.length}
+- Fallback execute_command uses: ${fallbackExecuteCommandCount}
+- Audio fixtures: ${relativeAudioRoot}
+- Evidence root: ${relativeOutputRoot}/${runId}
 - Secret handling: Realtime credentials are never written to this report.
 
-| id | result | spoken command | transcript | tools | failure | evidence |
-|---|---|---|---|---|---|---|
+| id | result | spoken command | transcript | exposed modules | exposed tools | selected tool | function tools | query args | channel args | widgetIds | music playback/token | tv playback | UI changed | realtime path | failure | evidence |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 ${rows}
 `;
-  fs.writeFileSync(reportPath, body);
+  fs.mkdirSync(path.dirname(options.reportPath), { recursive: true });
+  fs.writeFileSync(options.reportPath, body);
 }
 
 async function main() {
   const options = parseArgs(process.argv);
+  const testCases = loadCases(options.casesFile);
   const playwright = requirePlaywright();
   const devServer = await startDevServerIfNeeded(options.site, options.startDev);
   const runId = new Date().toISOString().replace(/[:.]/g, "-");
-  const runDir = path.join(outputRoot, runId);
+  const runDir = path.join(options.outputRoot, runId);
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), `xiaozhuoban-live-voice-${runId}-`));
   fs.mkdirSync(runDir, { recursive: true });
   const results = [];
   try {
-    for (const [index, testCase] of cases.entries()) {
+    for (const [index, testCase] of testCases.entries()) {
       const result = await runCase(playwright, options, runDir, userDataDir, testCase, index === 0);
       results.push(result);
       console.log(`${result.passed ? "pass" : "fail"} ${result.id} ${result.command}${result.failure ? ` (${result.failure})` : ""}`);
@@ -435,9 +703,9 @@ async function main() {
       // Temporary Chrome profile cleanup is best-effort.
     }
   }
-  writeReport(runId, results);
+  writeReport(runId, results, options);
   const passed = results.filter((item) => item.passed).length;
-  console.log(JSON.stringify({ runId, total: results.length, passed, failed: results.length - passed, reportPath }, null, 2));
+  console.log(JSON.stringify({ runId, total: results.length, passed, failed: results.length - passed, reportPath: options.reportPath }, null, 2));
   if (passed !== results.length) process.exitCode = 1;
 }
 

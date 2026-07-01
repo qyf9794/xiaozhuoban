@@ -13,6 +13,8 @@ export interface TvChannel {
   url: string;
 }
 
+export const TV_ASSISTANT_CHANNEL_NAME_LIMIT = 240;
+
 export const FALLBACK_TV_CHANNELS: TvChannel[] = [
   {
     id: "tv_fallback_cctv13",
@@ -28,6 +30,11 @@ export const FALLBACK_TV_CHANNELS: TvChannel[] = [
     id: "tv_fallback_cctv5",
     name: "CCTV-5 体育",
     url: "http://www.douzhicloud.site:35455/gaoma/cctv5.m3u8"
+  },
+  {
+    id: "tv_fallback_bbc_news",
+    name: "BBC News",
+    url: "https://vs-hls-push-ww-live.akamaized.net/x=4/i=urn:bbc:pips:service:bbc_news_channel_hd/t=3840/v=pv14/b=5070016/main.m3u8"
   }
 ];
 
@@ -56,6 +63,22 @@ export function findTvChannel(channels: TvChannel[], channelName: string): TvCha
       (Boolean(normalizedQuery) && (normalizedName.includes(normalizedQuery) || normalizedQuery.includes(normalizedName)))
     );
   });
+}
+
+export function summarizeTvChannelNamesForAssistant(
+  channels: TvChannel[],
+  limit = TV_ASSISTANT_CHANNEL_NAME_LIMIT
+): string[] {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const channel of channels) {
+    const name = channel.name.replace(/\s+/g, " ").trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    names.push(name);
+    if (names.length >= limit) break;
+  }
+  return names;
 }
 
 export function findFallbackTvChannel(channelName: string): TvChannel | undefined {

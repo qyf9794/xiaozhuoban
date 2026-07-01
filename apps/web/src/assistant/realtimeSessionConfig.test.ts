@@ -147,6 +147,8 @@ describe("realtime session config", () => {
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("已注册工具");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("优先调用 assistant.select_tool");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("才调用 assistant.execute_command");
+    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("scoped session.update 失败");
+    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("优先选择最接近的模块和工具");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("删除用户数据");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("回复要短");
   });

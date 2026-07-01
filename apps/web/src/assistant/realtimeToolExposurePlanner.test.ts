@@ -20,6 +20,9 @@ const tools: AssistantToolSpec[] = [
   tool({ name: "music.play", scope: "widget-detail", widgetType: "music", requiresTarget: true, argumentKeys: ["query"], examples: ["播放王菲的红豆"] }),
   tool({ name: "music.search", scope: "widget-detail", widgetType: "music", requiresTarget: true, argumentKeys: ["query"], examples: ["搜一点轻松的音乐"] }),
   tool({ name: "music.pause", scope: "widget-detail", widgetType: "music", requiresTarget: true, examples: ["暂停音乐"] }),
+  tool({ name: "countdown.set", scope: "widget-detail", widgetType: "countdown", requiresTarget: true, argumentKeys: ["totalSeconds"], examples: ["倒计时 5 分钟"] }),
+  tool({ name: "tv.play", scope: "widget-detail", widgetType: "tv", requiresTarget: true, argumentKeys: ["channelName"], examples: ["我想看 BBC"] }),
+  tool({ name: "tv.select_channel", scope: "widget-detail", widgetType: "tv", requiresTarget: true, argumentKeys: ["channelName"], examples: ["切到 BBC"] }),
   tool({ name: "weather.set_city", scope: "widget-detail", widgetType: "weather", requiresTarget: true, argumentKeys: ["city"], examples: ["上海天气"] }),
   tool({ name: "note.write", scope: "widget-detail", widgetType: "note", requiresTarget: true, argumentKeys: ["content"], examples: ["帮我记一下"] }),
   tool({ name: "clipboard.clear", scope: "widget-detail", widgetType: "clipboard", requiresTarget: true, risk: "destructive", examples: ["清空剪贴板"] }),
@@ -60,6 +63,8 @@ function context(overrides: Partial<CompactAssistantContext> = {}): CompactAssis
     },
     availableDefinitions: [
       { definitionId: "wd_music", type: "music", name: "音乐" },
+      { definitionId: "wd_countdown", type: "countdown", name: "倒计时" },
+      { definitionId: "wd_tv", type: "tv", name: "电视" },
       { definitionId: "wd_weather", type: "weather", name: "天气" },
       { definitionId: "wd_note", type: "note", name: "便签" },
       { definitionId: "wd_clipboard", type: "clipboard", name: "剪贴板" }
@@ -128,5 +133,27 @@ describe("RealtimeToolExposurePlanner", () => {
         expect(plan.excludedReasons[item.name], item.name).toBeTruthy();
       }
     }
+  });
+
+  it("exposes countdown tools for spoken duration commands", () => {
+    const plan = buildRealtimeToolExposurePlan("倒计时5分钟", context({ widgets: [], focusedWidget: undefined, widgetCountsByType: {} }), tools);
+
+    expect(plan.selectedModules).toContain("countdown");
+    expect(plan.exposedTools.map((item) => item.name)).toContain("countdown.set");
+    expect(plan.excludedReasons["music.play"]).toBe("module_mismatch");
+  });
+
+  it("exposes music tools for artist listening commands", () => {
+    const plan = buildRealtimeToolExposurePlan("我想听王菲的歌", context(), tools);
+
+    expect(plan.selectedModules).toContain("music");
+    expect(plan.exposedTools.map((item) => item.name)).toEqual(expect.arrayContaining(["music.play", "music.search"]));
+  });
+
+  it("exposes TV channel tools for BBC viewing commands", () => {
+    const plan = buildRealtimeToolExposurePlan("我想看BBC", context({ widgets: [], focusedWidget: undefined, widgetCountsByType: {} }), tools);
+
+    expect(plan.selectedModules).toContain("tv");
+    expect(plan.exposedTools.map((item) => item.name)).toEqual(expect.arrayContaining(["tv.play", "tv.select_channel", "board.add_widget"]));
   });
 });

@@ -725,7 +725,13 @@ describe("daily widget assistant modules", () => {
           type: "tv",
           name: "电视",
           order: 2,
-          summary: "playing CCTV-13 新闻; private playlist url https://private.example.com/list.m3u8"
+          summary: "playing CCTV-13 新闻; private playlist url https://private.example.com/list.m3u8",
+          assistantState: {
+            selectedChannelName: "CCTV-13 新闻",
+            channelNames: ["CCTV-13 新闻", "BBC World News", "CNN International"],
+            channelCount: 3,
+            channelUrlsExposed: false
+          }
         }
       ]
     };
@@ -744,6 +750,8 @@ describe("daily widget assistant modules", () => {
     expect(JSON.stringify(recorderContext)).not.toContain("private meeting details");
     expect(JSON.stringify(tvContext)).toContain("tv-playback-summary-only");
     expect(JSON.stringify(tvContext)).toContain("currentChannelSummaryOnly");
+    expect(JSON.stringify(tvContext)).toContain("BBC World News");
+    expect(JSON.stringify(tvContext)).toContain("channelName");
     expect(JSON.stringify(tvContext)).not.toContain("private.example.com");
   });
 });

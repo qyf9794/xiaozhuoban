@@ -3138,6 +3138,39 @@ describe("ContextSummarizer", () => {
     expect(result.widgets.find((widget) => widget.widgetId === "wi_clipboard")?.summary).toBe("20 条剪贴板记录");
   });
 
+  it("exposes only parsed tv channel names as assistant state", () => {
+    const summarizer = new ContextSummarizer();
+    const result = summarizer.summarize({
+      widgets: [
+        {
+          widgetId: "wi_tv",
+          definitionId: "wd_tv",
+          type: "tv",
+          name: "电视",
+          order: 1,
+          state: {
+            selectedChannelName: "BBC World News",
+            selectedChannelUrl: "https://private.example.com/bbc.m3u8",
+            playlistUrl: "https://private.example.com/list.m3u",
+            assistantChannelNames: ["BBC World News", "CNN International", "BBC World News"],
+            assistantChannelCount: 2
+          }
+        }
+      ]
+    });
+
+    const tvWidget = result.widgets[0];
+    expect(tvWidget.summary).toBe("BBC World News");
+    expect(tvWidget.assistantState).toEqual({
+      selectedChannelName: "BBC World News",
+      channelNames: ["BBC World News", "CNN International"],
+      channelCount: 2,
+      channelListTruncated: undefined,
+      channelUrlsExposed: false
+    });
+    expect(JSON.stringify(result)).not.toContain("private.example.com");
+  });
+
 	  it("limits the number of summarized widgets and orders focused/recent first", () => {
     const summarizer = new ContextSummarizer();
     const result = summarizer.summarize({

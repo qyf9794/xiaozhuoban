@@ -41,7 +41,8 @@ const XIAOZHUOBAN_REALTIME_INSTRUCTIONS = [
   "# Tool Policy",
   "- 需要控制桌面、窗口或小工具时，优先调用 assistant.select_tool，选择最合适的工具、模块、目标提示和置信度。",
   "- 前端会在你选择工具后通过 session.update 提供最小必要上下文和可执行工具 schema。",
-  "- 如果工具选择阶段不可用，才调用 assistant.execute_command，并把用户原话或最短等价命令放入 command。",
+  "- 只有在 assistant.select_tool 不可用、scoped session.update 失败、data channel 不可用，或前端明确要求 transcript fallback 时，才调用 assistant.execute_command。",
+  "- 如果当前阶段没看到精确工具，不要直接回答缺少工具；优先选择最接近的模块和工具，让前端加载 scoped tools。",
   "- 不要编造 widgetId、definitionId 或完整桌面状态；本地 harness 会解析、确认、校验和执行。",
   "- 普通问候或闲聊可以直接简短回答，不需要调用工具。",
   "- 清空内容、删除用户数据、覆盖内容、批量修改数据必须请求确认。",
@@ -67,6 +68,25 @@ const initialToolMetadata: InitialToolMetadata[] = [
   { name: "board.switch", description: "Switch to another Xiaozhuoban board." },
   { name: "board.create", description: "Create a new Xiaozhuoban board." },
   { name: "board.rename", description: "Rename an existing Xiaozhuoban board." }
+];
+
+const initialModuleTypes = [
+  "calculator",
+  "clipboard",
+  "converter",
+  "countdown",
+  "dialClock",
+  "headline",
+  "market",
+  "messageBoard",
+  "music",
+  "note",
+  "recorder",
+  "todo",
+  "translate",
+  "tv",
+  "weather",
+  "worldClock"
 ];
 
 function stringSchema() {
@@ -118,6 +138,11 @@ export function createRealtimeToolSelectionTool(tools: InitialToolMetadata[]): R
           enum: tools.map((tool) => tool.name),
           description: "Selected registered tool name."
         },
+        selectedModule: {
+          type: "string",
+          enum: initialModuleTypes,
+          description: "Selected Xiaozhuoban module type when known, such as countdown, music, or tv."
+        },
         targetHint: {
           type: "string",
           description: "Short target words copied from the user's command."
@@ -138,7 +163,7 @@ export function createRealtimeCommandExecutionTool(): RealtimeFunctionTool {
     type: "function",
     name: encodeRealtimeToolName(REALTIME_COMMAND_EXECUTION_TOOL_NAME),
     description:
-      "Execute a Xiaozhuoban desktop, board, window, or widget command through the local harness. Use this for all UI control requests.",
+      "Fallback only: execute a Xiaozhuoban command through the local harness when tool selection or scoped session updates are unavailable. Do not use as the normal UI-control path.",
     parameters: objectSchema(
       {
         command: {

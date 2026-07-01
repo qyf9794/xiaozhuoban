@@ -12,6 +12,8 @@ This is the canonical test path for future Realtime and voice-control checks.
 - Harness execution report: `docs/realtime-voice-scenario-catalog-harness-report.md`
 - Stateful execution report: `docs/realtime-voice-scenario-catalog-stateful-harness-report.md`
 - Text-only Realtime event report: `docs/realtime-voice-scenario-catalog-text-only-realtime-report.md`
+- Live session tool contract report: `docs/realtime-live-session-tool-contract-report.md`
+- Live voice smoke report: `docs/realtime-live-voice-smoke-report.md`
 - Audio replay fallback report: `docs/realtime-audio-replay-fallback-report.md`
 
 ## Local Deterministic Gates
@@ -54,6 +56,32 @@ XIAOZHUOBAN_REALTIME_LIVE_SITE=https://xiaozhuoban.bqxb.org node scripts/realtim
 
 Online full-run results can vary because the model can return different safe plans across runs. Treat the full run as an early-warning scan. Fix and record failure clusters through targeted reruns.
 
+## Live Session Tool Contract
+
+Run this after changing Realtime session tools, fallback policy, tool exposure, or scoped module context:
+
+```bash
+node scripts/realtime-live-session-tool-contract.mjs
+```
+
+Target catalog rows without calling Realtime:
+
+```bash
+node scripts/realtime-live-session-tool-contract.mjs --dry-run --ids=028,061,067
+```
+
+The live contract checks the production-shaped sequence:
+
+```text
+selector session.update
+-> assistant.select_tool
+-> selected tool must be in exposedTools
+-> scoped session.update
+-> function_call must be one of scoped exposedTools
+```
+
+It does not execute Harness or mutate UI. Use the stateful and real-page gates below for execution evidence.
+
 ## Stateful 700 Execution Gate
 
 Run this after routing, target-resolution, or tool-execution changes:
@@ -91,9 +119,31 @@ NODE_PATH=/tmp/xz-playwright-runner/node_modules node scripts/playwright-real-pa
 
 These scripts validate rendered frontend state. Keep them as real-page regression assets unless a replacement runner covers the same user flow and report path.
 
+## Live Voice Smoke
+
+Run this after changing Realtime WebRTC setup, voice transcript handling, tool exposure, scoped session updates, or tool execution:
+
+```bash
+NODE_PATH=/tmp/xz-playwright-runner/node_modules node scripts/playwright-live-voice-smoke-gate.js
+```
+
+By default it opens `http://127.0.0.1:5176/app`, starts Vite if needed, and feeds `tests/audio/realtime-live-smoke/*-vad.wav` through Chrome fake microphone into the real WebRTC Realtime session.
+
+The gate requires:
+
+- microphone stream, VAD start/stop, and final transcript
+- `realtime.tool_exposure.plan`
+- `assistant.select_tool`
+- selected tool inside `exposedTools`
+- scoped `session.updated`, or an explicit local shortcut closure after selection
+- Harness success and visible UI mutation
+- zero `assistant.execute_command` fallback uses
+
+It writes `docs/realtime-live-voice-smoke-report.md` plus screenshots and trace JSON under `output/playwright/realtime-live-voice-smoke/`.
+
 ## Audio Fallback
 
-Current unattended audio replay is not available. Record the fallback state with:
+This is only a fallback inventory check. Do not count it as live voice coverage:
 
 ```bash
 node scripts/realtime-audio-replay-or-text-fallback.mjs

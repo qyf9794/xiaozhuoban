@@ -325,7 +325,7 @@ export function createRealtimeCommandExecutionTool(): RealtimeFunctionTool {
     type: "function",
     name: encodeRealtimeToolName(REALTIME_COMMAND_EXECUTION_TOOL_NAME),
     description:
-      "Execute a Xiaozhuoban desktop, board, window, or widget command through the local harness. Use this for all UI control requests.",
+      "Fallback only: execute a Xiaozhuoban command through the local harness when tool selection or scoped session updates are unavailable. Do not use as the normal UI-control path.",
     parameters: objectSchema(
       {
         command: {
