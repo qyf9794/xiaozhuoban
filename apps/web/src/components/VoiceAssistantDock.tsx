@@ -106,13 +106,27 @@ export function getVoiceAssistantOperationText(operation: VoiceAssistantOperatio
 
 export function getVoiceAssistantPanelAnswerText(
   assistantSpeechText: string | undefined,
-  pendingMessage: string | undefined
+  pendingMessage: string | undefined,
+  fallbackMessage?: string | undefined
 ): string {
   const speech = assistantSpeechText?.trim();
   if (speech) return speech;
   const pending = pendingMessage?.trim();
   if (pending) return pending;
+  const fallback = fallbackMessage?.trim();
+  if (fallback) return fallback;
   return "";
+}
+
+export function getVoiceAssistantPanelClassName(hasPanelAnswer: boolean, hasPanelUserText: boolean): string {
+  return [
+    "voice-assistant-dock__pill",
+    hasPanelAnswer ? "has-answer" : "",
+    hasPanelUserText ? "has-user-text" : "",
+    !hasPanelAnswer && hasPanelUserText ? "is-user-only" : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 export function resolveVoiceAssistantSubmitText(stateText: string, inputValue: string | undefined): string {
@@ -456,7 +470,6 @@ export function VoiceAssistantDock({
   useEffect(() => {
     const speechText = userSpeech?.text.trim();
     if (!speechText) return;
-    setLastMessage(speechText);
     openMobileTextPanel({ focusInput: false });
   }, [userSpeech?.id, userSpeech?.text, isMobileMode]);
 
@@ -471,8 +484,11 @@ export function VoiceAssistantDock({
   const pending = harness.getPendingConfirmation();
   const visualState = muted ? "muted" : pending ? "waiting_confirmation" : state;
   const visibleOperation = getVisibleVoiceAssistantOperation(operation, operationStatus);
-  const panelAnswerText = getVoiceAssistantPanelAnswerText(assistantSpeech?.text, pending?.message);
+  const panelAnswerFallback = visibleOperation.phase === "idle" ? undefined : visibleOperation.message;
+  const panelAnswerText = getVoiceAssistantPanelAnswerText(assistantSpeech?.text, pending?.message, panelAnswerFallback);
   const panelUserText = userSpeech?.text.trim() ?? "";
+  const hasPanelAnswer = Boolean(panelAnswerText || pending);
+  const hasPanelUserText = Boolean(panelUserText);
   const panelContentKey = [pending?.id, assistantSpeech?.id, userSpeech?.id, panelAnswerText, panelUserText].filter(Boolean).join(":");
   const hasUndismissedPending = Boolean(pending) && dismissedPanelContentKey !== panelContentKey;
   const hasUndismissedPanelContent = Boolean(panelAnswerText || panelUserText) && dismissedPanelContentKey !== panelContentKey;
@@ -838,14 +854,15 @@ export function VoiceAssistantDock({
 
         {textPanelVisible ? (
         <div
-          className="voice-assistant-dock__pill"
+          className={getVoiceAssistantPanelClassName(hasPanelAnswer, hasPanelUserText)}
           onPointerDown={keepMobileTextPanelOpen}
           onPointerMove={keepMobileTextPanelOpen}
           onFocusCapture={keepMobileTextPanelOpen}
         >
-          <div className="voice-assistant-dock__answer" aria-live="polite">
-            {panelAnswerText ? <p className="voice-assistant-dock__answer-text">{panelAnswerText}</p> : null}
-            {pending ? (
+          {hasPanelAnswer ? (
+            <div className="voice-assistant-dock__answer" aria-live="polite">
+              {panelAnswerText ? <p className="voice-assistant-dock__answer-text">{panelAnswerText}</p> : null}
+              {pending ? (
               <div className="voice-assistant-dock__confirm">
                 {getVoiceAssistantPreviewLines(pending).length > 0 ? (
                   <div className="voice-assistant-dock__preview" data-testid="voice-assistant-preview">
@@ -861,8 +878,9 @@ export function VoiceAssistantDock({
                   取消
                 </button>
               </div>
-            ) : null}
-          </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <form className="voice-assistant-dock__form" onSubmit={onSubmit}>
             {panelUserText ? <p className="voice-assistant-dock__transcript">{panelUserText}</p> : null}

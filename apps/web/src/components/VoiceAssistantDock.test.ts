@@ -11,6 +11,7 @@ import {
   getVoiceAssistantRuntimeText,
   getVoiceAssistantPreviewLines,
   getVoiceAssistantOperationText,
+  getVoiceAssistantPanelClassName,
   getVoiceAssistantPanelAnswerText,
   getVoiceAssistantOrbVisualMode,
   prependVoiceAssistantHistory,
@@ -80,7 +81,14 @@ describe("VoiceAssistantDock", () => {
       "我在，有什么需要我帮你处理？"
     );
     expect(getVoiceAssistantPanelAnswerText("", " 确认执行吗？ ")).toBe("确认执行吗？");
+    expect(getVoiceAssistantPanelAnswerText("", undefined, " 已打开电视。 ")).toBe("已打开电视。");
     expect(getVoiceAssistantPanelAnswerText(undefined, undefined)).toBe("");
+  });
+
+  it("uses a centered one-row panel when only user speech is visible", () => {
+    expect(getVoiceAssistantPanelClassName(false, true)).toBe("voice-assistant-dock__pill has-user-text is-user-only");
+    expect(getVoiceAssistantPanelClassName(true, true)).toBe("voice-assistant-dock__pill has-answer has-user-text");
+    expect(getVoiceAssistantPanelClassName(true, false)).toBe("voice-assistant-dock__pill has-answer");
   });
 
   it("falls back to the real input value when submitting commands", () => {

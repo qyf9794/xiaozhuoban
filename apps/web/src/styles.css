@@ -272,7 +272,7 @@ body {
   display: grid;
   grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px;
-  align-content: stretch;
+  align-content: center;
   padding: 20px 22px;
   border-radius: var(--voice-pill-radius);
   border: 0;
@@ -293,6 +293,10 @@ body {
     inset 0 0 0 1px rgba(255, 255, 255, 0.08),
     inset 0 -1px 0 rgba(92, 132, 255, 0.1);
   overflow: hidden;
+}
+
+.voice-assistant-dock__pill.is-user-only {
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .voice-assistant-dock__pill::before {
@@ -344,8 +348,9 @@ body {
 
 .voice-assistant-dock__answer {
   min-height: 0;
-  display: grid;
-  align-content: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   gap: 8px;
   overflow: auto;
   color: rgba(255, 255, 255, 0.92);
@@ -401,12 +406,17 @@ body {
 }
 
 .voice-assistant-dock__form {
-  display: grid;
-  grid-template-columns: 1fr;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   gap: 5px;
   align-content: center;
   min-height: 0;
-  padding-top: 10px;
+  padding-top: 0;
+}
+
+.voice-assistant-dock__pill.has-answer .voice-assistant-dock__form {
+  padding-top: 8px;
 }
 
 .voice-assistant-dock__transcript {
@@ -416,6 +426,12 @@ body {
   line-height: 1.35;
   overflow-wrap: anywhere;
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.54);
+}
+
+.voice-assistant-dock__pill.is-user-only .voice-assistant-dock__transcript {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 15px;
+  line-height: 1.45;
 }
 
 .voice-assistant-dock__form input {
