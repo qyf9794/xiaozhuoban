@@ -1992,6 +1992,96 @@ describe("OpenAI realtime adapter helpers", () => {
     ]));
   });
 
+  it("adds countdown widgets locally with a duration follow-up", async () => {
+    const calls: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall: (call) => {
+        calls.push(call);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "board.add_widget",
+        description: "添加小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop"
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: {},
+      availableDefinitions: [{ definitionId: "wd_countdown", type: "countdown", name: "倒计时" }],
+      widgets: []
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean }, { sessionReady: true });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_countdown_5m",
+      name: "assistant.select_tool",
+      arguments: { name: "board.add_widget", selectedModule: "countdown", targetHint: "倒计时五分钟", userCommand: "倒计时5分钟", confidence: 0.95 },
+      source: "realtime"
+    });
+    await Promise.resolve();
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        id: "select_countdown_5m_add_widget_shortcut",
+        name: "board.add_widget",
+        arguments: {
+          definitionId: "wd_countdown",
+          followUp: { name: "countdown.set", arguments: { totalSeconds: 300, start: true } }
+        },
+        source: "shortcut",
+        transcript: "倒计时5分钟"
+      })
+    ]);
+  });
+
+  it("keeps complex add-widget commands on the scoped realtime path", () => {
+    const calls: unknown[] = [];
+    const sent: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall: (call) => {
+        calls.push(call);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "board.add_widget",
+        description: "添加小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop"
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: {},
+      availableDefinitions: [{ definitionId: "wd_tv", type: "tv", name: "电视" }],
+      widgets: []
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
+      }
+    });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_open_tv_fullscreen",
+      name: "assistant.select_tool",
+      arguments: { name: "board.add_widget", selectedModule: "tv", targetHint: "电视全屏", userCommand: "打开电视然后全屏", confidence: 0.95 },
+      source: "realtime"
+    });
+
+    expect(calls).toEqual([]);
+    expect(sent).toEqual([expect.objectContaining({ type: "session.update" })]);
+  });
+
   it("waits for scoped session.updated before sending tool selection results", () => {
     const sent: unknown[] = [];
     const diagnostics: Array<{ type: string; status?: string; operationId?: string; toolName?: string }> = [];

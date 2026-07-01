@@ -216,11 +216,20 @@ function normalizeCountdownToolArguments(args: Record<string, unknown>): Record<
 
 function parseCountdownSecondsFromText(text: string): number | undefined {
   const compact = text.replace(/\s+/g, "");
+  if (/一(?:小时|小時)/.test(compact) || /1(?:小时|小時)/.test(compact)) return 3600;
+  if (/五(?:分钟|分鐘|分)/.test(compact) || /5(?:分钟|分鐘|分)/.test(compact)) return 300;
   if (/十(?:分钟|分鐘|分)/.test(compact) || /10(?:分钟|分鐘|分)/.test(compact)) return 600;
   if (/十五(?:分钟|分鐘|分)/.test(compact) || /15(?:分钟|分鐘|分)/.test(compact)) return 900;
   if (/三(?:分钟|分鐘|分)/.test(compact) || /3(?:分钟|分鐘|分)/.test(compact)) return 180;
   if (/半小时|半小時/.test(compact)) return 1800;
   return undefined;
+}
+
+function isPureOpenWidgetText(text: string): boolean {
+  const compact = text.replace(/\s+/g, "");
+  if (!compact) return false;
+  if (!/^(打开|开启|唤出|调出|新建|添加|加一个)/.test(compact)) return false;
+  return !/(然后|然後|再|同时|同時|并且|並且|全屏|切到|播放|暂停|搜索|查|设置|设为|倒计时|倒計時|分钟|分鐘|秒|小时|小時|提醒|记一下|写|翻译)/.test(compact);
 }
 
 function normalizeNoteToolArguments(args: Record<string, unknown>): Record<string, unknown> {
@@ -2155,13 +2164,24 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const definition = scored[0]?.definition;
     if (!definition) return null;
     const input = selection.userCommand || selection.targetHint || definition.name;
+    const countdownSeconds = definition.type === "countdown" ? parseCountdownSecondsFromText(input) : undefined;
+    if (!isPureOpenWidgetText(input) && !countdownSeconds) {
+      return null;
+    }
+    const argumentsWithOptionalFollowUp: Record<string, unknown> = { definitionId: definition.definitionId };
+    if (countdownSeconds) {
+      argumentsWithOptionalFollowUp.followUp = {
+        name: "countdown.set",
+        arguments: { totalSeconds: countdownSeconds, start: true }
+      };
+    }
     return {
       definition,
       targetText: input,
       call: {
         id: `${selectionCall.id}_add_widget_shortcut`,
         name: "board.add_widget",
-        arguments: { definitionId: definition.definitionId },
+        arguments: argumentsWithOptionalFollowUp,
         source: "shortcut",
         transcript: input,
         commandTraceId
