@@ -1272,6 +1272,77 @@ describe("OpenAI realtime adapter helpers", () => {
     ]));
   });
 
+  it("cancels stale voice responses and suppresses old tool results when the user starts a new command", () => {
+    const sent: unknown[] = [];
+    const diagnostics: Array<{ type: string; status?: string; operationId?: string; commandTraceId?: string; data?: { eventType?: string } }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    Object.assign(
+      adapter as unknown as {
+        sessionReady: boolean;
+        connectMode: string;
+        activeResponseId: string | null;
+        activeRealtimeResponseTraceId: string | null;
+        remoteAudioLevel: number;
+        dataChannel: { readyState: string; send: (payload: string) => void };
+        functionCallTraceIds: Map<string, string>;
+      },
+      {
+        sessionReady: true,
+        connectMode: "audio",
+        activeResponseId: "resp_old",
+        activeRealtimeResponseTraceId: "trace_old",
+        remoteAudioLevel: 0.4,
+        dataChannel: {
+          readyState: "open",
+          send(payload: string) {
+            sent.push(JSON.parse(payload) as unknown);
+          }
+        }
+      }
+    );
+    (adapter as unknown as { functionCallTraceIds: Map<string, string> }).functionCallTraceIds.set("call_old", "trace_old");
+
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "input_audio_buffer.speech_started", item_id: "item_new_command" });
+    adapter.sendToolResult(
+      { id: "call_old", name: "board.add_widget", arguments: { definitionId: "wd_tv" }, source: "realtime" },
+      { status: "success", message: "已打开电视" }
+    );
+
+    const newTrace = diagnostics.find((event) => event.type === "realtime.voice.speech_started")?.commandTraceId;
+    expect(newTrace).toMatch(/^voice_/);
+    expect(sent).toEqual([
+      { type: "response.cancel" },
+      { type: "output_audio_buffer.clear" }
+    ]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.response.cancel_on_speech_started",
+        status: "sent",
+        operationId: "resp_old",
+        commandTraceId: newTrace
+      }),
+      expect.objectContaining({
+        type: "realtime.output_audio.clear_on_speech_started",
+        status: "sent",
+        commandTraceId: newTrace
+      }),
+      expect.objectContaining({
+        type: "realtime.tool_result.skip",
+        status: "interrupted",
+        operationId: "call_old",
+        commandTraceId: "trace_old"
+      })
+    ]));
+  });
+
   it("falls back when a voice transcript finishes without a command tool call", async () => {
     const fallbackInputs: Array<{ input: string; commandTraceId?: string; itemId?: string }> = [];
     const diagnostics: Array<{ type: string; commandTraceId?: string; status?: string; data?: Record<string, unknown> }> = [];
@@ -1838,6 +1909,85 @@ describe("OpenAI realtime adapter helpers", () => {
         status: "started",
         operationId: "select_close_all",
         data: { targetText: "关闭所有窗口" }
+      })
+    ]));
+  });
+
+  it("executes add-widget selections locally to avoid a second realtime planning turn", async () => {
+    const calls: unknown[] = [];
+    const sent: unknown[] = [];
+    const diagnostics: Array<{ type: string; status?: string; operationId?: string; toolName?: string; data?: unknown }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall: (call) => {
+        calls.push(call);
+      },
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "board.add_widget",
+        description: "添加小工具",
+        parameters: createStrictObjectSchema({
+          definitionId: { type: "string", required: true }
+        }),
+        scope: "desktop"
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: {},
+      availableDefinitions: [
+        { definitionId: "wd_tv", type: "tv", name: "电视" },
+        { definitionId: "wd_note", type: "note", name: "便签" }
+      ],
+      widgets: []
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
+      }
+    });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_open_tv",
+      name: "assistant.select_tool",
+      arguments: { name: "board.add_widget", selectedModule: "tv", targetHint: "电视", userCommand: "打开电视", confidence: 0.95 },
+      source: "realtime"
+    });
+    await Promise.resolve();
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        id: "select_open_tv_add_widget_shortcut",
+        name: "board.add_widget",
+        arguments: { definitionId: "wd_tv" },
+        source: "shortcut",
+        transcript: "打开电视"
+      })
+    ]);
+    expect(sent).toEqual([
+      expect.objectContaining({
+        type: "conversation.item.create",
+        item: expect.objectContaining({ type: "function_call_output", call_id: "select_open_tv" })
+      }),
+      { type: "response.create", response: { output_modalities: ["text"] } }
+    ]);
+    expect(JSON.stringify(sent)).toContain("local_add_widget_shortcut");
+    expect(sent).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: "session.update" })]));
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.tool_selection.local_add_widget_shortcut",
+        status: "started",
+        operationId: "select_open_tv",
+        toolName: "board.add_widget",
+        data: expect.objectContaining({ definitionId: "wd_tv", definitionType: "tv", targetText: "打开电视" })
       })
     ]));
   });
