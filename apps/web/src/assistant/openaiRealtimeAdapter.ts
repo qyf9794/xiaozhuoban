@@ -852,7 +852,7 @@ export function handleRealtimeFunctionCallEvent(
 export function createRealtimeToolResultEvents(
   call: AssistantToolCall,
   result: AssistantToolResult,
-  options: { activeResponseId?: string | null; responseMode?: RealtimeResponseMode } = {}
+  options: { activeResponseId?: string | null; responseMode?: RealtimeResponseMode; continueResponse?: boolean } = {}
 ): RealtimeEvent[] {
   const events: RealtimeEvent[] = [
     {
@@ -864,7 +864,8 @@ export function createRealtimeToolResultEvents(
       }
     }
   ];
-  if (!options.activeResponseId && options.responseMode !== "voice") {
+  const shouldContinueResponse = options.continueResponse ?? options.responseMode !== "voice";
+  if (!options.activeResponseId && shouldContinueResponse) {
     events.push(createRealtimeResponseCreateEvent(options.responseMode ?? "text"));
   }
   return events;
@@ -1776,9 +1777,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     });
     createRealtimeToolResultEvents(call, result, {
       activeResponseId: this.activeResponseId,
-      responseMode: this.connectMode === "audio" ? "voice" : "text"
+      responseMode: this.connectMode === "audio" ? "voice" : "text",
+      continueResponse: call.name === REALTIME_TOOL_SELECTION_TOOL_NAME
     }).forEach((event) => this.sendEvent(event, { queueWhenClosed: false, commandTraceId }));
-    if (hadActiveResponse && this.connectMode !== "audio") {
+    if (hadActiveResponse && call.name === REALTIME_TOOL_SELECTION_TOOL_NAME) {
       this.pendingResponseCreateAfterActiveToolResult = true;
     }
   }

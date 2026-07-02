@@ -496,7 +496,7 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["text"] } });
   });
 
-  it("does not continue voice realtime after active tool response finishes", () => {
+  it("continues voice realtime after active selector response finishes", () => {
     const adapter = new OpenAIRealtimeWebRtcAdapter();
     const sent: unknown[] = [];
     Object.assign(
@@ -529,10 +529,47 @@ describe("OpenAI realtime adapter helpers", () => {
       }
     ).handleRealtimeLifecycleEvent({ type: "response.done", response: { id: "resp_voice_1" } });
 
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio"] } });
+  });
+
+  it("does not continue voice realtime after final tool response finishes", () => {
+    const adapter = new OpenAIRealtimeWebRtcAdapter();
+    const sent: unknown[] = [];
+    Object.assign(
+      adapter as unknown as {
+        dataChannel: { readyState: string; send: (payload: string) => void };
+        activeResponseId: string;
+        connectMode: "audio";
+      },
+      {
+        activeResponseId: "resp_voice_final",
+        connectMode: "audio",
+        dataChannel: {
+          readyState: "open",
+          send(payload: string) {
+            sent.push(JSON.parse(payload) as unknown);
+          }
+        }
+      }
+    );
+
+    adapter.sendToolResult(
+      { id: "call_voice_final", name: "tv.play", arguments: {}, source: "realtime" },
+      { status: "success", message: "已播放" }
+    );
+    expect(sent).toHaveLength(1);
+
+    (
+      adapter as unknown as {
+        handleRealtimeLifecycleEvent: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeLifecycleEvent({ type: "response.done", response: { id: "resp_voice_final" } });
+
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({
       type: "conversation.item.create",
-      item: { type: "function_call_output", call_id: "call_voice_1" }
+      item: { type: "function_call_output", call_id: "call_voice_final" }
     });
   });
 
@@ -1086,13 +1123,9 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: "realtime.function_call.tool", operationId: "call_voice_1", commandTraceId: trace }),
       expect.objectContaining({ type: "realtime.tool_result.send", operationId: "call_voice_1", commandTraceId: trace }),
-      expect.objectContaining({ type: "realtime.event.send", commandTraceId: trace, data: { eventType: "conversation.item.create" } }),
-      expect.objectContaining({ type: "realtime.event.send", commandTraceId: trace, data: { eventType: "response.create" } })
+      expect.objectContaining({ type: "realtime.event.send", commandTraceId: trace, data: { eventType: "conversation.item.create" } })
     ]));
-    expect(sent).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: "conversation.item.create" }),
-      { type: "response.create", response: { output_modalities: ["text"] } }
-    ]));
+    expect(sent).toEqual([expect.objectContaining({ type: "conversation.item.create" })]);
   });
 
   it("records safe tool arguments from realtime function calls before handing them to Harness", () => {
