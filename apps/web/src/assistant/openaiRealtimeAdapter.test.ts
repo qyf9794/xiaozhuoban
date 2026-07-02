@@ -326,14 +326,18 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(events[1]).toEqual({ type: "response.create", response: { output_modalities: ["text"] } });
   });
 
-  it("creates audio response events for voice realtime tool results", () => {
+  it("does not create follow-up audio responses for voice realtime tool results", () => {
     const events = createRealtimeToolResultEvents(
       { id: "call_1", name: "widget.remove", arguments: { widgetId: "wi_worldClock" }, source: "realtime" },
       { status: "success", message: "已关闭" },
       { responseMode: "voice" }
     );
 
-    expect(events[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio"] } });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "conversation.item.create",
+      item: { type: "function_call_output", call_id: "call_1" }
+    });
   });
 
   it("creates realtime text command events with text-only response output", () => {
@@ -492,7 +496,7 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["text"] } });
   });
 
-  it("continues voice realtime with audio after active tool response finishes", () => {
+  it("does not continue voice realtime after active tool response finishes", () => {
     const adapter = new OpenAIRealtimeWebRtcAdapter();
     const sent: unknown[] = [];
     Object.assign(
@@ -525,7 +529,11 @@ describe("OpenAI realtime adapter helpers", () => {
       }
     ).handleRealtimeLifecycleEvent({ type: "response.done", response: { id: "resp_voice_1" } });
 
-    expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio"] } });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({
+      type: "conversation.item.create",
+      item: { type: "function_call_output", call_id: "call_voice_1" }
+    });
   });
 
   it("tracks active realtime responses through lifecycle events", () => {
@@ -1478,7 +1486,13 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(newTrace).toMatch(/^voice_/);
     expect(sent).toEqual([
       { type: "response.cancel" },
-      { type: "output_audio_buffer.clear" }
+      { type: "output_audio_buffer.clear" },
+      expect.objectContaining({
+        type: "session.update",
+        session: expect.objectContaining({
+          tools: [expect.objectContaining({ name: "assistant__dot__select_tool" })]
+        })
+      })
     ]);
     expect(diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -1489,6 +1503,11 @@ describe("OpenAI realtime adapter helpers", () => {
       }),
       expect.objectContaining({
         type: "realtime.output_audio.clear_on_speech_started",
+        status: "sent",
+        commandTraceId: newTrace
+      }),
+      expect.objectContaining({
+        type: "realtime.voice.selector_reset",
         status: "sent",
         commandTraceId: newTrace
       }),
@@ -1613,6 +1632,81 @@ describe("OpenAI realtime adapter helpers", () => {
       expect.objectContaining({
         type: "conversation.item.create",
         item: expect.objectContaining({ call_id: "call_command_close_all" })
+      })
+    ]));
+  });
+
+  it("does not run transcript fallback after a direct realtime tool call", async () => {
+    const fallbackInputs: string[] = [];
+    const calls: Array<{ id: string; name: string }> = [];
+    const diagnostics: Array<{ type: string; commandTraceId?: string; status?: string; operationId?: string; toolName?: string }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onUnhandledUserTranscript(input) {
+        fallbackInputs.push(input);
+      },
+      onFunctionCall(call) {
+        calls.push({ id: call.id, name: call.name });
+      },
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send() {
+          // Test only needs the Realtime adapter state transition.
+        }
+      }
+    });
+
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "input_audio_buffer.speech_started", item_id: "item_voice_music" });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "conversation.item.input_audio_transcription.completed",
+      item_id: "item_voice_music",
+      transcript: "我想听王菲的歌"
+    });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "response.created", response: { id: "resp_music" } });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "response.function_call_arguments.done",
+      call_id: "call_music",
+      name: "music__dot__search",
+      arguments: JSON.stringify({ query: "王菲" })
+    });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "response.done", response: { id: "resp_music" } });
+    await Promise.resolve();
+
+    const trace = diagnostics.find((event) => event.type === "realtime.voice.speech_started")?.commandTraceId;
+    expect(calls).toEqual([{ id: "call_music", name: "music.search" }]);
+    expect(fallbackInputs).toEqual([]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.function_call.tool",
+        status: "received",
+        operationId: "call_music",
+        toolName: "music.search",
+        commandTraceId: trace
       })
     ]));
   });

@@ -864,7 +864,7 @@ export function createRealtimeToolResultEvents(
       }
     }
   ];
-  if (!options.activeResponseId) {
+  if (!options.activeResponseId && options.responseMode !== "voice") {
     events.push(createRealtimeResponseCreateEvent(options.responseMode ?? "text"));
   }
   return events;
@@ -1490,6 +1490,13 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       });
       this.sendEvent({ type: "output_audio_buffer.clear" }, { queueWhenClosed: false, commandTraceId });
     }
+    this.emitDiagnostic({
+      type: "realtime.voice.selector_reset",
+      status: "sent",
+      commandTraceId,
+      data: { toolCount: this.getEffectiveSessionTools().length }
+    });
+    this.sendEvent(this.createToolSelectionSessionUpdate(), { queueWhenClosed: false, commandTraceId });
     return commandTraceId;
   }
 
@@ -1771,7 +1778,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       activeResponseId: this.activeResponseId,
       responseMode: this.connectMode === "audio" ? "voice" : "text"
     }).forEach((event) => this.sendEvent(event, { queueWhenClosed: false, commandTraceId }));
-    if (hadActiveResponse) {
+    if (hadActiveResponse && this.connectMode !== "audio") {
       this.pendingResponseCreateAfterActiveToolResult = true;
     }
   }
@@ -2049,6 +2056,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       commandTraceId,
       data: createSafeRealtimeToolCallDiagnosticData(toolCall)
     });
+    if (commandTraceId) {
+      this.realtimeTraceCommandToolCalls.add(commandTraceId);
+    }
     void this.options.onFunctionCall?.(toolCall);
   }
 
@@ -2154,6 +2164,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         errorCode: "TOOL_SELECTION_LOW_CONFIDENCE"
       });
       return;
+    }
+    if (commandTraceId) {
+      this.realtimeTraceCommandToolCalls.add(commandTraceId);
     }
 
     const exposureValidation = this.validateSelectedToolExposure(selectedTool, selection, commandTraceId);
