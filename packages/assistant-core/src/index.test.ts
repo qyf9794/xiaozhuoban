@@ -786,6 +786,17 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes unknown weather cities as online-resolved city queries", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("查苏州今天冷不冷", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("weather.set_city");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_weather", city: "苏州" });
+    }
+  });
+
   it("routes supported weather city aliases", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("LA天气", context);
@@ -1869,6 +1880,17 @@ describe("IntentShortcutRouter", () => {
     if (result.matched) {
       expect(result.toolCall.name).toBe("worldClock.set_zones");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_worldClock", zones: ["纽约", "东京"] });
+    }
+  });
+
+  it("routes unknown world clock cities as online-resolved zone queries", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("西雅图现在几点", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("worldClock.set_zones");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_worldClock", zones: ["西雅图"] });
     }
   });
 

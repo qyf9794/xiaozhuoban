@@ -113,6 +113,39 @@ const MAJOR_CITIES = [
   { value: "paris", label: "巴黎", latitude: 48.8566, longitude: 2.3522 }
 ] as const;
 
+type WeatherCityTarget = {
+  value: string;
+  label: string;
+  latitude: number;
+  longitude: number;
+  timezone?: string;
+};
+
+function asWeatherCityTarget(value: unknown): WeatherCityTarget | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.cityCode !== "string" ||
+    typeof record.label !== "string" ||
+    typeof record.latitude !== "number" ||
+    typeof record.longitude !== "number"
+  ) {
+    return null;
+  }
+  return {
+    value: record.cityCode,
+    label: record.label,
+    latitude: record.latitude,
+    longitude: record.longitude,
+    timezone: typeof record.timezone === "string" ? record.timezone : undefined
+  };
+}
+
+function getWeatherCityTarget(cityCode: string, onlineCity: WeatherCityTarget | null): WeatherCityTarget {
+  if (onlineCity && onlineCity.value === cityCode) return onlineCity;
+  return MAJOR_CITIES.find((item) => item.value === cityCode) ?? MAJOR_CITIES[1];
+}
+
 const GLOBAL_INDICES = [
   { value: "usINX", label: "标普500", marketCode: "usINX" },
   { value: "usNDX", label: "纳斯达克100", marketCode: "usNDX" },
@@ -2639,6 +2672,7 @@ export function BuiltinWidgetView({
 
   if (definition.type === "weather") {
     const selectedCityCode = asString(instance.state.cityCode) || "shanghai";
+    const onlineWeatherCity = asWeatherCityTarget(instance.state.weatherCity);
     const selectedCityCodeRef = useRef(selectedCityCode);
     selectedCityCodeRef.current = selectedCityCode;
     const weather = instance.state.weather as
@@ -2655,7 +2689,7 @@ export function BuiltinWidgetView({
     const error = asString(instance.state.weatherError);
 
     useEffect(() => {
-      const city = MAJOR_CITIES.find((item) => item.value === selectedCityCode) ?? MAJOR_CITIES[1];
+      const city = getWeatherCityTarget(selectedCityCode, onlineWeatherCity);
       let cancelled = false;
 
       onStateChange({ ...instance.state, weatherLoading: true, weatherError: "" });
@@ -2720,9 +2754,15 @@ export function BuiltinWidgetView({
       };
       // only refetch when city changes
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedCityCode]);
+    }, [selectedCityCode, onlineWeatherCity?.latitude, onlineWeatherCity?.longitude]);
 
-    const currentCity = MAJOR_CITIES.find((item) => item.value === selectedCityCode) ?? MAJOR_CITIES[1];
+    const currentCity = getWeatherCityTarget(selectedCityCode, onlineWeatherCity);
+    const cityOptions = [
+      ...(onlineWeatherCity && !MAJOR_CITIES.some((city) => city.value === onlineWeatherCity.value)
+        ? [{ value: onlineWeatherCity.value, label: onlineWeatherCity.label }]
+        : []),
+      ...MAJOR_CITIES.map((city) => ({ value: city.value, label: city.label }))
+    ];
     const weatherText = weather ? weatherCodeToText(weather.weatherCode) : "--";
     const weatherIcon = weather ? weatherCodeToIcon(weather.weatherCode, weather.isDay) : "⛅";
     const forecast = weather?.forecast ?? [];
@@ -2738,7 +2778,7 @@ export function BuiltinWidgetView({
               <GlassSelect
                 value={selectedCityCode}
                 onChange={(next) => onStateChange({ ...instance.state, cityCode: next })}
-                options={MAJOR_CITIES.map((city) => ({ value: city.value, label: city.label }))}
+                options={cityOptions}
                 style={{ width: "fit-content", maxWidth: "100%", margin: "0 auto" }}
                 menuWidth={132}
                 buttonStyle={{
@@ -2755,6 +2795,9 @@ export function BuiltinWidgetView({
                   textAlign: "center"
                 }}
               />
+              {onlineWeatherCity && currentCity.value === onlineWeatherCity.value ? (
+                <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>在线城市</div>
+              ) : null}
               {!loading && !error ? (
                 <>
                   <div className="weather-current-temp">{weather?.temperature ?? "--"}°C</div>
@@ -3697,7 +3740,7 @@ export function BuiltinWidgetView({
                     if (result.status !== "success") setError(result.message);
                   });
                 }}
-                style={mediaIconBtnStyle({ size: 30, fontSize: 15 })}
+                style={mediaIconBtnStyle({ size: 30, fontSize: 15, variant: "black" })}
                 title="上一首"
               >
                 <span style={{ fontSize: 15, lineHeight: 1 }}>⏮</span>
@@ -3712,10 +3755,10 @@ export function BuiltinWidgetView({
                     if (result.status !== "success") setError(result.message);
                   });
                 }}
-                style={mediaIconBtnStyle({ size: 34, fontSize: 14 })}
+                style={mediaIconBtnStyle({ size: 34, fontSize: 14, variant: "black" })}
                 title={isPlaying ? "暂停" : "播放"}
               >
-                {renderMediaControlIcon(isPlaying ? "pause" : "play")}
+                {renderMediaControlIcon(isPlaying ? "pause" : "play", "#fff")}
               </button>
               <button
                 onClick={() => {
@@ -3723,7 +3766,7 @@ export function BuiltinWidgetView({
                     if (result.status !== "success") setError(result.message);
                   });
                 }}
-                style={mediaIconBtnStyle({ size: 30, fontSize: 15 })}
+                style={mediaIconBtnStyle({ size: 30, fontSize: 15, variant: "black" })}
                 title="下一首"
               >
                 <span style={{ fontSize: 15, lineHeight: 1 }}>⏭</span>
@@ -3852,13 +3895,13 @@ export function BuiltinWidgetView({
                 )}
                 <span
                   style={{
-                    ...mediaIconBtnStyle({ size: 20, fontSize: 14 }),
+                    ...mediaIconBtnStyle({ size: 20, fontSize: 14, variant: "black" }),
                     display: "inline-grid",
                     placeItems: "center"
                   }}
                   title={active && isPlaying ? "暂停" : "播放"}
                 >
-                  {renderMediaControlIcon(active && isPlaying ? "pause" : "play")}
+                  {renderMediaControlIcon(active && isPlaying ? "pause" : "play", "#fff")}
                 </span>
                 <div style={{ minWidth: 0 }}>
                   <div
@@ -4855,6 +4898,7 @@ export function BuiltinWidgetView({
     const compact = instance.state.compact === true;
     const zones = normalizeWorldClockZones(instance.state.zones, DEFAULT_WORLD_CLOCK_ZONES, { fill: !compact });
     const slots = toWorldClockSlots(zones, { fill: !compact });
+    const worldClockZoneLabels = asStringRecord(instance.state.worldClockZoneLabels);
     const [now, setNow] = useState(() => new Date());
     const [toneClasses] = useState(() => getRandomWorldClockToneClasses());
 
@@ -4893,12 +4937,17 @@ export function BuiltinWidgetView({
               const display = formatWorldClockDisplay(now, timeZone);
               const toneClass = toneClasses[index % toneClasses.length];
               const metaText = display.zoneName === display.offset ? display.offset : `${display.zoneName} ${display.offset}`;
-              const optionItems = WORLD_CLOCK_ZONE_OPTIONS.filter(
+              const displayLabel = worldClockZoneLabels[timeZone] ?? getWorldClockOptionLabel(timeZone);
+              const presetOptionItems = WORLD_CLOCK_ZONE_OPTIONS.filter(
                 (item) => item.value !== CHINA_TIME_ZONE && (item.value === timeZone || !slots.includes(item.value))
               ).map((item) => ({
                 value: item.value,
                 label: item.shortLabel
               }));
+              const optionItems =
+                !WORLD_CLOCK_ZONE_OPTIONS.some((item) => item.value === timeZone) && worldClockZoneLabels[timeZone]
+                  ? [{ value: timeZone, label: worldClockZoneLabels[timeZone] }, ...presetOptionItems]
+                  : presetOptionItems;
               return (
                 <div key={timeZone} className={`world-clock-cell ${toneClass}`}>
                   <div className="world-clock-city-row">
@@ -4914,7 +4963,7 @@ export function BuiltinWidgetView({
                           paddingRight: isMobileMode ? 20 : 20
                         }}
                       >
-                        {getWorldClockOptionLabel(timeZone)}
+                        {displayLabel}
                       </div>
                     ) : (
                       <GlassSelect
@@ -4940,8 +4989,8 @@ export function BuiltinWidgetView({
                           fontWeight: 700,
                           lineHeight: 1.1,
                           color: "rgba(15, 23, 42, 0.8)"
-                        }}
-                      />
+                          }}
+                        />
                     )}
                   </div>
                   <div className="world-clock-time">{display.time}</div>
@@ -6491,15 +6540,19 @@ export function AIFormWidgetView({
 
 function mediaIconBtnStyle({
   size,
-  fontSize
+  fontSize,
+  variant = "plain"
 }: {
   size: number;
   fontSize: number;
+  variant?: "plain" | "black";
 }): CSSProperties {
+  const black = variant === "black";
   return {
-    border: "none",
-    background: "transparent",
-    color: "#0f172a",
+    border: black ? "1px solid rgba(15,23,42,0.92)" : "none",
+    borderRadius: "50%",
+    background: black ? "#050505" : "transparent",
+    color: black ? "#fff" : "#0f172a",
     fontSize,
     lineHeight: 1,
     width: size,
@@ -6509,15 +6562,15 @@ function mediaIconBtnStyle({
     justifyContent: "center",
     padding: 0,
     cursor: "pointer",
-    boxShadow: "none"
+    boxShadow: black ? "0 8px 18px rgba(15,23,42,0.18)" : "none"
   };
 }
 
-function renderMediaControlIcon(kind: "play" | "pause" | "reset") {
+function renderMediaControlIcon(kind: "play" | "pause" | "reset", color = "#0f172a") {
   if (kind === "play") {
     return (
       <svg width="11" height="12" viewBox="0 0 11 12" fill="none" aria-hidden="true">
-        <path d="M2 1.6L9 6L2 10.4V1.6Z" fill="#0f172a" />
+        <path d="M2 1.6L9 6L2 10.4V1.6Z" fill={color} />
       </svg>
     );
   }
@@ -6532,8 +6585,8 @@ function renderMediaControlIcon(kind: "play" | "pause" | "reset") {
           gap: 2
         }}
       >
-        <span style={{ width: 3, height: 12, borderRadius: 999, background: "#0f172a", display: "block" }} />
-        <span style={{ width: 3, height: 12, borderRadius: 999, background: "#0f172a", display: "block" }} />
+        <span style={{ width: 3, height: 12, borderRadius: 999, background: color, display: "block" }} />
+        <span style={{ width: 3, height: 12, borderRadius: 999, background: color, display: "block" }} />
       </span>
     );
   }
@@ -6541,12 +6594,12 @@ function renderMediaControlIcon(kind: "play" | "pause" | "reset") {
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
       <path
         d="M11.5 7A4.5 4.5 0 1 1 7 2.5c1.2 0 2.28.47 3.08 1.24"
-        stroke="#0f172a"
+        stroke={color}
         strokeWidth="1.4"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <path d="M11.5 2.75v2.5H9" stroke="#0f172a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M11.5 2.75v2.5H9" stroke={color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

@@ -764,9 +764,12 @@ function inferCityName(input: string) {
   const lower = normalized.toLowerCase();
   const known = knownCities.find(([alias]) => lower.includes(alias.toLowerCase()));
   if (known) return known[1];
-  const beforeWeather = normalized.match(/([\u4e00-\u9fa5a-zA-Z-]{2,24})\s*(?:天气|weather)/i);
+  const beforeWeather =
+    normalized.match(/([\u4e00-\u9fa5a-zA-Z-]{2,24})\s*(?:天气|weather)/i) ??
+    normalized.match(/([\u4e00-\u9fa5a-zA-Z-]{2,24})\s*(?:冷不冷|热不热|冷吗|热吗|气温|温度|下雨|雨|风大|适合出门|出门|穿什么)/i);
   const candidate = cleanCommandContent(beforeWeather?.[1] ?? "")
     .replace(/^(帮我查一下|帮我查|查一下|查查|查询|切换到|切到|聚焦|再打开一个|再打开|打开一个|打开|显示|看看|看|查)/, "")
+    .replace(/(今天|今日|明天|现在|当前|实时|这会儿|当地)$/g, "")
     .replace(/^(一个|一下|个|小工具|窗口|卡片|面板)/, "");
   if (!candidate || /^(天气|weather|小工具|窗口|卡片|面板)$/i.test(candidate)) return "";
   return cleanCommandContent(candidate);
@@ -1361,7 +1364,16 @@ function inferWorldClockZones(raw: string) {
     .sort((a, b) => a.index - b.index)
     .map((item) => item.zone)
     .filter((zone, index, items) => items.indexOf(zone) === index);
-  return zones.length > 0 ? zones : [];
+  if (zones.length > 0) return zones;
+  const candidate = cleanCommandContent(
+    raw.match(/([\u4e00-\u9fa5a-zA-Z -]{2,32})\s*(?:现在)?(?:几点|时间|当地时间|本地时间)/i)?.[1] ?? ""
+  )
+    .replace(/^(帮我查一下|帮我查|查一下|查查|查询|看看|看一下|看|打开|显示)/, "")
+    .replace(/^(世界时钟|世界时间|时区)/, "")
+    .replace(/(今天|今日|明天|现在|当前|实时|当地|本地)$/g, "")
+    .trim();
+  if (!candidate || /^(时间|几点|世界时钟|世界时间|时区)$/i.test(candidate)) return [];
+  return [candidate];
 }
 
 function routeWidgetDetailOrAdd(

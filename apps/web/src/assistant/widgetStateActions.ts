@@ -34,6 +34,19 @@ type TranslateDraftArgs = { sourceText: string; sourceLang?: string; targetLang?
 type ClipboardAddArgs = { text: string; pinned?: boolean };
 type ClipboardClearArgs = { includePinned?: boolean };
 type MarketTargetCode = { code: string; label?: string };
+type GeoSearchResult = {
+  cityCode: string;
+  name: string;
+  label: string;
+  latitude: number;
+  longitude: number;
+  timezone: string;
+  worldClockZone: string;
+};
+type WeatherCityTarget = {
+  cityCode: string;
+  city?: GeoSearchResult;
+};
 type TodoStateItem = { id: string; text: string; dueAt?: string; completed?: boolean };
 type ClipboardStateItem = { id: string; text: string; pinned?: boolean; createdAt: string };
 
@@ -399,9 +412,80 @@ function normalizeClipboardRecords(raw: unknown): ClipboardStateItem[] {
     .filter((item): item is ClipboardStateItem => item !== null);
 }
 
-function resolveWeatherCity(args: WeatherCityArgs) {
+function normalizeCityQuery(raw: string): string {
+  return raw
+    .replace(/(帮我查一下|帮我查|查一下|查查|查询|搜索|打开|看看|看一下|看|天气|气温|温度|冷不冷|热不热|冷吗|热吗|下雨|雨|风大|出门|穿什么|时间|几点|今天|今日|明天|现在|当前|实时|当地|本地|世界时钟|世界时间|时区|的)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseGeoSearchResult(value: unknown): GeoSearchResult | undefined {
+  if (!isRecord(value)) return undefined;
+  if (
+    typeof value.cityCode !== "string" ||
+    typeof value.name !== "string" ||
+    typeof value.label !== "string" ||
+    typeof value.latitude !== "number" ||
+    typeof value.longitude !== "number" ||
+    typeof value.timezone !== "string" ||
+    typeof value.worldClockZone !== "string"
+  ) {
+    return undefined;
+  }
+  return {
+    cityCode: value.cityCode,
+    name: value.name,
+    label: value.label,
+    latitude: value.latitude,
+    longitude: value.longitude,
+    timezone: value.timezone,
+    worldClockZone: value.worldClockZone
+  };
+}
+
+async function lookupCityOnline(raw: string): Promise<GeoSearchResult | undefined> {
+  const query = normalizeCityQuery(raw);
+  if (!query || typeof fetch === "undefined") return undefined;
+  const response = await fetch(`/api/geo/search?q=${encodeURIComponent(query)}`);
+  if (!response.ok) return undefined;
+  return parseGeoSearchResult(await response.json());
+}
+
+async function resolveWeatherCity(args: WeatherCityArgs): Promise<WeatherCityTarget | undefined> {
   const raw = (args.cityCode || args.city || "").trim();
-  return WEATHER_CITY_ALIASES[raw] ?? WEATHER_CITY_ALIASES[raw.toLowerCase()] ?? "";
+  const localCityCode = WEATHER_CITY_ALIASES[raw] ?? WEATHER_CITY_ALIASES[raw.toLowerCase()];
+  if (localCityCode) return { cityCode: localCityCode };
+  const city = await lookupCityOnline(raw);
+  return city ? { cityCode: city.cityCode, city } : undefined;
+}
+
+async function resolveWorldClockZonesOnline(rawZones: string[]) {
+  const aliases = new Map(
+    WORLD_CLOCK_ZONE_OPTIONS.flatMap((item) => [
+      [item.value, item.value],
+      [item.label, item.value],
+      [item.shortLabel, item.value]
+    ])
+  );
+  const zones: string[] = [];
+  const labels: Record<string, string> = {};
+  for (const rawZone of rawZones) {
+    const trimmed = rawZone.trim();
+    if (!trimmed) continue;
+    const alias = aliases.get(trimmed);
+    if (alias) {
+      zones.push(alias);
+      continue;
+    }
+    const city = await lookupCityOnline(trimmed);
+    if (city) {
+      zones.push(city.worldClockZone);
+      labels[city.worldClockZone] = city.name;
+    } else {
+      zones.push(trimmed);
+    }
+  }
+  return { zones, labels };
 }
 
 function isSupportedMarketCode(code: string): boolean {
@@ -720,16 +804,17 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
       async execute(args, context) {
         const target = getTarget(store, context, "weather");
         if (isToolResult(target)) return target;
-        const cityCode = resolveWeatherCity(args);
-        if (!cityCode) {
+        const cityTarget = await resolveWeatherCity(args);
+        if (!cityTarget) {
           return failed("暂不支持这个城市", "UNSUPPORTED_CITY");
         }
         await patchWidgetState(store, target.widget, {
-          cityCode,
+          cityCode: cityTarget.cityCode,
+          weatherCity: cityTarget.city,
           weatherError: "",
           weatherLoading: false
         }, context);
-        return success("已切换天气城市", { widgetId: target.widget.id, cityCode });
+        return success("已切换天气城市", { widgetId: target.widget.id, cityCode: cityTarget.cityCode, city: cityTarget.city });
       }
     }),
     defineAction<CalculatorSetArgs>({
@@ -822,10 +907,12 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
       async execute(args, context) {
         const target = getTarget(store, context, "worldClock");
         if (isToolResult(target)) return target;
-        const aliases = new Map(WORLD_CLOCK_ZONE_OPTIONS.flatMap((item) => [[item.value, item.value], [item.label, item.value], [item.shortLabel, item.value]]));
         const compact = args.compact === true;
-        const zones = normalizeWorldClockZones(args.zones.map((zone) => aliases.get(zone) ?? zone), DEFAULT_WORLD_CLOCK_ZONES, { fill: !compact });
-        await patchWidgetState(store, target.widget, { zones, compact }, context);
+        const resolved = await resolveWorldClockZonesOnline(args.zones);
+        const zones = normalizeWorldClockZones(resolved.zones, DEFAULT_WORLD_CLOCK_ZONES, { fill: !compact });
+        const previousLabels = stringRecord(target.widget.state.worldClockZoneLabels);
+        const worldClockZoneLabels = { ...previousLabels, ...resolved.labels };
+        await patchWidgetState(store, target.widget, { zones, compact, worldClockZoneLabels }, context);
         return success("已更新世界时钟", { widgetId: target.widget.id, zones });
       }
     }),

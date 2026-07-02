@@ -460,6 +460,68 @@ describe("widget state assistant actions", () => {
     expect(getWidget("market")?.state.marketSymbolLabels).toEqual({ usAAPL: "苹果 AAPL" });
   });
 
+  it("resolves weather cities online before updating weather coordinates", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          cityCode: "geo:1886760",
+          name: "苏州",
+          label: "苏州 (江苏 · 中国)",
+          latitude: 31.30408,
+          longitude: 120.59538,
+          timezone: "Asia/Shanghai",
+          worldClockZone: "Asia/Shanghai|geo-1886760"
+        })
+      )
+    );
+    const { store, getWidget } = createStore();
+    const registry = createRegistry(store);
+
+    await registry.execute(
+      { id: "call_1", name: "weather.set_city", arguments: { city: "苏州" }, source: "test" },
+      { target: targetFor("weather"), now: () => NOW }
+    );
+
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/geo/search?q="));
+    expect(getWidget("weather")?.state.cityCode).toBe("geo:1886760");
+    expect(getWidget("weather")?.state.weatherCity).toMatchObject({
+      label: "苏州 (江苏 · 中国)",
+      latitude: 31.30408,
+      longitude: 120.59538
+    });
+  });
+
+  it("resolves world clock city names online before updating zones", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          cityCode: "geo:5809844",
+          name: "西雅图",
+          label: "西雅图 (华盛顿州 · 美国)",
+          latitude: 47.60621,
+          longitude: -122.33207,
+          timezone: "America/Los_Angeles",
+          worldClockZone: "America/Los_Angeles|geo-5809844"
+        })
+      )
+    );
+    const { store, getWidget } = createStore();
+    const registry = createRegistry(store);
+
+    await registry.execute(
+      { id: "call_1", name: "worldClock.set_zones", arguments: { zones: ["西雅图"], compact: true }, source: "test" },
+      { target: targetFor("worldClock"), now: () => NOW }
+    );
+
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/geo/search?q="));
+    expect(getWidget("worldClock")?.state.zones).toEqual(["Asia/Shanghai", "America/Los_Angeles|geo-5809844"]);
+    expect(getWidget("worldClock")?.state.worldClockZoneLabels).toEqual({
+      "America/Los_Angeles|geo-5809844": "西雅图"
+    });
+  });
+
   it("accepts area, time, and currency converter categories", async () => {
     const { store, getWidget } = createStore();
     const registry = createRegistry(store);

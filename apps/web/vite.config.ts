@@ -72,6 +72,10 @@ function localRealtimeApiPlugin(env: Record<string, string>): Plugin {
         const { default: handler } = await server.ssrLoadModule("./api/market/search.ts");
         await handler(request as IncomingMessage, response as ServerResponse);
       });
+      server.middlewares.use("/api/geo/search", async (request, response) => {
+        const { default: handler } = await server.ssrLoadModule("./api/geo/search.ts");
+        await handler(request as IncomingMessage, response as ServerResponse);
+      });
     }
   };
 }

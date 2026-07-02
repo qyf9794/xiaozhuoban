@@ -43,6 +43,19 @@ export const WORLD_CLOCK_GLOW_TONES = [
 
 const VALID_ZONE_SET = new Set(WORLD_CLOCK_ZONE_OPTIONS.map((item) => item.value));
 
+function isValidIntlTimeZone(timeZone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: resolveWorldClockTimeZone(timeZone) }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function isSupportedWorldClockZone(timeZone: string): boolean {
+  return VALID_ZONE_SET.has(timeZone) || isValidIntlTimeZone(timeZone);
+}
+
 export function resolveWorldClockTimeZone(timeZone: string): string {
   return timeZone.split("|")[0] || timeZone;
 }
@@ -68,7 +81,7 @@ export function normalizeWorldClockZones(
   const unique: string[] = [CHINA_TIME_ZONE];
 
   cleaned.forEach((zone) => {
-    if (!VALID_ZONE_SET.has(zone) || zone === CHINA_TIME_ZONE || unique.includes(zone)) {
+    if (!isSupportedWorldClockZone(zone) || zone === CHINA_TIME_ZONE || unique.includes(zone)) {
       return;
     }
     unique.push(zone);
@@ -98,7 +111,7 @@ export function updateWorldClockSlot(zones: readonly string[], slotIndex: number
   }
 
   const sanitized = nextZone.trim();
-  if (!VALID_ZONE_SET.has(sanitized) || sanitized === CHINA_TIME_ZONE || slots.includes(sanitized)) {
+  if (!isSupportedWorldClockZone(sanitized) || sanitized === CHINA_TIME_ZONE || slots.includes(sanitized)) {
     return slots;
   }
 
