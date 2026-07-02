@@ -230,6 +230,8 @@ describe("createRealtimeAssistantRuntime", () => {
     expect(shouldFallbackUnhandledVoiceTranscriptToHarness("我想听王菲的歌")).toBe(true);
     expect(shouldFallbackUnhandledVoiceTranscriptToHarness("我想听王菲")).toBe(true);
     expect(shouldFallbackUnhandledVoiceTranscriptToHarness("打开音乐播放器")).toBe(true);
+    expect(shouldFallbackUnhandledVoiceTranscriptToHarness("看苹果股票")).toBe(true);
+    expect(shouldFallbackUnhandledVoiceTranscriptToHarness("查腾讯股价")).toBe(true);
     expect(shouldFallbackUnhandledVoiceTranscriptToHarness("更换壁纸")).toBe(true);
     expect(shouldFallbackUnhandledVoiceTranscriptToHarness("你好")).toBe(false);
   });

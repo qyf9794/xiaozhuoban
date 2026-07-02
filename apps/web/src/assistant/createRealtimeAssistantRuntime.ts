@@ -27,7 +27,7 @@ export function shouldFallbackUnhandledVoiceTranscriptToHarness(input: string): 
   const normalized = input.trim();
   if (!normalized) return false;
   if (/^(在吗|你好|您好|hello|hi|嗨|你在吗)[？?。!！\s]*$/i.test(normalized)) return false;
-  return /(关闭|关掉|收起|打开|唤出|调出|整理|排列|对齐|全屏|侧栏|侧边栏|设置|命令面板|倒计时|计时|留言板|音乐|歌曲|歌|听|播放|王菲|陈奕迅|周杰伦|孙燕姿|Beyond|李宗盛|Taylor Swift|Adele|Coldplay|红豆|十年|时钟|表盘|天气|新闻|头条|行情|指数|翻译|换算|壁纸|背景|桌面背景|换壁纸|换背景|小工具|窗口|组件|面板)/i.test(
+  return /(关闭|关掉|收起|打开|唤出|调出|整理|排列|对齐|全屏|侧栏|侧边栏|设置|命令面板|倒计时|计时|留言板|音乐|歌曲|歌|听|播放|王菲|陈奕迅|周杰伦|孙燕姿|Beyond|李宗盛|Taylor Swift|Adele|Coldplay|红豆|十年|时钟|表盘|天气|新闻|头条|行情|指数|股票|股价|个股|翻译|换算|壁纸|背景|桌面背景|换壁纸|换背景|小工具|窗口|组件|面板)/i.test(
     normalized
   );
 }
