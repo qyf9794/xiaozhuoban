@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { Button, Card } from "@xiaozhuoban/ui";
@@ -12,9 +12,6 @@ import {
   getDialClockSweepFrames,
   toDialClockTimeState
 } from "./dialClockShared";
-import { GomokuWidget } from "./GomokuWidget";
-import { GuandanWidget } from "./GuandanWidget";
-import { MonopolyWidget } from "./MonopolyWidget";
 import {
   configureMusicKit,
   createMusicKitQueueDescriptor,
@@ -62,6 +59,18 @@ import {
 } from "../lib/collab";
 
 const E2E_AUTH_BYPASS = import.meta.env.VITE_XIAOZHUOBAN_E2E_AUTH_BYPASS === "true";
+
+const GomokuWidget = lazy(async () => ({ default: (await import("./GomokuWidget")).GomokuWidget }));
+const GuandanWidget = lazy(async () => ({ default: (await import("./GuandanWidget")).GuandanWidget }));
+const MonopolyWidget = lazy(async () => ({ default: (await import("./MonopolyWidget")).MonopolyWidget }));
+
+function LazyWidgetFallback({ definition, instance }: { definition: WidgetDefinition; instance: WidgetInstance }) {
+  return (
+    <WidgetShell definition={definition} instance={instance}>
+      <div style={{ padding: 16, fontSize: 13, color: "#64748b" }}>加载中...</div>
+    </WidgetShell>
+  );
+}
 
 function asString(v: unknown): string {
   return typeof v === "string" ? v : "";
@@ -5972,34 +5981,40 @@ export function BuiltinWidgetView({
 
   if (definition.type === "gomoku") {
     return (
-      <GomokuWidget
-        definition={definition}
-        instance={instance}
-        isMobileMode={isMobileMode}
-        onStateChange={onStateChange}
-      />
+      <Suspense fallback={<LazyWidgetFallback definition={definition} instance={instance} />}>
+        <GomokuWidget
+          definition={definition}
+          instance={instance}
+          isMobileMode={isMobileMode}
+          onStateChange={onStateChange}
+        />
+      </Suspense>
     );
   }
 
   if (definition.type === "monopoly") {
     return (
-      <MonopolyWidget
-        definition={definition}
-        instance={instance}
-        isMobileMode={isMobileMode}
-        onStateChange={onStateChange}
-      />
+      <Suspense fallback={<LazyWidgetFallback definition={definition} instance={instance} />}>
+        <MonopolyWidget
+          definition={definition}
+          instance={instance}
+          isMobileMode={isMobileMode}
+          onStateChange={onStateChange}
+        />
+      </Suspense>
     );
   }
 
   if (definition.type === "guandan") {
     return (
-      <GuandanWidget
-        definition={definition}
-        instance={instance}
-        isMobileMode={isMobileMode}
-        onStateChange={onStateChange}
-      />
+      <Suspense fallback={<LazyWidgetFallback definition={definition} instance={instance} />}>
+        <GuandanWidget
+          definition={definition}
+          instance={instance}
+          isMobileMode={isMobileMode}
+          onStateChange={onStateChange}
+        />
+      </Suspense>
     );
   }
 
