@@ -274,7 +274,8 @@ export function App() {
           openAiDialog: (prompt) => {
             setAiDialogInitialPrompt(prompt ?? "");
             setAiDialogOpen(true);
-          }
+          },
+          openWallpaperPicker: () => wallpaperInputRef.current?.click()
         },
         adapterOptions: {
           getAccessToken: () => useAuthStore.getState().session?.access_token,

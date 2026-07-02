@@ -33,6 +33,7 @@ describe("realtime session config", () => {
     expect(names).toContain("board.add_widget");
     expect(names).toContain("app.sidebar.set");
     expect(names).toContain("app.settings.open");
+    expect(names).toContain("app.wallpaper.pick");
     expect(names).toContain("widget.focus");
     expect(names).toContain("widget.fullscreen_focus");
     expect(names).toContain("board.auto_align");
@@ -50,6 +51,7 @@ describe("realtime session config", () => {
     expect(tools.every((tool) => /^[a-zA-Z0-9_-]+$/.test(tool.name))).toBe(true);
     expect(tools.map((tool) => tool.name)).toContain("board__dot__add_widget");
     expect(tools.map((tool) => tool.name)).toContain("app__dot__sidebar__dot__set");
+    expect(tools.map((tool) => tool.name)).toContain("app__dot__wallpaper__dot__pick");
     expect(addWidget?.parameters).toMatchObject({
       type: "object",
       required: ["definitionId"],

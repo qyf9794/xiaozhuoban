@@ -71,6 +71,7 @@ const TOOL_INTENT_PATTERNS: Record<string, RegExp> = {
   "app.settings.open": /(设置|语音入口|检查)/,
   "app.command_palette.open": /(命令面板|搜索命令|找功能|我要找功能)/,
   "app.ai_dialog.open": /(AI 小工具|新工具|做一个新工具)/,
+  "app.wallpaper.pick": /(壁纸|背景|桌面背景|换壁纸|更换壁纸|换背景|选择壁纸)/,
   "assistant.reply": /(告诉我|回复|解释|为什么|提示|优先|确认|不能撤销|是否正在|不要影响)/,
   "assistant.runtime_diagnostics": /(记录|诊断|错误|失败|trace|状态|日志|保存|不要忘记|不要重复|没把握|交给 realtime|工具清单|弱网|断线|恢复会话|会话已建立|能力按需|高置信|低于|不要丢|全局工具摘要|不能播放|不要一直找)/i,
   "board.add_widget": /(打开|新增|新建|创建|再打开|来一个|放一个|放上去|开一个|实例|播放器|窗口)/,

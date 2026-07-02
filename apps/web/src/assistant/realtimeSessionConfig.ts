@@ -159,6 +159,12 @@ const initialToolMetadata: InitialToolMetadata[] = [
     parameters: objectSchema({})
   },
   {
+    name: "app.wallpaper.pick",
+    description: "Open the Xiaozhuoban wallpaper or desktop background picker.",
+    scope: "desktop",
+    parameters: objectSchema({})
+  },
+  {
     name: "board.add_widget",
     description: "Add an existing widget definition to the current Xiaozhuoban board.",
     scope: "desktop",
@@ -389,6 +395,7 @@ function inferAssistantToolParameters(tool: AssistantToolSpec): Record<string, u
     case "app.settings.open":
     case "app.command_palette.open":
     case "app.ai_dialog.open":
+    case "app.wallpaper.pick":
       return objectSchema({});
     default:
       return tool.requiresTarget

@@ -30,6 +30,9 @@ function createRegistry(options: {
     },
     openAiDialog: (prompt) => {
       opened.push(prompt ? `ai_dialog:${prompt}` : "ai_dialog");
+    },
+    openWallpaperPicker: () => {
+      opened.push("wallpaper");
     }
   }).forEach((action) => registry.register(action));
   return {
@@ -73,7 +76,8 @@ describe("App shell assistant actions", () => {
     await registry.execute({ id: "call_3", name: "app.command_palette.open", arguments: { query: "天气" }, source: "test" }, { now: () => NOW });
     await registry.execute({ id: "call_4", name: "app.ai_dialog.open", arguments: {}, source: "test" }, { now: () => NOW });
     await registry.execute({ id: "call_5", name: "app.ai_dialog.open", arguments: { prompt: "每日摘要" }, source: "test" }, { now: () => NOW });
+    await registry.execute({ id: "call_6", name: "app.wallpaper.pick", arguments: {}, source: "test" }, { now: () => NOW });
 
-    expect(opened).toEqual(["settings", "command_palette", "command_palette:天气", "ai_dialog", "ai_dialog:每日摘要"]);
+    expect(opened).toEqual(["settings", "command_palette", "command_palette:天气", "ai_dialog", "ai_dialog:每日摘要", "wallpaper"]);
   });
 });

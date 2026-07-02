@@ -18,6 +18,7 @@ export interface AppShellActionBridge {
   openSettings?: () => Promise<void> | void;
   openCommandPalette?: (query?: string) => Promise<void> | void;
   openAiDialog?: (prompt?: string) => Promise<void> | void;
+  openWallpaperPicker?: () => Promise<void> | void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -161,6 +162,23 @@ export function createAppShellActions(bridge: AppShellActionBridge): Array<Assis
         const prompt = args.prompt?.trim() || undefined;
         await bridge.openAiDialog(prompt);
         return success("已打开 AI 生成", prompt ? { prompt } : undefined);
+      }
+    }),
+    defineAction<EmptyArgs>({
+      spec: {
+        name: "app.wallpaper.pick",
+        description: "Open the Xiaozhuoban wallpaper or desktop background picker.",
+        parameters: emptySchema,
+        risk: "safe",
+        scope: "desktop",
+        idempotency: "stateful",
+        concurrencyKey: "app.shell",
+        examples: ["更换壁纸", "换桌面背景", "选择壁纸"]
+      },
+      async execute() {
+        if (!bridge.openWallpaperPicker) return failed("当前环境还不能更换壁纸", "APP_WALLPAPER_UNAVAILABLE");
+        await bridge.openWallpaperPicker();
+        return success("已打开壁纸选择器");
       }
     })
   ];
