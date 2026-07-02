@@ -28,6 +28,14 @@ export function createMarketScopedContext(tools: AssistantAction[], request: Sco
       instanceCount: instances.length,
       focusedWidgetId: instances.find((widget) => widget.focused)?.widgetId,
       selectedToolHint: request.selectedToolHint,
+      indexCodeHints: {
+        usINX: "标普500 / S&P 500",
+        usNDX: "纳斯达克100 / NASDAQ 100 / 纳指",
+        usDJI: "道琼斯工业指数 / Dow Jones",
+        hkHSI: "恒生指数",
+        sh000001: "上证指数",
+        sz399001: "深证成指"
+      },
       indexGroupSummaryOnly: true,
       investmentAdviceAllowed: false,
       tradingAllowed: false
@@ -53,6 +61,7 @@ export function createMarketContextProvider(tools: AssistantAction[]) {
         instanceCount: context.stateSummary.instanceCount,
         focusedWidgetId: context.stateSummary.focusedWidgetId,
         selectedToolHint: context.stateSummary.selectedToolHint,
+        indexCodeHints: context.stateSummary.indexCodeHints,
         indexGroupSummaryOnly: true,
         investmentAdviceAllowed: false,
         tradingAllowed: false

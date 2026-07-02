@@ -32,7 +32,7 @@ const examplesByTool: Record<string, string[]> = {
   "widget.focus": ["聚焦行情", "切到市场", "打开行情"],
   "widget.fullscreen_focus": ["全屏行情", "放大市场", "专注看指数"],
   "widget.remove": ["关闭行情", "关掉市场", "把行情收起来"],
-  "market.set_indices": ["美股怎么样", "A股行情", "看恒生指数"]
+  "market.set_indices": ["看纳斯达克", "打开纳指", "NASDAQ 100", "美股三大指数", "A股行情", "看恒生指数"]
 };
 
 function isMarketTool(action: AssistantAction): boolean {

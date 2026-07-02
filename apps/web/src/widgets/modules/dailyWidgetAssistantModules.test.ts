@@ -754,4 +754,38 @@ describe("daily widget assistant modules", () => {
     expect(JSON.stringify(tvContext)).toContain("channelName");
     expect(JSON.stringify(tvContext)).not.toContain("private.example.com");
   });
+
+  it("reads refreshed TV channel names from raw widget state for realtime selection", () => {
+    const registry = new WidgetAssistantRegistry();
+    registerFirstBatchModules(registry);
+
+    const tvContext = registry.getScopedContextForModule("tv", {
+      userText: "切到 Bloomberg",
+      compactContext: {
+        widgetCountsByType: { tv: 1 },
+        widgets: [
+          {
+            widgetId: "tv_1",
+            definitionId: "wd_tv",
+            type: "tv",
+            name: "电视",
+            order: 1,
+            summary: "playing BBC News",
+            assistantState: {
+              selectedChannelName: "BBC News",
+              assistantChannelNames: ["BBC News", "Bloomberg TV", "NHK World"],
+              assistantChannelCount: 3,
+              channelUrlsExposed: false
+            }
+          }
+        ]
+      }
+    });
+
+    expect(tvContext).toBeTruthy();
+    if (!tvContext) return;
+    expect(tvContext.stateSummary.availableChannelNames).toEqual(["Bloomberg TV", "BBC News", "NHK World"]);
+    expect(tvContext.stateSummary.availableChannelCount).toBe(3);
+    expect(JSON.stringify(tvContext)).not.toContain("m3u8");
+  });
 });

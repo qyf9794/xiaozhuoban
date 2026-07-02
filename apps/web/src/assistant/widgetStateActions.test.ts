@@ -428,6 +428,18 @@ describe("widget state assistant actions", () => {
     expect(getWidget("clipboard")?.state.items).toMatchObject([{ text: "一段剪贴板内容", pinned: true }]);
   });
 
+  it("normalizes natural Nasdaq market arguments to the Nasdaq 100 code", async () => {
+    const { store, getWidget } = createStore();
+    const registry = createRegistry(store);
+
+    await registry.execute(
+      { id: "call_1", name: "market.set_indices", arguments: { indexCodes: ["NASDAQ", "纳斯达克"] }, source: "test" },
+      { target: targetFor("market"), now: () => NOW }
+    );
+
+    expect(getWidget("market")?.state.indexCodes).toEqual(["usNDX"]);
+  });
+
   it("accepts area, time, and currency converter categories", async () => {
     const { store, getWidget } = createStore();
     const registry = createRegistry(store);

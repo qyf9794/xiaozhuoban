@@ -9,7 +9,7 @@ import { tvExecutionPolicy } from "./executionPolicy";
 import { TV_MODULE_TYPE, tvShortcutExamples } from "./definition";
 import { normalizeTvChannelSearchName } from "../../tvShared";
 
-const TV_CONTEXT_CHANNEL_LIMIT = 48;
+const TV_CONTEXT_CHANNEL_LIMIT = 120;
 
 function safeTvSummary(summary: string) {
   const compact = summary.replace(/\s+/g, " ").trim();
@@ -22,7 +22,7 @@ function safeTvSummary(summary: string) {
 }
 
 function readChannelNames(state: Record<string, unknown> | undefined): string[] {
-  const names = state?.channelNames;
+  const names = Array.isArray(state?.channelNames) ? state?.channelNames : state?.assistantChannelNames;
   if (!Array.isArray(names)) return [];
   const seen = new Set<string>();
   const result: string[] = [];
@@ -37,12 +37,14 @@ function readChannelNames(state: Record<string, unknown> | undefined): string[] 
 }
 
 function channelCount(state: Record<string, unknown> | undefined, fallback: number) {
-  const count = state?.channelCount;
+  const count = typeof state?.channelCount === "number" ? state.channelCount : state?.assistantChannelCount;
   return typeof count === "number" && Number.isFinite(count) && count >= 0 ? Math.round(count) : fallback;
 }
 
 function chooseRelevantChannelNames(channelNames: string[], userText: string, limit = TV_CONTEXT_CHANNEL_LIMIT): string[] {
-  const normalizedUserText = normalizeTvChannelSearchName(userText);
+  const normalizedUserText = normalizeTvChannelSearchName(
+    userText.replace(/(打开|播放|看看|看|切到|换到|切换到|切换|换台|电视频道|电视|直播|频道|我想|我要|想看|想要)/g, " ")
+  );
   const matched: string[] = [];
   const rest: string[] = [];
 

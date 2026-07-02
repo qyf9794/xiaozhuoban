@@ -90,6 +90,43 @@ const WEATHER_CITY_ALIASES: Record<string, string> = {
 };
 
 const MARKET_CODES = new Set(["usINX", "usNDX", "usDJI", "hkHSI", "sh000001", "sz399001"]);
+const MARKET_CODE_ALIASES: Record<string, string> = {
+  usinx: "usINX",
+  "s&p": "usINX",
+  "s&p500": "usINX",
+  sp500: "usINX",
+  spx: "usINX",
+  标普: "usINX",
+  标普500: "usINX",
+  usndx: "usNDX",
+  ndx: "usNDX",
+  nasdaq: "usNDX",
+  "nasdaq100": "usNDX",
+  "nasdaq 100": "usNDX",
+  纳指: "usNDX",
+  纳斯达克: "usNDX",
+  纳斯达克100: "usNDX",
+  usdj: "usDJI",
+  usdji: "usDJI",
+  dji: "usDJI",
+  dow: "usDJI",
+  "dowjones": "usDJI",
+  "dow jones": "usDJI",
+  道指: "usDJI",
+  道琼斯: "usDJI",
+  hkhsi: "hkHSI",
+  hsi: "hkHSI",
+  "hangseng": "hkHSI",
+  "hang seng": "hkHSI",
+  恒生: "hkHSI",
+  港股: "hkHSI",
+  sh000001: "sh000001",
+  上证: "sh000001",
+  沪指: "sh000001",
+  sz399001: "sz399001",
+  深成: "sz399001",
+  深证: "sz399001"
+};
 const CONVERTER_UNITS: Record<string, string[]> = {
   length: ["m", "km", "cm", "inch", "ft"],
   weight: ["kg", "g", "lb", "oz"],
@@ -352,7 +389,11 @@ function resolveWeatherCity(args: WeatherCityArgs) {
 
 function normalizeMarketCodes(args: MarketSetArgs) {
   const rawCodes = args.indexCodes?.length ? args.indexCodes : args.indexCode ? [args.indexCode] : [];
-  const cleaned = rawCodes.filter((code, index, list) => MARKET_CODES.has(code) && list.indexOf(code) === index);
+  const normalizedCodes = rawCodes.map((code) => {
+    const trimmed = code.trim();
+    return MARKET_CODES.has(trimmed) ? trimmed : MARKET_CODE_ALIASES[trimmed.toLowerCase().replace(/[\s_-]+/g, "")] ?? MARKET_CODE_ALIASES[trimmed];
+  });
+  const cleaned = normalizedCodes.filter((code, index, list): code is string => Boolean(code) && MARKET_CODES.has(code) && list.indexOf(code) === index);
   return cleaned.slice(0, 4);
 }
 

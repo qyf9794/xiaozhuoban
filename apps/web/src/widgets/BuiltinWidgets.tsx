@@ -3783,13 +3783,31 @@ export function BuiltinWidgetView({
           {results.map((track) => {
             const active = activeItemId === track.id;
             return (
-              <div
+              <button
                 key={`${track.source}-${track.kind}-${track.id}`}
+                type="button"
+                data-no-drag="true"
+                onClick={() => {
+                  if (active && isPlaying) {
+                    pausePlayback();
+                    return;
+                  }
+                  void playItem(track).then((result) => {
+                    if (result.status !== "success") setError(result.message);
+                  });
+                }}
                 style={{
                   display: "grid",
                   gridTemplateColumns: "40px auto 1fr",
                   gap: 8,
-                  alignItems: "center"
+                  alignItems: "center",
+                  width: "100%",
+                  border: active ? "1px solid rgba(14, 165, 233, 0.45)" : "1px solid transparent",
+                  borderRadius: 8,
+                  padding: 4,
+                  background: active ? "rgba(14, 165, 233, 0.08)" : "transparent",
+                  textAlign: "left",
+                  cursor: "pointer"
                 }}
               >
                 {track.artworkUrl ? (
@@ -3814,21 +3832,16 @@ export function BuiltinWidgetView({
                     }}
                   />
                 )}
-                <button
-                  onClick={() => {
-                    if (active && isPlaying) {
-                      pausePlayback();
-                      return;
-                    }
-                    void playItem(track).then((result) => {
-                      if (result.status !== "success") setError(result.message);
-                    });
+                <span
+                  style={{
+                    ...mediaIconBtnStyle({ size: 20, fontSize: 14 }),
+                    display: "inline-grid",
+                    placeItems: "center"
                   }}
-                  style={mediaIconBtnStyle({ size: 16, fontSize: 14 })}
                   title={active && isPlaying ? "暂停" : "播放"}
                 >
                   {renderMediaControlIcon(active && isPlaying ? "pause" : "play")}
-                </button>
+                </span>
                 <div style={{ minWidth: 0 }}>
                   <div
                     style={{
@@ -3872,7 +3885,7 @@ export function BuiltinWidgetView({
                     />
                   </div>
                 </div>
-              </div>
+              </button>
             );
           })}
           {!loading && !results.length && !error ? (

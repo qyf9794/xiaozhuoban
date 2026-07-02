@@ -76,6 +76,21 @@ class InstanceFailingRepository extends InMemoryRepository {
   }
 }
 
+class ControlledDeleteRepository extends InMemoryRepository {
+  deleteStarted = false;
+  deleteFinished = false;
+  finishDelete: (() => void) | null = null;
+
+  async deleteInstance(instanceId: string): Promise<void> {
+    this.deleteStarted = true;
+    await new Promise<void>((resolve) => {
+      this.finishDelete = resolve;
+    });
+    await super.deleteInstance(instanceId);
+    this.deleteFinished = true;
+  }
+}
+
 function stubOutboxStorage() {
   const storage = new Map<string, string>();
   vi.stubGlobal("localStorage", {
@@ -170,6 +185,29 @@ describe("assistant widget focus state", () => {
 
     expect(useAppStore.getState().focusedWidgetId).toBeUndefined();
     expect(useAppStore.getState().widgetInstances).toEqual([]);
+  });
+
+  it("waits for widget deletion persistence before resolving close actions", async () => {
+    const repository = new ControlledDeleteRepository();
+    useAppStore.setState({
+      ...useAppStore.getState(),
+      repository,
+      activeBoardId: "board_1",
+      focusedWidgetId: "wi_note",
+      widgetDefinitions: [makeDefinition("note")],
+      widgetInstances: [makeWidget("note", 1)]
+    });
+
+    const pending = useAppStore.getState().removeWidgetInstance("wi_note");
+    await Promise.resolve();
+
+    expect(repository.deleteStarted).toBe(true);
+    expect(repository.deleteFinished).toBe(false);
+
+    repository.finishDelete?.();
+    await pending;
+
+    expect(repository.deleteFinished).toBe(true);
   });
 });
 

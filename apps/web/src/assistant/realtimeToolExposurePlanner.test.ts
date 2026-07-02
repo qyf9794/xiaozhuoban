@@ -24,6 +24,7 @@ const tools: AssistantToolSpec[] = [
   tool({ name: "countdown.set", scope: "widget-detail", widgetType: "countdown", requiresTarget: true, argumentKeys: ["totalSeconds"], examples: ["倒计时 5 分钟"] }),
   tool({ name: "tv.play", scope: "widget-detail", widgetType: "tv", requiresTarget: true, argumentKeys: ["channelName"], examples: ["我想看 BBC"] }),
   tool({ name: "tv.select_channel", scope: "widget-detail", widgetType: "tv", requiresTarget: true, argumentKeys: ["channelName"], examples: ["切到 BBC"] }),
+  tool({ name: "market.set_indices", scope: "widget-detail", widgetType: "market", requiresTarget: true, argumentKeys: ["indexCodes"], examples: ["打开纳斯达克"] }),
   tool({ name: "weather.set_city", scope: "widget-detail", widgetType: "weather", requiresTarget: true, argumentKeys: ["city"], examples: ["上海天气"] }),
   tool({ name: "note.write", scope: "widget-detail", widgetType: "note", requiresTarget: true, argumentKeys: ["content"], examples: ["帮我记一下"] }),
   tool({ name: "clipboard.clear", scope: "widget-detail", widgetType: "clipboard", requiresTarget: true, risk: "destructive", examples: ["清空剪贴板"] }),
@@ -66,6 +67,7 @@ function context(overrides: Partial<CompactAssistantContext> = {}): CompactAssis
       { definitionId: "wd_music", type: "music", name: "音乐" },
       { definitionId: "wd_countdown", type: "countdown", name: "倒计时" },
       { definitionId: "wd_tv", type: "tv", name: "电视" },
+      { definitionId: "wd_market", type: "market", name: "全球指数" },
       { definitionId: "wd_weather", type: "weather", name: "天气" },
       { definitionId: "wd_note", type: "note", name: "便签" },
       { definitionId: "wd_clipboard", type: "clipboard", name: "剪贴板" }
@@ -163,5 +165,12 @@ describe("RealtimeToolExposurePlanner", () => {
 
     expect(plan.exposedTools.map((item) => item.name)).toContain("app.wallpaper.pick");
     expect(plan.reasons["app.wallpaper.pick"]).toEqual(expect.arrayContaining(["tool_intent_match"]));
+  });
+
+  it("exposes market tools for Nasdaq commands", () => {
+    const plan = buildRealtimeToolExposurePlan("打开纳斯达克", context({ widgets: [], focusedWidget: undefined, widgetCountsByType: {} }), tools);
+
+    expect(plan.selectedModules).toContain("market");
+    expect(plan.exposedTools.map((item) => item.name)).toEqual(expect.arrayContaining(["market.set_indices", "board.add_widget"]));
   });
 });

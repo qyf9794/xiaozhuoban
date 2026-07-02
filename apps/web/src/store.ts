@@ -978,10 +978,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       widgetInstances: widgetInstances.filter((item) => item.id !== widgetId),
       focusedWidgetId: focusedWidgetId === widgetId ? undefined : focusedWidgetId
     });
-    persistInBackground(repository.deleteInstance(widgetId), "remove widget", {
-      type: "widget.delete",
-      payload: { widgetId }
-    }, options?.operationId);
+    try {
+      await repository.deleteInstance(widgetId);
+    } catch (error) {
+      console.error("[store] remove widget failed", error);
+      void enqueueAssistantCloudMutation({ type: "widget.delete", payload: { widgetId } }, options?.operationId);
+    }
   },
   async focusWidget(widgetId, options) {
     await get().bringWidgetToFront(widgetId, options);
