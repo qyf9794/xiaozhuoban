@@ -6,6 +6,7 @@ const args = process.argv.slice(2);
 const deployment = args.find((arg) => !arg.startsWith("--")) ?? "xiaozhuoban.bqxb.org";
 const since = args.find((arg) => arg.startsWith("--since="))?.slice("--since=".length) ?? "30m";
 const trace = args.find((arg) => arg.startsWith("--trace="))?.slice("--trace=".length);
+const session = args.find((arg) => arg.startsWith("--session="))?.slice("--session=".length);
 const marker = "[assistant-diagnostic]";
 
 const child = spawn(
@@ -29,13 +30,18 @@ function handleChunk(chunk) {
       }
       try {
         const event = JSON.parse(line.slice(jsonStart));
-        if (trace && event.commandTraceId !== trace) {
+        if (trace && event.commandTraceId !== trace && event.traceId !== trace) {
+          return;
+        }
+        if (session && event.clientSessionId !== session) {
           return;
         }
         console.log(
           JSON.stringify(
             {
               receivedAt: event.receivedAt,
+              traceId: event.traceId,
+              clientEventIndex: event.clientEventIndex,
               type: event.type,
               status: event.status,
               route: event.route,

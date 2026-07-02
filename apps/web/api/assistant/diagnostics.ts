@@ -69,6 +69,14 @@ function parseEvents(payload: unknown): Record<string, unknown>[] {
     .slice(0, MAX_EVENTS);
 }
 
+function traceIdForEvent(event: Record<string, unknown>): string {
+  return typeof event.commandTraceId === "string" && event.commandTraceId.trim()
+    ? event.commandTraceId.trim()
+    : typeof event.clientSessionId === "string" && event.clientSessionId.trim()
+      ? event.clientSessionId.trim()
+      : "unknown";
+}
+
 export default async function handler(request: IncomingMessage, response: ServerResponse): Promise<void> {
   if (request.method !== "POST") {
     response.setHeader("allow", "POST");
@@ -100,15 +108,17 @@ export default async function handler(request: IncomingMessage, response: Server
   }
 
   const receivedAt = new Date().toISOString();
+  const traceIds = [...new Set(events.map(traceIdForEvent))];
   events.forEach((event) => {
     const log = sanitize({
       marker: "xiaozhuoban.assistant.diagnostic",
       receivedAt,
+      traceId: traceIdForEvent(event),
       userId: auth.user.id,
       ...event
     });
     console.info("[assistant-diagnostic]", JSON.stringify(log));
   });
 
-  sendJson(response, 200, { ok: true, count: events.length });
+  sendJson(response, 200, { ok: true, count: events.length, traceIds });
 }

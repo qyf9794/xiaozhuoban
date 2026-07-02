@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OpenAIRealtimeWebRtcAdapterOptions, RealtimeConnectionStatus } from "./openaiRealtimeAdapter";
-import { createRealtimeAssistantRuntime } from "./createRealtimeAssistantRuntime";
+import { createRealtimeAssistantRuntime, shouldFallbackUnhandledVoiceTranscriptToHarness } from "./createRealtimeAssistantRuntime";
 
 function createRuntimeWithFakeAdapter(options: {
   commandWindowIdleMs?: number;
@@ -222,6 +222,36 @@ describe("createRealtimeAssistantRuntime", () => {
         status: "success",
         commandTraceId: "voice_unhandled_1",
         route: "shortcut"
+      })
+    ]));
+  });
+
+  it("treats short music listen and open-player transcripts as command-like fallbacks", () => {
+    expect(shouldFallbackUnhandledVoiceTranscriptToHarness("我想听王菲的歌")).toBe(true);
+    expect(shouldFallbackUnhandledVoiceTranscriptToHarness("我想听王菲")).toBe(true);
+    expect(shouldFallbackUnhandledVoiceTranscriptToHarness("打开音乐播放器")).toBe(true);
+    expect(shouldFallbackUnhandledVoiceTranscriptToHarness("你好")).toBe(false);
+  });
+
+  it("falls back unhandled artist listen requests into the realtime harness", async () => {
+    const { runtime, getAdapterOptions, diagnostics } = createRuntimeWithFakeAdapter();
+    const handleRealtimeUserInput = vi.spyOn(runtime.harness, "handleRealtimeUserInput").mockResolvedValue({
+      route: "model",
+      call: { id: "call_music", name: "music.play", arguments: { query: "王菲" }, source: "realtime" },
+      result: { status: "success", message: "已开始播放音乐" }
+    });
+
+    await getAdapterOptions()?.onUnhandledUserTranscript?.("我想听王菲的歌", { commandTraceId: "voice_music_1", itemId: "item_music" });
+    await Promise.resolve();
+
+    expect(handleRealtimeUserInput).toHaveBeenCalledWith("我想听王菲的歌", { commandTraceId: "voice_music_1" });
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.runtime.unhandled_voice_transcript_result",
+        status: "success",
+        commandTraceId: "voice_music_1",
+        route: "model",
+        toolName: "music.play"
       })
     ]));
   });

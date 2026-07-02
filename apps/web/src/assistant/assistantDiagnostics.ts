@@ -18,7 +18,10 @@ export type AssistantDiagnosticEvent = {
 const SESSION_STORAGE_KEY = "xiaozhuoban.assistant.diagnosticSessionId";
 const LOCAL_BUFFER_KEY = "xiaozhuoban.assistant.diagnosticBuffer";
 const LOCAL_SNAPSHOT_KEY = "xiaozhuoban.assistant.lastHarnessDiagnostics";
+const LOCAL_PERSISTENT_TRACE_KEY = "xiaozhuoban.assistant.traceEvents";
+const LOCAL_SEQUENCE_KEY = "xiaozhuoban.assistant.diagnosticSequence";
 const MAX_LOCAL_EVENTS = 80;
+const MAX_PERSISTENT_EVENTS = 300;
 const SENSITIVE_KEY_PATTERN = /(audio|blob|base64|dataurl|data_url|token|secret|password|apikey|api_key|recording|clipboard)/i;
 
 declare global {
@@ -85,6 +88,49 @@ function readLocalBuffer(): unknown[] {
   }
 }
 
+function readPersistentTraceBuffer(): unknown[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(LOCAL_PERSISTENT_TRACE_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function nextDiagnosticSequence(): number {
+  if (typeof window === "undefined") return 1;
+  try {
+    const current = Number.parseInt(window.sessionStorage.getItem(LOCAL_SEQUENCE_KEY) || "0", 10);
+    const next = Number.isFinite(current) ? current + 1 : 1;
+    window.sessionStorage.setItem(LOCAL_SEQUENCE_KEY, String(next));
+    return next;
+  } catch {
+    return Date.now();
+  }
+}
+
+function getCurrentPageUrl(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    return `${window.location.origin}${window.location.pathname}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function createDiagnosticPayload(event: AssistantDiagnosticEvent): Record<string, unknown> {
+  return sanitizeAssistantDiagnosticValue({
+    ...event,
+    clientSessionId: getAssistantDiagnosticSessionId(),
+    clientEventIndex: nextDiagnosticSequence(),
+    clientCreatedAt: new Date().toISOString(),
+    pagePath: typeof window === "undefined" ? undefined : window.location.pathname,
+    pageUrl: getCurrentPageUrl(),
+    visibilityState: typeof document === "undefined" ? undefined : document.visibilityState
+  }) as Record<string, unknown>;
+}
+
 function publishLocalExports(events: unknown[]): void {
   if (typeof window === "undefined") return;
   window.__xiaozhuobanAssistantDiagnosticEvents = events;
@@ -92,26 +138,26 @@ function publishLocalExports(events: unknown[]): void {
     sessionId: getAssistantDiagnosticSessionId(),
     exportedAt: new Date().toISOString(),
     events: readLocalBuffer(),
+    persistentTraceEvents: readPersistentTraceBuffer(),
     lastHarnessDiagnostics: window.__xiaozhuobanAssistantDiagnostics ?? null
   });
 }
 
-export function appendLocalAssistantDiagnostic(event: AssistantDiagnosticEvent): void {
-  if (typeof window === "undefined") return;
-  const sanitized = sanitizeAssistantDiagnosticValue({
-    ...event,
-    clientSessionId: getAssistantDiagnosticSessionId(),
-    clientCreatedAt: new Date().toISOString(),
-    pagePath: window.location.pathname,
-    visibilityState: document.visibilityState
-  });
+export function appendLocalAssistantDiagnostic(event: AssistantDiagnosticEvent): Record<string, unknown> | undefined {
+  if (typeof window === "undefined") return undefined;
+  const sanitized = createDiagnosticPayload(event);
   try {
     const next = [...readLocalBuffer(), sanitized].slice(-MAX_LOCAL_EVENTS);
     window.sessionStorage.setItem(LOCAL_BUFFER_KEY, JSON.stringify(next));
+    window.localStorage.setItem(
+      LOCAL_PERSISTENT_TRACE_KEY,
+      JSON.stringify([...readPersistentTraceBuffer(), sanitized].slice(-MAX_PERSISTENT_EVENTS))
+    );
     publishLocalExports(next);
   } catch {
     publishLocalExports([sanitized]);
   }
+  return sanitized;
 }
 
 export function publishAssistantHarnessDiagnostics(snapshot: unknown): void {
@@ -151,6 +197,8 @@ export function clearLocalAssistantDiagnostics(): void {
   try {
     window.sessionStorage.removeItem(LOCAL_BUFFER_KEY);
     window.sessionStorage.removeItem(LOCAL_SNAPSHOT_KEY);
+    window.sessionStorage.removeItem(LOCAL_SEQUENCE_KEY);
+    window.localStorage.removeItem(LOCAL_PERSISTENT_TRACE_KEY);
   } catch {
     // Local diagnostics are best-effort only.
   }
@@ -163,18 +211,12 @@ export async function recordAssistantDiagnostic(
   options: { accessToken?: string; endpoint?: string; fetchImpl?: typeof fetch } = {}
 ): Promise<void> {
   if (typeof window === "undefined") return;
-  appendLocalAssistantDiagnostic(event);
+  const payload = appendLocalAssistantDiagnostic(event);
   const accessToken = options.accessToken?.trim();
   if (!accessToken) return;
+  if (!payload) return;
 
   const fetchImpl = options.fetchImpl ?? fetch;
-  const payload = sanitizeAssistantDiagnosticValue({
-    ...event,
-    clientSessionId: getAssistantDiagnosticSessionId(),
-    clientCreatedAt: new Date().toISOString(),
-    pagePath: window.location.pathname,
-    visibilityState: document.visibilityState
-  });
 
   try {
     await fetchImpl(options.endpoint ?? "/api/assistant/diagnostics", {

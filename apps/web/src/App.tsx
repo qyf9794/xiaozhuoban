@@ -6,7 +6,7 @@ import { AIGeneratorDialog } from "./components/AIGeneratorDialog";
 import { CommandPalette } from "./components/CommandPalette";
 import { OnlineUsersDock } from "./components/OnlineUsersDock";
 import { VoiceAssistantDock, type VoiceAssistantOperationStatus } from "./components/VoiceAssistantDock";
-import { createRealtimeAssistantRuntime } from "./assistant/createRealtimeAssistantRuntime";
+import { createRealtimeAssistantRuntime, shouldFallbackUnhandledVoiceTranscriptToHarness } from "./assistant/createRealtimeAssistantRuntime";
 import { recordAuthenticatedAssistantDiagnostic, type AssistantDiagnosticEvent } from "./assistant/assistantDiagnostics";
 import {
   clearAssistantTerminalOperation,
@@ -46,6 +46,10 @@ function getUserSpeechTextFromDiagnostic(event: AssistantDiagnosticEvent): strin
   if (event.type !== "realtime.voice.user_transcript" || event.status !== "success") return "";
   const transcript = event.data?.transcript;
   return typeof transcript === "string" ? transcript.trim() : "";
+}
+
+function isUnsupportedToolRealtimeReply(text: string): boolean {
+  return /(没有|缺少|无法|不能).{0,16}(工具|音乐|播放|播放器|电视|频道|打开|执行)/.test(text);
 }
 
 function getAssistantRuntimeText(status: { mode: AssistantRuntimeMode; metrics: RealtimeBudgetMetrics } | null) {
@@ -213,6 +217,7 @@ export function App() {
   const assistantOperationClearTimerRef = useRef<number | null>(null);
   const assistantSpeechEventIdRef = useRef(0);
   const userSpeechEventIdRef = useRef(0);
+  const lastCommandLikeUserSpeechRef = useRef("");
   const assistantCapabilityBridgeRef = useRef(new WidgetCapabilityBridge());
   const sidebarOpenRef = useRef(sidebarOpen);
   const fullscreenRef = useRef(fullscreen);
@@ -223,13 +228,22 @@ export function App() {
   const recordDiagnostic = (event: AssistantDiagnosticEvent) => {
     const assistantSpeechText = getAssistantSpeechTextFromDiagnostic(event);
     if (assistantSpeechText) {
-      assistantSpeechEventIdRef.current += 1;
-      setAssistantSpeech({ id: assistantSpeechEventIdRef.current, text: assistantSpeechText });
+      const shouldSuppressUnsupportedReply =
+        lastCommandLikeUserSpeechRef.current &&
+        shouldFallbackUnhandledVoiceTranscriptToHarness(lastCommandLikeUserSpeechRef.current) &&
+        isUnsupportedToolRealtimeReply(assistantSpeechText);
+      if (!shouldSuppressUnsupportedReply) {
+        assistantSpeechEventIdRef.current += 1;
+        setAssistantSpeech({ id: assistantSpeechEventIdRef.current, text: assistantSpeechText });
+      }
     }
     const userSpeechText = getUserSpeechTextFromDiagnostic(event);
     if (userSpeechText) {
       userSpeechEventIdRef.current += 1;
       setUserSpeech({ id: userSpeechEventIdRef.current, text: userSpeechText });
+      if (shouldFallbackUnhandledVoiceTranscriptToHarness(userSpeechText)) {
+        lastCommandLikeUserSpeechRef.current = userSpeechText;
+      }
     }
     recordAuthenticatedAssistantDiagnostic(event);
   };

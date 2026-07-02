@@ -64,6 +64,10 @@ function localRealtimeApiPlugin(env: Record<string, string>): Plugin {
         const { default: handler } = await server.ssrLoadModule("./api/realtime/tool-call.ts");
         await handler(request as IncomingMessage, response as ServerResponse);
       });
+      server.middlewares.use("/api/assistant/diagnostics", async (request, response) => {
+        const { default: handler } = await server.ssrLoadModule("./api/assistant/diagnostics.ts");
+        await handler(request as IncomingMessage, response as ServerResponse);
+      });
     }
   };
 }
