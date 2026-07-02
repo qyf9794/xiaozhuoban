@@ -19,10 +19,18 @@ const SESSION_STORAGE_KEY = "xiaozhuoban.assistant.diagnosticSessionId";
 const LOCAL_BUFFER_KEY = "xiaozhuoban.assistant.diagnosticBuffer";
 const LOCAL_SNAPSHOT_KEY = "xiaozhuoban.assistant.lastHarnessDiagnostics";
 const LOCAL_PERSISTENT_TRACE_KEY = "xiaozhuoban.assistant.traceEvents";
+const LOCAL_PENDING_UPLOAD_KEY = "xiaozhuoban.assistant.pendingDiagnosticUploads";
 const LOCAL_SEQUENCE_KEY = "xiaozhuoban.assistant.diagnosticSequence";
 const MAX_LOCAL_EVENTS = 80;
 const MAX_PERSISTENT_EVENTS = 300;
+const MAX_PENDING_UPLOAD_EVENTS = 500;
+const MAX_UPLOAD_BATCH_EVENTS = 20;
 const SENSITIVE_KEY_PATTERN = /(audio|blob|base64|dataurl|data_url|token|secret|password|apikey|api_key|recording|clipboard)/i;
+
+let latestUploadOptions: { accessToken: string; endpoint?: string; fetchImpl?: typeof fetch } | null = null;
+let flushPromise: Promise<void> | null = null;
+let flushAgainAfterCurrent = false;
+let lifecycleFlushInstalled = false;
 
 declare global {
   interface Window {
@@ -98,6 +106,55 @@ function readPersistentTraceBuffer(): unknown[] {
   }
 }
 
+function readPendingUploadBuffer(): Record<string, unknown>[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(LOCAL_PENDING_UPLOAD_KEY) || "[]");
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePendingUploadBuffer(events: Record<string, unknown>[]): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(LOCAL_PENDING_UPLOAD_KEY, JSON.stringify(events.slice(-MAX_PENDING_UPLOAD_EVENTS)));
+}
+
+function pendingUploadKey(event: Record<string, unknown>): string {
+  return [
+    typeof event.clientSessionId === "string" ? event.clientSessionId : "",
+    typeof event.clientEventIndex === "number" || typeof event.clientEventIndex === "string" ? String(event.clientEventIndex) : "",
+    typeof event.type === "string" ? event.type : "",
+    typeof event.clientCreatedAt === "string" ? event.clientCreatedAt : ""
+  ].join("|");
+}
+
+function enqueuePendingUpload(event: Record<string, unknown>): void {
+  if (typeof window === "undefined") return;
+  try {
+    const nextByKey = new Map<string, Record<string, unknown>>();
+    [...readPendingUploadBuffer(), event].forEach((item) => {
+      nextByKey.set(pendingUploadKey(item), item);
+    });
+    writePendingUploadBuffer([...nextByKey.values()]);
+  } catch {
+    // Diagnostics are best-effort only.
+  }
+}
+
+function removePendingUploads(sentEvents: Record<string, unknown>[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    const sentKeys = new Set(sentEvents.map(pendingUploadKey));
+    writePendingUploadBuffer(readPendingUploadBuffer().filter((event) => !sentKeys.has(pendingUploadKey(event))));
+  } catch {
+    // Diagnostics are best-effort only.
+  }
+}
+
 function nextDiagnosticSequence(): number {
   if (typeof window === "undefined") return 1;
   try {
@@ -139,6 +196,7 @@ function publishLocalExports(events: unknown[]): void {
     exportedAt: new Date().toISOString(),
     events: readLocalBuffer(),
     persistentTraceEvents: readPersistentTraceBuffer(),
+    pendingDiagnosticUploads: readPendingUploadBuffer(),
     lastHarnessDiagnostics: window.__xiaozhuobanAssistantDiagnostics ?? null
   });
 }
@@ -174,7 +232,7 @@ export function publishAssistantHarnessDiagnostics(snapshot: unknown): void {
 
 export function exportLocalAssistantDiagnostics(): unknown {
   if (typeof window === "undefined") {
-    return { events: [], lastHarnessDiagnostics: null };
+    return { events: [], persistentTraceEvents: [], pendingDiagnosticUploads: [], lastHarnessDiagnostics: null };
   }
   let lastHarnessDiagnostics: unknown = window.__xiaozhuobanAssistantDiagnostics ?? null;
   if (!lastHarnessDiagnostics) {
@@ -188,6 +246,8 @@ export function exportLocalAssistantDiagnostics(): unknown {
     sessionId: getAssistantDiagnosticSessionId(),
     exportedAt: new Date().toISOString(),
     events: readLocalBuffer(),
+    persistentTraceEvents: readPersistentTraceBuffer(),
+    pendingDiagnosticUploads: readPendingUploadBuffer(),
     lastHarnessDiagnostics
   };
 }
@@ -199,11 +259,71 @@ export function clearLocalAssistantDiagnostics(): void {
     window.sessionStorage.removeItem(LOCAL_SNAPSHOT_KEY);
     window.sessionStorage.removeItem(LOCAL_SEQUENCE_KEY);
     window.localStorage.removeItem(LOCAL_PERSISTENT_TRACE_KEY);
+    window.localStorage.removeItem(LOCAL_PENDING_UPLOAD_KEY);
   } catch {
     // Local diagnostics are best-effort only.
   }
+  latestUploadOptions = null;
   window.__xiaozhuobanAssistantDiagnostics = null;
   publishLocalExports([]);
+}
+
+function installLifecycleFlush(): void {
+  if (typeof window === "undefined" || lifecycleFlushInstalled) return;
+  lifecycleFlushInstalled = true;
+  const flushLatest = () => {
+    if (!latestUploadOptions) return;
+    void flushPendingAssistantDiagnostics(latestUploadOptions);
+  };
+  window.addEventListener("pagehide", flushLatest);
+  window.addEventListener("visibilitychange", () => {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+      flushLatest();
+    }
+  });
+  window.addEventListener("online", flushLatest);
+}
+
+export async function flushPendingAssistantDiagnostics(
+  options: { accessToken: string; endpoint?: string; fetchImpl?: typeof fetch }
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  const accessToken = options.accessToken.trim();
+  if (!accessToken) return;
+
+  if (flushPromise) {
+    flushAgainAfterCurrent = true;
+    return flushPromise;
+  }
+
+  const fetchImpl = options.fetchImpl ?? fetch;
+  flushPromise = (async () => {
+    do {
+      flushAgainAfterCurrent = false;
+      const pending = readPendingUploadBuffer();
+      if (!pending.length) return;
+      const batch = pending.slice(0, MAX_UPLOAD_BATCH_EVENTS);
+      try {
+        const response = await fetchImpl(options.endpoint ?? "/api/assistant/diagnostics", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${accessToken}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({ events: batch }),
+          keepalive: true
+        });
+        if (!response.ok) return;
+        removePendingUploads(batch);
+      } catch {
+        return;
+      }
+    } while (readPendingUploadBuffer().length > 0 || flushAgainAfterCurrent);
+  })().finally(() => {
+    flushPromise = null;
+  });
+
+  return flushPromise;
 }
 
 export async function recordAssistantDiagnostic(
@@ -216,21 +336,10 @@ export async function recordAssistantDiagnostic(
   if (!accessToken) return;
   if (!payload) return;
 
-  const fetchImpl = options.fetchImpl ?? fetch;
-
-  try {
-    await fetchImpl(options.endpoint ?? "/api/assistant/diagnostics", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${accessToken}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify(payload),
-      keepalive: true
-    });
-  } catch {
-    // Diagnostics must never affect assistant behavior.
-  }
+  latestUploadOptions = { accessToken, endpoint: options.endpoint, fetchImpl: options.fetchImpl };
+  installLifecycleFlush();
+  enqueuePendingUpload(payload);
+  await flushPendingAssistantDiagnostics(latestUploadOptions);
 }
 
 export function recordAuthenticatedAssistantDiagnostic(event: AssistantDiagnosticEvent): void {

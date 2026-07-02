@@ -28,7 +28,8 @@ function installBrowserGlobals() {
   vi.stubGlobal("window", {
     location: { origin: "https://xiaozhuoban.bqxb.org", pathname: "/app" },
     sessionStorage: createStorage(sessionStore),
-    localStorage: createStorage(localStore)
+    localStorage: createStorage(localStore),
+    addEventListener: vi.fn()
   });
   vi.stubGlobal("document", { visibilityState: "visible" });
   vi.stubGlobal("crypto", { randomUUID: () => "test-session" });
@@ -87,7 +88,7 @@ describe("assistant diagnostics", () => {
     expect(localStore.get("xiaozhuoban.assistant.traceEvents")).toContain("trace_diag_1");
   });
 
-  it("sends the same trace payload to the backend while keeping persistent local trace", async () => {
+  it("sends the same trace payload to the backend batch while keeping persistent local trace", async () => {
     const { localStore } = installBrowserGlobals();
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
 
@@ -105,16 +106,40 @@ describe("assistant diagnostics", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [, init] = fetchImpl.mock.calls[0] as unknown as [unknown, RequestInit];
     const body = JSON.parse(String(init.body));
-    expect(body).toMatchObject({
+    expect(body.events).toHaveLength(1);
+    expect(body.events[0]).toMatchObject({
       type: "realtime.function_call.tool",
       commandTraceId: "voice_trace_1",
       clientSessionId: "diag_test-session",
       clientEventIndex: 1,
       pageUrl: "https://xiaozhuoban.bqxb.org/app"
     });
-    expect(body.data).toMatchObject({ query: "王菲", apiKey: "[redacted]" });
+    expect(body.events[0].data).toMatchObject({ query: "王菲", apiKey: "[redacted]" });
     const persistent = JSON.parse(localStore.get("xiaozhuoban.assistant.traceEvents") || "[]");
     expect(persistent).toHaveLength(1);
     expect(persistent[0]).toMatchObject({ commandTraceId: "voice_trace_1", clientEventIndex: 1 });
+    expect(JSON.parse(localStore.get("xiaozhuoban.assistant.pendingDiagnosticUploads") || "[]")).toHaveLength(0);
+  });
+
+  it("keeps failed uploads pending and resends them with the next diagnostic batch", async () => {
+    const { localStore } = installBrowserGlobals();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "temporary" }), { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    await recordAssistantDiagnostic({ type: "realtime.voice.user_transcript", status: "success" }, { accessToken: "user-token", fetchImpl });
+    expect(JSON.parse(localStore.get("xiaozhuoban.assistant.pendingDiagnosticUploads") || "[]")).toHaveLength(1);
+
+    await recordAssistantDiagnostic({ type: "realtime.function_call.selection", status: "received" }, { accessToken: "user-token", fetchImpl });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const [, retryInit] = fetchImpl.mock.calls[1] as unknown as [unknown, RequestInit];
+    const retryBody = JSON.parse(String(retryInit.body));
+    expect(retryBody.events.map((event: Record<string, unknown>) => event.type)).toEqual([
+      "realtime.voice.user_transcript",
+      "realtime.function_call.selection"
+    ]);
+    expect(JSON.parse(localStore.get("xiaozhuoban.assistant.pendingDiagnosticUploads") || "[]")).toHaveLength(0);
   });
 });
