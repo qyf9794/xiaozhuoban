@@ -1317,6 +1317,15 @@ function inferMarketIndexCodes(raw: string) {
   return [];
 }
 
+function inferMarketQuery(raw: string) {
+  const query = cleanCommandContent(raw)
+    .replace(/(我要看|想看|看一下|看看|查看|查询|搜索|打开|看|股票|股价|走势|行情|价格|图像|图表|的)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!query || /^(指数|市场|股票|股市)$/.test(query)) return "";
+  return query;
+}
+
 function inferWorldClockZones(raw: string) {
   const lower = raw.toLowerCase();
   const pairs: Array<[string, string]> = [
@@ -1851,13 +1860,17 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "market_set_indices",
       match(normalized, raw, context) {
+        if (CLOSE_SHORTCUT_INTENT_PATTERN.test(normalized)) {
+          return { matched: false, reason: "market_close_deferred" };
+        }
         const indexCodes = inferMarketIndexCodes(raw);
         if (!/(行情|指数|市场|股票|涨跌|走势|怎么样|如何)/.test(normalized) && indexCodes.length === 0) {
           return { matched: false, reason: "not_market" };
         }
-        if (indexCodes.length === 0) return { matched: false, reason: "market_indices_missing" };
+        const query = indexCodes.length === 0 ? inferMarketQuery(raw) : "";
+        if (indexCodes.length === 0 && !query) return { matched: false, reason: "market_target_missing" };
         return (
-          routeWidgetDetailOrAdd(context, raw, "market", "market.set_indices", { indexCodes }, 0.86) ?? {
+          routeWidgetDetailOrAdd(context, raw, "market", "market.set_indices", indexCodes.length ? { indexCodes } : { query }, 0.86) ?? {
             matched: false,
             reason: "market_target_missing"
           }

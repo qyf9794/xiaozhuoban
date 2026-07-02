@@ -214,7 +214,7 @@ export function shouldUseRealtimeHarnessCommand(input: string): boolean {
   const normalized = input.trim();
   if (!normalized) return false;
   if (/^(在吗|你好|您好|hello|hi|嗨|你在吗)[？?。!！\s]*$/i.test(normalized)) return false;
-  return /(播放|来个|来一首|想听|搜索|搜|查.*天气|天气|关闭|关掉|收起|打开|唤出|调出|整理|排列|对齐|全屏|侧栏|侧边栏|设置|命令面板|AI 生成|新闻|头条|行情|指数|翻译|换算|倒计时|计时|留言板|音乐|歌曲|时钟|表盘)/.test(
+  return /(播放|来个|来一首|想听|搜索|搜|查.*天气|天气|关闭|关掉|收起|打开|唤出|调出|整理|排列|对齐|全屏|侧栏|侧边栏|设置|命令面板|AI 生成|新闻|头条|行情|指数|股票|股价|个股|翻译|换算|倒计时|计时|留言板|音乐|歌曲|时钟|表盘)/.test(
     normalized
   );
 }

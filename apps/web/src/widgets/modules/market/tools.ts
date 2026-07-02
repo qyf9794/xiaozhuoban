@@ -21,7 +21,10 @@ export const marketToolArgSchemas = {
   "market.set_indices": createStrictObjectSchema({
     widgetId: { type: "string", required: true },
     indexCode: { type: "string" },
-    indexCodes: { type: "array" }
+    indexCodes: { type: "array" },
+    symbol: { type: "string" },
+    symbols: { type: "array" },
+    query: { type: "string" }
   })
 } as const;
 
@@ -32,7 +35,7 @@ const examplesByTool: Record<string, string[]> = {
   "widget.focus": ["聚焦行情", "切到市场", "打开行情"],
   "widget.fullscreen_focus": ["全屏行情", "放大市场", "专注看指数"],
   "widget.remove": ["关闭行情", "关掉市场", "把行情收起来"],
-  "market.set_indices": ["看纳斯达克", "打开纳指", "NASDAQ 100", "美股三大指数", "A股行情", "看恒生指数"]
+  "market.set_indices": ["看苹果股票", "打开特斯拉股价", "看腾讯股票", "查 AAPL", "看纳斯达克", "打开纳指", "NASDAQ 100", "美股三大指数", "A股行情", "看恒生指数"]
 };
 
 function isMarketTool(action: AssistantAction): boolean {

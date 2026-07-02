@@ -1,9 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ActionRegistry, ToolScopeManager, type ResolvedWidgetTarget } from "@xiaozhuoban/assistant-core";
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { createWidgetStateActions, type WidgetStateActionStore } from "./widgetStateActions";
 
 const NOW = "2026-06-16T12:00:00.000Z";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 function createDefinition(type: string, kind: WidgetDefinition["kind"] = "system"): WidgetDefinition {
   return {
@@ -438,6 +443,21 @@ describe("widget state assistant actions", () => {
     );
 
     expect(getWidget("market")?.state.indexCodes).toEqual(["usNDX"]);
+  });
+
+  it("resolves specific stock names online before updating market targets", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ code: "usAAPL", label: "苹果 AAPL" })));
+    const { store, getWidget } = createStore();
+    const registry = createRegistry(store);
+
+    await registry.execute(
+      { id: "call_1", name: "market.set_indices", arguments: { query: "看苹果股票" }, source: "test" },
+      { target: targetFor("market"), now: () => NOW }
+    );
+
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/market/search?q="));
+    expect(getWidget("market")?.state.indexCodes).toEqual(["usAAPL"]);
+    expect(getWidget("market")?.state.marketSymbolLabels).toEqual({ usAAPL: "苹果 AAPL" });
   });
 
   it("accepts area, time, and currency converter categories", async () => {

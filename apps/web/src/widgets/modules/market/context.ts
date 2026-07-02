@@ -36,6 +36,7 @@ export function createMarketScopedContext(tools: AssistantAction[], request: Sco
         sh000001: "上证指数",
         sz399001: "深证成指"
       },
+      stockLookupHint: "For a specific stock, pass symbol/symbols or query to market.set_indices; the client resolves names online before rendering price and chart.",
       indexGroupSummaryOnly: true,
       investmentAdviceAllowed: false,
       tradingAllowed: false
@@ -62,6 +63,7 @@ export function createMarketContextProvider(tools: AssistantAction[]) {
         focusedWidgetId: context.stateSummary.focusedWidgetId,
         selectedToolHint: context.stateSummary.selectedToolHint,
         indexCodeHints: context.stateSummary.indexCodeHints,
+        stockLookupHint: context.stateSummary.stockLookupHint,
         indexGroupSummaryOnly: true,
         investmentAdviceAllowed: false,
         tradingAllowed: false

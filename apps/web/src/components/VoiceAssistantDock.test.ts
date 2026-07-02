@@ -157,6 +157,8 @@ describe("VoiceAssistantDock", () => {
     expect(shouldUseRealtimeHarnessCommand("来个周杰伦经典")).toBe(true);
     expect(shouldUseRealtimeHarnessCommand("播放陈奕迅十年，然后查上海天气")).toBe(true);
     expect(shouldUseRealtimeHarnessCommand("关闭音乐和留言板")).toBe(true);
+    expect(shouldUseRealtimeHarnessCommand("看苹果股票")).toBe(true);
+    expect(shouldUseRealtimeHarnessCommand("查腾讯股价")).toBe(true);
   });
 
   it("uses external tool operation when Harness reports active tool work", () => {

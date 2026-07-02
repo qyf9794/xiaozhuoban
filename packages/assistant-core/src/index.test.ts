@@ -1795,6 +1795,17 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes specific stock market requests as online-resolved market queries", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("看微软股票", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("market.set_indices");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_market", query: "微软" });
+    }
+  });
+
   it("routes China market shorthand commands", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("沪深行情", context);

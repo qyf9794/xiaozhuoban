@@ -82,6 +82,13 @@ function asArray(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((i) => typeof i === "string") as string[] : [];
 }
 
+function asStringRecord(v: unknown): Record<string, string> {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  return Object.fromEntries(
+    Object.entries(v as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === "string")
+  );
+}
+
 function stringArraysEqual(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((item, index) => item === b[index]);
 }
@@ -114,6 +121,17 @@ const GLOBAL_INDICES = [
   { value: "sh000001", label: "上证指数", marketCode: "sh000001" },
   { value: "sz399001", label: "深证成指", marketCode: "sz399001" }
 ] as const;
+
+function isSupportedMarketCode(code: string): boolean {
+  return GLOBAL_INDICES.some((item) => item.value === code) || /^(us[A-Z.]{1,8}|hk\d{5}|sh\d{6}|sz\d{6})$/.test(code);
+}
+
+function getMarketTarget(code: string, onlineLabels: Record<string, string>): { value: string; label: string; marketCode: string } {
+  const preset = GLOBAL_INDICES.find((item) => item.value === code);
+  if (preset) return preset;
+  const label = onlineLabels[code] ?? code.replace(/^us/, "").replace(/^hk/, "HK ").replace(/^sh/, "SH ").replace(/^sz/, "SZ ");
+  return { value: code, label, marketCode: code };
+}
 
 const TRANSLATE_LANG_OPTIONS = [
   { value: "auto", label: "自动" },
@@ -687,7 +705,7 @@ async function fetchMarketSeries(marketCode: string): Promise<MarketSeries> {
       const lines = Array.isArray(node.data?.data) ? node.data.data ?? [] : [];
       return { lines, qt: node.qt };
     }
-    throw new Error("指数数据不可用");
+    throw new Error("行情数据不可用");
   };
   const fetchRecentSessionLines = async (): Promise<string[]> => {
     if (marketCode.startsWith("us")) {
@@ -759,7 +777,7 @@ async function fetchMarketSeries(marketCode: string): Promise<MarketSeries> {
   }
 
   if (pointSeries.length < 2) {
-    throw new Error("指数数据不足");
+    throw new Error("行情数据不足");
   }
 
   const last =
@@ -2894,12 +2912,12 @@ export function BuiltinWidgetView({
   }
 
   if (definition.type === "market") {
-    const allowedCodes = new Set<string>(GLOBAL_INDICES.map((item) => item.value));
     const oldSingleCode = asString(instance.state.indexCode);
     const selectedIndexCodesRaw = asArray(instance.state.indexCodes);
     const selectedIndexCodes = (selectedIndexCodesRaw.length ? selectedIndexCodesRaw : [oldSingleCode || "usINX"]).filter(
-      (code, idx, arr) => allowedCodes.has(code) && arr.indexOf(code) === idx
+      (code, idx, arr) => isSupportedMarketCode(code) && arr.indexOf(code) === idx
     );
+    const marketSymbolLabels = asStringRecord(instance.state.marketSymbolLabels);
     const [addCode, setAddCode] = useState(selectedIndexCodes[0] ?? "usINX");
     const marketMapRaw = instance.state.marketMap as
       | Record<
@@ -2928,9 +2946,9 @@ export function BuiltinWidgetView({
         });
         void Promise.allSettled(
           selectedIndexCodes.map(async (code) => {
-            const index = GLOBAL_INDICES.find((item) => item.value === code) ?? GLOBAL_INDICES[0];
-            const series = await fetchMarketSeries(index.marketCode);
-            return { code, label: index.label, series };
+            const target = getMarketTarget(code, marketSymbolLabels);
+            const series = await fetchMarketSeries(target.marketCode);
+            return { code, label: target.label, series };
           })
         )
           .then((results) => {

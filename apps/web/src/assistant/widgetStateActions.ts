@@ -27,12 +27,13 @@ type CountdownControlArgs = Record<string, never>;
 type WeatherCityArgs = { city?: string; cityCode?: string };
 type CalculatorSetArgs = { display: string | number };
 type HeadlineRefreshArgs = { requestedAt?: string };
-type MarketSetArgs = { indexCode?: string; indexCodes?: string[] };
+type MarketSetArgs = { indexCode?: string; indexCodes?: string[]; symbol?: string; symbols?: string[]; query?: string };
 type WorldClockSetArgs = { zones: string[]; compact?: boolean };
 type ConverterSetArgs = { category?: string; value: string | number; fromUnit?: string; toUnit?: string };
 type TranslateDraftArgs = { sourceText: string; sourceLang?: string; targetLang?: string };
 type ClipboardAddArgs = { text: string; pinned?: boolean };
 type ClipboardClearArgs = { includePinned?: boolean };
+type MarketTargetCode = { code: string; label?: string };
 type TodoStateItem = { id: string; text: string; dueAt?: string; completed?: boolean };
 type ClipboardStateItem = { id: string; text: string; pinned?: boolean; createdAt: string };
 
@@ -89,7 +90,6 @@ const WEATHER_CITY_ALIASES: Record<string, string> = {
   巴黎: "paris"
 };
 
-const MARKET_CODES = new Set(["usINX", "usNDX", "usDJI", "hkHSI", "sh000001", "sz399001"]);
 const MARKET_CODE_ALIASES: Record<string, string> = {
   usinx: "usINX",
   "s&p": "usINX",
@@ -122,11 +122,17 @@ const MARKET_CODE_ALIASES: Record<string, string> = {
   港股: "hkHSI",
   sh000001: "sh000001",
   上证: "sh000001",
+  上证指数: "sh000001",
+  上海综指: "sh000001",
+  沪深: "sh000001",
   沪指: "sh000001",
   sz399001: "sz399001",
   深成: "sz399001",
-  深证: "sz399001"
+  深成指: "sz399001",
+  深证: "sz399001",
+  深证成指: "sz399001"
 };
+const MARKET_INDEX_CODES = new Set(["usINX", "usNDX", "usDJI", "hkHSI", "sh000001", "sz399001"]);
 const CONVERTER_UNITS: Record<string, string[]> = {
   length: ["m", "km", "cm", "inch", "ft"],
   weight: ["kg", "g", "lb", "oz"],
@@ -139,6 +145,11 @@ const TRANSLATE_LANGS = new Set(["auto", "zh-CN", "en"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
+}
+
+function stringRecord(value: unknown): Record<string, string> {
+  if (!isRecord(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
 }
 
 function hasString(value: Record<string, unknown>, key: string) {
@@ -211,7 +222,13 @@ const headlineRefreshSchema = parseWith<HeadlineRefreshArgs>(
 const marketSetSchema = parseWith<MarketSetArgs>(
   (value): value is MarketSetArgs =>
     isRecord(value) &&
-    (typeof value.indexCode === "string" || (Array.isArray(value.indexCodes) && value.indexCodes.every((item) => typeof item === "string")))
+    (
+      typeof value.indexCode === "string" ||
+      typeof value.symbol === "string" ||
+      typeof value.query === "string" ||
+      (Array.isArray(value.indexCodes) && value.indexCodes.every((item) => typeof item === "string")) ||
+      (Array.isArray(value.symbols) && value.symbols.every((item) => typeof item === "string"))
+    )
 );
 
 const worldClockSetSchema = parseWith<WorldClockSetArgs>(
@@ -387,13 +404,81 @@ function resolveWeatherCity(args: WeatherCityArgs) {
   return WEATHER_CITY_ALIASES[raw] ?? WEATHER_CITY_ALIASES[raw.toLowerCase()] ?? "";
 }
 
-function normalizeMarketCodes(args: MarketSetArgs) {
-  const rawCodes = args.indexCodes?.length ? args.indexCodes : args.indexCode ? [args.indexCode] : [];
-  const normalizedCodes = rawCodes.map((code) => {
-    const trimmed = code.trim();
-    return MARKET_CODES.has(trimmed) ? trimmed : MARKET_CODE_ALIASES[trimmed.toLowerCase().replace(/[\s_-]+/g, "")] ?? MARKET_CODE_ALIASES[trimmed];
-  });
-  const cleaned = normalizedCodes.filter((code, index, list): code is string => Boolean(code) && MARKET_CODES.has(code) && list.indexOf(code) === index);
+function isSupportedMarketCode(code: string): boolean {
+  return MARKET_INDEX_CODES.has(code) || /^(us[A-Z.]{1,8}|hk\d{5}|sh\d{6}|sz\d{6})$/.test(code);
+}
+
+function normalizeDirectMarketCode(raw: string): string | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (isSupportedMarketCode(trimmed)) return trimmed;
+  const compact = trimmed.toLowerCase().replace(/[\s_-]+/g, "");
+  if (MARKET_CODE_ALIASES[compact]) return MARKET_CODE_ALIASES[compact];
+  if (MARKET_CODE_ALIASES[trimmed]) return MARKET_CODE_ALIASES[trimmed];
+  if (/^[A-Za-z]{1,6}$/.test(trimmed)) return `us${trimmed.toUpperCase()}`;
+  if (/^6\d{5}$/.test(trimmed)) return `sh${trimmed}`;
+  if (/^(0|3)\d{5}$/.test(trimmed)) return `sz${trimmed}`;
+  if (/^\d{1,5}$/.test(trimmed)) return `hk${trimmed.padStart(5, "0")}`;
+  return undefined;
+}
+
+async function lookupMarketCodeOnline(raw: string): Promise<MarketTargetCode | undefined> {
+  const query = raw
+    .replace(/(我要看|想看|看一下|看看|查看|查询|搜索|打开|看|股票|股价|走势|行情|价格|图像|图表|的)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!query || typeof fetch === "undefined") return undefined;
+  const response = await fetch(`/api/market/search?q=${encodeURIComponent(query)}`);
+  if (!response.ok) return undefined;
+  const result: unknown = await response.json();
+  if (!isRecord(result) || typeof result.code !== "string") return undefined;
+  return {
+    code: result.code,
+    label: typeof result.label === "string" ? result.label : undefined
+  };
+}
+
+async function normalizeMarketCodes(args: MarketSetArgs) {
+  const normalizeCode = (raw: string): string | undefined => {
+    return normalizeDirectMarketCode(raw);
+  };
+  const extractFromQuery = (raw: string): string[] => {
+    const matchedAliases = Object.entries(MARKET_CODE_ALIASES)
+      .filter(([alias]) => alias.length > 1 && raw.toLowerCase().includes(alias.toLowerCase()))
+      .map(([, code]) => code);
+    const directCodes = [
+      ...raw.matchAll(/\b(?:us[A-Z.]{1,8}|hk\d{5}|sh\d{6}|sz\d{6})\b/g),
+      ...raw.matchAll(/\b[A-Z]{1,6}\b/g),
+      ...raw.matchAll(/\b\d{5,6}\b/g)
+    ].map((match) => normalizeCode(match[0])).filter((code): code is string => Boolean(code));
+    return [...matchedAliases, ...directCodes];
+  };
+  const rawCodes = [
+    ...(args.indexCodes ?? []),
+    ...(args.symbols ?? []),
+    ...(args.indexCode ? [args.indexCode] : []),
+    ...(args.symbol ? [args.symbol] : []),
+    ...(args.query ? extractFromQuery(args.query) : [])
+  ];
+  const normalizedTargets: MarketTargetCode[] = rawCodes
+    .map(normalizeCode)
+    .filter((code): code is string => Boolean(code))
+    .map((code) => ({ code }));
+  const rawLookups = [
+    ...(args.indexCodes ?? []),
+    ...(args.indexCode ? [args.indexCode] : []),
+    ...(args.symbols ?? []),
+    ...(args.symbol ? [args.symbol] : []),
+    ...(args.query ? [args.query] : [])
+  ].filter((item) => !normalizeDirectMarketCode(item));
+  for (const rawLookup of rawLookups) {
+    const found = await lookupMarketCodeOnline(rawLookup);
+    if (found) normalizedTargets.push(found);
+  }
+  const cleaned = normalizedTargets.filter(
+    (target, index, list) =>
+      isSupportedMarketCode(target.code) && list.findIndex((item) => item.code === target.code) === index
+  );
   return cleaned.slice(0, 4);
 }
 
@@ -693,7 +778,7 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
     defineAction<MarketSetArgs>({
       spec: {
         name: "market.set_indices",
-        description: "Set selected market indices.",
+        description: "Set selected market indices or stock symbols.",
         parameters: marketSetSchema,
         risk: "safe",
         scope: "widget-detail",
@@ -703,17 +788,25 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
       async execute(args, context) {
         const target = getTarget(store, context, "market");
         if (isToolResult(target)) return target;
-        const indexCodes = normalizeMarketCodes(args);
+        const marketTargets = await normalizeMarketCodes(args);
+        const indexCodes = marketTargets.map((item) => item.code);
         if (indexCodes.length === 0) {
-          return failed("没有可用的指数代码", "UNSUPPORTED_MARKET_INDEX");
+          return failed("没有可用的行情代码", "UNSUPPORTED_MARKET_SYMBOL");
         }
+        const previousLabels = stringRecord(target.widget.state.marketSymbolLabels);
+        const marketSymbolLabels = Object.fromEntries(
+          marketTargets
+            .map((item) => [item.code, item.label ?? previousLabels[item.code] ?? ""] as const)
+            .filter((entry) => entry[1])
+        );
         await patchWidgetState(store, target.widget, {
           indexCode: indexCodes[0],
           indexCodes,
+          marketSymbolLabels,
           marketError: "",
           marketLoading: false
         }, context);
-        return success("已更新指数选择", { widgetId: target.widget.id, indexCodes });
+        return success("已更新行情标的", { widgetId: target.widget.id, indexCodes });
       }
     }),
     defineAction<WorldClockSetArgs>({

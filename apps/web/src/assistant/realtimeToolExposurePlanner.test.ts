@@ -173,4 +173,18 @@ describe("RealtimeToolExposurePlanner", () => {
     expect(plan.selectedModules).toContain("market");
     expect(plan.exposedTools.map((item) => item.name)).toEqual(expect.arrayContaining(["market.set_indices", "board.add_widget"]));
   });
+
+  it("exposes market tools for specific stock commands", () => {
+    const plan = buildRealtimeToolExposurePlan("看微软股票", context({ widgets: [], focusedWidget: undefined, widgetCountsByType: {} }), tools);
+
+    expect(plan.selectedModules).toContain("market");
+    expect(plan.exposedTools.map((item) => item.name)).toEqual(expect.arrayContaining(["market.set_indices", "board.add_widget"]));
+  });
+
+  it("exposes market tools for ticker lookup commands", () => {
+    const plan = buildRealtimeToolExposurePlan("查 AAPL", context({ widgets: [], focusedWidget: undefined, widgetCountsByType: {} }), tools);
+
+    expect(plan.selectedModules).toContain("market");
+    expect(plan.exposedTools.map((item) => item.name)).toEqual(expect.arrayContaining(["market.set_indices", "board.add_widget"]));
+  });
 });
