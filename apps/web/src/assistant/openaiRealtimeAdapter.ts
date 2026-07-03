@@ -280,6 +280,7 @@ function normalizeTvToolArguments(args: Record<string, unknown>, fallbackText = 
   }
   delete nextArgs.channel;
   delete nextArgs.station;
+  delete nextArgs.action;
   return nextArgs;
 }
 
@@ -985,6 +986,10 @@ export function extractRealtimeEventErrorMessage(event: unknown): string {
   return detail ? `REALTIME_SESSION_UPDATE_FAILED (${detail})` : "REALTIME_SESSION_UPDATE_FAILED";
 }
 
+function isIgnorableRealtimeCancelRace(message: string): boolean {
+  return /response_cancel_not_active|Cancellation failed: no active response/i.test(message);
+}
+
 async function readRealtimeEndpointError(response: Response, fallback: string): Promise<Error> {
   try {
     return new Error(extractRealtimeSessionErrorMessage(await response.json(), fallback));
@@ -1456,12 +1461,25 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     }
   }
 
-  private beginRealtimeVoiceTurn(itemId: string): string {
-    const previousTraceId = this.activeRealtimeResponseTraceId;
-    const commandTraceId = createRealtimeVoiceCommandTraceId(itemId || "speech");
-    if (previousTraceId && previousTraceId !== commandTraceId) {
-      this.markRealtimeTraceInterrupted(previousTraceId);
+  private markActiveRealtimeTracesInterrupted(nextCommandTraceId: string): void {
+    const traceIds = new Set<string>();
+    if (this.activeCommandTraceId) traceIds.add(this.activeCommandTraceId);
+    if (this.activeRealtimeResponseTraceId) traceIds.add(this.activeRealtimeResponseTraceId);
+    for (const traceId of this.realtimeResponseTraceIds.values()) {
+      traceIds.add(traceId);
     }
+    for (const traceId of this.functionCallTraceIds.values()) {
+      traceIds.add(traceId);
+    }
+    traceIds.delete(nextCommandTraceId);
+    for (const traceId of traceIds) {
+      this.markRealtimeTraceInterrupted(traceId);
+    }
+  }
+
+  private beginRealtimeVoiceTurn(itemId: string): string {
+    const commandTraceId = createRealtimeVoiceCommandTraceId(itemId || "speech");
+    this.markActiveRealtimeTracesInterrupted(commandTraceId);
     this.activeRealtimeResponseTraceId = commandTraceId;
     if (itemId) {
       this.realtimeItemTraceIds.set(itemId, commandTraceId);
@@ -1697,6 +1715,13 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   ): string {
     const tracedInput = commandTraceId ? this.realtimeTraceUserTranscripts.get(commandTraceId)?.input ?? "" : "";
     return selection.userCommand || tracedInput || selection.targetHint || selection.name;
+  }
+
+  private findToolSpec(toolName: string): AssistantToolSpec | undefined {
+    return (
+      this.currentTools.find((tool) => tool.name === toolName) ??
+      this.moduleRegistry?.findModuleForTool(toolName)?.tools.find((action) => action.spec.name === toolName)?.spec
+    );
   }
 
   private validateSelectedToolExposure(
@@ -2011,6 +2036,17 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (commandTraceId) {
       this.functionCallTraceIds.set(call.id, commandTraceId);
     }
+    if (commandTraceId && this.interruptedRealtimeCommandTraceIds.has(commandTraceId)) {
+      this.emitDiagnostic({
+        type: "realtime.function_call.skip",
+        status: "interrupted",
+        operationId: call.id,
+        toolName: call.name,
+        commandTraceId,
+        data: { source: call.source }
+      });
+      return;
+    }
     if (call.name === REALTIME_COMMAND_EXECUTION_TOOL_NAME) {
       this.handleRealtimeCommandExecution(call, commandTraceId);
       return;
@@ -2030,7 +2066,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       (commandTraceId ? this.realtimeTraceUserTranscripts.get(commandTraceId)?.input ?? "" : "") ||
       this.activeScopedToolSelection?.userCommand ||
       "";
-    const sanitized = sanitizeRealtimeToolCallArguments(call, this.currentTools.find((tool) => tool.name === call.name), fallbackText);
+    const sanitized = sanitizeRealtimeToolCallArguments(call, this.findToolSpec(call.name), fallbackText);
     const addWidgetBoundCall = inferAddWidgetDefinitionForCall(
       sanitized.call,
       this.currentContext,
@@ -2525,6 +2561,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     }
     if (event.type === "error") {
       const message = extractRealtimeEventErrorMessage(event);
+      if (isIgnorableRealtimeCancelRace(message)) {
+        this.emitDiagnostic({ type: "realtime.event.error", status: "ignored", message, commandTraceId });
+        return;
+      }
       this.emitDiagnostic({ type: "realtime.event.error", status: "failed", message });
       this.failSessionUpdate(message);
     }

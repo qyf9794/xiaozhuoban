@@ -1021,6 +1021,42 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(extractRealtimeEventErrorMessage({ type: "error" })).toBe("REALTIME_SESSION_UPDATE_FAILED");
   });
 
+  it("ignores realtime response.cancel races without failing the active session", () => {
+    const diagnostics: Array<{ type: string; status?: string; message?: string }> = [];
+    const statuses: string[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      },
+      onStatusChange(status) {
+        statuses.push(status);
+      }
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean }, { sessionReady: true });
+
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "error",
+      event_id: "evt_cancel_race",
+      error: {
+        code: "response_cancel_not_active",
+        message: "Cancellation failed: no active response found"
+      }
+    });
+
+    expect(statuses).toEqual([]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.event.error",
+        status: "ignored",
+        message: expect.stringContaining("response_cancel_not_active")
+      })
+    ]));
+  });
+
   it("queues session tool updates before the data channel opens", () => {
     const adapter = new OpenAIRealtimeWebRtcAdapter();
 
@@ -1244,6 +1280,57 @@ describe("OpenAI realtime adapter helpers", () => {
         operationId: "call_music_extra",
         toolName: "music.search",
         data: { query: "放松 音乐" }
+      })
+    ]));
+  });
+
+  it("drops hallucinated TV action arguments before Harness validation", () => {
+    const diagnostics: Array<{ type: string; operationId?: string; toolName?: string; data?: unknown }> = [];
+    const calls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      },
+      onFunctionCall(call) {
+        calls.push({ id: call.id, name: call.name, arguments: call.arguments as Record<string, unknown> });
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "tv.play",
+        description: "播放电视",
+        parameters: createStrictObjectSchema({
+          widgetId: { type: "string", required: true },
+          channelName: { type: "string" }
+        }),
+        scope: "widget-detail",
+        widgetType: "tv",
+        requiresTarget: true
+      }
+    ]);
+    Object.assign(adapter as unknown as { sessionReady: boolean }, { sessionReady: true });
+
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "response.output_item.done",
+      item: {
+        type: "function_call",
+        call_id: "call_tv_extra",
+        name: "tv__dot__play",
+        arguments: JSON.stringify({ widgetId: "wi_tv", channelName: "BBC", action: "play" })
+      }
+    });
+
+    expect(calls).toEqual([{ id: "call_tv_extra", name: "tv.play", arguments: { widgetId: "wi_tv", channelName: "BBC" } }]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.function_call.tool",
+        operationId: "call_tv_extra",
+        toolName: "tv.play",
+        data: { channelName: "BBC" }
       })
     ]));
   });
@@ -1548,6 +1635,74 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "realtime.tool_result.skip",
         status: "interrupted",
         operationId: "call_old",
+        commandTraceId: "trace_old"
+      })
+    ]));
+  });
+
+  it("skips late realtime function calls from an interrupted voice response", () => {
+    const calls: unknown[] = [];
+    const diagnostics: Array<{ type: string; status?: string; commandTraceId?: string; operationId?: string; toolName?: string }> = [];
+    const sent: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall(call) {
+        calls.push(call);
+      },
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    Object.assign(
+      adapter as unknown as {
+        sessionReady: boolean;
+        connectMode: string;
+        activeResponseId: string | null;
+        activeRealtimeResponseTraceId: string | null;
+        dataChannel: { readyState: string; send: (payload: string) => void };
+      },
+      {
+        sessionReady: true,
+        connectMode: "audio",
+        activeResponseId: "resp_old",
+        activeRealtimeResponseTraceId: "trace_old",
+        dataChannel: {
+          readyState: "open",
+          send(payload: string) {
+            sent.push(JSON.parse(payload) as unknown);
+          }
+        }
+      }
+    );
+    (adapter as unknown as { realtimeResponseTraceIds: Map<string, string> }).realtimeResponseTraceIds.set("resp_old", "trace_old");
+
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "input_audio_buffer.speech_started", item_id: "item_new_command" });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "response.output_item.done",
+      response_id: "resp_old",
+      item: {
+        type: "function_call",
+        call_id: "call_old_tv",
+        name: "tv__dot__play",
+        arguments: JSON.stringify({ action: "play", channelName: "CNN" })
+      }
+    });
+
+    expect(calls).toEqual([]);
+    expect(sent).toEqual(expect.arrayContaining([{ type: "response.cancel" }]));
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.function_call.skip",
+        status: "interrupted",
+        operationId: "call_old_tv",
+        toolName: "tv.play",
         commandTraceId: "trace_old"
       })
     ]));
