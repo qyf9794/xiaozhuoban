@@ -46,6 +46,10 @@ const WINDOW_TOOL_NAMES = new Set([
 const DESTRUCTIVE_WORDS = /(清空|删除|移除|删掉|全部删|清除|清理|覆盖)/;
 const OPEN_OR_CREATE_WORDS = /(打开|新增|新建|创建|唤出|调出|放一个|来一个|开一个|播放|听|看|查)/;
 const TARGET_REQUIRED_PENALTY = 40;
+const MARKET_WORDS = /(行情|股票|股价|个股|指数|纳指|纳斯达克|NASDAQ|NDX|恒生|上证|美股|A股|港股)/i;
+const MARKET_TICKER_QUERY_PATTERN = /(?:(?:查|查询|搜索|搜).{0,8}\b[A-Z]{1,6}\b|(?:看|打开).{0,8}\b[A-Z]{1,6}\b.{0,8}(?:股票|股价|行情))/i;
+const TV_CHANNEL_CODE_PATTERN = /\b(?:BBC|CNN|CNA|HBO|CCTV|CGTN|NHK|TVB|Bloomberg)\b/i;
+const TV_CHANNEL_QUERY_PATTERN = /(?:看|打开|播放|切到|换到|想看|我要看|我想看).{0,12}\b(?:BBC|CNN|CNA|HBO|CCTV|CGTN|NHK|TVB|Bloomberg)\b/i;
 
 const MODULE_INTENT_PATTERNS: Record<string, RegExp> = {
   calculator: /(计算器|算一下|计算.*多少|[一二三四五六七八九十百千万\d]+\s*(加|减|乘|除)|十二乘十二)/,
@@ -54,14 +58,14 @@ const MODULE_INTENT_PATTERNS: Record<string, RegExp> = {
   countdown: /(倒计时|计时器|定时|计时|分钟后|秒|小时|以后叫我|一分半|半小时|提醒我)/,
   dialClock: /(表盘|钟表|时钟|夜间模式|别太亮)/,
   headline: /(新闻|头条|刚刚有什么)/,
-  market: /(行情|股票|股价|个股|指数|纳指|纳斯达克|NASDAQ|NDX|恒生|上证|美股|(?:查|看|打开|搜索|搜).{0,8}\b[A-Z]{1,6}\b)/i,
+  market: /(行情|股票|股价|个股|指数|纳指|纳斯达克|NASDAQ|NDX|恒生|上证|美股|A股|港股|(?:(?:查|查询|搜索|搜).{0,8}\b[A-Z]{1,6}\b|(?:看|打开).{0,8}\b[A-Z]{1,6}\b.{0,8}(?:股票|股价|行情)))/i,
   messageBoard: /(留言板|留言|回复收到|发一句)/,
   music: /(音乐|歌曲|歌|播放器|王菲|陈奕迅|周杰伦|红豆|十年|轻松|放松|试听|Apple Music|token|登录)/,
   note: /(便签|笔记|记下|会议纪要|记一下)/,
   recorder: /(录音|录一段|刚才录音|回放)/,
   todo: /(待办|任务|清单|提醒|叫我|复盘|买牛奶|买咖啡豆|订酒店|提交报告|勾掉|完成)/,
   translate: /(翻译|中文|英文|good night)/i,
-  tv: /(电视|直播|CCTV|BBC|CNN|频道|电视台|电影频道|央视)/i,
+  tv: /(电视|直播|CCTV|BBC|CNN|CNA|HBO|CGTN|NHK|TVB|Bloomberg|频道|电视台|电影频道|央视)/i,
   weather: /(天气|气温|冷不冷|冷|热|下雨|带伞|出门|北京|上海|杭州|广州|成都|武汉|波士顿|洛杉矶)/
 };
 
@@ -96,7 +100,7 @@ const TOOL_INTENT_PATTERNS: Record<string, RegExp> = {
   "countdown.set": /(倒计时|定时|计时|分钟后|秒|小时|以后叫我|一分半|半小时|提醒我)/,
   "dialClock.set_night_mode": /(夜间模式|别太亮|钟表|表盘)/,
   "headline.request_refresh": /(新闻|头条|刚刚有什么)/,
-  "market.set_indices": /(行情|股票|股价|个股|指数|纳指|纳斯达克|NASDAQ|NDX|恒生|上证|美股|(?:查|看|打开|搜索|搜).{0,8}\b[A-Z]{1,6}\b)/i,
+  "market.set_indices": /(行情|股票|股价|个股|指数|纳指|纳斯达克|NASDAQ|NDX|恒生|上证|美股|A股|港股|(?:(?:查|查询|搜索|搜).{0,8}\b[A-Z]{1,6}\b|(?:看|打开).{0,8}\b[A-Z]{1,6}\b.{0,8}(?:股票|股价|行情)))/i,
   "messageBoard.clear_draft": /(清空留言|清理留言|留言输入)/,
   "messageBoard.send": /(留言板|留言|回复收到|发一句|发送消息|发送测试|我在测试)/,
   "music.auth_status": /(token|登录|已登录|账号|入口|试听|试听版|MusicKit|Apple Music|可用)/i,
@@ -118,8 +122,8 @@ const TOOL_INTENT_PATTERNS: Record<string, RegExp> = {
   "translate.set_draft": /(翻译|中文|英文|good night)/i,
   "tv.fullscreen": /(电视.*全屏|全屏.*电视)/,
   "tv.pause": /(暂停电视|电视.*暂停)/,
-  "tv.play": /(播放 CCTV|打开.*电视|看.*电视|想看|BBC|CNN|频道|电视台|电影频道|央视|直播)/i,
-  "tv.select_channel": /(CCTV|BBC|CNN|频道|电视台|电影频道|切到.*电视|电视切到|想看)/i,
+  "tv.play": /(播放 CCTV|打开.*电视|看.*电视|想看|BBC|CNN|CNA|HBO|CGTN|NHK|TVB|Bloomberg|频道|电视台|电影频道|央视|直播)/i,
+  "tv.select_channel": /(CCTV|BBC|CNN|CNA|HBO|CGTN|NHK|TVB|Bloomberg|频道|电视台|电影频道|切到.*电视|电视切到|想看)/i,
   "weather.set_city": /(天气|冷不冷|冷|热|下雨|带伞|出门|北京|上海|杭州|广州|成都|武汉|波士顿|洛杉矶)/,
   "worldClock.set_zones": /(世界时钟|世界时间|本地时间|当地时间|时间|时区|几点|东京|巴黎|纽约|伦敦|北京)/
 };
@@ -165,6 +169,30 @@ function moduleTextHints(moduleType: string, registry?: WidgetAssistantRegistry)
   ]);
 }
 
+function readWidgetAssistantStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+}
+
+function contextTvChannelNames(context: CompactAssistantContext): string[] {
+  return context.widgets
+    .filter((widget) => widget.type === "tv")
+    .flatMap((widget) => readWidgetAssistantStringList(widget.assistantState?.channelNames));
+}
+
+function hasTvChannelNameMatch(input: string, context: CompactAssistantContext): boolean {
+  const normalizedInput = input.toLowerCase();
+  return contextTvChannelNames(context).some((name) => {
+    const compactName = name.toLowerCase();
+    return compactName.length > 1 && (normalizedInput.includes(compactName) || (TV_CHANNEL_CODE_PATTERN.test(name) && TV_CHANNEL_CODE_PATTERN.test(input)));
+  });
+}
+
+function isTvChannelIntent(input: string, context: CompactAssistantContext): boolean {
+  if (MARKET_WORDS.test(input) || MARKET_TICKER_QUERY_PATTERN.test(input)) return false;
+  return TV_CHANNEL_QUERY_PATTERN.test(input) || (/(电视|频道|直播)/.test(input) && TV_CHANNEL_CODE_PATTERN.test(input)) || hasTvChannelNameMatch(input, context);
+}
+
 function scoreModule(input: string, moduleType: string, context: CompactAssistantContext, registry?: WidgetAssistantRegistry): number {
   let score = 0;
   const aliases = moduleAliases(moduleType, registry);
@@ -179,6 +207,7 @@ function scoreModule(input: string, moduleType: string, context: CompactAssistan
   if (widgetsOfType(context, moduleType).length > 0) score += 10;
   if (context.focusedWidget?.type === moduleType) score += 10;
   if (hasDefinitionForType(context, moduleType) && OPEN_OR_CREATE_WORDS.test(input)) score += 10;
+  if (moduleType === "tv" && isTvChannelIntent(input, context)) score += 50;
   return score;
 }
 
@@ -210,6 +239,7 @@ function selectModules(
   const explicitWidgetType = findRealtimeWidgetType(input);
   const selected = unique([
     ...(explicitWidgetType ? [explicitWidgetType] : []),
+    ...(knownModules.includes("tv") && isTvChannelIntent(input, context) ? ["tv"] : []),
     ...patternSelected,
     ...toolIntentSelected,
     ...scored.map((item) => item.moduleType)

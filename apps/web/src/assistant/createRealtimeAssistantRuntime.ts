@@ -165,7 +165,7 @@ export function createRealtimeAssistantRuntime(options: {
       if (!shouldFallbackUnhandledVoiceTranscriptToHarness(input)) {
         return;
       }
-      void harness.handleRealtimeUserInput(input, { commandTraceId: transcriptOptions.commandTraceId }).then((response) => {
+      return harness.handleRealtimeUserInput(input, { commandTraceId: transcriptOptions.commandTraceId }).then((response) => {
         if (response.route === "shortcut" || response.route === "learned") {
           runtimeController.recordLocalHit();
         } else if (response.route === "model") {

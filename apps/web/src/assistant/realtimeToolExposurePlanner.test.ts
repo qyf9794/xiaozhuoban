@@ -160,6 +160,56 @@ describe("RealtimeToolExposurePlanner", () => {
     expect(plan.exposedTools.map((item) => item.name)).toEqual(expect.arrayContaining(["tv.play", "tv.select_channel", "board.add_widget"]));
   });
 
+  it("prioritizes TV tools for uppercase channel viewing commands even when market is focused", () => {
+    const plan = buildRealtimeToolExposurePlan(
+      "我想用电视看HBO频道",
+      context({
+        widgets: [
+          {
+            widgetId: "wi_tv",
+            definitionId: "wd_tv",
+            type: "tv",
+            name: "电视",
+            order: 1,
+            summary: "channels",
+            assistantState: { channelNames: ["CNA", "HBO", "CNN International"] }
+          },
+          {
+            widgetId: "wi_market",
+            definitionId: "wd_market",
+            type: "market",
+            name: "行情",
+            order: 2,
+            summary: "NASDAQ",
+            focused: true
+          }
+        ],
+        focusedWidget: {
+          widgetId: "wi_market",
+          definitionId: "wd_market",
+          type: "market",
+          name: "行情",
+          order: 2,
+          summary: "NASDAQ",
+          focused: true
+        },
+        widgetCountsByType: { tv: 1, market: 1 }
+      }),
+      tools
+    );
+
+    expect(plan.selectedModules[0]).toBe("tv");
+    expect(plan.exposedTools.map((item) => item.name)).toEqual(expect.arrayContaining(["tv.play", "tv.select_channel"]));
+  });
+
+  it("does not route stock ticker search commands to TV", () => {
+    const plan = buildRealtimeToolExposurePlan("查 AAPL", context({ widgets: [], focusedWidget: undefined, widgetCountsByType: {} }), tools);
+
+    expect(plan.selectedModules).toContain("market");
+    expect(plan.exposedTools.map((item) => item.name)).toEqual(expect.arrayContaining(["market.set_indices", "board.add_widget"]));
+    expect(plan.exposedTools.map((item) => item.name)).not.toContain("tv.play");
+  });
+
   it("exposes the wallpaper picker for background commands", () => {
     const plan = buildRealtimeToolExposurePlan("更换壁纸", context(), tools);
 
