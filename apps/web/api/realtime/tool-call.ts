@@ -6,6 +6,7 @@ import {
   realtimePlanSelectionPolicyLines,
   realtimeToolSelectionPolicyLines
 } from "../../src/assistant/realtimeRoutingPolicy.js";
+import { estimateOpenAIUsageCost, type OpenAIUsageCostEstimate } from "../../src/assistant/openaiCost.js";
 import { XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL } from "../../src/api/realtime/runtime-session-config.js";
 import { authenticateRealtimeRequest } from "../../src/api/realtime/runtime-auth.js";
 
@@ -119,6 +120,7 @@ type TextCommandPlan = {
 };
 
 type JsonBody = Record<string, unknown>;
+type OpenAIUsageEvent = OpenAIUsageCostEstimate & { usage: unknown };
 
 const SELECT_TOOL_NAME = "assistant.select_tool";
 const SELECT_PLAN_TOOL_NAME = "assistant.select_command_plan";
@@ -859,6 +861,21 @@ async function requestOpenAI(apiKey: string, payload: unknown, timeoutMs = 6_000
   }
 }
 
+async function readOpenAIJsonWithUsage(
+  response: Response,
+  model: string,
+  stage: string,
+  usageEvents: OpenAIUsageEvent[]
+): Promise<unknown> {
+  const payload = await response.json();
+  const usage = isRecord(payload) ? payload.usage : undefined;
+  const estimate = estimateOpenAIUsageCost(model, usage, { source: "responses", stage });
+  if (estimate) {
+    usageEvents.push({ ...estimate, usage });
+  }
+  return payload;
+}
+
 export default async function handler(request: IncomingMessage, response: ServerResponse) {
   try {
     if (request.method !== "POST") {
@@ -893,6 +910,7 @@ export default async function handler(request: IncomingMessage, response: Server
 
     const allowedToolNames = new Set(body.tools.map((tool) => tool.name));
     const model = process.env.XIAOZHUOBAN_TEXT_TOOL_MODEL || XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL;
+    const usageEvents: OpenAIUsageEvent[] = [];
     let selection: TextToolSelection | null = body.selection && allowedToolNames.has(body.selection.name) ? body.selection : null;
 
     if (body.phase === "plan_select") {
@@ -916,14 +934,15 @@ export default async function handler(request: IncomingMessage, response: Server
       }
       sendJson(response, 200, {
         plan: null,
-        planSelection: extractPlanSelection(await planSelectionResponse.json(), allowedToolNames)
+        planSelection: extractPlanSelection(await readOpenAIJsonWithUsage(planSelectionResponse, model, "text_plan.select", usageEvents), allowedToolNames),
+        usageEvents
       });
       return;
     }
 
     if (body.phase === "plan_execute") {
       if (!body.planSelection?.steps.length) {
-        sendJson(response, 200, { plan: null, planSelection: null, error: "TEXT_PLAN_SELECTION_MISSING" });
+        sendJson(response, 200, { plan: null, planSelection: null, error: "TEXT_PLAN_SELECTION_MISSING", usageEvents });
         return;
       }
       const commandPlanResponse = await requestOpenAI(apiKey, createCommandPlanPayload(body, model));
@@ -946,17 +965,18 @@ export default async function handler(request: IncomingMessage, response: Server
       }
       sendJson(response, 200, {
         planSelection: body.planSelection,
-        plan: extractCommandPlan(await commandPlanResponse.json(), body, allowedToolNames)
+        plan: extractCommandPlan(await readOpenAIJsonWithUsage(commandPlanResponse, model, "text_plan.execute", usageEvents), body, allowedToolNames),
+        usageEvents
       });
       return;
     }
 
     if (body.phase === "execute" && !selection) {
-      sendJson(response, 200, { call: null, selection: null, error: "TEXT_TOOL_SELECTION_MISSING" });
+      sendJson(response, 200, { call: null, selection: null, error: "TEXT_TOOL_SELECTION_MISSING", usageEvents });
       return;
     }
     if (body.phase === "execute" && !body.context) {
-      sendJson(response, 200, { call: null, selection, error: "TEXT_TOOL_CONTEXT_MISSING" });
+      sendJson(response, 200, { call: null, selection, error: "TEXT_TOOL_CONTEXT_MISSING", usageEvents });
       return;
     }
 
@@ -980,18 +1000,18 @@ export default async function handler(request: IncomingMessage, response: Server
         return;
       }
 
-      selection = extractSelection(await selectionResponse.json(), allowedToolNames);
+      selection = extractSelection(await readOpenAIJsonWithUsage(selectionResponse, model, "text_tool.select", usageEvents), allowedToolNames);
     }
     if (!selection) {
-      sendJson(response, 200, { call: null, selection: null });
+      sendJson(response, 200, { call: null, selection: null, usageEvents });
       return;
     }
     if (body.phase === "select") {
-      sendJson(response, 200, { call: null, selection });
+      sendJson(response, 200, { call: null, selection, usageEvents });
       return;
     }
     if (!body.context) {
-      sendJson(response, 200, { call: null, selection, error: "TEXT_TOOL_CONTEXT_MISSING" });
+      sendJson(response, 200, { call: null, selection, error: "TEXT_TOOL_CONTEXT_MISSING", usageEvents });
       return;
     }
 
@@ -1016,7 +1036,8 @@ export default async function handler(request: IncomingMessage, response: Server
 
     sendJson(response, 200, {
       selection,
-      call: extractToolCall(await toolCallResponse.json(), allowedToolNames)
+      call: extractToolCall(await readOpenAIJsonWithUsage(toolCallResponse, model, "text_tool.execute", usageEvents), allowedToolNames),
+      usageEvents
     });
   } catch (error) {
     sendJson(response, 200, {

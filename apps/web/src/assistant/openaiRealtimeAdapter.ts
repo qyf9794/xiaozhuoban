@@ -14,6 +14,7 @@ import {
   createRealtimeCommandExecutionTool,
   createRealtimeSessionAudioConfig,
   REALTIME_COMMAND_EXECUTION_TOOL_NAME,
+  XIAOZHUOBAN_REALTIME_MODEL,
   XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
   decodeRealtimeToolName
 } from "./realtimeSessionConfig";
@@ -37,6 +38,7 @@ import {
 } from "./realtimeTextToolCall";
 import { createRealtimeCapabilityCatalog } from "./capabilityCatalog";
 import { buildRealtimeToolExposurePlan } from "./realtimeToolExposurePlanner";
+import { estimateRealtimeResponseCost } from "./openaiCost";
 
 export type RealtimeConnectionStatus =
   | "disconnected"
@@ -1174,6 +1176,22 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     });
   }
 
+  private emitOpenAIUsageDiagnostics(payload: unknown, fallbackStage: string, commandTraceId?: string): void {
+    if (!isRecord(payload) || !Array.isArray(payload.usageEvents)) return;
+    payload.usageEvents.forEach((usageEvent) => {
+      if (!isRecord(usageEvent)) return;
+      this.emitDiagnostic({
+        type: "openai.usage.cost_estimate",
+        status: usageEvent.estimateAvailable === false ? "usage_only" : "estimated",
+        commandTraceId,
+        data: {
+          ...usageEvent,
+          stage: typeof usageEvent.stage === "string" ? usageEvent.stage : fallbackStage
+        }
+      });
+    });
+  }
+
   setActiveCommandTraceId(commandTraceId: string | null): void {
     this.activeCommandTraceId = commandTraceId;
   }
@@ -1895,7 +1913,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (!selectionResponse.ok) {
       throw await readRealtimeEndpointError(selectionResponse, "REALTIME_PLAN_SELECTION_FAILED");
     }
-    const planSelection = parseRealtimeTextPlanSelectionResponse(await selectionResponse.json());
+    const planSelectionPayload = await selectionResponse.json();
+    this.emitOpenAIUsageDiagnostics(planSelectionPayload, "text_plan.select");
+    const planSelection = parseRealtimeTextPlanSelectionResponse(planSelectionPayload);
     this.emitDiagnostic({
       type: "realtime.text_plan.select.result",
       status: planSelection?.steps.length ? "success" : "empty",
@@ -1928,7 +1948,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (!planResponse.ok) {
       throw await readRealtimeEndpointError(planResponse, "REALTIME_PLAN_EXECUTION_FAILED");
     }
-    const parsedPlan = parseRealtimeCommandPlanResponse(await planResponse.json());
+    const planPayload = await planResponse.json();
+    this.emitOpenAIUsageDiagnostics(planPayload, "text_plan.execute");
+    const parsedPlan = parseRealtimeCommandPlanResponse(planPayload);
     const plan = parsedPlan ? normalizeRealtimePlanArguments(parsedPlan, contextWithVersions, effectiveTools, planSelection.steps) : null;
     this.emitDiagnostic({
       type: "realtime.text_plan.execute.result",
@@ -1973,7 +1995,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (!selectionResponse.ok) {
       throw await readRealtimeEndpointError(selectionResponse, "REALTIME_TOOL_SELECTION_FAILED");
     }
-    const selection = parseRealtimeTextToolSelectionResponse(await selectionResponse.json());
+    const selectionPayload = await selectionResponse.json();
+    this.emitOpenAIUsageDiagnostics(selectionPayload, "text_tool.select");
+    const selection = parseRealtimeTextToolSelectionResponse(selectionPayload);
     const selectedTool = selection ? effectiveTools.find((tool) => tool.name === selection.name) : undefined;
     this.emitDiagnostic({
       type: "realtime.text_tool.select.result",
@@ -2014,7 +2038,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (!toolCallResponse.ok) {
       throw await readRealtimeEndpointError(toolCallResponse, "REALTIME_TOOL_CALL_FAILED");
     }
-    const parsedCall = parseRealtimeTextToolCallResponse(await toolCallResponse.json());
+    const toolCallPayload = await toolCallResponse.json();
+    this.emitOpenAIUsageDiagnostics(toolCallPayload, "text_tool.execute");
+    const parsedCall = parseRealtimeTextToolCallResponse(toolCallPayload);
     const call = parsedCall
       ? bindWindowToolTargetForCall(parsedCall, contextWithVersions, effectiveTools, { ...selection, userCommand: input })
       : null;
@@ -2572,6 +2598,17 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       commandTraceId &&
       (event.type === "response.done" || event.type === "response.cancelled" || event.type === "response.failed")
     ) {
+      if (event.type === "response.done") {
+        const estimate = estimateRealtimeResponseCost(this.options.model ?? XIAOZHUOBAN_REALTIME_MODEL, event);
+        if (estimate) {
+          this.emitDiagnostic({
+            type: "openai.usage.cost_estimate",
+            status: estimate.estimateAvailable ? "estimated" : "usage_only",
+            commandTraceId,
+            data: estimate
+          });
+        }
+      }
       this.handleUnhandledRealtimeUserTranscript(commandTraceId);
       this.realtimeTraceCommandToolCalls.delete(commandTraceId);
       this.realtimeTraceUserTranscripts.delete(commandTraceId);

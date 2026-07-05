@@ -1494,8 +1494,8 @@ describe("OpenAI realtime adapter helpers", () => {
     ]);
   });
 
-  it("records realtime voice speech and transcript diagnostics under the same trace", () => {
-    const diagnostics: Array<{ type: string; commandTraceId?: string; status?: string; data?: { eventType?: string; transcript?: string } }> = [];
+  it("records realtime voice speech, transcript, and cost diagnostics under the same trace", () => {
+    const diagnostics: Array<{ type: string; commandTraceId?: string; status?: string; data?: { eventType?: string; transcript?: string; estimatedCostUsd?: number } }> = [];
     const adapter = new OpenAIRealtimeWebRtcAdapter({
       onDiagnostic(event) {
         diagnostics.push(event);
@@ -1536,6 +1536,22 @@ describe("OpenAI realtime adapter helpers", () => {
       item_id: "item_assistant_1",
       transcript: "我在，有什么需要我帮你处理？"
     });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "response.done",
+      response: {
+        id: "resp_voice_2",
+        usage: {
+          input_tokens: 10,
+          output_tokens: 5,
+          input_token_details: { text_tokens: 10 },
+          output_token_details: { text_tokens: 5 }
+        }
+      }
+    });
 
     const trace = diagnostics.find((event) => event.type === "realtime.voice.speech_started")?.commandTraceId;
     expect(trace).toMatch(/^voice_/);
@@ -1554,6 +1570,12 @@ describe("OpenAI realtime adapter helpers", () => {
         status: "success",
         commandTraceId: trace,
         data: expect.objectContaining({ transcript: "我在，有什么需要我帮你处理？" })
+      }),
+      expect.objectContaining({
+        type: "openai.usage.cost_estimate",
+        status: "estimated",
+        commandTraceId: trace,
+        data: expect.objectContaining({ estimatedCostUsd: 0.00016 })
       })
     ]));
   });
@@ -2891,16 +2913,34 @@ describe("OpenAI realtime adapter helpers", () => {
 
   it("requests text fallback tool calls from the scoped backend endpoint", async () => {
     const requests: Array<{ url: string; body: unknown; headers?: HeadersInit }> = [];
+    const diagnostics: Array<{ type: string; status?: string; data?: Record<string, unknown> }> = [];
     const adapter = new OpenAIRealtimeWebRtcAdapter({
       textToolCallEndpoint: "/api/realtime/tool-call",
       getAccessToken: () => "supabase-token",
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      },
       fetchImpl: (async (url, init) => {
         requests.push({ url: String(url), body: JSON.parse(String(init?.body)), headers: init?.headers });
         if (requests.length === 1) {
           return new Response(
             JSON.stringify({
               call: null,
-              selection: { name: "widget.remove", targetHint: "音乐", confidence: 0.9 }
+              selection: { name: "widget.remove", targetHint: "音乐", confidence: 0.9 },
+              usageEvents: [
+                {
+                  model: "gpt-4.1-mini",
+                  stage: "text_tool.select",
+                  source: "responses",
+                  pricingSource: "https://developers.openai.com/api/docs/pricing",
+                  pricingCheckedAt: "2026-07-05",
+                  currency: "USD",
+                  inputTokens: 100,
+                  outputTokens: 10,
+                  estimateAvailable: false,
+                  unavailableReason: "model_pricing_not_in_current_official_table"
+                }
+              ]
             }),
             { status: 200, headers: { "content-type": "application/json" } }
           );
@@ -2912,7 +2952,21 @@ describe("OpenAI realtime adapter helpers", () => {
               name: "widget.remove",
               arguments: { widgetId: "wi_music" },
               source: "text"
-            }
+            },
+            usageEvents: [
+              {
+                model: "gpt-4.1-mini",
+                stage: "text_tool.execute",
+                source: "responses",
+                pricingSource: "https://developers.openai.com/api/docs/pricing",
+                pricingCheckedAt: "2026-07-05",
+                currency: "USD",
+                inputTokens: 80,
+                outputTokens: 8,
+                estimateAvailable: false,
+                unavailableReason: "model_pricing_not_in_current_official_table"
+              }
+            ]
           }),
           { status: 200, headers: { "content-type": "application/json" } }
         );
@@ -3038,6 +3092,20 @@ describe("OpenAI realtime adapter helpers", () => {
       arguments: { widgetId: "wi_music" },
       source: "text"
     });
+    expect(diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "openai.usage.cost_estimate",
+          status: "usage_only",
+          data: expect.objectContaining({ stage: "text_tool.select", inputTokens: 100, outputTokens: 10 })
+        }),
+        expect.objectContaining({
+          type: "openai.usage.cost_estimate",
+          status: "usage_only",
+          data: expect.objectContaining({ stage: "text_tool.execute", inputTokens: 80, outputTokens: 8 })
+        })
+      ])
+    );
   });
 
   it("binds text fallback window tool calls when the scoped backend omits widgetId", async () => {

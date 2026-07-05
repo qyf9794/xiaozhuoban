@@ -41,6 +41,7 @@ export type RealtimeTextToolCallResponse = {
   selection?: RealtimeTextToolSelection | null;
   plan?: CommandPlan | null;
   planSelection?: RealtimeTextPlanSelection | null;
+  usageEvents?: unknown[];
 };
 
 export type RealtimeTextToolSelection = {

@@ -55,6 +55,11 @@ describe("realtime text tool-call API", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
+            usage: {
+              input_tokens: 120,
+              output_tokens: 12,
+              input_token_details: { cached_tokens: 0 }
+            },
             output: [
               {
                 type: "function_call",
@@ -70,6 +75,11 @@ describe("realtime text tool-call API", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
+            usage: {
+              input_tokens: 80,
+              output_tokens: 8,
+              input_token_details: { cached_tokens: 0 }
+            },
             output: [
               {
                 type: "function_call",
@@ -128,7 +138,26 @@ describe("realtime text tool-call API", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body).call).toMatchObject({ name: "widget.remove", arguments: { widgetId: "wi_music" } });
+    const payload = JSON.parse(response.body);
+    expect(payload.call).toMatchObject({ name: "widget.remove", arguments: { widgetId: "wi_music" } });
+    expect(payload.usageEvents).toEqual([
+      expect.objectContaining({
+        model: "gpt-4.1-mini",
+        stage: "text_tool.select",
+        source: "responses",
+        estimateAvailable: false,
+        inputTokens: 120,
+        outputTokens: 12
+      }),
+      expect.objectContaining({
+        model: "gpt-4.1-mini",
+        stage: "text_tool.execute",
+        source: "responses",
+        estimateAvailable: false,
+        inputTokens: 80,
+        outputTokens: 8
+      })
+    ]);
     expect(fetchMock).toHaveBeenCalledTimes(3);
     const firstBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
     const secondBody = JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body));
