@@ -2034,7 +2034,10 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "open_widget",
       match(normalized, raw, context) {
-        const openIntent = /(打开|打开一下|开一下|添加|新增|叫出|叫一下|唤出|调出|拉起|显示|启动|来个|来一个|放上|放一个|加一个|加个|聚焦|切到)/.test(normalized);
+        const openIntent =
+          /(打开|打开一下|开一下|添加|新增|叫出|叫一下|唤出|调出|拉起|显示|启动|来个|来一个|放上|放一个|加一个|加个|聚焦|切到|设为当前|设成当前|作为当前|切换当前)/.test(
+            normalized
+          );
         if (!openIntent) return { matched: false, reason: "not_open_widget" };
         const aliasInput = `${raw}${compactShortcutInput(normalized)}`.toLowerCase();
         const knownTypes: Array<{ type: string; aliases: string[] }> = [

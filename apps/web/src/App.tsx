@@ -152,6 +152,7 @@ export function App() {
     setActiveBoard,
     addWidgetInstance,
     removeWidgetInstance,
+    focusWidget,
     updateWidgetPosition,
     updateWidgetSize,
     updateWidgetState,
@@ -681,6 +682,7 @@ export function App() {
             onMove={(widgetId, x, y) => void updateWidgetPosition(widgetId, x, y)}
             onResize={(widgetId, w, h) => void updateWidgetSize(widgetId, w, h)}
             onStateChange={(widgetId, state) => void updateWidgetState(widgetId, state)}
+            onFocusWidget={(widgetId) => void focusWidget(widgetId)}
             onRemoveWidget={(widgetId) => void handleRemoveWidget(widgetId)}
           />
 

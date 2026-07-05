@@ -1002,6 +1002,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     const maxZIndex = widgetInstances.reduce((max, item) => Math.max(max, item.zIndex), 0);
     if (target.zIndex >= maxZIndex) {
+      set({ focusedWidgetId: widgetId });
       return;
     }
     const next = {
@@ -1009,7 +1010,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       zIndex: maxZIndex + 1,
       updatedAt: nowIso()
     };
-    set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)) });
+    set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)), focusedWidgetId: widgetId });
     persistInBackground(repository.upsertInstance(next), "bring widget to front", {
       type: "widget.upsert",
       payload: { instance: next }
@@ -1026,7 +1027,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       position: { x, y },
       updatedAt: nowIso()
     };
-    set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)) });
+    set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)), focusedWidgetId: widgetId });
     persistInBackground(repository.upsertInstance(next), "move widget", {
       type: "widget.upsert",
       payload: { instance: next }
@@ -1053,7 +1054,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       size,
       updatedAt: nowIso()
     };
-    set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)) });
+    set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)), focusedWidgetId: widgetId });
     persistInBackground(repository.upsertInstance(next), "resize widget", {
       type: "widget.upsert",
       payload: { instance: next }
@@ -1070,7 +1071,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       state,
       updatedAt: nowIso()
     };
-    set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)) });
+    set({ widgetInstances: widgetInstances.map((item) => (item.id === widgetId ? next : item)), focusedWidgetId: widgetId });
     persistInBackground(repository.upsertInstance(next), "update widget state", {
       type: "widget.upsert",
       payload: { instance: next }

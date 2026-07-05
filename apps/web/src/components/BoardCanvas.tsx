@@ -45,6 +45,7 @@ export function BoardCanvas({
   onMove,
   onResize,
   onStateChange,
+  onFocusWidget,
   onRemoveWidget,
   assistantCapabilityBridge
 }: {
@@ -58,6 +59,7 @@ export function BoardCanvas({
   onMove: (widgetId: string, x: number, y: number) => void;
   onResize: (widgetId: string, w: number, h: number) => void;
   onStateChange: (widgetId: string, state: Record<string, unknown>) => void;
+  onFocusWidget?: (widgetId: string) => void;
   onRemoveWidget: (widgetId: string) => void;
 }) {
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -396,6 +398,11 @@ export function BoardCanvas({
             ]
               .filter(Boolean)
               .join(" ")}
+            onPointerDownCapture={() => {
+              if (!isFocusedWidget) {
+                onFocusWidget?.(widget.id);
+              }
+            }}
             onPointerDown={(event) => {
               if (isMobileMode || resize || board.locked || widget.locked) {
                 return;

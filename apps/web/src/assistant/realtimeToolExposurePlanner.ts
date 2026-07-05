@@ -85,7 +85,7 @@ const TOOL_INTENT_PATTERNS: Record<string, RegExp> = {
   "board.switch": /(切回|切换.*桌板|工作台)/,
   "board.delete": /(删除.*桌板|删掉.*桌板)/,
   "widget.bring_to_front": /(最前|置顶|前面|别被挡住|不要挡住|不要遮住|放最前)/,
-  "widget.focus": /(聚焦|切到|切回|窗口|面板|前面)/,
+  "widget.focus": /(聚焦|切到|切回|窗口|面板|前面|当前工具|当前小工具|设为当前|设成当前|作为当前)/,
   "widget.fullscreen_focus": /(全屏|沉浸)/,
   "widget.move": /(拖|移动|移到|挪|右上|左上|左下|右侧|底部|居中|旁边|并排|排成|放到|调到|固定在|盖住|遮住|挡住|不要挡住|不要遮住)/,
   "widget.remove": /(关闭|关掉|收起|收起来|移除|删掉|删除)/,
@@ -255,7 +255,7 @@ function isRelevantWindowTool(tool: AssistantToolSpec, input: string, selectedMo
   }
   if (tool.name === "widget.remove") return Boolean(TOOL_INTENT_PATTERNS["widget.remove"]?.test(input));
   if (tool.name === "widget.fullscreen_focus") return /(全屏|沉浸)/.test(input);
-  if (tool.name === "widget.focus") return /(聚焦|切到|前面|最前|置顶|打开|看|播放|听)/.test(input);
+  if (tool.name === "widget.focus") return /(聚焦|切到|前面|最前|置顶|打开|看|播放|听|当前工具|当前小工具|设为当前|设成当前|作为当前)/.test(input);
   if (tool.name === "widget.bring_to_front") return Boolean(TOOL_INTENT_PATTERNS["widget.bring_to_front"]?.test(input));
   if (tool.name === "widget.move") return Boolean(TOOL_INTENT_PATTERNS["widget.move"]?.test(input));
   if (tool.name === "widget.resize") return Boolean(TOOL_INTENT_PATTERNS["widget.resize"]?.test(input));

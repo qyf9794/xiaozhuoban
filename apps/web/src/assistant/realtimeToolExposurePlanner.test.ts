@@ -92,6 +92,31 @@ describe("RealtimeToolExposurePlanner", () => {
     expect(plan.confidence).toBeGreaterThan(0.5);
   });
 
+  it("exposes widget focus for current-widget switching commands", () => {
+    const base = context();
+    const plan = buildRealtimeToolExposurePlan(
+      "把电视设为当前小工具",
+      context({
+        widgets: [
+          ...base.widgets,
+          {
+            widgetId: "wi_tv",
+            definitionId: "wd_tv",
+            type: "tv",
+            name: "电视",
+            order: 3,
+            summary: "CCTV1"
+          }
+        ],
+        widgetCountsByType: { music: 1, weather: 1, tv: 1 }
+      }),
+      tools
+    );
+
+    expect(plan.selectedModules).toContain("tv");
+    expect(plan.exposedTools.map((item) => item.name)).toContain("widget.focus");
+  });
+
   it("exposes weather tools without leaking unrelated widget detail tools", () => {
     const plan = buildRealtimeToolExposurePlan("上海天气给我看一下", context(), tools);
 

@@ -172,6 +172,25 @@ describe("assistant widget focus state", () => {
     expect(focused?.zIndex).toBe(3);
   });
 
+  it("focuses the last operated widget", async () => {
+    useAppStore.setState({
+      ...useAppStore.getState(),
+      activeBoardId: "board_1",
+      focusedWidgetId: "wi_note",
+      widgetDefinitions: [makeDefinition("note"), makeDefinition("tv")],
+      widgetInstances: [makeWidget("note", 1), makeWidget("tv", 2)]
+    });
+
+    await useAppStore.getState().updateWidgetState("wi_tv", { channelName: "BBC" });
+    expect(useAppStore.getState().focusedWidgetId).toBe("wi_tv");
+
+    await useAppStore.getState().updateWidgetPosition("wi_note", 24, 48);
+    expect(useAppStore.getState().focusedWidgetId).toBe("wi_note");
+
+    await useAppStore.getState().updateWidgetSize("wi_tv", 320, 200);
+    expect(useAppStore.getState().focusedWidgetId).toBe("wi_tv");
+  });
+
   it("clears focus when the focused widget is removed", async () => {
     useAppStore.setState({
       ...useAppStore.getState(),

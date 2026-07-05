@@ -2035,6 +2035,17 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes current-widget switching commands to focus when the widget exists", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("把电视设为当前小工具", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("widget.focus");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_tv" });
+    }
+  });
+
   it("routes open widget commands to add when only a definition exists", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("打开音乐", context);
