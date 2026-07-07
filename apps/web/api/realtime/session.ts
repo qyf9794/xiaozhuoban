@@ -4,6 +4,7 @@ import {
   OPENAI_REALTIME_CLIENT_SECRET_URL,
   createRealtimeClientSecretPayload,
   createRealtimeTurnDetection,
+  type InitialRealtimeSessionHints,
   type RealtimeReasoningEffort,
   type RealtimeSessionOptions
 } from "../../src/api/realtime/runtime-session-config.js";
@@ -12,7 +13,7 @@ import { authenticateRealtimeRequest } from "../../src/api/realtime/runtime-auth
 type JsonValue = Record<string, unknown> | unknown[] | string | number | boolean | null;
 type RealtimeSessionRequestOptions = RealtimeSessionOptions & {
   safetyIdentifier?: string;
-};
+} & InitialRealtimeSessionHints;
 
 const realtimeTurnDetection = createRealtimeTurnDetection();
 const REALTIME_TURN_DETECTION_HEADER = `${realtimeTurnDetection.type};eagerness=${realtimeTurnDetection.eagerness}`;
@@ -43,6 +44,47 @@ export function createOpenAISafetyIdentifier(value: unknown): string | undefined
   return `xz_${createHash("sha256").update(trimmed).digest("base64url")}`;
 }
 
+function sanitizeString(value: unknown, maxLength: number): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return trimmed.slice(0, maxLength);
+}
+
+function sanitizeInitialToolHints(value: unknown): InitialRealtimeSessionHints["initialToolHints"] {
+  if (!Array.isArray(value)) return undefined;
+  const seen = new Set<string>();
+  return value
+    .slice(0, 24)
+    .flatMap((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+      const record = item as Record<string, unknown>;
+      const name = sanitizeString(record.name, 80);
+      if (!name || !/^[a-zA-Z0-9_.-]+$/.test(name) || seen.has(name)) return [];
+      seen.add(name);
+      return [
+        {
+          name,
+          description: sanitizeString(record.description, 180) ?? name
+        }
+      ];
+    });
+}
+
+function sanitizeInitialModuleTypes(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const seen = new Set<string>();
+  const modules = value
+    .slice(0, 32)
+    .flatMap((item) => {
+      const type = sanitizeString(item, 48);
+      if (!type || !/^[a-zA-Z0-9_-]+$/.test(type) || seen.has(type)) return [];
+      seen.add(type);
+      return [type];
+    });
+  return modules.length ? modules : undefined;
+}
+
 function parseOptions(value: unknown): RealtimeSessionRequestOptions {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
@@ -59,7 +101,9 @@ function parseOptions(value: unknown): RealtimeSessionRequestOptions {
       record.reasoningEffort === "xhigh"
         ? record.reasoningEffort
         : undefined,
-    highAccuracy: record.highAccuracy === true
+    highAccuracy: record.highAccuracy === true,
+    initialToolHints: sanitizeInitialToolHints(record.initialToolHints),
+    initialModuleTypes: sanitizeInitialModuleTypes(record.initialModuleTypes)
   };
 }
 

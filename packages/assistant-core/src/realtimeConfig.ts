@@ -1,11 +1,27 @@
 export type RealtimeReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 export type RealtimeSemanticVadEagerness = "low" | "medium" | "high" | "auto";
 
+export interface RealtimeFunctionTool {
+  type: "function";
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
+
 export interface RealtimeSessionOptions {
   ttlSeconds?: number;
   reasoningEffort?: RealtimeReasoningEffort;
   turnDetectionEagerness?: RealtimeSemanticVadEagerness;
   highAccuracy?: boolean;
+}
+
+export interface RealtimeClientSecretPayloadOptions extends RealtimeSessionOptions {
+  instructions?: string;
+  tools?: RealtimeFunctionTool[];
+  outputVoice?: string;
+  maxOutputTokens?: number;
+  toolChoice?: "auto" | "none" | "required";
+  parallelToolCalls?: boolean;
 }
 
 export interface AssistantResponsibility {
@@ -67,9 +83,53 @@ export const XIAOZHUOBAN_REALTIME_MODEL = XIAOZHUOBAN_REALTIME_MINI_MODEL;
 export const XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL = "gpt-4.1-mini";
 export const XIAOZHUOBAN_REALTIME_INPUT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
 export const DEFAULT_REALTIME_CLIENT_SECRET_TTL_SECONDS = 600;
+export const XIAOZHUOBAN_REALTIME_OUTPUT_VOICE = "marin";
+export const XIAOZHUOBAN_REALTIME_MAX_OUTPUT_TOKENS = 480;
 export const REALTIME_TOOL_SELECTION_TOOL_NAME = "assistant.select_tool";
 export const REALTIME_COMMAND_EXECUTION_TOOL_NAME = "assistant.execute_command";
 export const REALTIME_TOOL_SELECTION_CONFIDENCE_THRESHOLD = 0.65;
+
+export const OPENAI_PRICING_SOURCE = "https://developers.openai.com/api/docs/pricing";
+export const OPENAI_PRICING_CHECKED_AT = "2026-07-07";
+
+export type OpenAIModelTokenRates = {
+  input?: number;
+  cachedInput?: number;
+  output?: number;
+  textInput?: number;
+  cachedTextInput?: number;
+  textOutput?: number;
+  audioInput?: number;
+  cachedAudioInput?: number;
+  audioOutput?: number;
+};
+
+export const OPENAI_MODEL_TOKEN_RATES: Record<string, OpenAIModelTokenRates> = {
+  "gpt-realtime-2.1-mini": {
+    textInput: 0.6,
+    cachedTextInput: 0.06,
+    textOutput: 2.4,
+    audioInput: 10,
+    cachedAudioInput: 0.3,
+    audioOutput: 20
+  },
+  "gpt-realtime-2.1": {
+    textInput: 4,
+    cachedTextInput: 0.4,
+    textOutput: 24,
+    audioInput: 32,
+    cachedAudioInput: 0.4,
+    audioOutput: 64
+  },
+  "gpt-realtime-2": {
+    textInput: 4,
+    cachedTextInput: 0.4,
+    textOutput: 24,
+    audioInput: 32,
+    cachedAudioInput: 0.4,
+    audioOutput: 64
+  }
+};
 
 export const XIAOZHUOBAN_REALTIME_INSTRUCTIONS = [
   "# Role and Objective",
@@ -163,6 +223,40 @@ export function createRealtimeInputTranscription() {
   };
 }
 
+export function createRealtimeSessionAudioConfig(options: RealtimeSessionOptions = {}) {
+  return {
+    input: {
+      turn_detection: createRealtimeTurnDetection(options),
+      transcription: createRealtimeInputTranscription()
+    },
+    output: {
+      voice: XIAOZHUOBAN_REALTIME_OUTPUT_VOICE
+    }
+  };
+}
+
 export function resolveXiaozhuobanRealtimeModel(options: Pick<RealtimeSessionOptions, "highAccuracy"> = {}): string {
   return options.highAccuracy ? XIAOZHUOBAN_REALTIME_HIGH_ACCURACY_MODEL : XIAOZHUOBAN_REALTIME_MODEL;
+}
+
+export function createRealtimeClientSecretPayload(options: RealtimeClientSecretPayloadOptions = {}) {
+  return {
+    expires_after: {
+      anchor: "created_at",
+      seconds: clampRealtimeClientSecretTtl(options.ttlSeconds)
+    },
+    session: {
+      type: "realtime",
+      model: resolveXiaozhuobanRealtimeModel(options),
+      instructions: options.instructions ?? XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
+      reasoning: {
+        effort: options.reasoningEffort ?? "low"
+      },
+      audio: createRealtimeSessionAudioConfig(options),
+      max_output_tokens: options.maxOutputTokens ?? XIAOZHUOBAN_REALTIME_MAX_OUTPUT_TOKENS,
+      tool_choice: options.toolChoice ?? "auto",
+      parallel_tool_calls: options.parallelToolCalls ?? true,
+      tools: options.tools ?? []
+    }
+  };
 }

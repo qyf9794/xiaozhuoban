@@ -251,10 +251,11 @@ export function createRealtimeToolSelectionInstructions(tools: AssistantToolSpec
 
 export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[], moduleCatalog?: RealtimeModuleCatalogItem[]): RealtimeFunctionTool {
   const moduleTypes = selectionModuleTypes(tools, moduleCatalog);
+  const toolSummary = tools.map((tool) => `${tool.name}: ${tool.description}`).join("; ");
   return {
     type: "function",
     name: SELECT_TOOL_NAME.replace(/\./g, "__dot__"),
-    description: "Select the single best registered Xiaozhuoban tool before any desktop context is provided.",
+    description: `Select the single best registered Xiaozhuoban tool before any desktop context is provided. Available tools: ${toolSummary}`,
     parameters: {
       type: "object",
       properties: {

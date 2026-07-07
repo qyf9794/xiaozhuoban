@@ -11,8 +11,10 @@ import {
   XIAOZHUOBAN_REALTIME_MINI_MODEL,
   XIAOZHUOBAN_REALTIME_MODEL,
   clampRealtimeClientSecretTtl,
+  createRealtimeClientSecretPayload as createCoreRealtimeClientSecretPayload,
   createRealtimeInputTranscription,
   createPassthroughSchema,
+  createRealtimeSessionAudioConfig,
   createRealtimeTurnDetection,
   decodeRealtimeToolName,
   encodeRealtimeToolName,
@@ -23,7 +25,8 @@ import {
   type RealtimeSemanticVadEagerness,
   type RealtimeSessionOptions,
   type AssistantToolScopeKind,
-  type AssistantToolSpec
+  type AssistantToolSpec,
+  type RealtimeFunctionTool
 } from "@xiaozhuoban/assistant-core";
 
 export {
@@ -39,6 +42,7 @@ export {
   XIAOZHUOBAN_REALTIME_MODEL,
   clampRealtimeClientSecretTtl,
   createRealtimeInputTranscription,
+  createRealtimeSessionAudioConfig,
   createRealtimeTurnDetection,
   decodeRealtimeToolName,
   encodeRealtimeToolName,
@@ -46,25 +50,7 @@ export {
 };
 
 export type { RealtimeReasoningEffort, RealtimeSemanticVadEagerness, RealtimeSessionOptions };
-
-export interface RealtimeFunctionTool {
-  type: "function";
-  name: string;
-  description: string;
-  parameters: Record<string, unknown>;
-}
-
-export function createRealtimeSessionAudioConfig(options: RealtimeSessionOptions = {}) {
-  return {
-    input: {
-      turn_detection: createRealtimeTurnDetection(options),
-      transcription: createRealtimeInputTranscription()
-    },
-    output: {
-      voice: "marin"
-    }
-  };
-}
+export type { RealtimeFunctionTool };
 
 type JsonObjectSchema = {
   type: "object";
@@ -307,10 +293,11 @@ export function createInitialRegisteredRealtimeTools(): RealtimeFunctionTool[] {
 }
 
 export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[]): RealtimeFunctionTool {
+  const toolSummary = tools.map((tool) => `${tool.name}: ${tool.description}`).join("; ");
   return {
     type: "function",
     name: encodeRealtimeToolName(REALTIME_TOOL_SELECTION_TOOL_NAME),
-    description: "Select the single best registered Xiaozhuoban tool before any desktop context is provided.",
+    description: `Select the single best registered Xiaozhuoban tool before any desktop context is provided. Available tools: ${toolSummary}`,
     parameters: objectSchema(
       {
         name: {
@@ -417,23 +404,9 @@ function inferAssistantToolParameters(tool: AssistantToolSpec): Record<string, u
 }
 
 export function createRealtimeClientSecretPayload(options: RealtimeSessionOptions = {}) {
-  return {
-    expires_after: {
-      anchor: "created_at",
-      seconds: clampRealtimeClientSecretTtl(options.ttlSeconds)
-    },
-    session: {
-      type: "realtime",
-      model: resolveXiaozhuobanRealtimeModel(options),
-      instructions: createRealtimeContextInstructions(),
-      reasoning: {
-        effort: options.reasoningEffort ?? "low"
-      },
-      audio: createRealtimeSessionAudioConfig(options),
-      max_output_tokens: 480,
-      tool_choice: "auto",
-      parallel_tool_calls: true,
-      tools: createInitialRealtimeTools()
-    }
-  };
+  return createCoreRealtimeClientSecretPayload({
+    ...options,
+    instructions: createRealtimeContextInstructions(),
+    tools: createInitialRealtimeTools()
+  });
 }

@@ -165,6 +165,38 @@ describe("realtime session API", () => {
     });
   });
 
+  it("uses sanitized client registry hints for the initial selector tool", async () => {
+    stubSupabaseEnv();
+    vi.stubEnv("OPENAI_API_KEY", "sk-test");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createSupabaseUserResponse("user_123"))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ value: "client-secret" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await callHandler(
+      JSON.stringify({
+        initialToolHints: [
+          { name: "music.play", description: "播放音乐" },
+          { name: "bad tool", description: "invalid name should be dropped" },
+          { name: "music.play", description: "duplicate should be dropped" }
+        ],
+        initialModuleTypes: ["music", "tv", "bad module"]
+      })
+    );
+
+    expect(response.statusCode).toBe(200);
+    const [, init] = fetchMock.mock.calls[1] as [RequestInfo | URL, RequestInit];
+    const payload = JSON.parse(String(init?.body));
+    const selector = JSON.stringify(payload.session.tools[0]);
+    expect(selector).toContain("music.play");
+    expect(selector).toContain("播放音乐");
+    expect(selector).toContain("music");
+    expect(selector).toContain("tv");
+    expect(selector).not.toContain("bad tool");
+    expect(selector).not.toContain("bad module");
+  });
+
   it("returns JSON when the OpenAI client secret request fails before a response", async () => {
     stubSupabaseEnv();
     vi.stubEnv("OPENAI_API_KEY", "sk-test");

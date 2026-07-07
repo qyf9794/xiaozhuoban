@@ -344,6 +344,51 @@ describe("WidgetAssistantRegistry and Command Planner", () => {
     expect(registry.listTools({ includeDisabled: true }).map((tool) => tool.name)).toEqual(["weather.set_city"]);
   });
 
+  it("generates one-registration widget assistant artifacts for validation and scaffolding", () => {
+    const registry = new WidgetAssistantRegistry();
+    registry.register({
+      ...createWeatherModule(),
+      actionSpecs: [
+        {
+          name: "weather.set_city",
+          intent: "weather.set_city",
+          description: "Set weather city",
+          argsSchema: { type: "object", properties: { city: { type: "string" } } },
+          resultSchema: { type: "object", additionalProperties: true },
+          risk: "safe",
+          requiresMountedWidget: true,
+          idempotency: "stateful",
+          missingArgPolicy: "ask",
+          examples: ["北京天气"]
+        }
+      ],
+      testMatrix: { localParsing: ["北京天气"], regression: ["帮我查一下北京天气"] }
+    });
+
+    const artifacts = registry.getGeneratedArtifacts("weather", {
+      defaultSizeForType: (type) => (type === "weather" ? { w: 240, h: 260 } : undefined),
+      scopedContextRequest: {
+        userText: "北京天气",
+        selectedToolHint: "weather.set_city",
+        tools: [weatherAction.spec]
+      }
+    });
+
+    expect(artifacts).toMatchObject({
+      type: "weather",
+      definition: { id: "wd_weather", type: "weather", name: "天气" },
+      defaultSize: { w: 240, h: 260 },
+      aliases: ["天气", "weather"],
+      moduleCatalog: { type: "weather", displayName: "天气", capabilities: ["查询城市天气"] },
+      scopedContext: { moduleType: "weather", stateSummary: { city: "北京" } },
+      testMatrix: { localParsing: ["北京天气"], regression: ["帮我查一下北京天气"] }
+    });
+    expect(artifacts?.assistantTools.map((tool) => tool.name)).toEqual(["weather.set_city"]);
+    expect(artifacts?.actionSpecs.map((tool) => tool.name)).toEqual(["weather.set_city"]);
+    expect(artifacts?.commandExamples).toEqual(expect.arrayContaining(["帮我查一下北京天气", "北京天气"]));
+    expect(registry.listGeneratedArtifacts()).toHaveLength(1);
+  });
+
   it("normalizes text, segments commands, and scores candidate modules", () => {
     const registry = new WidgetAssistantRegistry();
     registry.register(createWeatherModule());

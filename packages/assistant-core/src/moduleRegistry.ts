@@ -149,6 +149,24 @@ export interface WidgetAssistantModule {
 
 export type WidgetAssistantRegistryStatus = "active" | "disabled";
 
+export interface WidgetAssistantGeneratedArtifacts {
+  type: string;
+  definition: WidgetAssistantDefinition;
+  defaultSize?: { w: number; h: number };
+  aliases: string[];
+  assistantTools: AssistantToolSpec[];
+  actionSpecs: WidgetModuleActionSpec[];
+  moduleCatalog: RealtimeModuleCatalogItem;
+  commandExamples: string[];
+  scopedContext?: RealtimeScopedModuleContext;
+  testMatrix?: WidgetTestMatrix;
+}
+
+export interface WidgetAssistantArtifactOptions {
+  defaultSizeForType?: (type: string) => { w: number; h: number } | undefined;
+  scopedContextRequest?: Omit<ScopedContextRequest, "selectedModule">;
+}
+
 type RegistryEntry = {
   module: WidgetAssistantModule;
   status: WidgetAssistantRegistryStatus;
@@ -242,5 +260,34 @@ export class WidgetAssistantRegistry {
 
   findModuleForTool(toolName: string): WidgetAssistantModule | null {
     return this.list().find((module) => module.tools.some((action) => action.spec.name === toolName)) ?? null;
+  }
+
+  getGeneratedArtifacts(type: string, options: WidgetAssistantArtifactOptions = {}): WidgetAssistantGeneratedArtifacts | null {
+    const module = this.get(type);
+    if (!module || this.status(type) !== "active") return null;
+    return {
+      type: module.type,
+      definition: module.definition,
+      defaultSize: options.defaultSizeForType?.(module.type),
+      aliases: module.aliases,
+      assistantTools: module.tools.map((action) => action.spec),
+      actionSpecs: module.actionSpecs ?? [],
+      moduleCatalog: module.realtime.exposeCatalog(),
+      commandExamples: [
+        ...module.shortcuts.flatMap((shortcut) => shortcut.examples),
+        ...module.tools.flatMap((action) => action.spec.examples ?? []),
+        ...(module.actionSpecs ?? []).flatMap((action) => action.examples)
+      ],
+      scopedContext: options.scopedContextRequest
+        ? this.getScopedContextForModule(module.type, options.scopedContextRequest) ?? undefined
+        : undefined,
+      testMatrix: module.testMatrix
+    };
+  }
+
+  listGeneratedArtifacts(options: WidgetAssistantArtifactOptions = {}): WidgetAssistantGeneratedArtifacts[] {
+    return this.list()
+      .map((module) => this.getGeneratedArtifacts(module.type, options))
+      .filter((artifact): artifact is WidgetAssistantGeneratedArtifacts => Boolean(artifact));
   }
 }

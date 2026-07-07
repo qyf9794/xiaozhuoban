@@ -636,6 +636,31 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(JSON.parse(createRealtimeSessionRequestBody("   "))).toEqual({});
     expect(JSON.parse(createRealtimeSessionRequestBody(undefined))).toEqual({});
     expect(JSON.parse(createRealtimeSessionRequestBody(" user_123 ", { highAccuracy: true }))).toEqual({ highAccuracy: true });
+    expect(
+      JSON.parse(
+        createRealtimeSessionRequestBody(" user_123 ", {
+          initialTools: [
+            {
+              name: "music.play",
+              description: "播放音乐",
+              parameters: createPassthroughSchema<Record<string, unknown>>(),
+              scope: "widget-detail",
+              widgetType: "music"
+            },
+            {
+              name: "board.add_widget",
+              description: "添加小工具",
+              parameters: createPassthroughSchema<Record<string, unknown>>(),
+              scope: "desktop"
+            }
+          ],
+          moduleCatalog: [{ type: "music", displayName: "音乐", aliases: ["音乐"], capabilities: [], shortcutExamples: [], riskSummary: [] }]
+        })
+      )
+    ).toEqual({
+      initialToolHints: [{ name: "board.add_widget", description: "添加小工具" }],
+      initialModuleTypes: ["music"]
+    });
   });
 
   it("does not create a new response while another response is active", () => {
@@ -947,7 +972,15 @@ describe("OpenAI realtime adapter helpers", () => {
       await adapter.connectTextOnly();
 
       expect(getUserMediaCalled).toBe(false);
-      expect(sessionBodies).toEqual([{ highAccuracy: true }]);
+      expect(sessionBodies).toEqual([
+        expect.objectContaining({
+          highAccuracy: true,
+          initialToolHints: expect.arrayContaining([
+            expect.objectContaining({ name: "board.add_widget" }),
+            expect.objectContaining({ name: "app.sidebar.set" })
+          ])
+        })
+      ]);
       expect(transceivers).toEqual([{ kind: "audio", init: { direction: "recvonly" } }]);
       expect(statuses).toContain("connected");
       expect(diagnostics).toEqual(expect.arrayContaining([

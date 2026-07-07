@@ -5,7 +5,8 @@ import {
   type AssistantToolResult,
   type AssistantToolSpec,
   type CommandPlan,
-  type CompactAssistantContext
+  type CompactAssistantContext,
+  type RealtimeModuleCatalogItem
 } from "@xiaozhuoban/assistant-core";
 import type { AssistantRealtimeAdapter } from "./AssistantHarness";
 import type { AssistantDiagnosticEvent } from "./assistantDiagnostics";
@@ -138,6 +139,17 @@ const MAX_INTERRUPTED_TRACE_IDS = 32;
 const MAX_RECENT_ASSISTANT_TRANSCRIPTS = 12;
 const RECENT_ASSISTANT_TRANSCRIPT_TTL_MS = 12_000;
 const REALTIME_MAX_OUTPUT_TOKENS = 480;
+
+type InitialRealtimeToolHint = {
+  name: string;
+  description: string;
+};
+
+type RealtimeSessionRequestOptions = {
+  highAccuracy?: boolean;
+  initialTools?: AssistantToolSpec[];
+  moduleCatalog?: RealtimeModuleCatalogItem[];
+};
 
 function resolveRealtimeAdapterModel(options: Pick<OpenAIRealtimeWebRtcAdapterOptions, "model" | "getHighAccuracyMode">): string {
   return options.model ?? (options.getHighAccuracyMode?.() ? XIAOZHUOBAN_REALTIME_HIGH_ACCURACY_MODEL : XIAOZHUOBAN_REALTIME_MODEL);
@@ -1315,12 +1327,34 @@ async function withTimeout<T>(
   }
 }
 
+function createInitialRealtimeSessionHints(
+  tools: AssistantToolSpec[] = [],
+  moduleCatalog: RealtimeModuleCatalogItem[] = []
+): { initialToolHints?: InitialRealtimeToolHint[]; initialModuleTypes?: string[] } {
+  const initialToolHints = tools
+    .filter((tool) => tool.scope === "desktop" || tool.scope === "widget-selection")
+    .map((tool) => ({ name: tool.name, description: tool.description }))
+    .filter((tool, index, items) => items.findIndex((candidate) => candidate.name === tool.name) === index)
+    .slice(0, 24);
+  const initialModuleTypes = moduleCatalog
+    .map((item) => item.type)
+    .filter((type, index, items) => Boolean(type) && items.indexOf(type) === index)
+    .slice(0, 32);
+  return {
+    ...(initialToolHints.length ? { initialToolHints } : {}),
+    ...(initialModuleTypes.length ? { initialModuleTypes } : {})
+  };
+}
+
 export function createRealtimeSessionRequestBody(
   safetyIdentifier: string | undefined,
-  options: { highAccuracy?: boolean } = {}
+  options: RealtimeSessionRequestOptions = {}
 ): string {
   void safetyIdentifier;
-  return JSON.stringify(options.highAccuracy ? { highAccuracy: true } : {});
+  return JSON.stringify({
+    ...(options.highAccuracy ? { highAccuracy: true } : {}),
+    ...createInitialRealtimeSessionHints(options.initialTools, options.moduleCatalog)
+  });
 }
 
 export function closeRealtimeConnectionResources(resources: RealtimeClosableResources): void {
@@ -1591,18 +1625,20 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       const accessToken = await this.options.getAccessToken?.();
       const realtimeModel = resolveRealtimeAdapterModel(this.options);
       const highAccuracy = !this.options.model && Boolean(this.options.getHighAccuracyMode?.());
+      const initialTools = this.getInitialSessionTools();
+      const moduleCatalog = this.moduleRegistry?.getRealtimeCatalog() ?? [];
       this.activeRealtimeModel = realtimeModel;
       this.emitDiagnostic({
         type: "realtime.session.request",
         status: accessToken ? "authenticated" : "missing_auth",
-        data: { model: realtimeModel, highAccuracy }
+        data: { model: realtimeModel, highAccuracy, initialToolCount: initialTools.length, initialModuleCount: moduleCatalog.length }
       });
       const connectTimeoutMs = this.options.connectTimeoutMs ?? 15_000;
       const sessionResponse = await withTimeout(
         fetchImpl(this.options.sessionEndpoint ?? "/api/realtime/session", {
           method: "POST",
           headers: createBearerHeaders(accessToken, { "content-type": "application/json" }),
-          body: createRealtimeSessionRequestBody(this.options.getSafetyIdentifier?.(), { highAccuracy })
+          body: createRealtimeSessionRequestBody(this.options.getSafetyIdentifier?.(), { highAccuracy, initialTools, moduleCatalog })
         }),
         connectTimeoutMs,
         "REALTIME_CONNECT_TIMEOUT(session)",
@@ -2046,6 +2082,19 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
 
   private getEffectiveSessionTools(): AssistantToolSpec[] {
     return this.currentTools.length > 0 ? this.currentTools : createInitialRealtimeToolSpecs();
+  }
+
+  private getInitialSessionTools(): AssistantToolSpec[] {
+    const initialTools = [
+      ...this.getEffectiveSessionTools(),
+      ...(this.moduleRegistry?.listTools() ?? [])
+    ].filter((tool) => tool.scope === "desktop" || tool.scope === "widget-selection");
+    const seen = new Set<string>();
+    return initialTools.filter((tool) => {
+      if (seen.has(tool.name)) return false;
+      seen.add(tool.name);
+      return true;
+    });
   }
 
   updateModules(registry: WidgetAssistantRegistry): void {

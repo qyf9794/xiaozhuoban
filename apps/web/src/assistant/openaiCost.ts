@@ -1,3 +1,10 @@
+import {
+  OPENAI_MODEL_TOKEN_RATES,
+  OPENAI_PRICING_CHECKED_AT,
+  OPENAI_PRICING_SOURCE,
+  type OpenAIModelTokenRates
+} from "@xiaozhuoban/assistant-core";
+
 export type OpenAIUsageCostEstimate = {
   model: string;
   responseId?: string;
@@ -20,48 +27,7 @@ export type OpenAIUsageCostEstimate = {
   unavailableReason?: string;
 };
 
-const PRICING_SOURCE = "https://developers.openai.com/api/docs/pricing";
-const PRICING_CHECKED_AT = "2026-07-07";
 const MILLION = 1_000_000;
-
-type TokenRates = {
-  input?: number;
-  cachedInput?: number;
-  output?: number;
-  textInput?: number;
-  cachedTextInput?: number;
-  textOutput?: number;
-  audioInput?: number;
-  cachedAudioInput?: number;
-  audioOutput?: number;
-};
-
-const MODEL_TOKEN_RATES: Record<string, TokenRates> = {
-  "gpt-realtime-2.1-mini": {
-    textInput: 0.6,
-    cachedTextInput: 0.06,
-    textOutput: 2.4,
-    audioInput: 10,
-    cachedAudioInput: 0.3,
-    audioOutput: 20
-  },
-  "gpt-realtime-2.1": {
-    textInput: 4,
-    cachedTextInput: 0.4,
-    textOutput: 24,
-    audioInput: 32,
-    cachedAudioInput: 0.4,
-    audioOutput: 64
-  },
-  "gpt-realtime-2": {
-    textInput: 4,
-    cachedTextInput: 0.4,
-    textOutput: 24,
-    audioInput: 32,
-    cachedAudioInput: 0.4,
-    audioOutput: 64
-  }
-};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -93,7 +59,7 @@ export function estimateOpenAIUsageCost(
   options: { source: "realtime" | "responses"; stage?: string; responseId?: string }
 ): OpenAIUsageCostEstimate | null {
   if (!isRecord(usage)) return null;
-  const rates = MODEL_TOKEN_RATES[model];
+  const rates: OpenAIModelTokenRates | undefined = OPENAI_MODEL_TOKEN_RATES[model];
   const { inputDetails, outputDetails, cachedDetails } = readDetails(usage);
   const inputTokens = readNumber(usage.input_tokens);
   const outputTokens = readNumber(usage.output_tokens);
@@ -110,8 +76,8 @@ export function estimateOpenAIUsageCost(
     responseId: options.responseId,
     stage: options.stage,
     source: options.source,
-    pricingSource: PRICING_SOURCE,
-    pricingCheckedAt: PRICING_CHECKED_AT,
+    pricingSource: OPENAI_PRICING_SOURCE,
+    pricingCheckedAt: OPENAI_PRICING_CHECKED_AT,
     currency: "USD",
     inputTokens,
     cachedInputTokens,
