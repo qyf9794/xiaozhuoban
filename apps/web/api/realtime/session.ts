@@ -58,7 +58,8 @@ function parseOptions(value: unknown): RealtimeSessionRequestOptions {
       record.reasoningEffort === "high" ||
       record.reasoningEffort === "xhigh"
         ? record.reasoningEffort
-        : undefined
+        : undefined,
+    highAccuracy: record.highAccuracy === true
   };
 }
 

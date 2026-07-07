@@ -14,6 +14,7 @@ import {
   createRealtimeCommandExecutionTool,
   createRealtimeSessionAudioConfig,
   REALTIME_COMMAND_EXECUTION_TOOL_NAME,
+  XIAOZHUOBAN_REALTIME_HIGH_ACCURACY_MODEL,
   XIAOZHUOBAN_REALTIME_MODEL,
   XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
   decodeRealtimeToolName
@@ -55,6 +56,7 @@ export interface OpenAIRealtimeWebRtcAdapterOptions {
   sessionEndpoint?: string;
   textToolCallEndpoint?: string;
   model?: string;
+  getHighAccuracyMode?: () => boolean;
   getAccessToken?: () => string | undefined | Promise<string | undefined>;
   getSafetyIdentifier?: () => string | undefined;
   onFunctionCall?: (call: AssistantToolCall) => void | Promise<void>;
@@ -136,6 +138,10 @@ const MAX_INTERRUPTED_TRACE_IDS = 32;
 const MAX_RECENT_ASSISTANT_TRANSCRIPTS = 12;
 const RECENT_ASSISTANT_TRANSCRIPT_TTL_MS = 12_000;
 const REALTIME_MAX_OUTPUT_TOKENS = 480;
+
+function resolveRealtimeAdapterModel(options: Pick<OpenAIRealtimeWebRtcAdapterOptions, "model" | "getHighAccuracyMode">): string {
+  return options.model ?? (options.getHighAccuracyMode?.() ? XIAOZHUOBAN_REALTIME_HIGH_ACCURACY_MODEL : XIAOZHUOBAN_REALTIME_MODEL);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
@@ -1309,9 +1315,12 @@ async function withTimeout<T>(
   }
 }
 
-export function createRealtimeSessionRequestBody(safetyIdentifier: string | undefined): string {
+export function createRealtimeSessionRequestBody(
+  safetyIdentifier: string | undefined,
+  options: { highAccuracy?: boolean } = {}
+): string {
   void safetyIdentifier;
-  return JSON.stringify({});
+  return JSON.stringify(options.highAccuracy ? { highAccuracy: true } : {});
 }
 
 export function closeRealtimeConnectionResources(resources: RealtimeClosableResources): void {
@@ -1446,6 +1455,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private interruptedRealtimeCommandTraceIds = new Set<string>();
   private suppressedEchoTraceIds = new Set<string>();
   private recentAssistantTranscripts: Array<{ transcript: string; createdAt: number }> = [];
+  private activeRealtimeModel = XIAOZHUOBAN_REALTIME_MODEL;
   private microphoneLevelMonitor: MicrophoneLevelMonitor | null = null;
   private remoteAudioLevelMonitor: MicrophoneLevelMonitor | null = null;
   private microphoneLevel = 0;
@@ -1579,13 +1589,20 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
 
     try {
       const accessToken = await this.options.getAccessToken?.();
-      this.emitDiagnostic({ type: "realtime.session.request", status: accessToken ? "authenticated" : "missing_auth" });
+      const realtimeModel = resolveRealtimeAdapterModel(this.options);
+      const highAccuracy = !this.options.model && Boolean(this.options.getHighAccuracyMode?.());
+      this.activeRealtimeModel = realtimeModel;
+      this.emitDiagnostic({
+        type: "realtime.session.request",
+        status: accessToken ? "authenticated" : "missing_auth",
+        data: { model: realtimeModel, highAccuracy }
+      });
       const connectTimeoutMs = this.options.connectTimeoutMs ?? 15_000;
       const sessionResponse = await withTimeout(
         fetchImpl(this.options.sessionEndpoint ?? "/api/realtime/session", {
           method: "POST",
           headers: createBearerHeaders(accessToken, { "content-type": "application/json" }),
-          body: createRealtimeSessionRequestBody(this.options.getSafetyIdentifier?.())
+          body: createRealtimeSessionRequestBody(this.options.getSafetyIdentifier?.(), { highAccuracy })
         }),
         connectTimeoutMs,
         "REALTIME_CONNECT_TIMEOUT(session)",
@@ -2948,7 +2965,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       (event.type === "response.done" || event.type === "response.cancelled" || event.type === "response.failed")
     ) {
       if (event.type === "response.done") {
-        const estimate = estimateRealtimeResponseCost(this.options.model ?? XIAOZHUOBAN_REALTIME_MODEL, event);
+        const estimate = estimateRealtimeResponseCost(this.activeRealtimeModel, event);
         if (estimate) {
           this.emitDiagnostic({
             type: "openai.usage.cost_estimate",

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createPassthroughSchema } from "@xiaozhuoban/assistant-core";
 import {
   XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
+  XIAOZHUOBAN_REALTIME_HIGH_ACCURACY_MODEL,
+  XIAOZHUOBAN_REALTIME_MINI_MODEL,
   XIAOZHUOBAN_REALTIME_MODEL,
   XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL,
   clampRealtimeClientSecretTtl,
@@ -15,6 +17,7 @@ import {
   createRealtimeTurnDetection,
   decodeRealtimeToolName,
   encodeRealtimeToolName,
+  resolveXiaozhuobanRealtimeModel,
   serializeAssistantToolForRealtime
 } from "./realtimeSessionConfig";
 
@@ -105,6 +108,13 @@ describe("realtime session config", () => {
     expect(payload.session.tool_choice).toBe("auto");
     expect(payload.session.parallel_tool_calls).toBe(true);
     expect(payload.session.tools.map((tool) => tool.name)).toEqual(["assistant__dot__select_tool", "assistant__dot__execute_command"]);
+  });
+
+  it("uses mini as the default Realtime model and switches high-accuracy mode to gpt-realtime-2.1", () => {
+    expect(XIAOZHUOBAN_REALTIME_MODEL).toBe(XIAOZHUOBAN_REALTIME_MINI_MODEL);
+    expect(resolveXiaozhuobanRealtimeModel()).toBe("gpt-realtime-2.1-mini");
+    expect(resolveXiaozhuobanRealtimeModel({ highAccuracy: true })).toBe(XIAOZHUOBAN_REALTIME_HIGH_ACCURACY_MODEL);
+    expect(createRealtimeClientSecretPayload({ highAccuracy: true }).session.model).toBe("gpt-realtime-2.1");
   });
 
   it("keeps text fallback model separate from the realtime model", () => {

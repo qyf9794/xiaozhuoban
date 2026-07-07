@@ -24,6 +24,36 @@ function FullscreenIcon() {
   );
 }
 
+function TinySwitch({ checked }: { checked: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: 30,
+        height: 16,
+        borderRadius: 999,
+        background: checked ? "#111827" : "rgba(15,23,42,0.16)",
+        display: "inline-flex",
+        alignItems: "center",
+        padding: 2,
+        boxSizing: "border-box",
+        transition: "background 160ms ease"
+      }}
+    >
+      <span
+        style={{
+          width: 12,
+          height: 12,
+          borderRadius: "50%",
+          background: "#fff",
+          transform: `translateX(${checked ? 14 : 0}px)`,
+          transition: "transform 160ms ease"
+        }}
+      />
+    </span>
+  );
+}
+
 export function shouldOpenSettingsMenuForRequest(settingsOpenRequestId: number | undefined): boolean {
   return typeof settingsOpenRequestId === "number" && settingsOpenRequestId > 0;
 }
@@ -47,7 +77,9 @@ export function Toolbar({
   onAddWidget,
   onOpenAiDialog,
   onEditDisplayName,
-  settingsOpenRequestId
+  settingsOpenRequestId,
+  realtimeHighAccuracyMode = false,
+  onToggleRealtimeHighAccuracyMode
 }: {
   board: Board;
   definitions: WidgetDefinition[];
@@ -68,6 +100,8 @@ export function Toolbar({
   onOpenAiDialog: () => void;
   onEditDisplayName: () => void;
   settingsOpenRequestId?: number;
+  realtimeHighAccuracyMode?: boolean;
+  onToggleRealtimeHighAccuracyMode?: () => void;
 }) {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -328,6 +362,22 @@ export function Toolbar({
                 className="glass-dropdown-item"
               >
                 壁纸
+              </button>
+              <button
+                onClick={() => {
+                  onToggleRealtimeHighAccuracyMode?.();
+                }}
+                className="glass-dropdown-item"
+                aria-pressed={realtimeHighAccuracyMode}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10
+                }}
+              >
+                <span>高准确率模式</span>
+                <TinySwitch checked={realtimeHighAccuracyMode} />
               </button>
               <button
                 onClick={() => {

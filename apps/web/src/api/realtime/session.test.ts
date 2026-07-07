@@ -80,6 +80,9 @@ describe("realtime session API", () => {
     expect(response.statusCode).toBe(200);
     expect(JSON.parse(response.body)).toEqual({ value: "client-secret" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [RequestInfo | URL, RequestInit];
+    const payload = JSON.parse(String(init?.body));
+    expect(payload.session.model).toBe("gpt-realtime-2.1-mini");
   });
 
   it("returns 401 for expired Supabase tokens and does not call OpenAI", async () => {
@@ -104,7 +107,7 @@ describe("realtime session API", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ value: "client-secret" }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const response = await callHandler(JSON.stringify({ safetyIdentifier: " forged_user ", ttlSeconds: 120 }));
+    const response = await callHandler(JSON.stringify({ safetyIdentifier: " forged_user ", ttlSeconds: 120, highAccuracy: true }));
 
     expect(response.statusCode).toBe(200);
     expect(response.headers.get("x-xiaozhuoban-realtime-turn-detection")).toBe("semantic_vad;eagerness=low");
@@ -119,7 +122,7 @@ describe("realtime session API", () => {
     expect(safetyIdentifier).not.toContain("user_123");
     expect(safetyIdentifier?.length).toBeLessThanOrEqual(64);
     const payload = JSON.parse(String(init?.body));
-    expect(payload.session.model).toBe("gpt-realtime-2");
+    expect(payload.session.model).toBe("gpt-realtime-2.1");
     expect(payload.session.max_output_tokens).toBe(480);
     expect(payload.session.parallel_tool_calls).toBe(true);
     expect(payload.session.output_modalities).toBeUndefined();

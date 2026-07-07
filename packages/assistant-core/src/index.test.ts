@@ -17,7 +17,10 @@ import {
   TextFallbackPlanAdapter,
   WidgetAssistantRegistry,
   XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL,
+  XIAOZHUOBAN_REALTIME_HIGH_ACCURACY_MODEL,
+  XIAOZHUOBAN_REALTIME_MINI_MODEL,
   XIAOZHUOBAN_REALTIME_MODEL,
+  resolveXiaozhuobanRealtimeModel,
   createPlanPreview,
   createLearningCandidate,
   createCommandPlanFromToolCalls,
@@ -214,6 +217,12 @@ describe("assistant responsibility boundaries", () => {
 
   it("uses a dedicated low-latency text fallback model by default", () => {
     expect(XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL).not.toBe(XIAOZHUOBAN_REALTIME_MODEL);
+  });
+
+  it("uses gpt-realtime-2.1-mini by default and gpt-realtime-2.1 for high accuracy mode", () => {
+    expect(XIAOZHUOBAN_REALTIME_MODEL).toBe(XIAOZHUOBAN_REALTIME_MINI_MODEL);
+    expect(resolveXiaozhuobanRealtimeModel()).toBe("gpt-realtime-2.1-mini");
+    expect(resolveXiaozhuobanRealtimeModel({ highAccuracy: true })).toBe(XIAOZHUOBAN_REALTIME_HIGH_ACCURACY_MODEL);
   });
 });
 

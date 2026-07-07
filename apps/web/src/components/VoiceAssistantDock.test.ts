@@ -231,6 +231,7 @@ describe("VoiceAssistantDock", () => {
     expect(getVoiceAssistantDockStateForRealtimeStatus("microphone_denied")).toBe("error");
     expect(getVoiceAssistantDockStateForRealtimeStatus("microphone_unavailable")).toBe("error");
 
+    expect(getVoiceAssistantConnectionMessage("connecting")).toBe("正在连接 Realtime。");
     expect(getVoiceAssistantConnectionMessage("configuring")).toBe("正在应用语音会话配置。");
     expect(getVoiceAssistantConnectionMessage("connected")).toBe("语音已连接，可以直接说话。");
     expect(getVoiceAssistantConnectionMessage("session_failed")).toBe("Realtime 会话配置未生效，请重试。");

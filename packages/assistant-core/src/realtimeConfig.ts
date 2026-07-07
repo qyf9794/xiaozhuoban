@@ -5,6 +5,7 @@ export interface RealtimeSessionOptions {
   ttlSeconds?: number;
   reasoningEffort?: RealtimeReasoningEffort;
   turnDetectionEagerness?: RealtimeSemanticVadEagerness;
+  highAccuracy?: boolean;
 }
 
 export interface AssistantResponsibility {
@@ -60,7 +61,9 @@ export interface LegacyCommandPlanStep {
 }
 
 export const OPENAI_REALTIME_CLIENT_SECRET_URL = "https://api.openai.com/v1/realtime/client_secrets";
-export const XIAOZHUOBAN_REALTIME_MODEL = "gpt-realtime-2";
+export const XIAOZHUOBAN_REALTIME_MINI_MODEL = "gpt-realtime-2.1-mini";
+export const XIAOZHUOBAN_REALTIME_HIGH_ACCURACY_MODEL = "gpt-realtime-2.1";
+export const XIAOZHUOBAN_REALTIME_MODEL = XIAOZHUOBAN_REALTIME_MINI_MODEL;
 export const XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL = "gpt-4.1-mini";
 export const XIAOZHUOBAN_REALTIME_INPUT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
 export const DEFAULT_REALTIME_CLIENT_SECRET_TTL_SECONDS = 600;
@@ -158,4 +161,8 @@ export function createRealtimeInputTranscription() {
   return {
     model: XIAOZHUOBAN_REALTIME_INPUT_TRANSCRIPTION_MODEL
   };
+}
+
+export function resolveXiaozhuobanRealtimeModel(options: Pick<RealtimeSessionOptions, "highAccuracy"> = {}): string {
+  return options.highAccuracy ? XIAOZHUOBAN_REALTIME_HIGH_ACCURACY_MODEL : XIAOZHUOBAN_REALTIME_MODEL;
 }

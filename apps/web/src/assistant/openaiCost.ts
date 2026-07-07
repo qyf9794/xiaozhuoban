@@ -21,7 +21,7 @@ export type OpenAIUsageCostEstimate = {
 };
 
 const PRICING_SOURCE = "https://developers.openai.com/api/docs/pricing";
-const PRICING_CHECKED_AT = "2026-07-05";
+const PRICING_CHECKED_AT = "2026-07-07";
 const MILLION = 1_000_000;
 
 type TokenRates = {
@@ -37,6 +37,22 @@ type TokenRates = {
 };
 
 const MODEL_TOKEN_RATES: Record<string, TokenRates> = {
+  "gpt-realtime-2.1-mini": {
+    textInput: 0.6,
+    cachedTextInput: 0.06,
+    textOutput: 2.4,
+    audioInput: 10,
+    cachedAudioInput: 0.3,
+    audioOutput: 20
+  },
+  "gpt-realtime-2.1": {
+    textInput: 4,
+    cachedTextInput: 0.4,
+    textOutput: 24,
+    audioInput: 32,
+    cachedAudioInput: 0.4,
+    audioOutput: 64
+  },
   "gpt-realtime-2": {
     textInput: 4,
     cachedTextInput: 0.4,

@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { estimateOpenAIUsageCost, estimateRealtimeResponseCost } from "./openaiCost";
 
 describe("OpenAI usage cost estimates", () => {
-  it("estimates gpt-realtime-2 multimodal token costs", () => {
+  it("estimates gpt-realtime-2.1-mini multimodal token costs", () => {
     const estimate = estimateOpenAIUsageCost(
-      "gpt-realtime-2",
+      "gpt-realtime-2.1-mini",
       {
         input_tokens: 1300,
         output_tokens: 80,
@@ -23,7 +23,7 @@ describe("OpenAI usage cost estimates", () => {
     );
 
     expect(estimate).toMatchObject({
-      model: "gpt-realtime-2",
+      model: "gpt-realtime-2.1-mini",
       estimateAvailable: true,
       textInputTokens: 1000,
       cachedTextInputTokens: 100,
@@ -31,6 +31,29 @@ describe("OpenAI usage cost estimates", () => {
       textOutputTokens: 50,
       audioOutputTokens: 30
     });
+    expect(estimate?.estimatedCostUsd).toBe(0.004266);
+  });
+
+  it("keeps high-accuracy gpt-realtime-2.1 costs separate from mini mode", () => {
+    const estimate = estimateOpenAIUsageCost(
+      "gpt-realtime-2.1",
+      {
+        input_tokens: 1300,
+        output_tokens: 80,
+        input_token_details: {
+          text_tokens: 1000,
+          audio_tokens: 300,
+          cached_tokens: 100,
+          cached_tokens_details: { text_tokens: 100 }
+        },
+        output_token_details: {
+          text_tokens: 50,
+          audio_tokens: 30
+        }
+      },
+      { source: "realtime", stage: "response.done" }
+    );
+
     expect(estimate?.estimatedCostUsd).toBe(0.01636);
   });
 
@@ -52,7 +75,7 @@ describe("OpenAI usage cost estimates", () => {
   });
 
   it("extracts usage from realtime response.done events", () => {
-    const estimate = estimateRealtimeResponseCost("gpt-realtime-2", {
+    const estimate = estimateRealtimeResponseCost("gpt-realtime-2.1-mini", {
       type: "response.done",
       response: {
         id: "resp_123",
@@ -65,7 +88,7 @@ describe("OpenAI usage cost estimates", () => {
       }
     });
 
-    expect(estimate?.estimatedCostUsd).toBe(0.00016);
+    expect(estimate?.estimatedCostUsd).toBe(0.000018);
     expect(estimate?.responseId).toBe("resp_123");
   });
 });

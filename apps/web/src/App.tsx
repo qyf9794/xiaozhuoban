@@ -33,6 +33,7 @@ const WALLPAPER_MAX_LONG_EDGE = 2560;
 const MOBILE_CHROME_IDLE_HIDE_MS = 3000;
 const MOBILE_CHROME_SCROLL_THRESHOLD = 6;
 const ASSISTANT_TERMINAL_OPERATION_VISIBLE_MS = 8000;
+const REALTIME_HIGH_ACCURACY_STORAGE_KEY = "xiaozhuoban.realtime.highAccuracy";
 const repositoryByUserId = new Map<string, SupabaseRepository>();
 const E2E_AUTH_BYPASS = import.meta.env.VITE_XIAOZHUOBAN_E2E_AUTH_BYPASS === "true";
 
@@ -56,6 +57,11 @@ function getAssistantRuntimeText(status: { mode: AssistantRuntimeMode; metrics: 
   if (!status) return "本地待机 · Realtime 按需连接";
   const activeSeconds = Math.round(status.metrics.realtimeActiveMs / 1000);
   return `${status.mode} · Realtime ${activeSeconds}s · $${status.metrics.estimatedCostUsd.toFixed(4)}`;
+}
+
+function readRealtimeHighAccuracyMode(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(REALTIME_HIGH_ACCURACY_STORAGE_KEY) === "true";
 }
 
 function isLikelyMobileUA() {
@@ -179,6 +185,7 @@ export function App() {
   const [commandPaletteInitialQuery, setCommandPaletteInitialQuery] = useState("");
   const [aiDialogInitialPrompt, setAiDialogInitialPrompt] = useState("");
   const [settingsOpenRequestId, setSettingsOpenRequestId] = useState(0);
+  const [realtimeHighAccuracyMode, setRealtimeHighAccuracyMode] = useState(readRealtimeHighAccuracyMode);
   const [desktopViewportBottomInset, setDesktopViewportBottomInset] = useState(14);
   const [mobileChromeVisible, setMobileChromeVisible] = useState(true);
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeConnectionStatus>("disconnected");
@@ -219,11 +226,13 @@ export function App() {
   const assistantSpeechEventIdRef = useRef(0);
   const userSpeechEventIdRef = useRef(0);
   const lastCommandLikeUserSpeechRef = useRef("");
+  const realtimeHighAccuracyModeRef = useRef(realtimeHighAccuracyMode);
   const assistantCapabilityBridgeRef = useRef(new WidgetCapabilityBridge());
   const sidebarOpenRef = useRef(sidebarOpen);
   const fullscreenRef = useRef(fullscreen);
   sidebarOpenRef.current = sidebarOpen;
   fullscreenRef.current = fullscreen;
+  realtimeHighAccuracyModeRef.current = realtimeHighAccuracyMode;
   const isMobileUa = useMemo(() => isLikelyMobileUA(), []);
   const isMobileMode = isMobileUa || viewportWidth <= MOBILE_VIEWPORT_MAX;
   const recordDiagnostic = (event: AssistantDiagnosticEvent) => {
@@ -280,6 +289,7 @@ export function App() {
         },
         adapterOptions: {
           getAccessToken: () => useAuthStore.getState().session?.access_token,
+          getHighAccuracyMode: () => realtimeHighAccuracyModeRef.current,
           onMicrophoneLevel: setRealtimeAudioLevel,
           onDiagnostic: recordDiagnostic
         },
@@ -312,6 +322,10 @@ export function App() {
       }),
     []
   );
+
+  useEffect(() => {
+    window.localStorage.setItem(REALTIME_HIGH_ACCURACY_STORAGE_KEY, realtimeHighAccuracyMode ? "true" : "false");
+  }, [realtimeHighAccuracyMode]);
 
   const activeBoard = useMemo(() => boards.find((item) => item.id === activeBoardId), [activeBoardId, boards]);
   const appBackgroundColor = activeBoard?.background.type === "color" ? activeBoard.background.value : "#0f172a";
@@ -615,6 +629,8 @@ export function App() {
               mobileVisible={mobileChromeVisible}
               onMenuOpenChange={setMobileToolbarMenuOpen}
               settingsOpenRequestId={settingsOpenRequestId}
+              realtimeHighAccuracyMode={realtimeHighAccuracyMode}
+              onToggleRealtimeHighAccuracyMode={() => setRealtimeHighAccuracyMode((value) => !value)}
               fullscreen={fullscreen}
               onToggleFullscreen={() => {
                 if (document.fullscreenElement) {

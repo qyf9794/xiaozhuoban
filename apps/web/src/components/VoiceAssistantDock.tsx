@@ -39,7 +39,7 @@ export function getVoiceAssistantDockStateForRealtimeStatus(status: RealtimeConn
 }
 
 export function getVoiceAssistantConnectionMessage(status: RealtimeConnectionStatus): string {
-  if (status === "connecting") return "正在连接 gpt-realtime-2。";
+  if (status === "connecting") return "正在连接 Realtime。";
   if (status === "configuring") return "正在应用语音会话配置。";
   if (status === "connected") return "语音已连接，可以直接说话。";
   if (status === "microphone_denied") return MICROPHONE_PERMISSION_MESSAGE;

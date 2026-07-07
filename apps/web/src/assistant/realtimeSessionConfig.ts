@@ -5,8 +5,10 @@ import {
   REALTIME_COMMAND_EXECUTION_TOOL_NAME,
   ToolScopeManager,
   XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL,
+  XIAOZHUOBAN_REALTIME_HIGH_ACCURACY_MODEL,
   XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
   XIAOZHUOBAN_REALTIME_INPUT_TRANSCRIPTION_MODEL,
+  XIAOZHUOBAN_REALTIME_MINI_MODEL,
   XIAOZHUOBAN_REALTIME_MODEL,
   clampRealtimeClientSecretTtl,
   createRealtimeInputTranscription,
@@ -14,6 +16,7 @@ import {
   createRealtimeTurnDetection,
   decodeRealtimeToolName,
   encodeRealtimeToolName,
+  resolveXiaozhuobanRealtimeModel,
   type AssistantParameterSchema,
   type CompactAssistantContext,
   type RealtimeReasoningEffort,
@@ -29,14 +32,17 @@ export {
   REALTIME_TOOL_SELECTION_TOOL_NAME,
   REALTIME_COMMAND_EXECUTION_TOOL_NAME,
   XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL,
+  XIAOZHUOBAN_REALTIME_HIGH_ACCURACY_MODEL,
   XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
   XIAOZHUOBAN_REALTIME_INPUT_TRANSCRIPTION_MODEL,
+  XIAOZHUOBAN_REALTIME_MINI_MODEL,
   XIAOZHUOBAN_REALTIME_MODEL,
   clampRealtimeClientSecretTtl,
   createRealtimeInputTranscription,
   createRealtimeTurnDetection,
   decodeRealtimeToolName,
-  encodeRealtimeToolName
+  encodeRealtimeToolName,
+  resolveXiaozhuobanRealtimeModel
 };
 
 export type { RealtimeReasoningEffort, RealtimeSemanticVadEagerness, RealtimeSessionOptions };
@@ -418,7 +424,7 @@ export function createRealtimeClientSecretPayload(options: RealtimeSessionOption
     },
     session: {
       type: "realtime",
-      model: XIAOZHUOBAN_REALTIME_MODEL,
+      model: resolveXiaozhuobanRealtimeModel(options),
       instructions: createRealtimeContextInstructions(),
       reasoning: {
         effort: options.reasoningEffort ?? "low"

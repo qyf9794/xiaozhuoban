@@ -635,6 +635,7 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(JSON.parse(createRealtimeSessionRequestBody(" user_123 "))).toEqual({});
     expect(JSON.parse(createRealtimeSessionRequestBody("   "))).toEqual({});
     expect(JSON.parse(createRealtimeSessionRequestBody(undefined))).toEqual({});
+    expect(JSON.parse(createRealtimeSessionRequestBody(" user_123 ", { highAccuracy: true }))).toEqual({ highAccuracy: true });
   });
 
   it("does not create a new response while another response is active", () => {
@@ -841,6 +842,7 @@ describe("OpenAI realtime adapter helpers", () => {
     const originalNavigator = globalThis.navigator;
     let getUserMediaCalled = false;
     const sentEvents: unknown[] = [];
+    const sessionBodies: unknown[] = [];
     const diagnostics: Array<{ type: string; status?: string; data?: Record<string, unknown> }> = [];
     const statuses: string[] = [];
     const transceivers: Array<{ kind: string; init?: RTCRtpTransceiverInit }> = [];
@@ -924,10 +926,12 @@ describe("OpenAI realtime adapter helpers", () => {
     try {
       const adapter = new OpenAIRealtimeWebRtcAdapter({
         getAccessToken: () => "supabase-token",
+        getHighAccuracyMode: () => true,
         onStatusChange: (status) => statuses.push(status),
         onDiagnostic: (event) => diagnostics.push(event),
-        fetchImpl: (async (url) => {
+        fetchImpl: (async (url, init) => {
           if (String(url).includes("/api/realtime/session")) {
+            sessionBodies.push(JSON.parse(String(init?.body)) as unknown);
             return new Response(JSON.stringify({ client_secret: { value: "client-secret" } }), {
               status: 200,
               headers: { "content-type": "application/json" }
@@ -943,6 +947,7 @@ describe("OpenAI realtime adapter helpers", () => {
       await adapter.connectTextOnly();
 
       expect(getUserMediaCalled).toBe(false);
+      expect(sessionBodies).toEqual([{ highAccuracy: true }]);
       expect(transceivers).toEqual([{ kind: "audio", init: { direction: "recvonly" } }]);
       expect(statuses).toContain("connected");
       expect(diagnostics).toEqual(expect.arrayContaining([
@@ -1762,7 +1767,11 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "openai.usage.cost_estimate",
         status: "estimated",
         commandTraceId: trace,
-        data: expect.objectContaining({ estimatedCostUsd: 0.00016, responseId: "resp_voice_2" })
+        data: expect.objectContaining({
+          estimatedCostUsd: 0.000018,
+          model: "gpt-realtime-2.1-mini",
+          responseId: "resp_voice_2"
+        })
       })
     ]));
   });
