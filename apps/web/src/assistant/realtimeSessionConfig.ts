@@ -13,7 +13,6 @@ import {
   clampRealtimeClientSecretTtl,
   createRealtimeClientSecretPayload as createCoreRealtimeClientSecretPayload,
   createRealtimeInputTranscription,
-  createPassthroughSchema,
   createRealtimeSessionAudioConfig,
   createRealtimeTurnDetection,
   decodeRealtimeToolName,
@@ -114,10 +113,6 @@ export function createRealtimeContextInstructions(context?: CompactAssistantCont
     definitions
   ].join("\n");
 }
-
-const anyObjectSchema = createPassthroughSchema<Record<string, unknown>>((value): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === "object"
-);
 
 const initialToolMetadata: InitialToolMetadata[] = [
   {
@@ -266,11 +261,76 @@ function objectSchema(properties: Record<string, unknown>, required?: string[], 
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function matchesJsonSchemaType(value: unknown, type: unknown): boolean {
+  const types = Array.isArray(type) ? type : [type];
+  return types.some((entry) => {
+    if (entry === "null") return value === null;
+    if (entry === "array") return Array.isArray(value);
+    if (entry === "object") return isRecord(value);
+    return typeof entry === "string" && typeof value === entry;
+  });
+}
+
+function validateJsonObjectSchema(value: unknown, schema: JsonObjectSchema): { success: true; data: Record<string, unknown> } | { success: false; message: string } {
+  if (!isRecord(value)) {
+    return { success: false, message: "参数必须是对象" };
+  }
+  const keys = Object.keys(schema.properties);
+  const required = new Set(schema.required ?? []);
+  for (const key of required) {
+    if (value[key] === undefined) {
+      return { success: false, message: `${key} 参数必填` };
+    }
+  }
+  if (schema.additionalProperties === false) {
+    const extra = Object.keys(value).find((key) => !keys.includes(key));
+    if (extra) return { success: false, message: `${extra} 未声明参数` };
+  }
+  for (const key of keys) {
+    const current = value[key];
+    if (current === undefined) continue;
+    const field = schema.properties[key];
+    if (!isRecord(field)) continue;
+    if (field.type && !matchesJsonSchemaType(current, field.type)) {
+      return { success: false, message: `${key} 参数类型不匹配` };
+    }
+    if (Array.isArray(field.enum) && !field.enum.includes(current)) {
+      return { success: false, message: `${key} 参数不在允许范围内` };
+    }
+    if (field.type === "object" && isRecord(current) && isRecord(field.properties)) {
+      const nested = validateJsonObjectSchema(current, field as JsonObjectSchema);
+      if (!nested.success) return nested;
+    }
+  }
+  return { success: true, data: value };
+}
+
+function createJsonSchemaParameterSchema(
+  jsonSchema: JsonObjectSchema
+): AssistantParameterSchema<Record<string, unknown>> & { argumentKeys: string[]; jsonSchema: JsonObjectSchema } {
+  const argumentKeys = Object.keys(jsonSchema.properties);
+  return {
+    argumentKeys,
+    jsonSchema,
+    safeParse(value) {
+      const result = validateJsonObjectSchema(value, jsonSchema);
+      if (result.success) return result;
+      return { success: false, error: { issues: [{ message: result.message }] } };
+    }
+  };
+}
+
 function toAssistantToolSpec(metadata: InitialToolMetadata): AssistantToolSpec<Record<string, unknown>> {
+  const parameters = createJsonSchemaParameterSchema(metadata.parameters);
   return {
     name: metadata.name,
     description: metadata.description,
-    parameters: anyObjectSchema as AssistantParameterSchema<Record<string, unknown>>,
+    parameters,
+    argumentKeys: parameters.argumentKeys,
     risk: metadata.risk,
     scope: metadata.scope
   };
@@ -347,12 +407,31 @@ export function serializeAssistantToolForRealtime(
   tool: AssistantToolSpec,
   parameters?: Record<string, unknown>
 ): RealtimeFunctionTool {
+  const resolvedParameters = parameters ?? inferAssistantToolParameters(tool);
   return {
     type: "function",
     name: encodeRealtimeToolName(tool.name),
     description: tool.description,
-    parameters: parameters ?? inferAssistantToolParameters(tool)
+    parameters: resolvedParameters,
+    ...(isStrictRealtimeToolSchema(resolvedParameters) ? { strict: true } : {})
   };
+}
+
+function isStrictRealtimeToolSchema(schema: Record<string, unknown>): boolean {
+  if (schema.type !== "object" || schema.additionalProperties !== false) return false;
+  const properties = isRecord(schema.properties) ? schema.properties : null;
+  if (!properties) return false;
+  const propertyKeys = Object.keys(properties);
+  const required = Array.isArray(schema.required) ? schema.required : [];
+  if (!propertyKeys.every((key) => required.includes(key))) return false;
+  return propertyKeys.every((key) => {
+    const property = properties[key];
+    if (!isRecord(property)) return true;
+    const propertyType = property.type;
+    const types = Array.isArray(propertyType) ? propertyType : [propertyType];
+    if (!types.includes("object")) return true;
+    return isStrictRealtimeToolSchema(property);
+  });
 }
 
 function inferAssistantToolParameters(tool: AssistantToolSpec): Record<string, unknown> {

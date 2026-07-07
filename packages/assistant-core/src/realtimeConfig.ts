@@ -6,6 +6,7 @@ export interface RealtimeFunctionTool {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
+  strict?: boolean;
 }
 
 export interface RealtimeSessionOptions {

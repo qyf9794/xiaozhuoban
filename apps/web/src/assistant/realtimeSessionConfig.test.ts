@@ -32,6 +32,8 @@ describe("realtime session config", () => {
   it("creates only desktop-level initial tool specs", () => {
     const specs = createInitialRealtimeToolSpecs();
     const names = specs.map((tool) => tool.name);
+    const focusSpec = specs.find((tool) => tool.name === "widget.focus");
+    const sidebarSpec = specs.find((tool) => tool.name === "app.sidebar.set");
 
     expect(names).toContain("board.add_widget");
     expect(names).toContain("app.sidebar.set");
@@ -44,6 +46,16 @@ describe("realtime session config", () => {
     expect(names).not.toContain("gomoku.play");
     expect(names.some((name) => name.includes("note.") || name.includes("weather.") || name.includes("tv."))).toBe(false);
     expect(specs.every((tool) => tool.scope === "desktop")).toBe(true);
+    expect(focusSpec?.argumentKeys).toEqual(["widgetId"]);
+    expect((focusSpec?.parameters as { jsonSchema?: unknown }).jsonSchema).toMatchObject({
+      type: "object",
+      properties: { widgetId: { type: "string" } },
+      required: ["widgetId"],
+      additionalProperties: false
+    });
+    expect(focusSpec?.parameters.safeParse({ widgetId: "wi_1" }).success).toBe(true);
+    expect(focusSpec?.parameters.safeParse({ widgetId: "wi_1", extra: true }).success).toBe(false);
+    expect(sidebarSpec?.argumentKeys).toEqual(["open", "mode"]);
   });
 
   it("serializes registered Realtime tools as function tool schemas", () => {
@@ -60,6 +72,8 @@ describe("realtime session config", () => {
       required: ["definitionId"],
       additionalProperties: false
     });
+    expect(tools.find((tool) => decodeRealtimeToolName(tool.name) === "widget.focus")?.strict).toBe(true);
+    expect(tools.find((tool) => decodeRealtimeToolName(tool.name) === "board.add_widget")?.strict).toBeUndefined();
   });
 
   it("infers target parameters for scoped Realtime tool updates", () => {
@@ -77,6 +91,26 @@ describe("realtime session config", () => {
       required: ["widgetId"],
       additionalProperties: false
     });
+    expect(removeWidget.strict).toBe(true);
+  });
+
+  it("does not mark optional-field schemas strict until they are strict-compatible", () => {
+    const sidebar = serializeAssistantToolForRealtime({
+      name: "app.sidebar.set",
+      description: "切换侧边栏",
+      parameters: createPassthroughSchema<Record<string, unknown>>(),
+      scope: "desktop"
+    });
+
+    expect(sidebar.parameters).toMatchObject({
+      type: "object",
+      properties: {
+        open: { type: "boolean" },
+        mode: { type: "string", enum: ["show", "hide", "toggle"] }
+      },
+      additionalProperties: false
+    });
+    expect(sidebar.strict).toBeUndefined();
   });
 
   it("starts Realtime sessions with tool selection and a command fallback", () => {
