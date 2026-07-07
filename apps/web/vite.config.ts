@@ -37,8 +37,12 @@ function applyLocalRealtimeApiEnv(env: Record<string, string>): void {
     "OPENAI_API_KEY",
     "SUPABASE_URL",
     "SUPABASE_ANON_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
     "VITE_SUPABASE_URL",
     "VITE_SUPABASE_ANON_KEY",
+    "CRON_SECRET",
+    "ASSISTANT_LOG_CLEANUP_SECRET",
+    "ASSISTANT_LOG_RETENTION_DAYS",
     "XIAOZHUOBAN_TEXT_TOOL_MODEL",
     "XIAOZHUOBAN_E2E_REALTIME_AUTH_BYPASS"
   ];
@@ -66,6 +70,10 @@ function localRealtimeApiPlugin(env: Record<string, string>): Plugin {
       });
       server.middlewares.use("/api/assistant/diagnostics", async (request, response) => {
         const { default: handler } = await server.ssrLoadModule("./api/assistant/diagnostics.ts");
+        await handler(request as IncomingMessage, response as ServerResponse);
+      });
+      server.middlewares.use("/api/assistant/cleanup", async (request, response) => {
+        const { default: handler } = await server.ssrLoadModule("./api/assistant/cleanup.ts");
         await handler(request as IncomingMessage, response as ServerResponse);
       });
       server.middlewares.use("/api/market/search", async (request, response) => {

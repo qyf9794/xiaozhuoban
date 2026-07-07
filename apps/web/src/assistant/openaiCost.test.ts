@@ -55,6 +55,7 @@ describe("OpenAI usage cost estimates", () => {
     const estimate = estimateRealtimeResponseCost("gpt-realtime-2", {
       type: "response.done",
       response: {
+        id: "resp_123",
         usage: {
           input_tokens: 10,
           output_tokens: 5,
@@ -65,5 +66,6 @@ describe("OpenAI usage cost estimates", () => {
     });
 
     expect(estimate?.estimatedCostUsd).toBe(0.00016);
+    expect(estimate?.responseId).toBe("resp_123");
   });
 });

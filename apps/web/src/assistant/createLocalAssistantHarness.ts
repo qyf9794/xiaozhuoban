@@ -32,6 +32,8 @@ import { createTvAssistantModule } from "../widgets/modules/tv/assistant";
 import { createWeatherAssistantModule } from "../widgets/modules/weather/assistant";
 import { createWorldClockAssistantModule } from "../widgets/modules/worldClock/assistant";
 
+const MOBILE_VIEWPORT_MAX = 900;
+
 const noopRealtimeAdapter: AssistantRealtimeAdapter = {
   updateTools() {},
   updateContext() {},
@@ -47,6 +49,20 @@ function createContextInput(): ContextSummarizerInput {
   const activeBoard = state.boards.find((board) => board.id === state.activeBoardId);
   const definitionById = new Map(state.widgetDefinitions.map((definition) => [definition.id, definition]));
   const activeWidgets = state.widgetInstances.filter((widget) => widget.boardId === state.activeBoardId);
+  const viewport =
+    typeof window === "undefined"
+      ? undefined
+      : {
+          width: Math.round(window.visualViewport?.width ?? window.innerWidth),
+          height: Math.round(window.visualViewport?.height ?? window.innerHeight),
+          mode:
+            window.innerWidth <= MOBILE_VIEWPORT_MAX || /iPhone|iPad|iPod|Android/i.test(window.navigator.userAgent)
+              ? ("mobile" as const)
+              : ("desktop" as const),
+          fullscreen: Boolean(document.fullscreenElement),
+          screenWidth: Math.round(window.screen?.availWidth ?? window.screen?.width ?? window.innerWidth),
+          screenHeight: Math.round(window.screen?.availHeight ?? window.screen?.height ?? window.innerHeight)
+        };
 
   return {
     boardId: activeBoard?.id,
@@ -63,6 +79,7 @@ function createContextInput(): ContextSummarizerInput {
       name: definition.name
     })),
     maxWidgets: Math.min(16, Math.max(8, activeWidgets.length)),
+    viewport,
     recentWidgetIds: activeWidgets.slice(-3).map((widget) => widget.id),
     widgets: activeWidgets.map((widget, index) => {
       const definition = definitionById.get(widget.definitionId);
@@ -72,6 +89,8 @@ function createContextInput(): ContextSummarizerInput {
         type: definition?.type ?? "unknown",
         name: definition?.name ?? "小工具",
         order: index + 1,
+        position: widget.position,
+        size: widget.size,
         state: widget.state
       };
     })

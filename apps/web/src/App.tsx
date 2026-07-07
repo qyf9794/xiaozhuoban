@@ -172,7 +172,7 @@ export function App() {
         email: user?.email ?? null,
         userMetadata: (user?.user_metadata as Record<string, unknown> | undefined) ?? null
       });
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileToolbarMenuOpen, setMobileToolbarMenuOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);

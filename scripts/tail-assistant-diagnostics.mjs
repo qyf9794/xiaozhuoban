@@ -11,6 +11,7 @@ const session = args.find((arg) => arg.startsWith("--session="))?.slice("--sessi
 const costSummary = args.includes("--cost-summary");
 const marker = "[assistant-diagnostic]";
 const printedKeys = new Set();
+const costKeys = new Set();
 const costEvents = [];
 
 const child = spawn(
@@ -62,7 +63,11 @@ function handleChunk(chunk) {
           if (printedKeys.has(key)) return;
           printedKeys.add(key);
           if (event.type === "openai.usage.cost_estimate") {
-            costEvents.push(event);
+            const costKey = createCostEventKey(event);
+            if (!costKeys.has(costKey)) {
+              costKeys.add(costKey);
+              costEvents.push(event);
+            }
           }
           console.log(
             JSON.stringify(
@@ -91,6 +96,36 @@ function handleChunk(chunk) {
         }
       });
     });
+}
+
+function createCostEventKey(event) {
+  const data = event.data && typeof event.data === "object" ? event.data : {};
+  const responseId = typeof data.responseId === "string" ? data.responseId : "";
+  if (responseId) {
+    return [
+      "response",
+      event.traceId ?? event.commandTraceId ?? "",
+      responseId,
+      data.source ?? "",
+      data.model ?? "",
+      data.stage ?? ""
+    ].join("|");
+  }
+  return [
+    "usage",
+    event.traceId ?? event.commandTraceId ?? "",
+    data.source ?? "",
+    data.model ?? "",
+    data.stage ?? "",
+    data.inputTokens ?? "",
+    data.cachedInputTokens ?? "",
+    data.outputTokens ?? "",
+    data.textInputTokens ?? "",
+    data.audioInputTokens ?? "",
+    data.textOutputTokens ?? "",
+    data.audioOutputTokens ?? "",
+    data.estimatedCostUsd ?? ""
+  ].join("|");
 }
 
 function printCostSummary() {

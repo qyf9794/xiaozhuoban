@@ -120,7 +120,7 @@ describe("realtime session API", () => {
     expect(safetyIdentifier?.length).toBeLessThanOrEqual(64);
     const payload = JSON.parse(String(init?.body));
     expect(payload.session.model).toBe("gpt-realtime-2");
-    expect(payload.session.max_output_tokens).toBe(240);
+    expect(payload.session.max_output_tokens).toBe(480);
     expect(payload.session.parallel_tool_calls).toBe(true);
     expect(payload.session.output_modalities).toBeUndefined();
     expect(payload.session.audio.input.turn_detection).toEqual({

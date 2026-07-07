@@ -275,6 +275,188 @@ describe("OpenAI realtime adapter helpers", () => {
     ]);
   });
 
+  it("normalizes top-level add-widget follow-up arguments before execution", () => {
+    const calls: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall(call) {
+        calls.push(call);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "board.add_widget",
+        description: "添加小工具",
+        parameters: createStrictObjectSchema({
+          definitionId: { type: "string", required: true },
+          followUp: { type: "object" }
+        }),
+        argumentKeys: ["definitionId", "followUp"],
+        scope: "desktop",
+        risk: "safe"
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: {},
+      availableDefinitions: [{ definitionId: "wd_market_1", type: "market", name: "行情" }],
+      widgets: []
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; activeCommandTraceId: string }, {
+      sessionReady: true,
+      activeCommandTraceId: "trace_market_query"
+    });
+    (adapter as unknown as { realtimeTraceUserTranscripts: Map<string, { input: string }> }).realtimeTraceUserTranscripts.set(
+      "trace_market_query",
+      { input: "查一下苹果公司的股票" }
+    );
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "call_add_market",
+      name: "board.add_widget",
+      arguments: {
+        definitionId: "wd_market_1",
+        followUpName: "market.set_indices",
+        query: "苹果公司"
+      },
+      source: "realtime"
+    });
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        name: "board.add_widget",
+        arguments: {
+          definitionId: "wd_market_1",
+          followUp: { name: "market.set_indices", arguments: { query: "苹果公司" } }
+        }
+      })
+    ]);
+  });
+
+  it("normalizes todo itemRef and inferred resize dimensions for realtime calls", () => {
+    const calls: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall(call) {
+        calls.push(call);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "todo.complete_item",
+        description: "完成待办",
+        parameters: createStrictObjectSchema({
+          widgetId: { type: "string", required: true },
+          text: { type: "string", required: true }
+        }),
+        argumentKeys: ["widgetId", "text"],
+        scope: "widget-detail",
+        widgetType: "todo",
+        requiresTarget: true
+      },
+      {
+        name: "widget.resize",
+        description: "调整小工具大小",
+        parameters: createStrictObjectSchema({
+          widgetId: { type: "string", required: true },
+          w: { type: "number", required: true },
+          h: { type: "number", required: true }
+        }),
+        argumentKeys: ["widgetId", "w", "h"],
+        scope: "desktop",
+        requiresTarget: true
+      },
+      {
+        name: "widget.move",
+        description: "移动小工具",
+        parameters: createStrictObjectSchema({
+          widgetId: { type: "string", required: true },
+          x: { type: "number" },
+          y: { type: "number" }
+        }),
+        argumentKeys: ["widgetId", "x", "y"],
+        scope: "desktop",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      viewport: { width: 1280, height: 720, mode: "desktop", fullscreen: true, screenWidth: 1280, screenHeight: 720 },
+      widgetCountsByType: { todo: 1 },
+      focusedWidget: {
+        widgetId: "wi_todo",
+        definitionId: "wd_todo",
+        type: "todo",
+        name: "待办",
+        order: 1,
+        position: { x: 120, y: 140 },
+        size: { w: 240, h: 260 },
+        summary: ""
+      },
+      widgets: [
+        {
+          widgetId: "wi_todo",
+          definitionId: "wd_todo",
+          type: "todo",
+          name: "待办",
+          order: 1,
+          position: { x: 120, y: 140 },
+          size: { w: 240, h: 260 },
+          summary: "",
+          focused: true
+        }
+      ]
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; activeCommandTraceId: string }, {
+      sessionReady: true,
+      activeCommandTraceId: "trace_todo"
+    });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "call_todo_complete",
+      name: "todo.complete_item",
+      arguments: { itemRef: "第一条待办" },
+      source: "realtime"
+    });
+    (adapter as unknown as { activeCommandTraceId: string }).activeCommandTraceId = "trace_resize";
+    (adapter as unknown as { realtimeTraceUserTranscripts: Map<string, { input: string }> }).realtimeTraceUserTranscripts.set(
+      "trace_resize",
+      { input: "把当前小工具调宽一点" }
+    );
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "call_resize",
+      name: "widget.resize",
+      arguments: { direction: "wider" },
+      source: "realtime"
+    });
+    (adapter as unknown as { activeCommandTraceId: string }).activeCommandTraceId = "trace_move";
+    (adapter as unknown as { realtimeTraceUserTranscripts: Map<string, { input: string }> }).realtimeTraceUserTranscripts.set(
+      "trace_move",
+      { input: "把待办放到右上角" }
+    );
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "call_move",
+      name: "widget.move",
+      arguments: { widgetId: "wi_todo" },
+      source: "realtime"
+    });
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        name: "todo.complete_item",
+        arguments: { widgetId: "wi_todo", text: "第一条待办" }
+      }),
+      expect.objectContaining({
+        name: "widget.resize",
+        arguments: { widgetId: "wi_todo", w: 336, h: 260 }
+      }),
+      expect.objectContaining({
+        name: "widget.move",
+        arguments: { widgetId: "wi_todo", x: 1020, y: 20 }
+      })
+    ]);
+  });
+
   it("dispatches back-to-back realtime function calls without dropping distinct call ids", () => {
     const handled = new Set<string>();
     const calls: string[] = [];
@@ -323,7 +505,7 @@ describe("OpenAI realtime adapter helpers", () => {
       type: "conversation.item.create",
       item: { type: "function_call_output", call_id: "call_1" }
     });
-    expect(events[1]).toEqual({ type: "response.create", response: { output_modalities: ["text"] } });
+    expect(events[1]).toEqual({ type: "response.create", response: { output_modalities: ["text"], max_output_tokens: 480 } });
   });
 
   it("does not create follow-up audio responses for voice realtime tool results", () => {
@@ -352,7 +534,7 @@ describe("OpenAI realtime adapter helpers", () => {
       },
       {
         type: "response.create",
-        response: { output_modalities: ["text"] }
+        response: { output_modalities: ["text"], max_output_tokens: 480 }
       }
     ]);
   });
@@ -425,7 +607,7 @@ describe("OpenAI realtime adapter helpers", () => {
       },
       {
         type: "response.create",
-        response: { output_modalities: ["text"] }
+        response: { output_modalities: ["text"], max_output_tokens: 480 }
       }
     ]);
     expect((adapter as unknown as { activeResponseId: string | null }).activeResponseId).toBeNull();
@@ -493,7 +675,7 @@ describe("OpenAI realtime adapter helpers", () => {
     ).handleRealtimeLifecycleEvent({ type: "response.done", response: { id: "resp_1" } });
 
     expect(sent).toHaveLength(2);
-    expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["text"] } });
+    expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["text"], max_output_tokens: 480 } });
   });
 
   it("continues voice realtime after active selector response finishes", () => {
@@ -530,7 +712,7 @@ describe("OpenAI realtime adapter helpers", () => {
     ).handleRealtimeLifecycleEvent({ type: "response.done", response: { id: "resp_voice_1" } });
 
     expect(sent).toHaveLength(2);
-    expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio"] } });
+    expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio"], max_output_tokens: 480 } });
   });
 
   it("does not continue voice realtime after final tool response finishes", () => {
@@ -887,7 +1069,7 @@ describe("OpenAI realtime adapter helpers", () => {
       },
       {
         type: "response.create",
-        response: { output_modalities: ["text"] }
+        response: { output_modalities: ["text"], max_output_tokens: 480 }
       }
     ]);
     expect(diagnostics).toEqual(expect.arrayContaining([
@@ -1495,7 +1677,12 @@ describe("OpenAI realtime adapter helpers", () => {
   });
 
   it("records realtime voice speech, transcript, and cost diagnostics under the same trace", () => {
-    const diagnostics: Array<{ type: string; commandTraceId?: string; status?: string; data?: { eventType?: string; transcript?: string; estimatedCostUsd?: number } }> = [];
+    const diagnostics: Array<{
+      type: string;
+      commandTraceId?: string;
+      status?: string;
+      data?: { eventType?: string; transcript?: string; estimatedCostUsd?: number; responseId?: string };
+    }> = [];
     const adapter = new OpenAIRealtimeWebRtcAdapter({
       onDiagnostic(event) {
         diagnostics.push(event);
@@ -1575,8 +1762,74 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "openai.usage.cost_estimate",
         status: "estimated",
         commandTraceId: trace,
-        data: expect.objectContaining({ estimatedCostUsd: 0.00016 })
+        data: expect.objectContaining({ estimatedCostUsd: 0.00016, responseId: "resp_voice_2" })
       })
+    ]));
+  });
+
+  it("records output audio transcripts and suppresses assistant echo transcripts", async () => {
+    const fallbackInputs: string[] = [];
+    const diagnostics: Array<{ type: string; status?: string; commandTraceId?: string; data?: { transcript?: string } }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onUnhandledUserTranscript(input) {
+        fallbackInputs.push(input);
+      },
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; connectMode: string; remoteAudioLevel: number; microphoneLevel: number }, {
+      sessionReady: true,
+      connectMode: "audio",
+      remoteAudioLevel: 0.08,
+      microphoneLevel: 0.02
+    });
+
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "response.created", response: { id: "resp_assistant_echo" } });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "response.output_audio_transcript.done",
+      response_id: "resp_assistant_echo",
+      item_id: "item_assistant_echo",
+      transcript: "好的，我来看。"
+    });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "input_audio_buffer.speech_started", item_id: "item_echo_user" });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "conversation.item.input_audio_transcription.completed",
+      item_id: "item_echo_user",
+      transcript: "好的,我來看。"
+    });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "response.done", response: { id: "resp_assistant_echo" } });
+    await Promise.resolve();
+
+    expect(fallbackInputs).toEqual([]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.voice.assistant_transcript",
+        status: "success",
+        data: expect.objectContaining({ transcript: "好的，我来看。" })
+      }),
+      expect.objectContaining({ type: "realtime.voice.echo_suppressed", status: "started" }),
+      expect.objectContaining({ type: "realtime.voice.echo_suppressed", status: "success" })
     ]));
   });
 
@@ -1595,6 +1848,7 @@ describe("OpenAI realtime adapter helpers", () => {
         activeResponseId: string | null;
         activeRealtimeResponseTraceId: string | null;
         remoteAudioLevel: number;
+        microphoneLevel: number;
         dataChannel: { readyState: string; send: (payload: string) => void };
         functionCallTraceIds: Map<string, string>;
       },
@@ -1604,6 +1858,7 @@ describe("OpenAI realtime adapter helpers", () => {
         activeResponseId: "resp_old",
         activeRealtimeResponseTraceId: "trace_old",
         remoteAudioLevel: 0.4,
+        microphoneLevel: 0.35,
         dataChannel: {
           readyState: "open",
           send(payload: string) {
@@ -2086,6 +2341,33 @@ describe("OpenAI realtime adapter helpers", () => {
     expect((adapter as unknown as { queuedEvents: unknown[] }).queuedEvents).toHaveLength(0);
   });
 
+  it("sends concise user-facing tool result messages back to realtime", () => {
+    const sent: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter();
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
+      }
+    });
+
+    adapter.sendToolResult(
+      { id: "call_add_music", name: "board.add_widget", arguments: {}, source: "realtime" },
+      { status: "success", message: "已添加小工具", data: { widgetType: "music" } }
+    );
+
+    const output = JSON.parse(
+      String(
+        (sent[0] as { item?: { output?: string } } | undefined)?.item?.output
+      )
+    ) as { message: string };
+    expect(output.message).toMatch(/音乐播放器/);
+    expect(output.message).not.toBe("已添加小工具");
+  });
+
   it("does not send local shortcut results back into the realtime conversation", () => {
     const diagnostics: Array<{ type: string; status?: string; operationId?: string; data?: unknown }> = [];
     const sent: unknown[] = [];
@@ -2501,7 +2783,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "conversation.item.create",
         item: expect.objectContaining({ type: "function_call_output", call_id: "select_open_tv" })
       }),
-      { type: "response.create", response: { output_modalities: ["text"] } }
+      { type: "response.create", response: { output_modalities: ["text"], max_output_tokens: 480 } }
     ]);
     expect(JSON.stringify(sent)).toContain("local_add_widget_shortcut");
     expect(sent).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: "session.update" })]));
@@ -2832,7 +3114,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "conversation.item.create",
         item: expect.objectContaining({ type: "function_call_output", call_id: "select_music" })
       }),
-      { type: "response.create", response: { output_modalities: ["text"] } }
+      { type: "response.create", response: { output_modalities: ["text"], max_output_tokens: 480 } }
     ]);
     expect(diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({

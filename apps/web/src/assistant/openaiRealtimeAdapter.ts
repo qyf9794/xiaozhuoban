@@ -39,6 +39,7 @@ import {
 import { createRealtimeCapabilityCatalog } from "./capabilityCatalog";
 import { buildRealtimeToolExposurePlan } from "./realtimeToolExposurePlanner";
 import { estimateRealtimeResponseCost } from "./openaiCost";
+import { formatAssistantResultMessage } from "./assistantResultPhrasing";
 
 export type RealtimeConnectionStatus =
   | "disconnected"
@@ -129,7 +130,12 @@ const MICROPHONE_LEVEL_SILENCE_FLOOR = 0.01;
 const MICROPHONE_LEVEL_GAIN = 5.2;
 const MICROPHONE_LEVEL_EMIT_DELTA = 0.008;
 const REMOTE_AUDIO_CLEAR_LEVEL = 0.03;
+const REMOTE_AUDIO_ECHO_LEVEL = 0.035;
+const MICROPHONE_ECHO_CEILING = 0.12;
 const MAX_INTERRUPTED_TRACE_IDS = 32;
+const MAX_RECENT_ASSISTANT_TRANSCRIPTS = 12;
+const RECENT_ASSISTANT_TRANSCRIPT_TTL_MS = 12_000;
+const REALTIME_MAX_OUTPUT_TOKENS = 480;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
@@ -148,6 +154,13 @@ function parseArguments(value: unknown): unknown {
 function clampUnit(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
+}
+
+function normalizeTranscriptForEchoMatch(value: string): string {
+  return value
+    .replace(/[，。！？、,.!?;；:："'“”‘’\s]/g, "")
+    .toLowerCase()
+    .trim();
 }
 
 export function resolveRealtimeMicrophoneLevel(samples: Uint8Array): number {
@@ -246,6 +259,55 @@ function normalizeNoteToolArguments(args: Record<string, unknown>): Record<strin
   return nextArgs;
 }
 
+function normalizeTodoToolArguments(toolName: string, args: Record<string, unknown>, fallbackText = ""): Record<string, unknown> {
+  const nextArgs = { ...args };
+  if (typeof nextArgs.text !== "string") {
+    const text =
+      nextArgs.itemRef ??
+      nextArgs.item ??
+      nextArgs.task ??
+      nextArgs.title ??
+      nextArgs.content ??
+      nextArgs.query ??
+      fallbackText;
+    if (typeof text === "string" && text.trim()) {
+      nextArgs.text = text.trim();
+    }
+  }
+  if (toolName === "todo.add_item" && typeof nextArgs.text === "string") {
+    nextArgs.text = nextArgs.text
+      .replace(/^(给?待办(?:加|添加)?一条|添加待办|加一条待办|待办[:：]?)/, "")
+      .trim() || nextArgs.text;
+  }
+  if (toolName === "todo.complete_item" && typeof nextArgs.text === "string") {
+    nextArgs.text = nextArgs.text.replace(/^(把|将)?/, "").replace(/(标记为完成|标记完成|完成|勾掉|做完)$/, "").trim() || nextArgs.text;
+  }
+  delete nextArgs.itemRef;
+  delete nextArgs.item;
+  delete nextArgs.task;
+  delete nextArgs.title;
+  delete nextArgs.content;
+  delete nextArgs.query;
+  return nextArgs;
+}
+
+function normalizeMarketToolArguments(args: Record<string, unknown>, fallbackText = ""): Record<string, unknown> {
+  const nextArgs = { ...args };
+  if (typeof nextArgs.query !== "string") {
+    const query = nextArgs.companyName ?? nextArgs.company ?? nextArgs.name ?? nextArgs.stockName ?? fallbackText;
+    if (typeof query === "string" && query.trim()) {
+      nextArgs.query = query.trim();
+    }
+  }
+  if (typeof nextArgs.symbols === "string") nextArgs.symbols = [nextArgs.symbols];
+  if (typeof nextArgs.indexCodes === "string") nextArgs.indexCodes = [nextArgs.indexCodes];
+  delete nextArgs.companyName;
+  delete nextArgs.company;
+  delete nextArgs.name;
+  delete nextArgs.stockName;
+  return nextArgs;
+}
+
 function looksLikeTvDefinitionId(value: unknown): boolean {
   return typeof value === "string" && /(^|[_-])tv([_-]|$)/i.test(value);
 }
@@ -291,16 +353,48 @@ function normalizeRealtimeToolArguments(toolName: string, args: Record<string, u
   if (toolName === "music.search" || toolName === "music.play") {
     nextArgs = normalizeMusicToolArguments(nextArgs);
   }
+  if (toolName === "todo.add_item" || toolName === "todo.complete_item") {
+    nextArgs = normalizeTodoToolArguments(toolName, nextArgs, fallbackText);
+  }
   if (toolName === "countdown.set") {
     nextArgs = normalizeCountdownToolArguments(nextArgs);
   }
   if (toolName === "note.write") {
     nextArgs = normalizeNoteToolArguments(nextArgs);
   }
+  if (toolName === "market.set_indices") {
+    nextArgs = normalizeMarketToolArguments(nextArgs, fallbackText);
+  }
   if (toolName === "tv.play" || toolName === "tv.select_channel") {
     nextArgs = normalizeTvToolArguments(nextArgs, fallbackText);
   }
-  if (toolName === "board.add_widget" && typeof nextArgs.raw === "string") {
+  if (toolName === "board.add_widget") {
+    nextArgs = normalizeBoardAddWidgetArguments(nextArgs, fallbackText);
+  }
+  return nextArgs;
+}
+
+function normalizeBoardAddWidgetArguments(args: Record<string, unknown>, fallbackText = ""): Record<string, unknown> {
+  let nextArgs = { ...args };
+  const topLevelFollowUpName =
+    typeof nextArgs.followUpName === "string"
+      ? nextArgs.followUpName
+      : typeof nextArgs.followUpTool === "string"
+        ? nextArgs.followUpTool
+        : "";
+  if (topLevelFollowUpName && !isRecord(nextArgs.followUp)) {
+    const followUpArgs = { ...nextArgs };
+    delete followUpArgs.definitionId;
+    delete followUpArgs.mobileMode;
+    delete followUpArgs.followUp;
+    delete followUpArgs.followUpName;
+    delete followUpArgs.followUpTool;
+    nextArgs.followUp = {
+      name: topLevelFollowUpName,
+      arguments: normalizeRealtimeToolArguments(topLevelFollowUpName, followUpArgs, fallbackText)
+    };
+  }
+  if (typeof nextArgs.raw === "string") {
     const raw = nextArgs.raw;
     const definitionId = /"definitionId"\s*:\s*"([^"]+)"/.exec(raw)?.[1];
     if (definitionId && /countdown/.test(raw)) {
@@ -313,7 +407,7 @@ function normalizeRealtimeToolArguments(toolName: string, args: Record<string, u
       };
     }
   }
-  if (toolName === "board.add_widget" && isRecord(nextArgs.followUp)) {
+  if (isRecord(nextArgs.followUp)) {
     const followUp = nextArgs.followUp;
     const followUpName =
       typeof followUp.name === "string" ? followUp.name : typeof followUp.tool === "string" ? followUp.tool : "";
@@ -339,6 +433,26 @@ function normalizeRealtimeToolArguments(toolName: string, args: Record<string, u
           ...followUp,
           name: followUpName,
           arguments: normalizeNoteToolArguments(followUpArgs)
+        }
+      };
+    }
+    if (followUpName === "todo.add_item" || followUpName === "todo.complete_item") {
+      nextArgs = {
+        ...nextArgs,
+        followUp: {
+          ...followUp,
+          name: followUpName,
+          arguments: normalizeTodoToolArguments(followUpName, followUpArgs, fallbackText)
+        }
+      };
+    }
+    if (followUpName === "market.set_indices") {
+      nextArgs = {
+        ...nextArgs,
+        followUp: {
+          ...followUp,
+          name: followUpName,
+          arguments: normalizeMarketToolArguments(followUpArgs, fallbackText)
         }
       };
     }
@@ -368,7 +482,6 @@ function normalizeRealtimeToolArguments(toolName: string, args: Record<string, u
     }
   }
   if (
-    toolName === "board.add_widget" &&
     !isRecord(nextArgs.followUp) &&
     looksLikeTvDefinitionId(nextArgs.definitionId) &&
     /全屏|fullscreen/i.test(fallbackText) &&
@@ -382,6 +495,8 @@ function normalizeRealtimeToolArguments(toolName: string, args: Record<string, u
       }
     };
   }
+  delete nextArgs.followUpName;
+  delete nextArgs.followUpTool;
   return nextArgs;
 }
 
@@ -450,6 +565,9 @@ function inferWindowToolTargetType(
     compactTargetText(plan.sourceText),
     compactTargetText(plan.normalizedText)
   ].join(" ");
+  if (/(当前|這個|这个|目前|现在|當前)/.test(targetText) && context.focusedWidget?.type) {
+    return context.focusedWidget.type;
+  }
   const scored = context.widgets
     .map((widget) => ({ widget, score: scoreWindowToolTarget(targetText, widget) }))
     .filter((item) => item.score > 0)
@@ -467,7 +585,7 @@ function bindWindowToolTargetForCall(
     return call;
   }
   const tool = tools.find((item) => item.name === call.name);
-  if (!tool?.requiresTarget || !TARGET_REQUIRED_WINDOW_TOOLS.has(call.name)) {
+  if (!tool?.requiresTarget) {
     return call;
   }
   const command: CommandPlan["commands"][number] = {
@@ -499,6 +617,158 @@ function bindWindowToolTargetForCall(
   );
   const widget = targetType ? context.widgets.find((item) => item.type === targetType) : undefined;
   return widget ? { ...call, arguments: { ...call.arguments, widgetId: widget.widgetId } } : call;
+}
+
+function inferRealtimeResizeArgs(
+  args: Record<string, unknown>,
+  widget: CompactAssistantContext["widgets"][number] | undefined,
+  fallbackText: string
+): Record<string, unknown> {
+  if (!widget) return args;
+  const currentW = widget.size?.w ?? 240;
+  const currentH = widget.size?.h ?? 180;
+  const text = fallbackText.replace(/\s+/g, "");
+  const explicitW = typeof args.w === "number" && Number.isFinite(args.w);
+  const explicitH = typeof args.h === "number" && Number.isFinite(args.h);
+  if (explicitW && explicitH) return args;
+
+  let nextW = explicitW ? Math.round(args.w as number) : currentW;
+  let nextH = explicitH ? Math.round(args.h as number) : currentH;
+  const widthDelta =
+    typeof args.widthDelta === "number"
+      ? args.widthDelta
+      : typeof args.deltaW === "number"
+        ? args.deltaW
+        : undefined;
+  const heightDelta =
+    typeof args.heightDelta === "number"
+      ? args.heightDelta
+      : typeof args.deltaH === "number"
+        ? args.deltaH
+        : undefined;
+
+  if (!explicitW) {
+    if (typeof widthDelta === "number" && Number.isFinite(widthDelta)) {
+      nextW = currentW + widthDelta;
+    } else if (/调宽|寬|宽一点|加宽|更宽/.test(text)) {
+      nextW = currentW + 96;
+    } else if (/窄|缩窄/.test(text)) {
+      nextW = currentW - 80;
+    } else if (/调大|放大|大一点|更大/.test(text)) {
+      nextW = currentW + 80;
+    } else if (/调小|缩小|小一点|更小/.test(text)) {
+      nextW = currentW - 64;
+    }
+  }
+  if (!explicitH) {
+    if (typeof heightDelta === "number" && Number.isFinite(heightDelta)) {
+      nextH = currentH + heightDelta;
+    } else if (/调高|高一点|更高/.test(text)) {
+      nextH = currentH + 80;
+    } else if (/矮|低一点|更矮/.test(text)) {
+      nextH = currentH - 64;
+    } else if (/调大|放大|大一点|更大/.test(text) && !/调宽|寬|宽一点|加宽|更宽/.test(text)) {
+      nextH = currentH + 64;
+    } else if (/调小|缩小|小一点|更小/.test(text) && !/窄|缩窄/.test(text)) {
+      nextH = currentH - 48;
+    }
+  }
+  return { ...args, w: Math.round(nextW), h: Math.round(nextH) };
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function inferRealtimeMoveArgs(
+  args: Record<string, unknown>,
+  widget: CompactAssistantContext["widgets"][number] | undefined,
+  context: CompactAssistantContext,
+  fallbackText: string
+): Record<string, unknown> {
+  if (!widget || context.viewport?.mode === "mobile") return args;
+  const viewport = context.viewport;
+  if (!viewport || viewport.width <= 0 || viewport.height <= 0) return args;
+
+  const text = fallbackText.replace(/\s+/g, "");
+  const explicitX = finiteNumber(args.x);
+  const explicitY = finiteNumber(args.y);
+  const currentX = explicitX ?? widget.position?.x ?? 20;
+  const currentY = explicitY ?? widget.position?.y ?? 20;
+  const widgetW = Math.max(120, widget.size?.w ?? 240);
+  const widgetH = Math.max(90, widget.size?.h ?? 180);
+  const margin = 20;
+  const minX = margin;
+  const minY = margin;
+  const maxX = Math.max(minX, viewport.width - widgetW - margin);
+  const maxY = Math.max(minY, viewport.height - widgetH - margin);
+  const centerX = Math.max(minX, Math.round((viewport.width - widgetW) / 2));
+  const centerY = Math.max(minY, Math.round((viewport.height - widgetH) / 2));
+
+  let nextX = currentX;
+  let nextY = currentY;
+  let inferred = false;
+
+  if (/右上|右上角|右上方/.test(text)) {
+    nextX = maxX;
+    nextY = minY;
+    inferred = true;
+  } else if (/右下|右下角|右下方/.test(text)) {
+    nextX = maxX;
+    nextY = maxY;
+    inferred = true;
+  } else if (/左下|左下角|左下方/.test(text)) {
+    nextX = minX;
+    nextY = maxY;
+    inferred = true;
+  } else if (/左上|左上角|左上方/.test(text)) {
+    nextX = minX;
+    nextY = minY;
+    inferred = true;
+  } else if (/居中|中间|中央/.test(text)) {
+    nextX = centerX;
+    nextY = centerY;
+    inferred = true;
+  } else {
+    if (/右侧|靠右|最右|右边/.test(text)) {
+      nextX = maxX;
+      inferred = true;
+    } else if (/左侧|靠左|最左|左边/.test(text)) {
+      nextX = minX;
+      inferred = true;
+    }
+    if (/底部|下方|靠下|最下/.test(text)) {
+      nextY = maxY;
+      inferred = true;
+    } else if (/顶部|上方|靠上|最上/.test(text)) {
+      nextY = minY;
+      inferred = true;
+    }
+  }
+
+  if (!inferred && explicitX === undefined && explicitY === undefined) return args;
+  return {
+    ...args,
+    x: Math.round(Math.max(minX, nextX)),
+    y: Math.round(Math.max(minY, nextY))
+  };
+}
+
+function completeRealtimeToolArguments(
+  call: AssistantToolCall,
+  context: CompactAssistantContext | null,
+  fallbackText: string
+): AssistantToolCall {
+  if (!context || !isRecord(call.arguments)) return call;
+  const widgetId = typeof call.arguments.widgetId === "string" ? call.arguments.widgetId : "";
+  const widget = widgetId ? context.widgets.find((item) => item.widgetId === widgetId) : undefined;
+  if (call.name === "widget.resize") {
+    return { ...call, arguments: inferRealtimeResizeArgs(call.arguments, widget, fallbackText) };
+  }
+  if (call.name === "widget.move") {
+    return { ...call, arguments: inferRealtimeMoveArgs(call.arguments, widget, context, fallbackText) };
+  }
+  return call;
 }
 
 function inferAddWidgetDefinitionForCall(
@@ -748,6 +1018,22 @@ function shouldSendRealtimeToolResult(call: AssistantToolCall): boolean {
   return call.source === "realtime";
 }
 
+function createUserFacingRealtimeToolResult(call: AssistantToolCall, result: AssistantToolResult): AssistantToolResult {
+  if (call.name === REALTIME_TOOL_SELECTION_TOOL_NAME || result.status !== "success") {
+    return result;
+  }
+  return {
+    ...result,
+    message: formatAssistantResultMessage({
+      status: result.status,
+      message: result.message,
+      toolName: call.name,
+      data: result.data,
+      seed: `${call.id}|${call.name}|${result.message}`
+    })
+  };
+}
+
 function isBulkWindowSelectionText(...values: Array<string | undefined>): boolean {
   const normalized = values.filter(Boolean).join(" ").replace(/\s+/g, "");
   if (!normalized || /(保留|除了|除开|只关闭|只留下|留下|确认|先问|先确认|临时)/.test(normalized)) {
@@ -880,7 +1166,8 @@ function createRealtimeResponseCreateEvent(mode: RealtimeResponseMode = "text"):
   return {
     type: "response.create",
     response: {
-      output_modalities: mode === "voice" ? ["audio"] : ["text"]
+      output_modalities: mode === "voice" ? ["audio"] : ["text"],
+      max_output_tokens: REALTIME_MAX_OUTPUT_TOKENS
     }
   };
 }
@@ -1157,6 +1444,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private realtimeTraceCommandToolCalls = new Set<string>();
   private realtimeTraceUserTranscripts = new Map<string, { input: string; itemId?: string }>();
   private interruptedRealtimeCommandTraceIds = new Set<string>();
+  private suppressedEchoTraceIds = new Set<string>();
+  private recentAssistantTranscripts: Array<{ transcript: string; createdAt: number }> = [];
   private microphoneLevelMonitor: MicrophoneLevelMonitor | null = null;
   private remoteAudioLevelMonitor: MicrophoneLevelMonitor | null = null;
   private microphoneLevel = 0;
@@ -1495,13 +1784,67 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     }
   }
 
+  private isLikelyRemoteAudioEchoSpeechStart(): boolean {
+    return this.connectMode === "audio" && this.remoteAudioLevel >= REMOTE_AUDIO_ECHO_LEVEL && this.microphoneLevel <= MICROPHONE_ECHO_CEILING;
+  }
+
+  private rememberAssistantTranscript(transcript: string): void {
+    const normalized = normalizeTranscriptForEchoMatch(transcript);
+    if (!normalized) return;
+    const now = Date.now();
+    this.recentAssistantTranscripts = [
+      { transcript: normalized, createdAt: now },
+      ...this.recentAssistantTranscripts.filter((item) => now - item.createdAt <= RECENT_ASSISTANT_TRANSCRIPT_TTL_MS)
+    ].slice(0, MAX_RECENT_ASSISTANT_TRANSCRIPTS);
+  }
+
+  private isRecentAssistantEchoTranscript(input: string): boolean {
+    const normalized = normalizeTranscriptForEchoMatch(input);
+    if (!normalized) return false;
+    const now = Date.now();
+    this.recentAssistantTranscripts = this.recentAssistantTranscripts.filter(
+      (item) => now - item.createdAt <= RECENT_ASSISTANT_TRANSCRIPT_TTL_MS
+    );
+    return this.recentAssistantTranscripts.some((item) => {
+      if (normalized === item.transcript) return true;
+      return normalized.length >= 4 && (item.transcript.includes(normalized) || normalized.includes(item.transcript));
+    });
+  }
+
+  private markRealtimeTraceEchoSuppressed(commandTraceId: string): void {
+    this.suppressedEchoTraceIds.add(commandTraceId);
+    while (this.suppressedEchoTraceIds.size > MAX_INTERRUPTED_TRACE_IDS) {
+      const oldestKey = this.suppressedEchoTraceIds.keys().next().value;
+      if (typeof oldestKey === "string") {
+        this.suppressedEchoTraceIds.delete(oldestKey);
+      } else {
+        break;
+      }
+    }
+  }
+
   private beginRealtimeVoiceTurn(itemId: string): string {
     const commandTraceId = createRealtimeVoiceCommandTraceId(itemId || "speech");
-    this.markActiveRealtimeTracesInterrupted(commandTraceId);
-    this.activeRealtimeResponseTraceId = commandTraceId;
     if (itemId) {
       this.realtimeItemTraceIds.set(itemId, commandTraceId);
     }
+    if (this.isLikelyRemoteAudioEchoSpeechStart()) {
+      this.markRealtimeTraceEchoSuppressed(commandTraceId);
+      this.emitDiagnostic({
+        type: "realtime.voice.echo_suppressed",
+        status: "started",
+        commandTraceId,
+        data: {
+          itemId,
+          microphoneLevel: this.microphoneLevel,
+          remoteAudioLevel: this.remoteAudioLevel,
+          activeResponseId: this.activeResponseId
+        }
+      });
+      return commandTraceId;
+    }
+    this.markActiveRealtimeTracesInterrupted(commandTraceId);
+    this.activeRealtimeResponseTraceId = commandTraceId;
     this.pendingResponseCreateAfterActiveToolResult = false;
     this.pendingScopedToolSelectionResult = null;
     this.pendingTextCommandAfterSelectorUpdate = null;
@@ -1818,7 +2161,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       errorCode: result.errorCode,
       commandTraceId
     });
-    createRealtimeToolResultEvents(call, result, {
+    const userFacingResult = createUserFacingRealtimeToolResult(call, result);
+    createRealtimeToolResultEvents(call, userFacingResult, {
       activeResponseId: this.activeResponseId,
       responseMode: this.connectMode === "audio" ? "voice" : "text",
       continueResponse: call.name === REALTIME_TOOL_SELECTION_TOOL_NAME
@@ -2092,15 +2436,20 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       (commandTraceId ? this.realtimeTraceUserTranscripts.get(commandTraceId)?.input ?? "" : "") ||
       this.activeScopedToolSelection?.userCommand ||
       "";
+    const realtimeTargetHint = this.activeScopedToolSelection ?? (fallbackText ? { userCommand: fallbackText, targetHint: fallbackText } : undefined);
     const sanitized = sanitizeRealtimeToolCallArguments(call, this.findToolSpec(call.name), fallbackText);
     const addWidgetBoundCall = inferAddWidgetDefinitionForCall(
       sanitized.call,
       this.currentContext,
       this.currentTools,
-      this.activeScopedToolSelection ?? undefined,
+      realtimeTargetHint,
       fallbackText
     );
-    const toolCall = bindWindowToolTargetForCall(addWidgetBoundCall, this.currentContext, this.currentTools, this.activeScopedToolSelection ?? undefined);
+    const toolCall = completeRealtimeToolArguments(
+      bindWindowToolTargetForCall(addWidgetBoundCall, this.currentContext, this.currentTools, realtimeTargetHint),
+      this.currentContext,
+      fallbackText
+    );
     this.activeScopedToolSelection = null;
     if (sanitized.removedKeys.length) {
       this.emitDiagnostic({
@@ -2698,7 +3047,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     }
     if (itemId) {
       const commandTraceId = this.getOrCreateRealtimeItemTraceId(itemId);
-      this.activeRealtimeResponseTraceId = commandTraceId;
+      if (!this.suppressedEchoTraceIds.has(commandTraceId)) {
+        this.activeRealtimeResponseTraceId = commandTraceId;
+      }
       return commandTraceId;
     }
     return this.activeRealtimeResponseTraceId ?? undefined;
@@ -2755,12 +3106,14 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       });
       return;
     }
-    if (eventType === "response.audio_transcript.done") {
+    if (eventType === "response.audio_transcript.done" || eventType === "response.output_audio_transcript.done") {
+      const transcript = extractRealtimeEventTranscript(event);
+      this.rememberAssistantTranscript(transcript);
       this.emitDiagnostic({
         type: "realtime.voice.assistant_transcript",
         status: "success",
         commandTraceId,
-        data: { responseId, itemId, transcript: extractRealtimeEventTranscript(event) }
+        data: { responseId, itemId, transcript }
       });
     }
   }
@@ -2782,6 +3135,19 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private handleRealtimeUserTranscript(transcript: string, commandTraceId?: string, itemId?: string): void {
     const input = transcript.trim();
     if (!input) return;
+    if ((commandTraceId && this.suppressedEchoTraceIds.has(commandTraceId)) || this.isRecentAssistantEchoTranscript(input)) {
+      if (commandTraceId) {
+        this.markRealtimeTraceEchoSuppressed(commandTraceId);
+        this.realtimeTraceUserTranscripts.delete(commandTraceId);
+      }
+      this.emitDiagnostic({
+        type: "realtime.voice.echo_suppressed",
+        status: "success",
+        commandTraceId,
+        data: { itemId, transcript: input }
+      });
+      return;
+    }
     if (commandTraceId) {
       this.realtimeTraceUserTranscripts.set(commandTraceId, { input, itemId });
     }
@@ -2816,6 +3182,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.realtimeTraceCommandToolCalls.clear();
     this.realtimeTraceUserTranscripts.clear();
     this.interruptedRealtimeCommandTraceIds.clear();
+    this.suppressedEchoTraceIds.clear();
+    this.recentAssistantTranscripts = [];
   }
 
   private createSessionReadyPromise(): Promise<void> {

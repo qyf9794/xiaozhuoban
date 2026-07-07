@@ -89,7 +89,9 @@ export function createRealtimeContextInstructions(context?: CompactAssistantCont
   const widgets = formatRealtimeContextList(
     context.widgets.map((widget) => {
       const flags = [widget.focused ? "focused" : "", widget.recent ? "recent" : ""].filter(Boolean).join(",");
-      return `- ${widget.name}(${widget.type}) widgetId=${widget.widgetId} definitionId=${widget.definitionId} summary=${widget.summary}${flags ? ` flags=${flags}` : ""}`;
+      const position = widget.position ? ` position=${Math.round(widget.position.x)},${Math.round(widget.position.y)}` : "";
+      const size = widget.size ? ` size=${Math.round(widget.size.w)}x${Math.round(widget.size.h)}` : "";
+      return `- ${widget.name}(${widget.type}) widgetId=${widget.widgetId} definitionId=${widget.definitionId}${position}${size} summary=${widget.summary}${flags ? ` flags=${flags}` : ""}`;
     }),
     "- 当前桌板没有已加载小工具"
   );
@@ -102,12 +104,16 @@ export function createRealtimeContextInstructions(context?: CompactAssistantCont
   const pending = context.pendingConfirmation
     ? `${context.pendingConfirmation.actionName}: ${context.pendingConfirmation.message}`
     : "无";
+  const viewport = context.viewport
+    ? `${context.viewport.mode} ${context.viewport.width}x${context.viewport.height}${context.viewport.fullscreen ? " fullscreen" : ""}`
+    : "未知";
 
   return [
     XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
     "",
     "# Current Xiaozhuoban Context",
     `- board: ${boardName}`,
+    `- viewport: ${viewport}`,
     `- focusedWidget: ${focused}`,
     `- pendingConfirmation: ${pending}`,
     "- loadedWidgets:",
@@ -200,7 +206,7 @@ const initialToolMetadata: InitialToolMetadata[] = [
     name: "widget.move",
     description: "Move a widget to a new board position.",
     scope: "desktop",
-    parameters: objectSchema({ widgetId: stringSchema(), x: numberSchema(), y: numberSchema() }, ["widgetId", "x", "y"])
+    parameters: objectSchema({ widgetId: stringSchema(), x: numberSchema(), y: numberSchema() }, ["widgetId"])
   },
   {
     name: "widget.resize",
@@ -373,7 +379,7 @@ function inferAssistantToolParameters(tool: AssistantToolSpec): Record<string, u
     case "widget.bring_to_front":
       return objectSchema({ widgetId: stringSchema() }, ["widgetId"]);
     case "widget.move":
-      return objectSchema({ widgetId: stringSchema(), x: numberSchema(), y: numberSchema() }, ["widgetId", "x", "y"]);
+      return objectSchema({ widgetId: stringSchema(), x: numberSchema(), y: numberSchema() }, ["widgetId"]);
     case "widget.resize":
       return objectSchema({ widgetId: stringSchema(), w: numberSchema(), h: numberSchema() }, ["widgetId", "w", "h"]);
     case "board.switch":
@@ -418,7 +424,7 @@ export function createRealtimeClientSecretPayload(options: RealtimeSessionOption
         effort: options.reasoningEffort ?? "low"
       },
       audio: createRealtimeSessionAudioConfig(options),
-      max_output_tokens: 240,
+      max_output_tokens: 480,
       tool_choice: "auto",
       parallel_tool_calls: true,
       tools: createInitialRealtimeTools()

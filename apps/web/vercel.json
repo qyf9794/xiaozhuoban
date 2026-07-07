@@ -1,3 +1,9 @@
 {
+  "crons": [
+    {
+      "path": "/api/assistant/cleanup",
+      "schedule": "17 19 * * *"
+    }
+  ],
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }

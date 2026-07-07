@@ -92,7 +92,7 @@ describe("realtime session config", () => {
     expect(payload.session.model).toBe(XIAOZHUOBAN_REALTIME_MODEL);
     expect(payload.session.type).toBe("realtime");
     expect(payload.session.reasoning.effort).toBe("minimal");
-    expect(payload.session.max_output_tokens).toBe(240);
+    expect(payload.session.max_output_tokens).toBe(480);
     expect("output_modalities" in payload.session).toBe(false);
     expect(payload.session.audio.output.voice).toBe("marin");
     expect(payload.session.audio.input.turn_detection).toEqual({

@@ -152,6 +152,8 @@ export interface CompactWidgetSummary {
   name: string;
   order: number;
   summary: string;
+  position?: { x: number; y: number };
+  size?: { w: number; h: number };
   assistantState?: Record<string, unknown>;
   recent?: boolean;
   focused?: boolean;
@@ -161,6 +163,15 @@ export interface CompactBoardSummary {
   boardId: string;
   name: string;
   active?: boolean;
+}
+
+export interface CompactViewportSummary {
+  width: number;
+  height: number;
+  mode: "desktop" | "mobile";
+  fullscreen?: boolean;
+  screenWidth?: number;
+  screenHeight?: number;
 }
 
 export interface CompactAssistantContext {
@@ -177,6 +188,7 @@ export interface CompactAssistantContext {
   widgetCountsByType: Record<string, number>;
   widgets: CompactWidgetSummary[];
   focusedWidget?: CompactWidgetSummary;
+  viewport?: CompactViewportSummary;
   pendingConfirmation?: Pick<ConfirmationRequest, "id" | "actionName" | "message">;
 }
 
@@ -186,6 +198,8 @@ export interface WidgetContextSnapshot {
   type: string;
   name: string;
   order: number;
+  position?: { x: number; y: number };
+  size?: { w: number; h: number };
   state?: Record<string, unknown>;
   summary?: string;
 }
@@ -202,6 +216,7 @@ export interface ContextSummarizerInput {
   widgets: WidgetContextSnapshot[];
   focusedWidgetId?: string;
   recentWidgetIds?: string[];
+  viewport?: CompactViewportSummary;
   pendingConfirmation?: ConfirmationRequest;
   maxWidgets?: number;
 }
@@ -512,6 +527,8 @@ export class ContextSummarizer {
         type: widget.type,
         name: widget.name,
         order: widget.order,
+        position: widget.position,
+        size: widget.size,
         summary: truncateSummary(summary || "无摘要"),
         assistantState,
         recent: recentSet.has(widget.widgetId) || undefined,
@@ -526,6 +543,7 @@ export class ContextSummarizer {
       boardName: input.boardName,
       availableBoards: input.availableBoards,
       availableDefinitions: input.availableDefinitions,
+      viewport: input.viewport,
       widgetCountsByType,
       widgets,
       focusedWidget,

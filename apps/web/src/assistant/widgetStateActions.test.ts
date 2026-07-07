@@ -460,6 +460,26 @@ describe("widget state assistant actions", () => {
     expect(getWidget("market")?.state.marketSymbolLabels).toEqual({ usAAPL: "苹果 AAPL" });
   });
 
+  it("completes todo items by ordinal wording", async () => {
+    const { store, getWidget } = createStore();
+    const todo = getWidget("todo");
+    if (!todo) throw new Error("missing todo widget");
+    await store.updateWidgetState(todo.id, {
+      items: [
+        { id: "todo_1", text: "复测手机 Safari" },
+        { id: "todo_2", text: "检查线上 trace" }
+      ]
+    });
+    const registry = createRegistry(store);
+
+    await registry.execute(
+      { id: "call_1", name: "todo.complete_item", arguments: { text: "第一条待办" }, source: "test" },
+      { target: targetFor("todo"), now: () => NOW }
+    );
+
+    expect(getWidget("todo")?.state.items).toEqual([{ id: "todo_2", text: "检查线上 trace" }]);
+  });
+
   it("resolves weather cities online before updating weather coordinates", async () => {
     vi.stubGlobal(
       "fetch",

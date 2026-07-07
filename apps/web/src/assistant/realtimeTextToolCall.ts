@@ -382,6 +382,7 @@ export function createScopedRealtimeContext(
     toolCatalogVersion: context.toolCatalogVersion,
     boardId: context.boardId,
     boardName: context.boardName,
+    viewport: context.viewport,
     pendingConfirmation: context.pendingConfirmation,
     availableBoards: includeBoards ? context.availableBoards : undefined,
     focusedWidget:

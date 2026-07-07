@@ -35,6 +35,11 @@ export const FALLBACK_TV_CHANNELS: TvChannel[] = [
     id: "tv_fallback_bbc_news",
     name: "BBC News",
     url: "https://vs-hls-push-ww-live.akamaized.net/x=4/i=urn:bbc:pips:service:bbc_news_channel_hd/t=3840/v=pv14/b=5070016/main.m3u8"
+  },
+  {
+    id: "tv_fallback_nhk_world",
+    name: "NHK World-Japan",
+    url: "https://media-tyo.hls.nhkworld.jp/hls/w/live/master.m3u8"
   }
 ];
 

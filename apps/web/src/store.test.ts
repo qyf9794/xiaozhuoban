@@ -141,6 +141,38 @@ describe("dial clock definition", () => {
   });
 });
 
+describe("desktop widget placement", () => {
+  it("places a new desktop widget in the first slot to the right of the rightmost column", async () => {
+    useAppStore.setState({
+      ...useAppStore.getState(),
+      activeBoardId: "board_1",
+      widgetDefinitions: [makeDefinition("note"), makeDefinition("weather"), makeDefinition("music"), makeDefinition("todo")],
+      widgetInstances: [
+        { ...makeWidget("note", 1), position: { x: 20, y: 20 }, size: { w: 240, h: 180 } },
+        { ...makeWidget("weather", 2), position: { x: 300, y: 20 }, size: { w: 240, h: 260 } },
+        { ...makeWidget("todo", 3), position: { x: 300, y: 320 }, size: { w: 240, h: 260 } }
+      ]
+    });
+
+    const widget = await useAppStore.getState().addWidgetInstance("wd_music");
+
+    expect(widget?.position).toEqual({ x: 560, y: 20 });
+  });
+
+  it("keeps mobile widget placement stacked vertically", async () => {
+    useAppStore.setState({
+      ...useAppStore.getState(),
+      activeBoardId: "board_1",
+      widgetDefinitions: [makeDefinition("note"), makeDefinition("music")],
+      widgetInstances: [{ ...makeWidget("note", 1), position: { x: 20, y: 20 }, size: { w: 240, h: 180 } }]
+    });
+
+    const widget = await useAppStore.getState().addWidgetInstance("wd_music", { mobileMode: true });
+
+    expect(widget?.position).toEqual({ x: 20, y: 216 });
+  });
+});
+
 describe("assistant widget focus state", () => {
   it("focuses newly added widgets", async () => {
     useAppStore.setState({

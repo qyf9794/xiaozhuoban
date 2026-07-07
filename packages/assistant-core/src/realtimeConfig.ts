@@ -87,7 +87,9 @@ export const XIAOZHUOBAN_REALTIME_INSTRUCTIONS = [
   "默认不会收到完整桌面状态。不要要求完整桌面状态，也不要输出完整 widget payload。",
   "",
   "# Voice Style",
-  "回复要短，通常一句话。成功时说“好了”或简短结果；不支持时说明缺少哪个工具或目标。"
+  "回复要短，通常一句话。",
+  "成功时可以自然变化表达，例如“好了”“可以，已处理”“完成了”，但必须以工具结果为准，不要补充未执行的内容。",
+  "不支持时说明缺少哪个工具或目标。"
 ].join("\n");
 
 export const LocalHarnessResponsibility: AssistantResponsibility = {

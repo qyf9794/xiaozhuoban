@@ -325,6 +325,8 @@ interface BackupSnapshotPayload {
 const MOBILE_STACK_MARGIN = 20;
 const MOBILE_STACK_GAP = 16;
 const DEFAULT_BOARD_WIDGET_OFFSET = 20;
+const DESKTOP_WIDGET_COLUMN_GAP = 20;
+const DESKTOP_COLUMN_LEFT_TOLERANCE = 48;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
@@ -626,6 +628,36 @@ function getNextMobileWidgetPosition(
   return {
     x: MOBILE_STACK_MARGIN,
     y: Math.round(maxBottom + MOBILE_STACK_GAP)
+  };
+}
+
+function getNextDesktopWidgetPosition(
+  widgets: WidgetInstance[],
+  definitionTypeById: Map<string, string>
+): { x: number; y: number } {
+  if (widgets.length === 0) {
+    return { x: DEFAULT_BOARD_WIDGET_OFFSET, y: DEFAULT_BOARD_WIDGET_OFFSET };
+  }
+
+  let rightmostWidget = widgets[0]!;
+  let rightmostRight = rightmostWidget.position.x + safeWidgetWidth(rightmostWidget, definitionTypeById.get(rightmostWidget.definitionId));
+
+  for (const widget of widgets.slice(1)) {
+    const right = widget.position.x + safeWidgetWidth(widget, definitionTypeById.get(widget.definitionId));
+    if (right > rightmostRight || (right === rightmostRight && widget.position.y < rightmostWidget.position.y)) {
+      rightmostWidget = widget;
+      rightmostRight = right;
+    }
+  }
+
+  const rightmostColumnLeft = rightmostWidget.position.x;
+  const rightmostColumnTop = widgets
+    .filter((widget) => Math.abs(widget.position.x - rightmostColumnLeft) <= DESKTOP_COLUMN_LEFT_TOLERANCE)
+    .reduce((top, widget) => Math.min(top, widget.position.y), rightmostWidget.position.y);
+
+  return {
+    x: Math.round(rightmostRight + DESKTOP_WIDGET_COLUMN_GAP),
+    y: Math.max(DEFAULT_BOARD_WIDGET_OFFSET, Math.round(rightmostColumnTop))
   };
 }
 
@@ -948,19 +980,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     const defaultSize = getDefaultWidgetSize(definition?.type);
     const now = nowIso();
     const definitionTypeById = buildDefinitionTypeMap(widgetDefinitions);
+    const activeWidgets = widgetInstances.filter((widget) => widget.boardId === activeBoardId);
     const nextMobilePosition = options?.mobileMode
-      ? getNextMobileWidgetPosition(widgetInstances, definitionTypeById)
+      ? getNextMobileWidgetPosition(activeWidgets, definitionTypeById)
       : null;
+    const nextDesktopPosition = nextMobilePosition ? null : getNextDesktopWidgetPosition(activeWidgets, definitionTypeById);
     const instance: WidgetInstance = {
       id: createId("wi"),
       boardId: activeBoardId,
       definitionId,
       state: {},
       bindings: [],
-      position:
-        nextMobilePosition ?? { x: 20 + widgetInstances.length * 20, y: 20 + widgetInstances.length * 20 },
+      position: nextMobilePosition ?? nextDesktopPosition ?? { x: DEFAULT_BOARD_WIDGET_OFFSET, y: DEFAULT_BOARD_WIDGET_OFFSET },
       size: defaultSize,
-      zIndex: widgetInstances.length + 1,
+      zIndex: activeWidgets.length + 1,
       locked: false,
       createdAt: now,
       updatedAt: now

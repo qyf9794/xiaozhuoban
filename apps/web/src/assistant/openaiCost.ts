@@ -1,5 +1,6 @@
 export type OpenAIUsageCostEstimate = {
   model: string;
+  responseId?: string;
   stage?: string;
   source: "realtime" | "responses";
   pricingSource: string;
@@ -73,7 +74,7 @@ function readDetails(usage: Record<string, unknown>) {
 export function estimateOpenAIUsageCost(
   model: string,
   usage: unknown,
-  options: { source: "realtime" | "responses"; stage?: string }
+  options: { source: "realtime" | "responses"; stage?: string; responseId?: string }
 ): OpenAIUsageCostEstimate | null {
   if (!isRecord(usage)) return null;
   const rates = MODEL_TOKEN_RATES[model];
@@ -90,6 +91,7 @@ export function estimateOpenAIUsageCost(
 
   const estimate: OpenAIUsageCostEstimate = {
     model,
+    responseId: options.responseId,
     stage: options.stage,
     source: options.source,
     pricingSource: PRICING_SOURCE,
@@ -136,6 +138,6 @@ export function estimateOpenAIUsageCost(
 export function estimateRealtimeResponseCost(model: string, event: unknown): OpenAIUsageCostEstimate | null {
   if (!isRecord(event)) return null;
   const response = isRecord(event.response) ? event.response : undefined;
-  return estimateOpenAIUsageCost(model, response?.usage, { source: "realtime", stage: "response.done" });
+  const responseId = typeof response?.id === "string" ? response.id : typeof event.response_id === "string" ? event.response_id : undefined;
+  return estimateOpenAIUsageCost(model, response?.usage, { source: "realtime", stage: "response.done", responseId });
 }
-

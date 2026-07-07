@@ -390,6 +390,15 @@ function normalizeTodoItems(raw: unknown): TodoStateItem[] {
 function findTodoItemByText(items: TodoStateItem[], text: string) {
   const query = text.trim();
   if (!query) return null;
+  const ordinal =
+    /第?一条|第?1条|第一项|第?1项|第一个|第?1个/.test(query)
+      ? 0
+      : /第?二条|第?2条|第二项|第?2项|第二个|第?2个/.test(query)
+        ? 1
+        : /第?三条|第?3条|第三项|第?3项|第三个|第?3个/.test(query)
+          ? 2
+          : -1;
+  if (ordinal >= 0) return items[ordinal] ?? null;
   return (
     items.find((item) => item.text.trim() === query) ??
     items.find((item) => item.text.includes(query) || query.includes(item.text)) ??

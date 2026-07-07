@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type PointerEvent } from "react";
 import type { AssistantHarness, AssistantRoute } from "../assistant/AssistantHarness";
 import { publishAssistantHarnessDiagnostics, type AssistantDiagnosticEvent } from "../assistant/assistantDiagnostics";
+import { formatAssistantResultMessage } from "../assistant/assistantResultPhrasing";
 import type { RealtimeConnectionStatus } from "../assistant/openaiRealtimeAdapter";
 import type { ConfirmationRequest } from "@xiaozhuoban/assistant-core";
 
@@ -100,7 +101,7 @@ export function getVoiceAssistantOperationText(operation: VoiceAssistantOperatio
   if (operation.phase === "thinking") return `理解中${command}`;
   if (operation.phase === "executing") return `执行中${command}`;
   if (operation.phase === "waiting_confirmation") return `待确认${command}`;
-  if (operation.phase === "success") return operation.message ? `完成：${operation.message}` : `已完成${command}`;
+  if (operation.phase === "success") return operation.message || `已完成${command}`;
   return operation.message ? `失败：${operation.message}` : `失败${command}`;
 }
 
@@ -278,13 +279,14 @@ export function getVoiceAssistantPreviewLines(pending?: ConfirmationRequest | nu
   return [...commandLines, pending.preview.recovery ? `恢复策略：${pending.preview.recovery}` : ""].filter(Boolean);
 }
 
-function getResultText(status: string, message: string) {
-  if (status === "success") return message || "好了";
-  if (status === "needs_confirmation") return message || "请确认";
-  if (status === "needs_clarification") return message || "再说短一点";
-  if (status === "cancelled") return message || "已取消";
-  if (status === "timed_out") return "执行超时";
-  return message || "暂时做不了";
+function getResultText(status: string, message: string, options: { toolName?: string; data?: unknown; seed?: string } = {}) {
+  return formatAssistantResultMessage({
+    status,
+    message,
+    toolName: options.toolName,
+    data: options.data,
+    seed: options.seed
+  });
 }
 
 export function VoiceAssistantDock({
@@ -523,7 +525,11 @@ export function VoiceAssistantDock({
       onCommandRoute?.(response.route);
       const nextPhase = response.result.status === "needs_confirmation" ? "waiting_confirmation" : "executing";
       setState(nextPhase);
-      const resultText = getResultText(response.result.status, response.result.message);
+      const resultText = getResultText(response.result.status, response.result.message, {
+        toolName: response.call?.name,
+        data: response.result.data,
+        seed: `${commandTraceId}|${input}`
+      });
       setOperation({
         phase: response.result.status === "needs_confirmation" ? "waiting_confirmation" : "success",
         command: input,
@@ -576,7 +582,11 @@ export function VoiceAssistantDock({
         const response = await harness.handleRealtimeUserInput(input, { commandTraceId });
         publishVoiceAssistantDiagnostics(harness.getLastDiagnostics());
         onCommandRoute?.(response.route);
-        const resultText = getResultText(response.result.status, response.result.message);
+        const resultText = getResultText(response.result.status, response.result.message, {
+          toolName: response.call?.name,
+          data: response.result.data,
+          seed: `${commandTraceId}|${input}`
+        });
         setLastMessage(resultText);
         setOperation({
           phase: response.result.status === "needs_confirmation" ? "waiting_confirmation" : response.result.status === "success" ? "success" : "error",
