@@ -74,6 +74,12 @@ function throwIfError(error: { message: string } | null) {
   }
 }
 
+function isMissingSoftDeleteBoardRpc(error: { message?: string; code?: string } | null): boolean {
+  if (!error) return false;
+  const message = error.message ?? "";
+  return error.code === "PGRST202" || /soft_delete_board|function/i.test(message) && /not found|could not find|schema cache/i.test(message);
+}
+
 function workspaceFromRow(row: WorkspaceRow): Workspace {
   return {
     id: row.id,
@@ -244,18 +250,29 @@ export class SupabaseRepository {
   }
 
   async deleteBoard(boardId: string): Promise<void> {
+    const { error: rpcError } = await this.client.rpc("soft_delete_board", { p_board_id: boardId });
+    if (!rpcError) {
+      return;
+    }
+    if (!isMissingSoftDeleteBoardRpc(rpcError)) {
+      throwIfError(rpcError);
+    }
+
+    const now = new Date().toISOString();
     const { error: widgetError } = await this.client
       .from("widget_instances")
-      .delete()
+      .update({ deleted_at: now, updated_at: now })
       .eq("board_id", boardId)
-      .eq("user_id", this.userId);
+      .eq("user_id", this.userId)
+      .is("deleted_at", null);
     throwIfError(widgetError);
 
     const { error: boardError } = await this.client
       .from("boards")
-      .delete()
+      .update({ deleted_at: now, updated_at: now })
       .eq("id", boardId)
-      .eq("user_id", this.userId);
+      .eq("user_id", this.userId)
+      .is("deleted_at", null);
     throwIfError(boardError);
   }
 

@@ -340,16 +340,41 @@ using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
 
 drop policy if exists message_board_messages_auth_select on public.message_board_messages;
+drop policy if exists message_board_messages_board_select on public.message_board_messages;
 create policy message_board_messages_auth_select on public.message_board_messages
 for select
 to authenticated
 using (true);
 
 drop policy if exists message_board_messages_auth_insert on public.message_board_messages;
+drop policy if exists message_board_messages_board_insert on public.message_board_messages;
 create policy message_board_messages_auth_insert on public.message_board_messages
 for insert
 to authenticated
 with check (auth.uid() = sender_id);
+
+create or replace function public.soft_delete_board(p_board_id text)
+returns void
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  update public.widget_instances
+  set deleted_at = now(), updated_at = now()
+  where board_id = p_board_id
+    and user_id = auth.uid()
+    and deleted_at is null;
+
+  update public.boards
+  set deleted_at = now(), updated_at = now()
+  where id = p_board_id
+    and user_id = auth.uid()
+    and deleted_at is null;
+end;
+$$;
+
+grant execute on function public.soft_delete_board(text) to authenticated;
 
 drop policy if exists assistant_command_logs_owner_select on public.assistant_command_logs;
 create policy assistant_command_logs_owner_select on public.assistant_command_logs
