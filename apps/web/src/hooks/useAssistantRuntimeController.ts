@@ -3,6 +3,8 @@ import type { AppRepository } from "@xiaozhuoban/data";
 import type { AssistantRuntimeMode, RealtimeBudgetMetrics } from "@xiaozhuoban/assistant-core";
 import {
   createRealtimeAssistantRuntime,
+  readAgentsVoiceAdapterEnabled,
+  AGENTS_VOICE_ADAPTER_STORAGE_KEY,
   shouldFallbackUnhandledVoiceTranscriptToHarness
 } from "../assistant/createRealtimeAssistantRuntime";
 import {
@@ -20,6 +22,11 @@ import type { RealtimeConnectionStatus } from "../assistant/openaiRealtimeAdapte
 import { WidgetCapabilityBridge } from "../assistant/widgetCapabilityBridge";
 import { useAuthStore } from "../auth/authStore";
 import type { VoiceAssistantOperationStatus } from "../components/VoiceAssistantDock";
+import {
+  LOCAL_WAKE_WORD_STORAGE_KEY,
+  readLocalWakeWordEnabled,
+  useLocalWakeWord
+} from "./useLocalWakeWord";
 
 const ASSISTANT_TERMINAL_OPERATION_VISIBLE_MS = 8000;
 const REALTIME_HIGH_ACCURACY_STORAGE_KEY = "xiaozhuoban.realtime.highAccuracy";
@@ -73,6 +80,8 @@ export function useAssistantRuntimeController({
   sidebarOpen
 }: UseAssistantRuntimeControllerOptions) {
   const [realtimeHighAccuracyMode, setRealtimeHighAccuracyMode] = useState(readRealtimeHighAccuracyMode);
+  const [agentsVoiceAdapterEnabled, setAgentsVoiceAdapterEnabled] = useState(readAgentsVoiceAdapterEnabled);
+  const [localWakeWordEnabled, setLocalWakeWordEnabled] = useState(readLocalWakeWordEnabled);
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeConnectionStatus>("disconnected");
   const [realtimeAudioLevel, setRealtimeAudioLevel] = useState(0);
   const [assistantRuntimeBudget, setAssistantRuntimeBudget] = useState<{
@@ -96,6 +105,7 @@ export function useAssistantRuntimeController({
   const userSpeechEventIdRef = useRef(0);
   const lastCommandLikeUserSpeechRef = useRef("");
   const realtimeHighAccuracyModeRef = useRef(realtimeHighAccuracyMode);
+  const agentsVoiceAdapterEnabledRef = useRef(agentsVoiceAdapterEnabled);
   const assistantCapabilityBridgeRef = useRef(new WidgetCapabilityBridge());
   const sidebarOpenRef = useRef(sidebarOpen);
   const fullscreenRef = useRef(fullscreen);
@@ -103,6 +113,7 @@ export function useAssistantRuntimeController({
   sidebarOpenRef.current = sidebarOpen;
   fullscreenRef.current = fullscreen;
   realtimeHighAccuracyModeRef.current = realtimeHighAccuracyMode;
+  agentsVoiceAdapterEnabledRef.current = agentsVoiceAdapterEnabled;
 
   const recordDiagnostic = (event: AssistantDiagnosticEvent) => {
     const assistantSpeechText = getAssistantSpeechTextFromDiagnostic(event);
@@ -157,6 +168,7 @@ export function useAssistantRuntimeController({
           onMicrophoneLevel: setRealtimeAudioLevel,
           onDiagnostic: recordDiagnostic
         },
+        useAgentsVoiceAdapter: () => agentsVoiceAdapterEnabledRef.current,
         onStatusChange: (status) => {
           setRealtimeStatus(status);
           recordDiagnostic({ type: "voice.status", status });
@@ -187,9 +199,72 @@ export function useAssistantRuntimeController({
     []
   );
 
+  const realtimeActive = realtimeStatus !== "disconnected" && realtimeStatus !== "failed" && realtimeStatus !== "session_failed";
+  const { status: localWakeWordStatus, supported: localWakeWordSupported } = useLocalWakeWord({
+    enabled: localWakeWordEnabled,
+    realtimeConnected: realtimeActive,
+    onDiagnostic: recordDiagnostic,
+    onWake: async (detection) => {
+      const commandTraceId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? `wake_${crypto.randomUUID()}`
+          : `wake_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      assistantRuntime.detectLocalWake();
+      userSpeechEventIdRef.current += 1;
+      setUserSpeech({ id: userSpeechEventIdRef.current, text: detection.transcript });
+
+      const connectPromise = assistantRuntime.connectForWake().catch((error) => {
+        const message = error instanceof Error ? error.message : "local wake realtime connect failed";
+        recordDiagnostic({
+          type: "local_wake_word.connect_result",
+          commandTraceId,
+          status: "failed",
+          message,
+          data: { wakeWord: detection.wakeWord }
+        });
+      });
+
+      const command = detection.command.trim();
+      if (command) {
+        try {
+          const response = await assistantRuntime.harness.handleRealtimeUserInput(command, { commandTraceId });
+          assistantRuntime.recordCommandRoute(response.route);
+          recordDiagnostic({
+            type: "local_wake_word.command_result",
+            commandTraceId,
+            status: response.result.status,
+            route: response.route,
+            toolName: response.call?.name,
+            operationId: response.call?.id,
+            message: response.result.message,
+            errorCode: response.result.errorCode,
+            data: { command, wakeWord: detection.wakeWord }
+          });
+        } catch (error) {
+          recordDiagnostic({
+            type: "local_wake_word.command_result",
+            commandTraceId,
+            status: "failed",
+            message: error instanceof Error ? error.message : "local wake command failed",
+            data: { command, wakeWord: detection.wakeWord }
+          });
+        }
+      }
+      await connectPromise;
+    }
+  });
+
   useEffect(() => {
     window.localStorage.setItem(REALTIME_HIGH_ACCURACY_STORAGE_KEY, realtimeHighAccuracyMode ? "true" : "false");
   }, [realtimeHighAccuracyMode]);
+
+  useEffect(() => {
+    window.localStorage.setItem(AGENTS_VOICE_ADAPTER_STORAGE_KEY, agentsVoiceAdapterEnabled ? "true" : "false");
+  }, [agentsVoiceAdapterEnabled]);
+
+  useEffect(() => {
+    window.localStorage.setItem(LOCAL_WAKE_WORD_STORAGE_KEY, localWakeWordEnabled ? "true" : "false");
+  }, [localWakeWordEnabled]);
 
   useEffect(
     () => () => {
@@ -219,13 +294,19 @@ export function useAssistantRuntimeController({
     assistantCapabilityBridge: assistantCapabilityBridgeRef.current,
     assistantOperation,
     assistantRuntime,
+    agentsVoiceAdapterEnabled,
     assistantSpeech,
+    localWakeWordEnabled,
+    localWakeWordStatus,
+    localWakeWordSupported,
     realtimeAudioLevel,
     realtimeHighAccuracyMode,
     realtimeStatus,
     recordDiagnostic,
     retrySync,
     runtimeStatusText: getAssistantRuntimeText(assistantRuntimeBudget),
+    setAgentsVoiceAdapterEnabled,
+    setLocalWakeWordEnabled,
     setRealtimeHighAccuracyMode,
     syncLastError: assistantOutboxStatus.lastError,
     syncPendingCount: assistantOutboxStatus.pendingCount,

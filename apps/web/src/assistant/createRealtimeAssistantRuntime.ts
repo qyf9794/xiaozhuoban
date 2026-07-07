@@ -2,6 +2,7 @@ import type { AssistantHarness, AssistantOperationEvent } from "./AssistantHarne
 import {
   DEFAULT_REALTIME_BUDGET_CONFIG,
   RealtimeRuntimeController,
+  type AssistantToolSpec,
   type AssistantRuntimeMode,
   type RealtimeBudgetConfig,
   type RealtimeBudgetMetrics
@@ -13,8 +14,16 @@ import {
   type OpenAIRealtimeWebRtcAdapterOptions,
   type RealtimeConnectionStatus
 } from "./openaiRealtimeAdapter";
+import { AgentsVoiceRealtimeAdapter } from "./agentsVoiceRealtimeAdapter";
 import type { WidgetCapabilityBridge } from "./widgetCapabilityBridge";
 import type { AssistantRoute, AssistantRealtimeAdapter } from "./AssistantHarness";
+
+export const AGENTS_VOICE_ADAPTER_STORAGE_KEY = "xiaozhuoban.realtime.agentsVoiceAdapter.enabled";
+
+export function readAgentsVoiceAdapterEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(AGENTS_VOICE_ADAPTER_STORAGE_KEY) === "true";
+}
 
 type RuntimeRealtimeAdapter = AssistantRealtimeAdapter & {
   connect: () => Promise<void>;
@@ -55,6 +64,7 @@ export function createRealtimeAssistantRuntime(options: {
   appShellBridge?: AppShellActionBridge;
   adapterOptions?: Omit<OpenAIRealtimeWebRtcAdapterOptions, "onFunctionCall" | "onStatusChange">;
   adapterFactory?: (options: OpenAIRealtimeWebRtcAdapterOptions) => RuntimeRealtimeAdapter;
+  useAgentsVoiceAdapter?: boolean | (() => boolean);
   runtimeBudgetConfig?: RealtimeBudgetConfig;
   now?: () => number;
 } = {}): RealtimeAssistantRuntime {
@@ -194,7 +204,73 @@ export function createRealtimeAssistantRuntime(options: {
       });
     }
   };
-  const adapter = options.adapterFactory ? options.adapterFactory(adapterOptions) : new OpenAIRealtimeWebRtcAdapter(adapterOptions);
+  const shouldUseAgentsVoiceAdapter = () =>
+    typeof options.useAgentsVoiceAdapter === "function" ? options.useAgentsVoiceAdapter() : Boolean(options.useAgentsVoiceAdapter);
+  let activeAdapter: RuntimeRealtimeAdapter | null = null;
+  let cachedTools: AssistantToolSpec[] = [];
+  let cachedContext: Parameters<NonNullable<AssistantRealtimeAdapter["updateContext"]>>[0] | null = null;
+  let cachedModules: Parameters<NonNullable<AssistantRealtimeAdapter["updateModules"]>>[0] | null = null;
+  let cachedCommandTraceId: string | null = null;
+  const createRuntimeAdapter = () => {
+    const adapterKind = shouldUseAgentsVoiceAdapter() ? "agents_voice_sdk" : "classic_webrtc";
+    const nextAdapter = options.adapterFactory
+      ? options.adapterFactory(adapterOptions)
+      : adapterKind === "agents_voice_sdk"
+        ? new AgentsVoiceRealtimeAdapter(adapterOptions)
+        : new OpenAIRealtimeWebRtcAdapter(adapterOptions);
+    emitDiagnostic?.({ type: "realtime.runtime.adapter_selected", status: adapterKind });
+    if (cachedTools.length) {
+      void nextAdapter.updateTools(cachedTools);
+    }
+    if (cachedContext && nextAdapter.updateContext) {
+      void nextAdapter.updateContext(cachedContext);
+    }
+    if (cachedModules && nextAdapter.updateModules) {
+      void nextAdapter.updateModules(cachedModules);
+    }
+    if (nextAdapter.setActiveCommandTraceId) {
+      void nextAdapter.setActiveCommandTraceId(cachedCommandTraceId);
+    }
+    return nextAdapter;
+  };
+  const getAdapter = () => {
+    activeAdapter ??= createRuntimeAdapter();
+    return activeAdapter;
+  };
+  const adapter: RuntimeRealtimeAdapter = {
+    connect: () => getAdapter().connect(),
+    connectTextOnly: () => getAdapter().connectTextOnly?.() ?? Promise.reject(new Error("REALTIME_TEXT_ONLY_UNAVAILABLE")),
+    disconnect: () => activeAdapter?.disconnect(),
+    sendTextCommand: (input, commandOptions) => {
+      const selectedAdapter = getAdapter();
+      if (!selectedAdapter.sendTextCommand) {
+        throw new Error("REALTIME_TEXT_COMMAND_UNAVAILABLE");
+      }
+      selectedAdapter.sendTextCommand(input, commandOptions);
+    },
+    updateTools: (tools) => {
+      cachedTools = tools;
+      return activeAdapter?.updateTools(tools);
+    },
+    updateContext: (context) => {
+      cachedContext = context;
+      return activeAdapter?.updateContext?.(context);
+    },
+    updateModules: (registry) => {
+      cachedModules = registry;
+      return activeAdapter?.updateModules?.(registry);
+    },
+    setActiveCommandTraceId: (commandTraceId) => {
+      cachedCommandTraceId = commandTraceId;
+      return activeAdapter?.setActiveCommandTraceId?.(commandTraceId);
+    },
+    sendToolResult: (call, result) => activeAdapter?.sendToolResult(call, result),
+    requestToolCall: (input, context, tools, moduleRegistry) => getAdapter().requestToolCall?.(input, context, tools, moduleRegistry) ?? null,
+    requestCommandPlan: (input, context, tools, moduleRegistry) => getAdapter().requestCommandPlan?.(input, context, tools, moduleRegistry) ?? null
+  };
+  if (options.adapterFactory) {
+    activeAdapter = createRuntimeAdapter();
+  }
   harness = createLocalAssistantHarness({
     capabilityBridge: options.capabilityBridge,
     appShellBridge: options.appShellBridge,

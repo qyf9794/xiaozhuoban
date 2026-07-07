@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type K
 import type { AssistantHarness, AssistantRoute } from "../assistant/AssistantHarness";
 import { publishAssistantHarnessDiagnostics, type AssistantDiagnosticEvent } from "../assistant/assistantDiagnostics";
 import { formatAssistantResultMessage } from "../assistant/assistantResultPhrasing";
+import type { LocalWakeWordStatus } from "../assistant/localWakeWord";
 import type { RealtimeConnectionStatus } from "../assistant/openaiRealtimeAdapter";
 import type { ConfirmationRequest } from "@xiaozhuoban/assistant-core";
 
@@ -47,6 +48,19 @@ export function getVoiceAssistantConnectionMessage(status: RealtimeConnectionSta
   if (status === "session_failed") return "Realtime 会话配置未生效，请重试。";
   if (status === "failed") return "语音连接失败，请稍后重试。";
   return "语音未连接，文字指令可用。";
+}
+
+export function getLocalWakeWordStatusText(
+  enabled: boolean,
+  supported: boolean,
+  status: LocalWakeWordStatus | undefined
+): string {
+  if (!supported) return "唤醒不可用";
+  if (!enabled) return "唤醒关闭";
+  if (status === "listening") return "小桌板待命";
+  if (status === "detected") return "已唤醒";
+  if (status === "error") return "唤醒出错";
+  return "唤醒待机";
 }
 
 export function getVoiceAssistantErrorMessage(error: unknown): string {
@@ -307,6 +321,10 @@ export function VoiceAssistantDock({
   onSendRealtimeTextCommand,
   assistantSpeech,
   userSpeech,
+  wakeWordEnabled = false,
+  wakeWordStatus = "idle",
+  wakeWordSupported = false,
+  onToggleWakeWord,
   onDiagnostic
 }: {
   harness: AssistantHarness;
@@ -326,6 +344,10 @@ export function VoiceAssistantDock({
   onSendRealtimeTextCommand?: (input: string, options?: { commandTraceId?: string }) => Promise<void>;
   assistantSpeech?: { id: number; text: string } | null;
   userSpeech?: { id: number; text: string } | null;
+  wakeWordEnabled?: boolean;
+  wakeWordStatus?: LocalWakeWordStatus;
+  wakeWordSupported?: boolean;
+  onToggleWakeWord?: () => void;
   onDiagnostic?: (event: AssistantDiagnosticEvent) => void;
 }) {
   const [state, setState] = useState<VoiceAssistantDockState>("disconnected");
@@ -812,8 +834,10 @@ export function VoiceAssistantDock({
   const dockTransform = getVoiceAssistantDockTransform(isMobileMode, dragOffset);
   const operationText = getVoiceAssistantOperationText(visibleOperation);
   const runtimeText = runtimeStatus ? getVoiceAssistantRuntimeText(runtimeStatus, syncPendingCount, syncLastError) : "";
+  const wakeWordText = getLocalWakeWordStatusText(wakeWordEnabled, wakeWordSupported, wakeWordStatus);
   const statusLines = [
     `${getVoiceAssistantDockStatusText(visualState)} · ${lastMessage}`,
+    onToggleWakeWord ? wakeWordText : "",
     operationText,
     runtimeText,
     history[0] ? `${history[0].text} · ${history[0].result}` : ""
@@ -861,6 +885,22 @@ export function VoiceAssistantDock({
             tabIndex={-1}
           />
         </button>
+
+        {onToggleWakeWord ? (
+          <button
+            type="button"
+            className="voice-assistant-dock__wake-toggle"
+            aria-label={wakeWordEnabled ? "关闭小桌板唤醒" : "开启小桌板唤醒"}
+            aria-pressed={wakeWordEnabled}
+            data-status={wakeWordStatus}
+            data-supported={wakeWordSupported ? "true" : "false"}
+            title={wakeWordText}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleWakeWord();
+            }}
+          />
+        ) : null}
 
         {textPanelVisible ? (
         <div

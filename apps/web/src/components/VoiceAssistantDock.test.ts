@@ -4,6 +4,7 @@ import {
   getVoiceAssistantDockTransform,
   getVoiceAssistantDockStateForRealtimeStatus,
   getVoiceAssistantErrorMessage,
+  getLocalWakeWordStatusText,
   getVoiceAssistantDockStatusText,
   getVoiceAssistantOrbColorMode,
   getVoiceAssistantOrbScale,
@@ -42,6 +43,14 @@ describe("VoiceAssistantDock", () => {
     cases.forEach(([state, label]) => {
       expect(getVoiceAssistantDockStatusText(state)).toBe(label);
     });
+  });
+
+  it("maps local wake word states to compact labels", () => {
+    expect(getLocalWakeWordStatusText(false, true, "idle")).toBe("唤醒关闭");
+    expect(getLocalWakeWordStatusText(true, false, "unsupported")).toBe("唤醒不可用");
+    expect(getLocalWakeWordStatusText(true, true, "listening")).toBe("小桌板待命");
+    expect(getLocalWakeWordStatusText(true, true, "detected")).toBe("已唤醒");
+    expect(getLocalWakeWordStatusText(true, true, "error")).toBe("唤醒出错");
   });
 
   it("keeps newest text command history bounded", () => {

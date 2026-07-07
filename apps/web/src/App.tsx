@@ -90,12 +90,16 @@ export function App() {
     assistantOperation,
     assistantRuntime,
     assistantSpeech,
+    localWakeWordEnabled,
+    localWakeWordStatus,
+    localWakeWordSupported,
     realtimeAudioLevel,
     realtimeHighAccuracyMode,
     realtimeStatus,
     recordDiagnostic,
     retrySync,
     runtimeStatusText,
+    setLocalWakeWordEnabled,
     setRealtimeHighAccuracyMode,
     syncLastError,
     syncPendingCount,
@@ -356,6 +360,10 @@ export function App() {
           operationStatus={assistantOperation}
           assistantSpeech={assistantSpeech}
           userSpeech={userSpeech}
+          wakeWordEnabled={localWakeWordEnabled}
+          wakeWordStatus={localWakeWordStatus}
+          wakeWordSupported={localWakeWordSupported}
+          onToggleWakeWord={() => setLocalWakeWordEnabled((value) => !value)}
           runtimeStatus={runtimeStatusText}
           syncPendingCount={syncPendingCount}
           syncLastError={syncLastError}
