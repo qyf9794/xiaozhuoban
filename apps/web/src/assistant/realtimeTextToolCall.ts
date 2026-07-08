@@ -9,9 +9,7 @@ import {
 import {
   REALTIME_ADD_WIDGET_TOOL_NAME,
   findRealtimeWidgetType,
-  inputMentionsRealtimeWidgetType,
-  realtimeToolSelectionPolicyLines,
-  realtimeToolSelectionSessionPolicyLines
+  inputMentionsRealtimeWidgetType
 } from "./realtimeRoutingPolicy";
 import {
   XIAOZHUOBAN_REALTIME_MODEL,
@@ -45,13 +43,16 @@ export type RealtimeTextToolCallResponse = {
 };
 
 export type RealtimeTextToolSelection = {
-  name: string;
+  name?: string;
   selectedModule?: string;
+  intent?: string;
   targetHint?: string;
+  userCommand?: string;
   confidence?: number;
 };
 
 export type RealtimeTextPlanSelectionStep = RealtimeTextToolSelection & {
+  name: string;
   id?: string;
   connector?: "start" | "sequential" | "parallel";
 };
@@ -64,6 +65,43 @@ const SELECT_TOOL_NAME = "assistant.select_tool";
 const ADD_WIDGET_TOOL_NAME = REALTIME_ADD_WIDGET_TOOL_NAME;
 
 export const REALTIME_TOOL_SELECTION_TOOL_NAME = SELECT_TOOL_NAME;
+export const REALTIME_TOOL_SELECTION_INTENTS = [
+  "open",
+  "close",
+  "focus",
+  "fullscreen",
+  "move",
+  "resize",
+  "bring_to_front",
+  "search",
+  "play",
+  "pause",
+  "resume",
+  "set",
+  "refresh",
+  "add",
+  "remove",
+  "switch",
+  "create",
+  "rename",
+  "toggle",
+  "write",
+  "translate",
+  "calculate",
+  "convert",
+  "unknown"
+] as const;
+
+const REALTIME_MODULE_SELECTION_POLICY_LINES = [
+  "明确要打开、新增、创建或调出小工具时，选择对应小工具模块，intent 用 open 或 add。",
+  "明确要关闭、收起、删除窗口时，selectedModule 可为目标小工具类型或 window，intent 用 close 或 remove。",
+  "播放、暂停、继续、上一首、下一首等音视频控制，选择 music 或 tv 等对应模块，intent 用 play、pause 或 resume。",
+  "搜索歌曲、频道、新闻、股票、城市等内容时，选择对应模块，intent 用 search 或 set。",
+  "天气、时间、行情、换算、翻译、计算、便签、待办、倒计时等请求，选择对应业务模块和最接近的 intent。",
+  "移动、调整大小、置顶、聚焦、全屏等窗口操作，selectedModule 用 window 或目标小工具类型，intent 用 move、resize、bring_to_front、focus 或 fullscreen。",
+  "桌板切换、新建、重命名、整理等桌板操作，selectedModule 用 board，intent 用 switch、create、rename 或 set。",
+  "只返回 selectedModule、intent、targetHint、userCommand 和 confidence；不要返回真实工具名或真实工具参数。"
+];
 
 function parsePlanConnector(value: unknown): RealtimeTextPlanSelectionStep["connector"] {
   return value === "parallel" || value === "sequential" || value === "start" ? value : undefined;
@@ -157,22 +195,6 @@ export function createRealtimeCommandPlanRequestBody(
   } satisfies RealtimeTextToolCallRequest);
 }
 
-function toolCatalog(tools: AssistantToolSpec[]) {
-  return tools
-    .map((tool) =>
-      [
-        `- ${tool.name}`,
-        `description=${tool.description}`,
-        `scope=${tool.scope}`,
-        tool.widgetType ? `widgetType=${tool.widgetType}` : "",
-        tool.risk ? `risk=${tool.risk}` : ""
-      ]
-        .filter(Boolean)
-        .join(" ")
-    )
-    .join("\n");
-}
-
 function moduleCatalogText(moduleCatalog: RealtimeModuleCatalogItem[] | undefined) {
   return (moduleCatalog ?? [])
     .map((module) =>
@@ -198,6 +220,14 @@ function moduleCatalogText(moduleCatalog: RealtimeModuleCatalogItem[] | undefine
 function selectionModuleTypes(tools: AssistantToolSpec[], moduleCatalog?: RealtimeModuleCatalogItem[]): string[] {
   return [
     ...new Set([
+      "app",
+      "board",
+      "widget",
+      "window",
+      "music",
+      "tv",
+      "weather",
+      "market",
       ...(moduleCatalog ?? []).map((module) => module.type),
       ...tools.map((tool) => tool.widgetType).filter((type): type is string => Boolean(type))
     ])
@@ -211,10 +241,10 @@ export function createRealtimeToolSelectionPrompt(
 ) {
   const catalogVersion = getRealtimeCatalogVersion(moduleCatalog);
   return [
-    "你是小桌板命令路由器。先只判断用户想使用哪个模块和已注册工具，不要生成工具参数。",
-    "你只能基于模块目录、工具目录和用户命令选择；此阶段不会提供桌面上下文。",
-    ...realtimeToolSelectionPolicyLines,
-    "没有足够把握时不要调用工具。",
+    "你是小桌板命令路由器。先只判断用户想使用哪个模块和意图，不要选择真实工具，不要生成工具参数。",
+    "你只能基于模块目录、意图枚举和用户命令选择；此阶段不会提供桌面上下文。",
+    ...REALTIME_MODULE_SELECTION_POLICY_LINES,
+    "没有足够把握时 intent 选 unknown，并把用户原话放到 userCommand。",
     "",
     "# 版本",
     catalogVersion ? `toolCatalogVersion=${catalogVersion}` : "toolCatalogVersion=unknown",
@@ -222,8 +252,8 @@ export function createRealtimeToolSelectionPrompt(
     "# 模块目录",
     moduleCatalogText(moduleCatalog) || "- 未提供模块目录",
     "",
-    "# 工具目录",
-    toolCatalog(tools),
+    "# 可选意图",
+    REALTIME_TOOL_SELECTION_INTENTS.join(", "),
     "",
     `用户命令：${input}`
   ].join("\n");
@@ -232,11 +262,11 @@ export function createRealtimeToolSelectionPrompt(
 export function createRealtimeToolSelectionInstructions(tools: AssistantToolSpec[], moduleCatalog?: RealtimeModuleCatalogItem[]) {
   const catalogVersion = getRealtimeCatalogVersion(moduleCatalog);
   return [
-    "你是小桌板命令路由器。当前阶段只判断用户想使用哪个模块和已注册工具。",
-    "不要生成任何真实工具参数，不要猜 widgetId、definitionId、boardId。",
+    "你是小桌板命令路由器。当前阶段只判断用户想使用哪个模块和意图。",
+    "不要选择真实工具名，不要生成任何真实工具参数，不要猜 widgetId、definitionId、boardId。",
     "不要要求完整桌面上下文；如果需要目标，只把用户说出的目标词放到 targetHint。",
-    "用户要控制桌面时，先调用 assistant.select_tool；前端随后会按所选工具提供最小必要上下文。",
-    ...realtimeToolSelectionSessionPolicyLines,
+    "用户要控制桌面时，先调用 assistant.select_tool；前端随后会按 selectedModule + intent 暴露少量真实工具和最小必要上下文。",
+    ...REALTIME_MODULE_SELECTION_POLICY_LINES,
     "",
     "# 版本",
     catalogVersion ? `toolCatalogVersion=${catalogVersion}` : "toolCatalogVersion=unknown",
@@ -244,30 +274,29 @@ export function createRealtimeToolSelectionInstructions(tools: AssistantToolSpec
     "# 模块目录",
     moduleCatalogText(moduleCatalog) || "- 未提供模块目录",
     "",
-    "# 工具目录",
-    toolCatalog(tools)
+    "# 可选意图",
+    REALTIME_TOOL_SELECTION_INTENTS.join(", ")
   ].join("\n");
 }
 
 export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[], moduleCatalog?: RealtimeModuleCatalogItem[]): RealtimeFunctionTool {
   const moduleTypes = selectionModuleTypes(tools, moduleCatalog);
-  const toolSummary = tools.map((tool) => `${tool.name}: ${tool.description}`).join("; ");
   return {
     type: "function",
     name: SELECT_TOOL_NAME.replace(/\./g, "__dot__"),
-    description: `Select the single best registered Xiaozhuoban tool before any desktop context is provided. Available tools: ${toolSummary}`,
+    description: "Select the Xiaozhuoban module and user intent before desktop context or real tools are provided.",
     parameters: {
       type: "object",
       properties: {
-        name: {
-          type: "string",
-          enum: tools.map((tool) => tool.name),
-          description: "Selected registered tool name."
-        },
         selectedModule: {
           type: "string",
           enum: moduleTypes,
-          description: "Selected module type when known."
+          description: "Selected module or surface, such as music, tv, weather, market, window, widget, or board."
+        },
+        intent: {
+          type: "string",
+          enum: [...REALTIME_TOOL_SELECTION_INTENTS],
+          description: "The user's high-level intent. Do not encode real tool names here."
         },
         targetHint: {
           type: "string",
@@ -279,7 +308,7 @@ export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[], modu
         },
         confidence: { type: "number" }
       },
-      required: ["name"],
+      required: ["selectedModule", "intent"],
       additionalProperties: false
     }
   };
@@ -301,16 +330,17 @@ export function createToolSelectionPayload(
       {
         type: "function",
         name: SELECT_TOOL_NAME.replace(/\./g, "__dot__"),
-        description: "Select the single best registered Xiaozhuoban tool for the user's command.",
+        description: "Select the Xiaozhuoban module and high-level intent for the user's command.",
         parameters: {
           type: "object",
           properties: {
-            name: { type: "string", description: "Selected registered tool name." },
-            selectedModule: { type: "string", description: "Selected Xiaozhuoban module type when known." },
+            selectedModule: { type: "string", enum: selectionModuleTypes(request.tools, request.moduleCatalog), description: "Selected Xiaozhuoban module type or surface." },
+            intent: { type: "string", enum: [...REALTIME_TOOL_SELECTION_INTENTS], description: "The user's high-level intent." },
             targetHint: { type: "string", description: "Short widget or board target words from the user command." },
+            userCommand: { type: "string", description: "A short normalized version of the user's command." },
             confidence: { type: "number" }
           },
-          required: ["name"],
+          required: ["selectedModule", "intent"],
           additionalProperties: false
         }
       }
@@ -413,7 +443,7 @@ export function createScopedToolCallPayload(
           content: [
             "# Text Command Fallback",
             "缺少已选工具或局部上下文，因此不能生成可执行工具调用。",
-            `已选工具：${selection.name}`,
+            `已选工具：${selection.name ?? "未选择"}`,
             `用户命令：${request.input}`
           ].join("\n")
         }
@@ -508,7 +538,7 @@ export function createScopedRealtimeToolInstructions(
       : "",
     "如果缺少目标或信息不足，不要猜测参数，直接简短说明需要澄清。",
     "",
-    `已选工具：${selection.name}`,
+    `已选工具：${selection.name ?? "未选择"}`,
     selection.targetHint ? `目标提示：${selection.targetHint}` : "",
     `用户命令：${input}`
   ]
@@ -594,11 +624,16 @@ export function extractToolSelectionFromResponsesPayload(
   if (!functionCall || decodeRealtimeToolName(String(functionCall.name)) !== SELECT_TOOL_NAME) return null;
   const args = parseArguments(functionCall.arguments);
   const name = typeof args.name === "string" ? args.name : "";
-  if (!allowedToolNames.has(name)) return null;
+  if (name && !allowedToolNames.has(name)) return null;
+  const selectedModule = typeof args.selectedModule === "string" ? args.selectedModule : undefined;
+  const intent = typeof args.intent === "string" ? args.intent : undefined;
+  if (!name && !selectedModule && !intent) return null;
   return {
-    name,
-    selectedModule: typeof args.selectedModule === "string" ? args.selectedModule : undefined,
+    name: name || undefined,
+    selectedModule,
+    intent,
     targetHint: typeof args.targetHint === "string" ? args.targetHint : undefined,
+    userCommand: typeof args.userCommand === "string" ? args.userCommand : undefined,
     confidence: typeof args.confidence === "number" ? args.confidence : undefined
   };
 }
@@ -622,11 +657,16 @@ export function parseRealtimeTextToolSelectionResponse(value: unknown): Realtime
   const selection = (value as Record<string, unknown>).selection;
   if (!selection || typeof selection !== "object") return null;
   const record = selection as Record<string, unknown>;
-  if (typeof record.name !== "string") return null;
+  const name = typeof record.name === "string" ? record.name : undefined;
+  const selectedModule = typeof record.selectedModule === "string" ? record.selectedModule : undefined;
+  const intent = typeof record.intent === "string" ? record.intent : undefined;
+  if (!name && !selectedModule && !intent) return null;
   return {
-    name: record.name,
-    selectedModule: typeof record.selectedModule === "string" ? record.selectedModule : undefined,
+    name,
+    selectedModule,
+    intent,
     targetHint: typeof record.targetHint === "string" ? record.targetHint : undefined,
+    userCommand: typeof record.userCommand === "string" ? record.userCommand : undefined,
     confidence: typeof record.confidence === "number" ? record.confidence : undefined
   };
 }

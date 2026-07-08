@@ -352,23 +352,65 @@ export function createInitialRegisteredRealtimeTools(): RealtimeFunctionTool[] {
     .map((metadata) => serializeAssistantToolForRealtime(toAssistantToolSpec(metadata), metadata.parameters));
 }
 
+const realtimeSelectionIntentTypes = [
+  "open",
+  "close",
+  "focus",
+  "fullscreen",
+  "move",
+  "resize",
+  "bring_to_front",
+  "search",
+  "play",
+  "pause",
+  "resume",
+  "set",
+  "refresh",
+  "add",
+  "remove",
+  "switch",
+  "create",
+  "rename",
+  "toggle",
+  "write",
+  "translate",
+  "calculate",
+  "convert",
+  "unknown"
+];
+
+function selectionModuleTypes(tools: AssistantToolSpec[]): string[] {
+  return [
+    ...new Set([
+      "app",
+      "board",
+      "widget",
+      "window",
+      "music",
+      "tv",
+      "weather",
+      "market",
+      ...tools.map((tool) => tool.widgetType).filter((type): type is string => Boolean(type))
+    ])
+  ].sort((left, right) => left.localeCompare(right));
+}
+
 export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[]): RealtimeFunctionTool {
-  const toolSummary = tools.map((tool) => `${tool.name}: ${tool.description}`).join("; ");
   return {
     type: "function",
     name: encodeRealtimeToolName(REALTIME_TOOL_SELECTION_TOOL_NAME),
-    description: `Select the single best registered Xiaozhuoban tool before any desktop context is provided. Available tools: ${toolSummary}`,
+    description: "Select the Xiaozhuoban module and high-level intent before desktop context or real tools are provided.",
     parameters: objectSchema(
       {
-        name: {
-          type: "string",
-          enum: tools.map((tool) => tool.name),
-          description: "Selected registered tool name."
-        },
         selectedModule: {
           type: "string",
-          enum: (tools.length > 0 ? [...new Set(tools.map((tool) => tool.widgetType).filter(Boolean))] : []) as string[],
-          description: "Selected Xiaozhuoban module type when known."
+          enum: selectionModuleTypes(tools),
+          description: "Selected Xiaozhuoban module or surface, such as music, tv, weather, market, window, widget, or board."
+        },
+        intent: {
+          type: "string",
+          enum: realtimeSelectionIntentTypes,
+          description: "The user's high-level intent. Do not encode real tool names here."
         },
         targetHint: {
           type: "string",
@@ -380,7 +422,7 @@ export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[]): Rea
         },
         confidence: { type: "number" }
       },
-      ["name"]
+      ["selectedModule", "intent"]
     )
   };
 }

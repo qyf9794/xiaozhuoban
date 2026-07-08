@@ -20,7 +20,7 @@ import {
   XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
   decodeRealtimeToolName
 } from "./realtimeSessionConfig";
-import { REALTIME_ADD_WIDGET_TOOL_NAME, realtimeWidgetAliases } from "./realtimeRoutingPolicy";
+import { REALTIME_ADD_WIDGET_TOOL_NAME, findRealtimeWidgetType, realtimeWidgetAliases } from "./realtimeRoutingPolicy";
 import {
   REALTIME_TOOL_SELECTION_TOOL_NAME,
   createRealtimeCommandPlanRequestBody,
@@ -138,6 +138,34 @@ const MICROPHONE_ECHO_CEILING = 0.12;
 const MAX_INTERRUPTED_TRACE_IDS = 32;
 const MAX_RECENT_ASSISTANT_TRANSCRIPTS = 12;
 const RECENT_ASSISTANT_TRANSCRIPT_TTL_MS = 12_000;
+const MAX_SCOPED_SELECTION_TOOLS = 8;
+const GENERIC_SELECTION_MODULES = new Set(["app", "board", "widget", "window"]);
+const MODULE_OPEN_INTENTS = new Set(["open", "add", "create", "play", "search", "set"]);
+const INTENT_TOOL_PRIORITIES: Record<string, string[]> = {
+  open: ["board.add_widget", "widget.focus", "app.settings.open", "app.command_palette.open", "app.ai_dialog.open"],
+  close: ["widget.remove"],
+  remove: ["widget.remove"],
+  focus: ["widget.focus", "widget.bring_to_front"],
+  fullscreen: ["widget.fullscreen_focus", "tv.fullscreen", "app.fullscreen.set"],
+  move: ["widget.move"],
+  resize: ["widget.resize"],
+  bring_to_front: ["widget.bring_to_front"],
+  search: ["music.search", "tv.select_channel", "tv.play", "market.set_indices", "weather.set_city", "headline.request_refresh"],
+  play: ["music.play", "tv.play", "tv.select_channel", "recorder.play"],
+  pause: ["music.pause", "tv.pause", "countdown.pause", "recorder.pause"],
+  resume: ["music.resume", "countdown.resume"],
+  set: ["countdown.set", "weather.set_city", "market.set_indices", "worldClock.set_zones", "calculator.set_display", "converter.set", "translate.set_draft"],
+  refresh: ["headline.request_refresh"],
+  add: ["board.add_widget", "todo.add_item", "clipboard.add_text"],
+  switch: ["board.switch", "tv.select_channel"],
+  create: ["board.create", "board.add_widget"],
+  rename: ["board.rename"],
+  toggle: ["app.sidebar.set", "app.fullscreen.set", "dialClock.set_night_mode"],
+  write: ["note.write", "clipboard.add_text", "todo.add_item", "messageBoard.send"],
+  translate: ["translate.set_draft"],
+  calculate: ["calculator.set_display"],
+  convert: ["converter.set"]
+};
 const REALTIME_MAX_OUTPUT_TOKENS = 480;
 export const DEFAULT_REALTIME_SESSION_UPDATE_TIMEOUT_MS = 12_000;
 
@@ -959,19 +987,27 @@ function normalizeRealtimePlanArguments(
 }
 
 function parseToolSelectionArguments(value: unknown): {
-  name: string;
+  name?: string;
   selectedModule?: string;
+  intent?: string;
   targetHint?: string;
   userCommand?: string;
   confidence?: number;
 } | null {
   const parsed = parseArguments(value);
-  if (!isRecord(parsed) || typeof parsed.name !== "string") return null;
+  if (!isRecord(parsed)) return null;
+  const name = typeof parsed.name === "string" ? parsed.name : undefined;
+  const selectedModule = typeof parsed.selectedModule === "string" ? parsed.selectedModule : undefined;
+  const intent = typeof parsed.intent === "string" ? parsed.intent : undefined;
+  const targetHint = typeof parsed.targetHint === "string" ? parsed.targetHint : undefined;
+  const userCommand = typeof parsed.userCommand === "string" ? parsed.userCommand : undefined;
+  if (!name && !selectedModule && !intent && !targetHint && !userCommand) return null;
   return {
-    name: parsed.name,
-    selectedModule: typeof parsed.selectedModule === "string" ? parsed.selectedModule : undefined,
-    targetHint: typeof parsed.targetHint === "string" ? parsed.targetHint : undefined,
-    userCommand: typeof parsed.userCommand === "string" ? parsed.userCommand : undefined,
+    name,
+    selectedModule,
+    intent,
+    targetHint,
+    userCommand,
     confidence: typeof parsed.confidence === "number" ? parsed.confidence : undefined
   };
 }
@@ -2163,7 +2199,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     commandTraceId?: string
   ): string {
     const tracedInput = commandTraceId ? this.realtimeTraceUserTranscripts.get(commandTraceId)?.input ?? "" : "";
-    return selection.userCommand || tracedInput || selection.targetHint || selection.name;
+    return selection.userCommand || tracedInput || selection.targetHint || selection.selectedModule || selection.intent || selection.name || "";
   }
 
   private findToolSpec(toolName: string): AssistantToolSpec | undefined {
@@ -2173,33 +2209,178 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     );
   }
 
+  private isToolForSelectionModule(tool: AssistantToolSpec, selectedModule: string): boolean {
+    if (tool.widgetType === selectedModule) return true;
+    if (selectedModule === "window" || selectedModule === "widget") return tool.name.startsWith("widget.") || tool.name === REALTIME_ADD_WIDGET_TOOL_NAME;
+    if (selectedModule === "board") return tool.name.startsWith("board.") || tool.name.startsWith("widget.");
+    if (selectedModule === "app") return tool.name.startsWith("app.");
+    return this.moduleRegistry?.findModuleForTool(tool.name)?.type === selectedModule;
+  }
+
+  private resolveSelectedModuleFromSelection(
+    selection: NonNullable<ReturnType<typeof parseToolSelectionArguments>>,
+    input: string,
+    selectedTool?: AssistantToolSpec
+  ): string | undefined {
+    if (selection.selectedModule) return selection.selectedModule;
+    if (selectedTool?.widgetType) return selectedTool.widgetType;
+    const inferredWidgetType = findRealtimeWidgetType(input, selection.targetHint);
+    if (inferredWidgetType) return inferredWidgetType;
+    if (selection.name) {
+      const tool = this.findToolSpec(selection.name);
+      if (tool?.widgetType) return tool.widgetType;
+      return this.moduleRegistry?.findModuleForTool(selection.name)?.type ?? selection.name.split(".")[0];
+    }
+    return undefined;
+  }
+
+  private uniqueTools(tools: AssistantToolSpec[]): AssistantToolSpec[] {
+    const seen = new Set<string>();
+    return tools.filter((tool) => {
+      if (seen.has(tool.name)) return false;
+      seen.add(tool.name);
+      return true;
+    });
+  }
+
+  private sortToolsForSelectionIntent(
+    tools: AssistantToolSpec[],
+    selection: NonNullable<ReturnType<typeof parseToolSelectionArguments>>,
+    selectedModule: string | undefined
+  ): AssistantToolSpec[] {
+    const priorities = selection.intent ? INTENT_TOOL_PRIORITIES[selection.intent] ?? [] : [];
+    const priorityIndex = new Map(priorities.map((name, index) => [name, index]));
+    return [...tools].sort((left, right) => {
+      const leftPriority = priorityIndex.get(left.name) ?? 1000;
+      const rightPriority = priorityIndex.get(right.name) ?? 1000;
+      if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+      const leftModuleMatch = selectedModule && this.isToolForSelectionModule(left, selectedModule) ? 0 : 1;
+      const rightModuleMatch = selectedModule && this.isToolForSelectionModule(right, selectedModule) ? 0 : 1;
+      if (leftModuleMatch !== rightModuleMatch) return leftModuleMatch - rightModuleMatch;
+      return left.name.localeCompare(right.name);
+    });
+  }
+
+  private resolveScopedToolsForSelection(
+    selection: NonNullable<ReturnType<typeof parseToolSelectionArguments>>,
+    context: CompactAssistantContext,
+    tools: AssistantToolSpec[],
+    commandTraceId?: string
+  ):
+    | {
+        ok: true;
+        input: string;
+        selectedTool: AssistantToolSpec;
+        selectedModule?: string;
+        scopedTools: AssistantToolSpec[];
+        selection: RealtimeTextToolSelection & { name: string };
+      }
+    | {
+        ok: false;
+        input: string;
+        exposedTools: string[];
+        excludedReasons: Record<string, string>;
+      } {
+    const input = this.resolveToolSelectionInput(selection, commandTraceId);
+    if (!input) {
+      return { ok: false, input, exposedTools: [], excludedReasons: {} };
+    }
+    const legacySelectedTool = selection.name ? tools.find((tool) => tool.name === selection.name) ?? this.findToolSpec(selection.name) : undefined;
+    const selectedModule = this.resolveSelectedModuleFromSelection(selection, input, legacySelectedTool);
+    const exposurePlan = this.createToolExposurePlan(input, context, tools);
+    const exposedTools = exposurePlan.exposedTools.map((tool) => tool.name);
+    const addWidgetTool = tools.find((tool) => tool.name === REALTIME_ADD_WIDGET_TOOL_NAME);
+    const moduleTools = selectedModule
+      ? tools.filter((tool) => this.isToolForSelectionModule(tool, selectedModule))
+      : [];
+    const exposedToolNames = new Set(exposedTools);
+    const intentPriorityNames = new Set([
+      ...(selection.intent ? INTENT_TOOL_PRIORITIES[selection.intent] ?? [] : []),
+      ...(selection.name ? [selection.name] : [])
+    ]);
+    const intentTools = tools.filter((tool) => intentPriorityNames.has(tool.name));
+    const baseTools = exposurePlan.exposedTools.length
+      ? this.uniqueTools([
+          ...exposurePlan.exposedTools.filter((tool) => !selectedModule || this.isToolForSelectionModule(tool, selectedModule)),
+          ...exposurePlan.exposedTools.filter((tool) => intentPriorityNames.has(tool.name)),
+          ...moduleTools.filter((tool) => exposedToolNames.has(tool.name))
+        ])
+      : this.uniqueTools([...moduleTools, ...intentTools]);
+
+    const shouldIncludeAddWidget =
+      Boolean(
+        selectedModule &&
+          !GENERIC_SELECTION_MODULES.has(selectedModule) &&
+          addWidgetTool &&
+          context.availableDefinitions?.some((definition) => definition.type === selectedModule) &&
+          (MODULE_OPEN_INTENTS.has(selection.intent ?? "") || !context.widgets.some((widget) => widget.type === selectedModule))
+      );
+    const scopedCandidates = this.uniqueTools([
+      ...baseTools,
+      ...(shouldIncludeAddWidget && addWidgetTool ? [addWidgetTool] : [])
+    ]);
+    const sortedCandidates = this.sortToolsForSelectionIntent(scopedCandidates, selection, selectedModule).slice(0, MAX_SCOPED_SELECTION_TOOLS);
+
+    const legacyCandidate = selection.name ? sortedCandidates.find((tool) => tool.name === selection.name) : undefined;
+    const pureOpenAddWidget =
+      selectedModule &&
+      addWidgetTool &&
+      sortedCandidates.some((tool) => tool.name === REALTIME_ADD_WIDGET_TOOL_NAME) &&
+      selection.intent === "open" &&
+      isPureOpenWidgetText(input)
+        ? addWidgetTool
+        : undefined;
+    const selectedTool = legacyCandidate ?? pureOpenAddWidget ?? sortedCandidates.find((tool) => tool.name !== REALTIME_ADD_WIDGET_TOOL_NAME) ?? sortedCandidates[0];
+    if (!selectedTool) {
+      return {
+        ok: false,
+        input,
+        exposedTools,
+        excludedReasons: exposurePlan.excludedReasons
+      };
+    }
+
+    const scopedTools = this.uniqueTools([
+      selectedTool,
+      ...sortedCandidates,
+      ...(shouldIncludeAddWidget && addWidgetTool ? [addWidgetTool] : [])
+    ]).slice(0, MAX_SCOPED_SELECTION_TOOLS);
+
+    return {
+      ok: true,
+      input,
+      selectedTool,
+      selectedModule,
+      scopedTools,
+      selection: {
+        ...selection,
+        name: selectedTool.name,
+        selectedModule,
+        userCommand: selection.userCommand || input
+      }
+    };
+  }
+
   private validateSelectedToolExposure(
     selectedTool: AssistantToolSpec,
     selection: NonNullable<ReturnType<typeof parseToolSelectionArguments>>,
     commandTraceId?: string
   ): { ok: true; input: string; selectedModule?: string } | { ok: false; input: string; exposedTools: string[]; excludedReasons: Record<string, string> } {
     if (!this.currentContext) {
-      return { ok: false, input: selection.userCommand || selection.targetHint || selection.name, exposedTools: [], excludedReasons: {} };
+      return { ok: false, input: selection.userCommand || selection.targetHint || selection.name || "", exposedTools: [], excludedReasons: {} };
     }
-    const input = this.resolveToolSelectionInput(selection, commandTraceId);
-    const exposurePlan = this.createToolExposurePlan(input, this.currentContext, this.currentTools);
-    const exposedTools = exposurePlan.exposedTools.map((tool) => tool.name);
-    const selectedModule = selection.selectedModule ?? exposurePlan.selectedModules[0];
-    if (exposedTools.includes(selectedTool.name)) {
-      return { ok: true, input, selectedModule };
+    const resolved = this.resolveScopedToolsForSelection(selection, this.currentContext, this.currentTools, commandTraceId);
+    if (resolved.ok && resolved.selectedTool.name === selectedTool.name) {
+      return { ok: true, input: resolved.input, selectedModule: resolved.selectedModule };
     }
-    if (
-      selectedTool.name === REALTIME_ADD_WIDGET_TOOL_NAME &&
-      selectedModule &&
-      this.currentContext.availableDefinitions?.some((definition) => definition.type === selectedModule)
-    ) {
-      return { ok: true, input, selectedModule };
+    if (resolved.ok) {
+      return { ok: false, input: resolved.input, exposedTools: [resolved.selectedTool.name], excludedReasons: {} };
     }
     return {
       ok: false,
-      input,
-      exposedTools,
-      excludedReasons: exposurePlan.excludedReasons
+      input: resolved.input,
+      exposedTools: resolved.exposedTools,
+      excludedReasons: resolved.excludedReasons
     };
   }
 
@@ -2430,42 +2611,47 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const selectionPayload = await selectionResponse.json();
     this.emitOpenAIUsageDiagnostics(selectionPayload, "text_tool.select");
     const selection = parseRealtimeTextToolSelectionResponse(selectionPayload);
-    const selectedTool = selection ? effectiveTools.find((tool) => tool.name === selection.name) : undefined;
+    const resolvedSelection = selection
+      ? this.resolveScopedToolsForSelection(selection, contextWithVersions, effectiveTools)
+      : null;
     this.emitDiagnostic({
       type: "realtime.text_tool.select.result",
-      status: selection && selectedTool ? "success" : "empty",
-      toolName: selection?.name,
-      data: { input, confidence: selection?.confidence, selectedModule: selection?.selectedModule, targetHint: selection?.targetHint }
+      status: selection && resolvedSelection?.ok ? "success" : "empty",
+      toolName: resolvedSelection?.ok ? resolvedSelection.selectedTool.name : selection?.name,
+      data: {
+        input,
+        confidence: selection?.confidence,
+        selectedModule: selection?.selectedModule,
+        intent: selection?.intent,
+        targetHint: selection?.targetHint,
+        scopedTools: resolvedSelection?.ok ? resolvedSelection.scopedTools.map((tool) => tool.name) : undefined
+      }
     });
-    if (!selection || !selectedTool) return null;
+    if (!selection || !resolvedSelection?.ok) return null;
     if (typeof selection.confidence === "number" && selection.confidence < REALTIME_TOOL_SELECTION_CONFIDENCE_THRESHOLD) {
       this.emitDiagnostic({
         type: "realtime.text_tool.select.low_confidence",
         status: "needs_clarification",
-        toolName: selection.name,
+        toolName: resolvedSelection.selectedTool.name,
         data: { input, confidence: selection.confidence }
       });
       return null;
     }
 
-    const scopedContext = createScopedRealtimeContext(contextWithVersions, selectedTool, selection, input);
-    const selectedModule =
-      selection.selectedModule ??
-      selectedTool.widgetType ??
-      this.moduleRegistry?.findModuleForTool(selectedTool.name)?.type ??
-      selectedTool.name.split(".")[0];
+    const scopedContext = createScopedRealtimeContext(contextWithVersions, resolvedSelection.selectedTool, resolvedSelection.selection, input);
+    const selectedModule = resolvedSelection.selectedModule;
     const moduleContext = selectedModule
       ? this.moduleRegistry?.getScopedContextForModule(selectedModule, {
           userText: input,
-          selectedToolHint: selectedTool.name,
+          selectedToolHint: resolvedSelection.selectedTool.name,
           compactContext: contextWithVersions,
-          tools: effectiveTools
+          tools: resolvedSelection.scopedTools
         })
       : undefined;
     const toolCallResponse = await fetchImpl(endpoint, {
       method: "POST",
       headers: createBearerHeaders(accessToken, { "content-type": "application/json" }),
-      body: createRealtimeScopedToolCallRequestBody(input, scopedContext, effectiveTools, selection, moduleContext ?? undefined)
+      body: createRealtimeScopedToolCallRequestBody(input, scopedContext, resolvedSelection.scopedTools, resolvedSelection.selection, moduleContext ?? undefined)
     });
     if (!toolCallResponse.ok) {
       throw await readRealtimeEndpointError(toolCallResponse, "REALTIME_TOOL_CALL_FAILED");
@@ -2474,7 +2660,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.emitOpenAIUsageDiagnostics(toolCallPayload, "text_tool.execute");
     const parsedCall = parseRealtimeTextToolCallResponse(toolCallPayload);
     const call = parsedCall
-      ? bindWindowToolTargetForCall(parsedCall, contextWithVersions, effectiveTools, { ...selection, userCommand: input })
+      ? bindWindowToolTargetForCall(parsedCall, contextWithVersions, resolvedSelection.scopedTools, { ...resolvedSelection.selection, userCommand: input })
       : null;
     this.emitDiagnostic({
       type: "realtime.text_tool.execute.result",
@@ -2635,14 +2821,23 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private handleToolSelection(call: AssistantToolCall): void {
     const commandTraceId = this.functionCallTraceIds.get(call.id) ?? this.activeCommandTraceId ?? this.activeRealtimeResponseTraceId ?? undefined;
     const selection = parseToolSelectionArguments(call.arguments);
-    const selectedTool = selection ? this.currentTools.find((tool) => tool.name === selection.name) : undefined;
-    if (!selection || !selectedTool || !this.currentContext) {
+    const resolvedSelection = selection && this.currentContext
+      ? this.resolveScopedToolsForSelection(selection, this.currentContext, this.currentTools, commandTraceId)
+      : null;
+    if (!selection || !resolvedSelection?.ok || !this.currentContext) {
       this.emitDiagnostic({
         type: "realtime.tool_selection.failed",
         status: "needs_clarification",
         operationId: call.id,
         toolName: selection?.name,
-        errorCode: "TOOL_SELECTION_CONTEXT_MISSING"
+        errorCode: "TOOL_SELECTION_CONTEXT_MISSING",
+        data: {
+          selectedModule: selection?.selectedModule,
+          intent: selection?.intent,
+          targetHint: selection?.targetHint,
+          exposedTools: resolvedSelection && !resolvedSelection.ok ? resolvedSelection.exposedTools : undefined,
+          excludedReasons: resolvedSelection && !resolvedSelection.ok ? resolvedSelection.excludedReasons : undefined
+        }
       });
       this.sendToolResult(call, {
         status: "needs_clarification",
@@ -2656,8 +2851,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         type: "realtime.tool_selection.low_confidence",
         status: "needs_clarification",
         operationId: call.id,
-        toolName: selection.name,
-        data: { confidence: selection.confidence, targetHint: selection.targetHint }
+        toolName: resolvedSelection.selectedTool.name,
+        data: { confidence: selection.confidence, targetHint: selection.targetHint, selectedModule: selection.selectedModule, intent: selection.intent }
       });
       this.sendToolResult(call, {
         status: "needs_clarification",
@@ -2670,49 +2865,14 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.realtimeTraceCommandToolCalls.add(commandTraceId);
     }
 
-    const exposureValidation = this.validateSelectedToolExposure(selectedTool, selection, commandTraceId);
-    if (!exposureValidation.ok) {
-      const capabilityCatalog = this.createCapabilityCatalog(this.currentTools);
-      const toolCatalogVersion = capabilityCatalog[0]?.catalogVersion ?? this.currentContext.toolCatalogVersion;
-      this.emitDiagnostic({
-        type: "realtime.tool_selection.not_exposed",
-        status: "failed",
-        operationId: call.id,
-        toolName: selectedTool.name,
-        commandTraceId,
-        errorCode: "REALTIME_SELECTED_TOOL_NOT_EXPOSED",
-        data: {
-          input: exposureValidation.input,
-          selectedModule: selection.selectedModule,
-          targetHint: selection.targetHint,
-          confidence: selection.confidence,
-          exposedTools: exposureValidation.exposedTools,
-          excludedReasons: exposureValidation.excludedReasons,
-          currentToolsCount: this.currentTools.length,
-          contextVersion: this.currentContext.contextVersion,
-          toolCatalogVersion,
-          sessionReady: this.sessionReady,
-          dataChannelState: this.dataChannel?.readyState ?? "missing"
-        }
-      });
-      this.sendToolResult(call, {
-        status: "failed",
-        message: "Realtime 选择了当前命令未暴露的工具，已停止执行。",
-        errorCode: "REALTIME_SELECTED_TOOL_NOT_EXPOSED",
-        data: {
-          selectedTool: selectedTool.name,
-          exposedTools: exposureValidation.exposedTools,
-          input: exposureValidation.input
-        }
-      });
-      return;
-    }
+    const selectedTool = resolvedSelection.selectedTool;
+    const resolvedConcreteSelection = resolvedSelection.selection;
 
     if (
       selectedTool.name === "widget.remove" &&
-      isBulkWindowSelectionText(selection.userCommand, selection.targetHint)
+      isBulkWindowSelectionText(resolvedConcreteSelection.userCommand, resolvedConcreteSelection.targetHint)
     ) {
-      const targetText = selection.userCommand || selection.targetHint || "所有窗口";
+      const targetText = resolvedConcreteSelection.userCommand || resolvedConcreteSelection.targetHint || "所有窗口";
       const bulkCall: AssistantToolCall = {
         id: `${call.id}_bulk_window_shortcut`,
         name: "widget.remove",
@@ -2733,7 +2893,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
           this.sendToolResult(call, {
             status: "success",
             message: "已用本地快捷方式执行批量窗口关闭。",
-            data: { selectedTool: selectedTool.name, targetHint: selection.targetHint, execution: "local_bulk_shortcut" }
+            data: { selectedTool: selectedTool.name, targetHint: resolvedConcreteSelection.targetHint, execution: "local_bulk_shortcut" }
           });
         })
         .catch((error) => {
@@ -2747,7 +2907,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     }
 
     if (selectedTool.name === "board.add_widget") {
-      const addWidgetShortcut = this.createLocalAddWidgetShortcut(call, selection, commandTraceId);
+      const addWidgetShortcut = this.createLocalAddWidgetShortcut(call, resolvedConcreteSelection, commandTraceId);
       if (addWidgetShortcut) {
         this.emitDiagnostic({
           type: "realtime.tool_selection.local_add_widget_shortcut",
@@ -2778,7 +2938,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
               message: `已打开${addWidgetShortcut.definition.name || "小工具"}。`,
               data: {
                 selectedTool: selectedTool.name,
-                targetHint: selection.targetHint,
+                targetHint: resolvedConcreteSelection.targetHint,
                 definitionId: addWidgetShortcut.definition.definitionId,
                 execution: "local_add_widget_shortcut"
               }
@@ -2795,40 +2955,40 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       }
     }
 
-    const selectedModule = selection.selectedModule ?? exposureValidation.selectedModule ?? this.resolveSelectedModuleForToolSelection(selectedTool, selection);
+    const selectedModule = resolvedSelection.selectedModule ?? this.resolveSelectedModuleForToolSelection(selectedTool, resolvedConcreteSelection);
     this.activeScopedToolSelection = {
       selectedModule,
-      targetHint: selection.targetHint,
-      userCommand: exposureValidation.input,
+      targetHint: resolvedConcreteSelection.targetHint,
+      userCommand: resolvedSelection.input,
       selectedToolName: selectedTool.name
     };
     const update = createScopedRealtimeToolUpdate(
       {
-        input: exposureValidation.input,
+        input: resolvedSelection.input,
         context: this.currentContext,
-        tools: this.currentTools,
+        tools: resolvedSelection.scopedTools,
         moduleContext: selectedModule
           ? this.moduleRegistry?.getScopedContextForModule(selectedModule, {
-              userText: exposureValidation.input,
-              selectedToolHint: selection.name,
+              userText: resolvedSelection.input,
+              selectedToolHint: selectedTool.name,
               compactContext: this.currentContext,
-              tools: this.currentTools
+              tools: resolvedSelection.scopedTools
             }) ?? undefined
           : undefined
       },
-      selection
+      resolvedConcreteSelection
     );
     if (!update) {
       this.emitDiagnostic({
         type: "realtime.tool_selection.failed",
         status: "failed",
         operationId: call.id,
-        toolName: selection.name,
+        toolName: selectedTool.name,
         errorCode: "UNKNOWN_SELECTED_TOOL"
       });
       this.sendToolResult(call, {
         status: "failed",
-        message: `未知工具：${selection.name}`,
+        message: `未知工具：${selectedTool.name}`,
         errorCode: "UNKNOWN_SELECTED_TOOL"
       });
       return;
@@ -2841,7 +3001,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         message: "已选择工具，正在读取所需上下文。",
         data: {
           selectedTool: selectedTool.name,
-          targetHint: selection.targetHint
+          targetHint: resolvedConcreteSelection.targetHint,
+          selectedModule,
+          intent: resolvedConcreteSelection.intent,
+          scopedTools: resolvedSelection.scopedTools.map((tool) => tool.name)
         }
       },
       commandTraceId
@@ -2852,7 +3015,13 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       status: "success",
       operationId: call.id,
       toolName: selectedTool.name,
-      data: { targetHint: selection.targetHint, selectedModule, confidence: selection.confidence }
+      data: {
+        targetHint: resolvedConcreteSelection.targetHint,
+        selectedModule,
+        intent: resolvedConcreteSelection.intent,
+        confidence: resolvedConcreteSelection.confidence,
+        scopedTools: resolvedSelection.scopedTools.map((tool) => tool.name)
+      }
     });
     this.emitDiagnostic({
       type: "realtime.tool_selection.result_deferred",
@@ -2870,7 +3039,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (selection.selectedModule) return selection.selectedModule;
     if (selectedTool.widgetType) return selectedTool.widgetType;
 
-    const input = selection.userCommand || selection.targetHint || selection.name;
+    const input = selection.userCommand || selection.targetHint || selection.name || "";
     const scopedContext = this.currentContext ? createScopedRealtimeContext(this.currentContext, selectedTool, selection, input) : null;
     const scopedWidgetTypes = [...new Set((scopedContext?.widgets ?? []).map((widget) => widget.type).filter(Boolean))];
     if (scopedWidgetTypes.length === 1) {

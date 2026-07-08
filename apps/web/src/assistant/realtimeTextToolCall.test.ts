@@ -166,8 +166,11 @@ describe("Realtime text tool call fallback", () => {
     const payload = createToolSelectionPayload({ input: "关闭音乐", context, tools });
     const serialized = JSON.stringify(payload);
 
-    expect(serialized).toContain("widget.remove");
-    expect(serialized).toContain("music.pause");
+    expect(serialized).toContain("selectedModule");
+    expect(serialized).toContain("intent");
+    expect(serialized).toContain("music");
+    expect(serialized).not.toContain("widget.remove");
+    expect(serialized).not.toContain("music.pause");
     expect(serialized).not.toContain("wi_music");
     expect(serialized).not.toContain("private note");
   });
@@ -193,18 +196,13 @@ describe("Realtime text tool call fallback", () => {
     const serialized = JSON.stringify({ instructions, selector });
 
     expect(selectorParameters.properties.selectedModule.enum).toEqual(expect.arrayContaining(["countdown", "music", "tv", "weather"]));
-    expect(serialized).toContain("widget.remove");
-    expect(serialized).toContain("music.pause");
+    expect(serialized).toContain("selectedModule");
+    expect(serialized).toContain("intent");
+    expect(serialized).not.toContain("widget.remove");
+    expect(serialized).not.toContain("music.pause");
 	    expect(serialized).toContain("模块目录");
 	    expect(serialized).toContain("toolCatalogVersion=cat_test");
 	    expect(serialized).toContain("weather");
-    expect(serialized).toContain("确认是否在线");
-    expect(serialized).toContain("很短的中文自然回复");
-    expect(serialized).toContain("关闭留言板禁止使用 messageBoard.send");
-    expect(serialized).toContain("dialClock");
-    expect(serialized).toContain("music.play");
-    expect(serialized).toContain("music.auth_status");
-    expect(serialized).toContain("assistant.runtime_diagnostics");
     expect(serialized).toContain("assistant__dot__select_tool");
     expect(serialized).not.toContain("wi_music");
     expect(serialized).not.toContain("private note");

@@ -2433,7 +2433,9 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(tools.map((tool) => tool.name)).toContain("board.add_widget");
     expect(event.session.type).toBe("realtime");
     expect(event.session.tools[0].name).toBe("assistant__dot__select_tool");
-    expect(JSON.stringify(event.session.tools[0].parameters)).toContain("board.add_widget");
+    expect(JSON.stringify(event.session.tools[0].parameters)).toContain("selectedModule");
+    expect(JSON.stringify(event.session.tools[0].parameters)).toContain("intent");
+    expect(JSON.stringify(event.session.tools[0].parameters)).not.toContain("board.add_widget");
     expect(JSON.stringify(event.session.tools[0].parameters)).not.toContain("widgetId");
   });
 
@@ -2677,12 +2679,11 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(diagnostics).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          type: "realtime.tool_selection.not_exposed",
-          status: "failed",
+          type: "realtime.tool_selection.failed",
+          status: "needs_clarification",
           toolName: "weather.set_city",
-          errorCode: "REALTIME_SELECTED_TOOL_NOT_EXPOSED",
+          errorCode: "TOOL_SELECTION_CONTEXT_MISSING",
           data: expect.objectContaining({
-            input: "关闭音乐",
             exposedTools: expect.arrayContaining(["widget.remove"])
           })
         })

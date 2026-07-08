@@ -117,7 +117,10 @@ describe("realtime session config", () => {
     const tools = createInitialRealtimeTools();
 
     expect(tools.map((tool) => tool.name)).toEqual(["assistant__dot__select_tool", "assistant__dot__execute_command"]);
-    expect(JSON.stringify(tools[0]?.parameters)).toContain("board.add_widget");
+    expect(JSON.stringify(tools[0]?.parameters)).toContain("selectedModule");
+    expect(JSON.stringify(tools[0]?.parameters)).toContain("intent");
+    expect(JSON.stringify(tools[0]?.parameters)).toContain("board");
+    expect(JSON.stringify(tools[0]?.parameters)).not.toContain("board.add_widget");
     expect(JSON.stringify(tools[0]?.parameters)).not.toContain("widgetId");
     expect(JSON.stringify(tools[1]?.parameters)).toContain("command");
   });
