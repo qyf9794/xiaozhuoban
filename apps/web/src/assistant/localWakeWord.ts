@@ -61,8 +61,8 @@ export interface BrowserSpeechWakeWordEngineOptions {
   stableRestartWindowMs?: number;
 }
 
-const DEFAULT_WAKE_WORDS = ["小桌板", "小桌伴", "小卓板", "小卓伴"];
-const WAKE_WORD_COMMAND_PREFIX = /^(，|,|。|\.|！|!|？|\?|:|：|-|—|请|帮我|给我|你|可以|能不能)+/;
+const DEFAULT_WAKE_WORDS = ["小桌板", "小桌版", "小桌伴", "小桌办", "小卓板", "小卓版", "小卓伴", "小卓办"];
+const WAKE_WORD_COMMAND_PREFIX = /^(，|,|。|\.|！|!|？|\?|:|：|-|—|请|帮我|给我|你|可以|能不能|儿|啊|呀|呢|吧)+/;
 const TERMINAL_SPEECH_RECOGNITION_ERRORS = new Set(["not-allowed", "service-not-allowed", "audio-capture"]);
 const DEFAULT_RESTART_DELAY_MS = 800;
 const DEFAULT_MAX_RESTARTS = 3;
@@ -74,6 +74,8 @@ function normalizeWakeText(value: string): string {
   return value
     .trim()
     .replace(/\s+/g, "")
+    .replace(/[卓]/g, "桌")
+    .replace(/[版伴辦办]/g, "板")
     .replace(/[“”"']/g, "")
     .replace(/[，,。.!！?？:：；;、-]/g, "");
 }
@@ -92,7 +94,11 @@ export function detectLocalWakeWord(transcript: string, wakeWords: string[] = DE
   const compactTranscript = normalizeWakeText(rawTranscript);
   if (!compactTranscript) return null;
 
-  const match = wakeWords
+  const exactMatch = wakeWords
+    .map((wakeWord) => ({ wakeWord, index: rawTranscript.indexOf(wakeWord) }))
+    .filter((item) => item.index >= 0)
+    .sort((a, b) => a.index - b.index)[0];
+  const match = exactMatch ?? wakeWords
     .map((wakeWord) => ({ wakeWord, index: compactTranscript.indexOf(normalizeWakeText(wakeWord)) }))
     .filter((item) => item.index >= 0)
     .sort((a, b) => a.index - b.index)[0];

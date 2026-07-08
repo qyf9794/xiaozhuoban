@@ -30,6 +30,7 @@ export function useLocalWakeWord({
   const onWakeRef = useRef(onWake);
   const onDiagnosticRef = useRef(onDiagnostic);
   const lastDiagnosticStatusRef = useRef<LocalWakeWordStatus | null>(null);
+  const stopAudioMonitorRef = useRef<() => void>(() => undefined);
 
   onWakeRef.current = onWake;
   onDiagnosticRef.current = onDiagnostic;
@@ -43,6 +44,7 @@ export function useLocalWakeWord({
             status: "success",
             data: { wakeWord: detection.wakeWord, command: detection.command }
           });
+          stopAudioMonitorRef.current();
           void onWakeRef.current(detection);
         },
         onStatusChange: (nextStatus) => {
@@ -89,6 +91,7 @@ export function useLocalWakeWord({
       audioContext = null;
       setAudioLevel(0);
     };
+    stopAudioMonitorRef.current = stopAudioMonitor;
 
     const startAudioMonitor = async () => {
       const AudioContextCtor =
@@ -144,6 +147,9 @@ export function useLocalWakeWord({
     return () => {
       cancelled = true;
       stopAudioMonitor();
+      if (stopAudioMonitorRef.current === stopAudioMonitor) {
+        stopAudioMonitorRef.current = () => undefined;
+      }
     };
   }, [enabled, engine, realtimeConnected]);
 

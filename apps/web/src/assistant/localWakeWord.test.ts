@@ -65,6 +65,21 @@ describe("local wake word", () => {
     expect(detectLocalWakeWord("打开电视")).toBeNull();
   });
 
+  it("accepts common browser speech recognition wake word homophones", () => {
+    expect(detectLocalWakeWord("小桌版，打开电视")).toMatchObject({
+      transcript: "小桌版，打开电视",
+      command: "打开电视"
+    });
+    expect(detectLocalWakeWord("小卓办 请打开音乐")).toMatchObject({
+      transcript: "小卓办 请打开音乐",
+      command: "打开音乐"
+    });
+    expect(detectLocalWakeWord("小 桌 板 儿")).toMatchObject({
+      transcript: "小 桌 板 儿",
+      command: ""
+    });
+  });
+
   it("stops browser speech recognition before handing off to realtime wake handling", () => {
     FakeSpeechRecognition.instances = [];
     const statuses: string[] = [];

@@ -213,8 +213,12 @@ export function useAssistantRuntimeController({
       userSpeechEventIdRef.current += 1;
       setUserSpeech({ id: userSpeechEventIdRef.current, text: detection.transcript });
 
+      let wakeConnected = true;
       const connectPromise = assistantRuntime.connectForWake().catch((error) => {
+        wakeConnected = false;
         const message = error instanceof Error ? error.message : "local wake realtime connect failed";
+        assistantSpeechEventIdRef.current += 1;
+        setAssistantSpeech({ id: assistantSpeechEventIdRef.current, text: "唤醒后连接 Realtime 失败，请再试一次。" });
         recordDiagnostic({
           type: "local_wake_word.connect_result",
           commandTraceId,
@@ -251,6 +255,17 @@ export function useAssistantRuntimeController({
         }
       }
       await connectPromise;
+      if (!wakeConnected) return;
+      recordDiagnostic({
+        type: "local_wake_word.connect_result",
+        commandTraceId,
+        status: "success",
+        data: { wakeWord: detection.wakeWord, command: command || undefined }
+      });
+      if (!command) {
+        assistantSpeechEventIdRef.current += 1;
+        setAssistantSpeech({ id: assistantSpeechEventIdRef.current, text: "我在，继续说。" });
+      }
     }
   });
 
