@@ -12,6 +12,14 @@ let mode = "idle";
 let colorMode = "mono";
 let audioLevel = 0;
 let audioPeak = 0;
+let waveClockMs = 0;
+let quietSpeedScale = 0.3;
+let quietAmplitudeScale = 0.5;
+
+const QUIET_AUDIO_THRESHOLD = 0.03;
+const QUIET_WAVE_SPEED_SCALE = 0.3;
+const QUIET_WAVE_AMPLITUDE_SCALE = 0.5;
+const ACTIVE_WAVE_SCALE = 1;
 
 function clampAudioLevel(value) {
   const level = Number(value);
@@ -47,7 +55,11 @@ function selectColorMode(nextColorMode) {
   renderer.setColorMode(colorMode);
 }
 
-function syntheticBands(now, voiceDrive = 0) {
+function mixQuietScale(current, target, dt, response) {
+  return current + (target - current) * (1 - Math.exp(-dt * response));
+}
+
+function syntheticBands(now, voiceDrive = 0, quietWaveAmplitude = ACTIVE_WAVE_SCALE) {
   if (mode === "thinking") {
     return {
       low: Math.min(1, 0.55 + 0.16 * Math.sin(now * 0.0028) + voiceDrive * 0.38),
@@ -57,15 +69,15 @@ function syntheticBands(now, voiceDrive = 0) {
   }
   if (mode === "listening") {
     return {
-      low: Math.min(1, 0.28 + 0.12 * Math.sin(now * 0.0022) + voiceDrive * 0.68),
-      mid: Math.min(1, 0.18 + 0.075 * Math.sin(now * 0.0032 + 1.4) + voiceDrive * 0.48),
-      high: Math.min(1, 0.16 + 0.055 * Math.sin(now * 0.0042 + 2.2) + voiceDrive * 0.32)
+      low: Math.min(1, 0.28 + 0.12 * quietWaveAmplitude * Math.sin(now * 0.0022) + voiceDrive * 0.68),
+      mid: Math.min(1, 0.18 + 0.075 * quietWaveAmplitude * Math.sin(now * 0.0032 + 1.4) + voiceDrive * 0.48),
+      high: Math.min(1, 0.16 + 0.055 * quietWaveAmplitude * Math.sin(now * 0.0042 + 2.2) + voiceDrive * 0.32)
     };
   }
   return {
-    low: Math.min(1, 0.34 + 0.055 * Math.sin(now * 0.00055) + voiceDrive * 0.24),
-    mid: Math.min(1, 0.24 + 0.035 * Math.sin(now * 0.0007 + 1.2) + voiceDrive * 0.17),
-    high: Math.min(1, 0.16 + 0.025 * Math.sin(now * 0.00085 + 2.1) + voiceDrive * 0.12)
+    low: Math.min(1, 0.34 + 0.055 * quietWaveAmplitude * Math.sin(now * 0.00055) + voiceDrive * 0.24),
+    mid: Math.min(1, 0.24 + 0.035 * quietWaveAmplitude * Math.sin(now * 0.0007 + 1.2) + voiceDrive * 0.17),
+    high: Math.min(1, 0.16 + 0.025 * quietWaveAmplitude * Math.sin(now * 0.00085 + 2.1) + voiceDrive * 0.12)
   };
 }
 
@@ -73,9 +85,19 @@ function frame(now) {
   const dt = prevTimestamp ? Math.min((now - prevTimestamp) / 1000, 0.1) : 0;
   prevTimestamp = now;
   audioPeak = Math.max(audioLevel, audioPeak * Math.exp(-dt * 3.4));
-  const bands = syntheticBands(now, audioPeak);
-  siri.tick(dt, bands);
-  renderer.render({ surface: siri.surface, progress: siri.progress, bands, sizes: siri.sizes, dt });
+  const voiceActive = audioPeak > QUIET_AUDIO_THRESHOLD;
+  quietSpeedScale = mixQuietScale(quietSpeedScale, voiceActive ? ACTIVE_WAVE_SCALE : QUIET_WAVE_SPEED_SCALE, dt, voiceActive ? 14 : 4);
+  quietAmplitudeScale = mixQuietScale(
+    quietAmplitudeScale,
+    voiceActive ? ACTIVE_WAVE_SCALE : QUIET_WAVE_AMPLITUDE_SCALE,
+    dt,
+    voiceActive ? 14 : 4
+  );
+  const waveDt = mode === "thinking" ? dt : dt * quietSpeedScale;
+  waveClockMs += dt * 1000 * (mode === "thinking" ? ACTIVE_WAVE_SCALE : quietSpeedScale);
+  const bands = syntheticBands(waveClockMs, audioPeak, mode === "thinking" ? ACTIVE_WAVE_SCALE : quietAmplitudeScale);
+  siri.tick(waveDt, bands);
+  renderer.render({ surface: siri.surface, progress: siri.progress, bands, sizes: siri.sizes, dt: waveDt });
   rafId = requestAnimationFrame(frame);
 }
 
