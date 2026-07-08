@@ -14,7 +14,6 @@ import {
   type OpenAIRealtimeWebRtcAdapterOptions,
   type RealtimeConnectionStatus
 } from "./openaiRealtimeAdapter";
-import { AgentsVoiceRealtimeAdapter } from "./agentsVoiceRealtimeAdapter";
 import type { WidgetCapabilityBridge } from "./widgetCapabilityBridge";
 import type { AssistantRoute, AssistantRealtimeAdapter } from "./AssistantHarness";
 
@@ -31,6 +30,79 @@ type RuntimeRealtimeAdapter = AssistantRealtimeAdapter & {
   disconnect: () => void;
   sendTextCommand?: (input: string, options?: { commandTraceId?: string }) => void;
 };
+
+function createLazyAgentsVoiceAdapter(options: OpenAIRealtimeWebRtcAdapterOptions): RuntimeRealtimeAdapter {
+  let adapter: RuntimeRealtimeAdapter | null = null;
+  let adapterPromise: Promise<RuntimeRealtimeAdapter> | null = null;
+  let cachedTools: AssistantToolSpec[] = [];
+  let cachedContext: Parameters<NonNullable<AssistantRealtimeAdapter["updateContext"]>>[0] | null = null;
+  let cachedModules: Parameters<NonNullable<AssistantRealtimeAdapter["updateModules"]>>[0] | null = null;
+  let cachedCommandTraceId: string | null = null;
+
+  const ensureAdapter = async () => {
+    if (adapter) return adapter;
+    adapterPromise ??= import("./agentsVoiceRealtimeAdapter").then(({ AgentsVoiceRealtimeAdapter }) => {
+      const nextAdapter = new AgentsVoiceRealtimeAdapter(options) as RuntimeRealtimeAdapter;
+      if (cachedTools.length) {
+        void nextAdapter.updateTools(cachedTools);
+      }
+      if (cachedContext && nextAdapter.updateContext) {
+        void nextAdapter.updateContext(cachedContext);
+      }
+      if (cachedModules && nextAdapter.updateModules) {
+        void nextAdapter.updateModules(cachedModules);
+      }
+      if (nextAdapter.setActiveCommandTraceId) {
+        void nextAdapter.setActiveCommandTraceId(cachedCommandTraceId);
+      }
+      adapter = nextAdapter;
+      return nextAdapter;
+    });
+    return adapterPromise;
+  };
+
+  return {
+    updateTools(tools) {
+      cachedTools = tools;
+      return adapter?.updateTools(tools);
+    },
+    updateContext(context) {
+      cachedContext = context;
+      return adapter?.updateContext?.(context);
+    },
+    updateModules(registry) {
+      cachedModules = registry;
+      return adapter?.updateModules?.(registry);
+    },
+    setActiveCommandTraceId(commandTraceId) {
+      cachedCommandTraceId = commandTraceId;
+      return adapter?.setActiveCommandTraceId?.(commandTraceId);
+    },
+    sendToolResult(call, result) {
+      return adapter?.sendToolResult(call, result);
+    },
+    async connect() {
+      const nextAdapter = await ensureAdapter();
+      await nextAdapter.connect();
+    },
+    async connectTextOnly() {
+      const nextAdapter = await ensureAdapter();
+      if (!nextAdapter.connectTextOnly) {
+        throw new Error("REALTIME_TEXT_ONLY_UNAVAILABLE");
+      }
+      await nextAdapter.connectTextOnly();
+    },
+    disconnect() {
+      adapter?.disconnect();
+    },
+    sendTextCommand(input, commandOptions) {
+      if (!adapter?.sendTextCommand) {
+        throw new Error("REALTIME_TEXT_CHANNEL_NOT_READY");
+      }
+      adapter.sendTextCommand(input, commandOptions);
+    }
+  };
+}
 
 export function shouldFallbackUnhandledVoiceTranscriptToHarness(input: string): boolean {
   const normalized = input.trim();
@@ -216,7 +288,7 @@ export function createRealtimeAssistantRuntime(options: {
     const nextAdapter = options.adapterFactory
       ? options.adapterFactory(adapterOptions)
       : adapterKind === "agents_voice_sdk"
-        ? new AgentsVoiceRealtimeAdapter(adapterOptions)
+        ? createLazyAgentsVoiceAdapter(adapterOptions)
         : new OpenAIRealtimeWebRtcAdapter(adapterOptions);
     emitDiagnostic?.({ type: "realtime.runtime.adapter_selected", status: adapterKind });
     if (cachedTools.length) {
