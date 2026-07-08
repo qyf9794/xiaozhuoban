@@ -67,6 +67,8 @@ const TERMINAL_SPEECH_RECOGNITION_ERRORS = new Set(["not-allowed", "service-not-
 const DEFAULT_RESTART_DELAY_MS = 800;
 const DEFAULT_MAX_RESTARTS = 3;
 const DEFAULT_STABLE_RESTART_WINDOW_MS = 5000;
+const LOCAL_WAKE_WORD_AUDIO_SILENCE_FLOOR = 0.01;
+const LOCAL_WAKE_WORD_AUDIO_GAIN = 5.2;
 
 function normalizeWakeText(value: string): string {
   return value
@@ -126,6 +128,22 @@ function extractTranscript(event: SpeechRecognitionEventLike): string {
     }
   }
   return parts.join(" ").trim();
+}
+
+function clampUnit(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+export function resolveLocalWakeWordAudioLevel(samples: Uint8Array): number {
+  if (samples.length === 0) return 0;
+  let sumSquares = 0;
+  for (const sample of samples) {
+    const centered = (sample - 128) / 128;
+    sumSquares += centered * centered;
+  }
+  const rms = Math.sqrt(sumSquares / samples.length);
+  return clampUnit(Math.max(0, rms - LOCAL_WAKE_WORD_AUDIO_SILENCE_FLOOR) * LOCAL_WAKE_WORD_AUDIO_GAIN);
 }
 
 export function createBrowserSpeechWakeWordEngine(options: BrowserSpeechWakeWordEngineOptions): LocalWakeWordEngine {

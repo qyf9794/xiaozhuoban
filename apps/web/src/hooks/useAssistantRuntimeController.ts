@@ -200,7 +200,7 @@ export function useAssistantRuntimeController({
   );
 
   const realtimeActive = realtimeStatus !== "disconnected" && realtimeStatus !== "failed" && realtimeStatus !== "session_failed";
-  const { status: localWakeWordStatus, supported: localWakeWordSupported } = useLocalWakeWord({
+  const { audioLevel: localWakeWordAudioLevel, status: localWakeWordStatus, supported: localWakeWordSupported } = useLocalWakeWord({
     enabled: localWakeWordEnabled,
     realtimeConnected: realtimeActive,
     onDiagnostic: recordDiagnostic,
@@ -297,6 +297,7 @@ export function useAssistantRuntimeController({
     agentsVoiceAdapterEnabled,
     assistantSpeech,
     localWakeWordEnabled,
+    localWakeWordAudioLevel,
     localWakeWordStatus,
     localWakeWordSupported,
     realtimeAudioLevel,

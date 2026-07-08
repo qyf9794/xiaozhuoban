@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { createBrowserSpeechWakeWordEngine, detectLocalWakeWord, type SpeechRecognitionConstructor } from "./localWakeWord";
+import {
+  createBrowserSpeechWakeWordEngine,
+  detectLocalWakeWord,
+  resolveLocalWakeWordAudioLevel,
+  type SpeechRecognitionConstructor
+} from "./localWakeWord";
 
 class FakeSpeechRecognition {
   static instances: FakeSpeechRecognition[] = [];
@@ -40,6 +45,13 @@ class FakeSpeechRecognition {
 }
 
 describe("local wake word", () => {
+  it("normalizes local wake microphone samples into a bounded audio level", () => {
+    expect(resolveLocalWakeWordAudioLevel(new Uint8Array([128, 128, 128, 128]))).toBe(0);
+    expect(resolveLocalWakeWordAudioLevel(new Uint8Array([0, 255, 0, 255]))).toBe(1);
+    expect(resolveLocalWakeWordAudioLevel(new Uint8Array([118, 138, 118, 138]))).toBeGreaterThan(0);
+    expect(resolveLocalWakeWordAudioLevel(new Uint8Array())).toBe(0);
+  });
+
   it("detects 小桌板 and extracts the trailing command", () => {
     expect(detectLocalWakeWord("小桌板，打开电视")).toEqual({
       wakeWord: "小桌板",

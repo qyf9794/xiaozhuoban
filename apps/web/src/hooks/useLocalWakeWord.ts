@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createBrowserSpeechWakeWordEngine,
+  resolveLocalWakeWordAudioLevel,
   type LocalWakeWordDetection,
   type LocalWakeWordStatus
 } from "../assistant/localWakeWord";
@@ -25,6 +26,7 @@ export function useLocalWakeWord({
   onDiagnostic?: (event: AssistantDiagnosticEvent) => void;
 }) {
   const [status, setStatus] = useState<LocalWakeWordStatus>("idle");
+  const [audioLevel, setAudioLevel] = useState(0);
   const onWakeRef = useRef(onWake);
   const onDiagnosticRef = useRef(onDiagnostic);
   const lastDiagnosticStatusRef = useRef<LocalWakeWordStatus | null>(null);
@@ -56,13 +58,97 @@ export function useLocalWakeWord({
   useEffect(() => {
     if (!enabled || realtimeConnected) {
       engine.stop();
+      setAudioLevel(0);
       return;
     }
     engine.start();
     return () => engine.stop();
   }, [enabled, engine, realtimeConnected]);
 
+  useEffect(() => {
+    if (!enabled || realtimeConnected || !engine.isSupported()) {
+      setAudioLevel(0);
+      return;
+    }
+    let cancelled = false;
+    let animationFrameId: number | null = null;
+    let stream: MediaStream | null = null;
+    let audioContext: AudioContext | null = null;
+    let source: MediaStreamAudioSourceNode | null = null;
+
+    const stopAudioMonitor = () => {
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
+      source?.disconnect();
+      source = null;
+      stream?.getTracks().forEach((track) => track.stop());
+      stream = null;
+      void audioContext?.close();
+      audioContext = null;
+      setAudioLevel(0);
+    };
+
+    const startAudioMonitor = async () => {
+      const AudioContextCtor =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!navigator.mediaDevices?.getUserMedia || !AudioContextCtor) {
+        onDiagnosticRef.current?.({
+          type: "local_wake_word.audio_monitor",
+          status: "failed",
+          message: "LOCAL_WAKE_AUDIO_MONITOR_UNAVAILABLE"
+        });
+        return;
+      }
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
+        if (cancelled) {
+          stopAudioMonitor();
+          return;
+        }
+        audioContext = new AudioContextCtor();
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.72;
+        source = audioContext.createMediaStreamSource(stream);
+        source.connect(analyser);
+        const samples = new Uint8Array(analyser.fftSize);
+        const tick = () => {
+          analyser.getByteTimeDomainData(samples);
+          setAudioLevel(resolveLocalWakeWordAudioLevel(samples));
+          animationFrameId = window.requestAnimationFrame(tick);
+        };
+        tick();
+      } catch (error) {
+        if (!cancelled) {
+          onDiagnosticRef.current?.({
+            type: "local_wake_word.audio_monitor",
+            status: "failed",
+            message: error instanceof Error ? error.message : "LOCAL_WAKE_AUDIO_MONITOR_FAILED"
+          });
+        }
+        stopAudioMonitor();
+      }
+    };
+
+    void startAudioMonitor();
+    return () => {
+      cancelled = true;
+      stopAudioMonitor();
+    };
+  }, [enabled, engine, realtimeConnected]);
+
   return {
+    audioLevel,
     status: engine.isSupported() ? status : "unsupported",
     supported: engine.isSupported()
   };

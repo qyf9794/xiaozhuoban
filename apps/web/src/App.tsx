@@ -91,6 +91,7 @@ export function App() {
     assistantRuntime,
     assistantSpeech,
     localWakeWordEnabled,
+    localWakeWordAudioLevel,
     localWakeWordStatus,
     localWakeWordSupported,
     realtimeAudioLevel,
@@ -361,6 +362,7 @@ export function App() {
           assistantSpeech={assistantSpeech}
           userSpeech={userSpeech}
           wakeWordEnabled={localWakeWordEnabled}
+          wakeWordAudioLevel={localWakeWordAudioLevel}
           wakeWordStatus={localWakeWordStatus}
           wakeWordSupported={localWakeWordSupported}
           onToggleWakeWord={() => setLocalWakeWordEnabled((value) => !value)}

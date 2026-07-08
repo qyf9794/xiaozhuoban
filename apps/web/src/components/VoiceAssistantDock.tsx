@@ -177,8 +177,12 @@ function clampVoiceAssistantAudioLevel(level: number | undefined): number {
   return Math.max(0, Math.min(1, level));
 }
 
-export function getVoiceAssistantOrbScale(voiceStatus: RealtimeConnectionStatus, audioLevel: number | undefined): number {
-  if (voiceStatus !== "connected") return 1;
+export function getVoiceAssistantOrbScale(
+  voiceStatus: RealtimeConnectionStatus,
+  audioLevel: number | undefined,
+  wakeWordListening = false
+): number {
+  if (voiceStatus !== "connected" && !wakeWordListening) return 1;
   return 1 - clampVoiceAssistantAudioLevel(audioLevel) * 0.085;
 }
 
@@ -322,6 +326,7 @@ export function VoiceAssistantDock({
   assistantSpeech,
   userSpeech,
   wakeWordEnabled = false,
+  wakeWordAudioLevel = 0,
   wakeWordStatus = "idle",
   wakeWordSupported = false,
   onToggleWakeWord,
@@ -345,6 +350,7 @@ export function VoiceAssistantDock({
   assistantSpeech?: { id: number; text: string } | null;
   userSpeech?: { id: number; text: string } | null;
   wakeWordEnabled?: boolean;
+  wakeWordAudioLevel?: number;
   wakeWordStatus?: LocalWakeWordStatus;
   wakeWordSupported?: boolean;
   onToggleWakeWord?: () => void;
@@ -531,10 +537,14 @@ export function VoiceAssistantDock({
     hasUndismissedPending,
     hasUndismissedPanelContent
   );
-  const orbVisualMode = getVoiceAssistantOrbVisualMode(visualState, visibleOperation, textPanelVisible);
-  const orbAudioLevel = Math.pow(clampVoiceAssistantAudioLevel(Math.max(voiceAudioLevel, assistantSpeechLevel)), 0.78);
+  const wakeWordListeningForOrb = voiceStatus !== "connected" && wakeWordEnabled && wakeWordStatus === "listening";
+  const orbVisualMode = wakeWordListeningForOrb
+    ? "listening"
+    : getVoiceAssistantOrbVisualMode(visualState, visibleOperation, textPanelVisible);
+  const inputAudioLevel = Math.max(voiceAudioLevel, wakeWordListeningForOrb ? wakeWordAudioLevel : 0);
+  const orbAudioLevel = Math.pow(clampVoiceAssistantAudioLevel(Math.max(inputAudioLevel, assistantSpeechLevel)), 0.78);
   const orbColorMode = getVoiceAssistantOrbColorMode(voiceStatus);
-  const orbScale = getVoiceAssistantOrbScale(voiceStatus, orbAudioLevel);
+  const orbScale = getVoiceAssistantOrbScale(voiceStatus, orbAudioLevel, wakeWordListeningForOrb);
 
   useEffect(() => {
     orbFrameRef.current?.contentWindow?.postMessage(

@@ -126,6 +126,7 @@ describe("VoiceAssistantDock", () => {
     expect(getVoiceAssistantOrbColorMode("connecting")).toBe("mono");
     expect(getVoiceAssistantOrbColorMode("connected")).toBe("color");
     expect(getVoiceAssistantOrbScale("disconnected", 1)).toBe(1);
+    expect(getVoiceAssistantOrbScale("disconnected", 1, true)).toBeCloseTo(0.915);
     expect(getVoiceAssistantOrbScale("connected", 0)).toBe(1);
     expect(getVoiceAssistantOrbScale("connected", 1)).toBeCloseTo(0.915);
     expect(getVoiceAssistantOrbScale("connected", 10)).toBeCloseTo(0.915);
