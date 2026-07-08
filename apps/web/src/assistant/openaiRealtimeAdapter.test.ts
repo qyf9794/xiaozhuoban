@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { WidgetAssistantRegistry, createPassthroughSchema, createStrictObjectSchema } from "@xiaozhuoban/assistant-core";
 import {
+  DEFAULT_REALTIME_SESSION_UPDATE_TIMEOUT_MS,
   OpenAIRealtimeWebRtcAdapter,
   closeRealtimeConnectionResources,
   createRealtimeSessionRequestBody,
@@ -840,6 +841,10 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(shouldQueueRealtimeEventWhenClosed({ type: "session.update", session: {} })).toBe(true);
     expect(shouldQueueRealtimeEventWhenClosed({ type: "conversation.item.create", item: {} })).toBe(false);
     expect(shouldQueueRealtimeEventWhenClosed({ type: "response.create" })).toBe(false);
+  });
+
+  it("uses a mobile-tolerant default timeout for realtime session updates", () => {
+    expect(DEFAULT_REALTIME_SESSION_UPDATE_TIMEOUT_MS).toBe(12_000);
   });
 
   it("reads microphone permission state when the browser exposes it", async () => {
@@ -2370,6 +2375,35 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(event.session.tools[0].name).toBe("assistant__dot__select_tool");
     expect(JSON.stringify(event.session.tools[0].parameters)).toContain("board.add_widget");
     expect(JSON.stringify(event.session.tools[0].parameters)).not.toContain("widgetId");
+  });
+
+  it("discards stale queued session updates before reconnecting with the latest selector config", () => {
+    const diagnostics: Array<{ type: string; status?: string; data?: Record<string, unknown> }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    const controls = adapter as unknown as {
+      getEffectiveSessionTools: () => Parameters<OpenAIRealtimeWebRtcAdapter["updateTools"]>[0];
+      discardQueuedSessionUpdates: (reason: string) => void;
+      queuedEvents: unknown[];
+    };
+
+    adapter.updateTools(controls.getEffectiveSessionTools());
+
+    expect(controls.queuedEvents).toHaveLength(1);
+
+    controls.discardQueuedSessionUpdates("data_channel_open");
+
+    expect(controls.queuedEvents).toHaveLength(0);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.session.queued_updates_discarded",
+        status: "cleared",
+        data: { count: 1, reason: "data_channel_open" }
+      })
+    ]));
   });
 
   it("does not queue stale tool results before the data channel opens", () => {

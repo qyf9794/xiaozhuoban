@@ -139,6 +139,7 @@ const MAX_INTERRUPTED_TRACE_IDS = 32;
 const MAX_RECENT_ASSISTANT_TRANSCRIPTS = 12;
 const RECENT_ASSISTANT_TRANSCRIPT_TTL_MS = 12_000;
 const REALTIME_MAX_OUTPUT_TOKENS = 480;
+export const DEFAULT_REALTIME_SESSION_UPDATE_TIMEOUT_MS = 12_000;
 
 type InitialRealtimeToolHint = {
   name: string;
@@ -1699,7 +1700,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         this.options.onStatusChange?.("configuring");
         this.emitDiagnostic({ type: "realtime.data_channel.open", status: "configuring" });
         this.armSessionUpdateTimeout();
-        this.flushQueuedEvents();
+        this.discardQueuedSessionUpdates("data_channel_open");
         void this.updateTools(this.getEffectiveSessionTools());
       };
       dataChannel.onmessage = (event) => this.handleRealtimeEventData(event.data);
@@ -1792,6 +1793,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.mediaStream = null;
     this.clearSessionUpdateTimeout();
     this.clearSessionReadyPromise();
+    this.discardQueuedSessionUpdates("close_resources");
     this.pendingResponseCreateAfterActiveToolResult = false;
     this.pendingScopedToolSelectionResult = null;
     this.pendingTextCommandAfterSelectorUpdate = null;
@@ -2929,9 +2931,15 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     }
   }
 
-  private flushQueuedEvents(): void {
-    const events = this.queuedEvents.splice(0);
-    events.forEach((event) => this.sendEvent(event));
+  private discardQueuedSessionUpdates(reason: string): void {
+    const count = this.queuedEvents.length;
+    if (count === 0) return;
+    this.queuedEvents = [];
+    this.emitDiagnostic({
+      type: "realtime.session.queued_updates_discarded",
+      status: "cleared",
+      data: { count, reason }
+    });
   }
 
   private handleRealtimeEventData(data: unknown): void {
@@ -3283,11 +3291,17 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
 
   private armSessionUpdateTimeout(): void {
     this.clearSessionUpdateTimeout();
+    const timeoutMs = this.options.sessionUpdateTimeoutMs ?? DEFAULT_REALTIME_SESSION_UPDATE_TIMEOUT_MS;
     this.sessionUpdateTimeout = setTimeout(() => {
       if (this.sessionReady) return;
-      this.emitDiagnostic({ type: "realtime.session.update_timeout", status: "failed", errorCode: "REALTIME_SESSION_UPDATE_TIMEOUT" });
+      this.emitDiagnostic({
+        type: "realtime.session.update_timeout",
+        status: "failed",
+        errorCode: "REALTIME_SESSION_UPDATE_TIMEOUT",
+        data: { timeoutMs }
+      });
       this.failSessionUpdate("REALTIME_SESSION_UPDATE_TIMEOUT");
-    }, this.options.sessionUpdateTimeoutMs ?? 4_000);
+    }, timeoutMs);
   }
 
   private clearSessionUpdateTimeout(): void {
