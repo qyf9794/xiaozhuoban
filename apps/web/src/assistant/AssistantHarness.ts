@@ -177,6 +177,16 @@ const SEQUENTIAL_CONNECTOR_PATTERN = /(?:，|,|。|；|;)?\s*(?:然后|接着|�
 const PARALLEL_CONNECTOR_PATTERN = /(?:，|,|。|；|;)?\s*(?:同时|与此同时)\s*/;
 const CLOSE_MULTI_CONNECTOR_PATTERN = /(?:和|以及|还有|跟|与)/;
 const CLOSE_COMMAND_PATTERN = /(关闭|关掉|关上|关了|收起|删掉|删除|移除|去掉|关)/;
+const NETWORK_ASSISTANT_TOOL_TIMEOUT_MS = 20_000;
+const NETWORK_ASSISTANT_TOOLS = new Set([
+  "headline.request_refresh",
+  "market.set_indices",
+  "music.play",
+  "music.search",
+  "tv.play",
+  "weather.set_city",
+  "worldClock.set_zones"
+]);
 
 function createId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -1506,12 +1516,22 @@ export class AssistantHarness {
       signal: controller.signal
     };
     const task = this.options.registry.execute({ ...call, arguments: createTargetBoundArguments(call.arguments, target) }, context);
-    const result = await withTimeout(task, this.options.actionTimeoutMs ?? 10_000);
+    const result = await withTimeout(task, this.resolveActionTimeoutMs(call));
     if (result === "timed_out") {
       controller.abort();
       return { status: "timed_out", message: "工具执行超时", errorCode: "ACTION_TIMEOUT" };
     }
     return result;
+  }
+
+  private resolveActionTimeoutMs(call: AssistantToolCall): number {
+    const baseTimeoutMs = this.options.actionTimeoutMs ?? 10_000;
+    const followUp = isRecord(call.arguments) && isRecord(call.arguments.followUp) ? call.arguments.followUp : null;
+    const followUpName = typeof followUp?.name === "string" ? followUp.name : "";
+    if (NETWORK_ASSISTANT_TOOLS.has(call.name) || NETWORK_ASSISTANT_TOOLS.has(followUpName)) {
+      return Math.max(baseTimeoutMs, NETWORK_ASSISTANT_TOOL_TIMEOUT_MS);
+    }
+    return baseTimeoutMs;
   }
 
   private async syncWidgetDetailToolsAfterSuccess(

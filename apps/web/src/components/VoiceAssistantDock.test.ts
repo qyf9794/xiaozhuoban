@@ -21,6 +21,7 @@ import {
   shouldShowVoiceAssistantTextPanel,
   shouldSuppressVoiceAssistantOrbClickAfterPress,
   shouldDisableVoiceAssistantSend,
+  shouldCancelVoiceAssistantConnectClick,
   shouldUseRealtimeHarnessCommand,
   shouldUseRealtimeTextCommand,
   shouldSubmitVoiceAssistantOnKeyDown,
@@ -150,6 +151,13 @@ describe("VoiceAssistantDock", () => {
     expect(shouldSuppressVoiceAssistantOrbClickAfterPress(false, false)).toBe(false);
     expect(shouldSuppressVoiceAssistantOrbClickAfterPress(true, false)).toBe(true);
     expect(shouldSuppressVoiceAssistantOrbClickAfterPress(false, true)).toBe(true);
+  });
+
+  it("treats an orb click during connection as cancellation", () => {
+    expect(shouldCancelVoiceAssistantConnectClick("connecting", "disconnected", false)).toBe(true);
+    expect(shouldCancelVoiceAssistantConnectClick("disconnected", "connecting", false)).toBe(true);
+    expect(shouldCancelVoiceAssistantConnectClick("disconnected", "disconnected", true)).toBe(true);
+    expect(shouldCancelVoiceAssistantConnectClick("disconnected", "disconnected", false)).toBe(false);
   });
 
   it("uses realtime text submission after realtime is ready unless the input answers a local confirmation", () => {

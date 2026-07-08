@@ -2267,4 +2267,64 @@ describe("AssistantHarness", () => {
 
     expect(response.result).toMatchObject({ status: "timed_out", errorCode: "ACTION_TIMEOUT" });
   });
+
+  it("does not apply the short generic action timeout to network follow-up tools", async () => {
+    const { harness, executed } = createHarness({
+      actionTimeoutMs: 5,
+      registryFactory() {
+        const registry = new ActionRegistry();
+        const schema = createPassthroughSchema<Record<string, unknown>>();
+        const localExecuted: string[] = [];
+        registry.register({
+          spec: {
+            name: "board.add_widget",
+            description: "添加小工具",
+            parameters: schema,
+            scope: "desktop"
+          },
+          async execute(args) {
+            const recordArgs = args as Record<string, unknown>;
+            localExecuted.push("board.add_widget:none");
+            return {
+              status: "success",
+              message: "已添加小工具",
+              data: { definitionId: recordArgs.definitionId, widgetId: "wi_added_music", widgetType: "music" }
+            };
+          }
+        });
+        registry.register({
+          spec: {
+            name: "music.play",
+            description: "播放音乐",
+            parameters: schema,
+            scope: "widget-detail",
+            widgetType: "music",
+            requiresTarget: true
+          },
+          async execute(args) {
+            const recordArgs = args as Record<string, unknown>;
+            localExecuted.push(`music.play:${String(recordArgs.widgetId)}`);
+            await new Promise((resolve) => globalThis.setTimeout(resolve, 25));
+            return { status: "success", message: "已播放" };
+          }
+        });
+        return { registry, executed: localExecuted };
+      }
+    });
+    await harness.initialize();
+
+    const response = await harness.handleFunctionCall({
+      id: "call_add_music",
+      name: "board.add_widget",
+      arguments: {
+        definitionId: "wd_music",
+        followUp: { name: "music.play", arguments: { query: "王菲" } }
+      },
+      source: "realtime"
+    });
+
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("已添加小工具，已播放");
+    expect(executed).toEqual(["board.add_widget:none", "music.play:wi_added_music"]);
+  });
 });

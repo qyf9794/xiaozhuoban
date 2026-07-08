@@ -39,6 +39,14 @@ export function getVoiceAssistantDockStateForRealtimeStatus(status: RealtimeConn
   return "disconnected";
 }
 
+export function shouldCancelVoiceAssistantConnectClick(
+  voiceStatus: RealtimeConnectionStatus,
+  state: VoiceAssistantDockState,
+  connectInFlight: boolean
+): boolean {
+  return connectInFlight || voiceStatus === "connecting" || state === "connecting";
+}
+
 export function getVoiceAssistantConnectionMessage(status: RealtimeConnectionStatus): string {
   if (status === "connecting") return "正在连接 Realtime。";
   if (status === "configuring") return "正在应用语音会话配置。";
@@ -370,6 +378,8 @@ export function VoiceAssistantDock({
   const orbLongPressTimerRef = useRef<number | null>(null);
   const assistantSpeechPulseFrameRef = useRef<number | null>(null);
   const orbLongPressTriggeredRef = useRef(false);
+  const connectInFlightRef = useRef(false);
+  const connectAttemptIdRef = useRef(0);
   const dragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -720,20 +730,33 @@ export function VoiceAssistantDock({
   const connectVoice = async () => {
     if (!onConnectVoice || muted) return;
     const commandTraceId = createCommandTraceId("voice_connect");
+    if (connectInFlightRef.current) {
+      onDiagnostic?.({ type: "voice.connect.click", commandTraceId, status: "ignored", data: { reason: "connect_in_flight" } });
+      return;
+    }
+    connectInFlightRef.current = true;
+    const attemptId = connectAttemptIdRef.current + 1;
+    connectAttemptIdRef.current = attemptId;
     onDiagnostic?.({ type: "voice.connect.click", commandTraceId, status: "started" });
     setState("connecting");
     setLastMessage(getVoiceAssistantConnectionMessage("connecting"));
     setOperation({ phase: "thinking", command: "连接语音" });
     try {
       await onConnectVoice();
+      if (connectAttemptIdRef.current !== attemptId) return;
       setOperation({ phase: "success", command: "连接语音", message: "语音已连接" });
       onDiagnostic?.({ type: "voice.connect.result", commandTraceId, status: "success" });
     } catch (error) {
+      if (connectAttemptIdRef.current !== attemptId) return;
       const message = getVoiceAssistantErrorMessage(error);
       onDiagnostic?.({ type: "voice.connect.result", commandTraceId, status: "failed", message });
       setLastMessage(message);
       setOperation({ phase: "error", command: "连接语音", message });
       setState("error");
+    } finally {
+      if (connectAttemptIdRef.current === attemptId) {
+        connectInFlightRef.current = false;
+      }
     }
   };
 
@@ -760,6 +783,8 @@ export function VoiceAssistantDock({
 
   const disconnectVoice = () => {
     onDiagnostic?.({ type: "voice.disconnect.click", commandTraceId: createCommandTraceId("voice_disconnect"), status: "started" });
+    connectAttemptIdRef.current += 1;
+    connectInFlightRef.current = false;
     onDisconnectVoice?.();
     setState("disconnected");
     setLastMessage(getVoiceAssistantConnectionMessage("disconnected"));
@@ -835,6 +860,10 @@ export function VoiceAssistantDock({
 
   const onOrbClick = () => {
     if (suppressOrbClickRef.current) return;
+    if (shouldCancelVoiceAssistantConnectClick(voiceStatus, state, connectInFlightRef.current)) {
+      disconnectVoice();
+      return;
+    }
     if (voiceStatus === "connected" || voiceStatus === "configuring") {
       disconnectVoice();
       return;
