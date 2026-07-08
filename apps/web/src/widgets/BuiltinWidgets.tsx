@@ -35,6 +35,7 @@ import {
   summarizeTvChannelNamesForAssistant,
   type TvChannel
 } from "./tvShared";
+import { rememberTvAssistantChannelCatalog } from "./tvChannelCatalog";
 import {
   CHINA_TIME_ZONE,
   DEFAULT_WORLD_CLOCK_ZONES,
@@ -4014,6 +4015,7 @@ export function BuiltinWidgetView({
             const preserved = resolveTvPlaylistSelection([], preferredUrl, preferredName);
             if (preserved.selected) {
               setChannels(preserved.channels);
+              rememberTvAssistantChannelCatalog(preserved.channels, preserved.selected.name);
               onStateChange({
                 ...latestStateRef.current,
                 playlistUrl: source,
@@ -4044,6 +4046,7 @@ export function BuiltinWidgetView({
             return;
           }
           setChannels(nextChannels);
+          rememberTvAssistantChannelCatalog(nextChannels, selected.name);
           onStateChange({
             ...latestStateRef.current,
             playlistUrl: source,
@@ -4102,6 +4105,7 @@ export function BuiltinWidgetView({
         if (selected && channelsForAssistant !== channels) {
           setChannels((current) => (current.some((channel) => channel.url === selected.url) ? current : [selected, ...current]));
         }
+        rememberTvAssistantChannelCatalog(channelsForAssistant, nextName);
         setPlaybackError("");
         onStateChange({
           ...latestStateRef.current,

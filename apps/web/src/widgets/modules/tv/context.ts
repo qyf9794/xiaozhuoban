@@ -88,6 +88,11 @@ function sanitizeTvAssistantState(
 }
 
 export function createTvScopedContext(tools: AssistantAction[], request: ScopedContextRequest): RealtimeScopedModuleContext {
+  const catalogState = request.compactContext?.moduleStates?.[TV_MODULE_TYPE];
+  const catalogChannelNames = chooseRelevantChannelNames(readChannelNames(catalogState), request.userText, TV_CONTEXT_CHANNEL_LIMIT);
+  const catalogChannelCount = channelCount(catalogState, catalogChannelNames.length);
+  const catalogSelectedChannelName =
+    typeof catalogState?.selectedChannelName === "string" ? catalogState.selectedChannelName.replace(/\s+/g, " ").trim() : "";
   const instances = (request.compactContext?.widgets ?? [])
     .filter((widget) => widget.type === TV_MODULE_TYPE)
     .map((widget) => ({
@@ -98,12 +103,22 @@ export function createTvScopedContext(tools: AssistantAction[], request: ScopedC
   const safeTools = tools.map((action): AssistantToolSpec => action.spec);
   const allChannelNames = [
     ...new Set(
-      instances.flatMap((instance) =>
-        readChannelNames(instance.assistantState).map((name) => name.replace(/\s+/g, " ").trim()).filter(Boolean)
-      )
+      [
+        ...instances.flatMap((instance) =>
+          readChannelNames(instance.assistantState).map((name) => name.replace(/\s+/g, " ").trim()).filter(Boolean)
+        ),
+        ...catalogChannelNames
+      ]
     )
   ].slice(0, TV_CONTEXT_CHANNEL_LIMIT);
-  const parsedChannelCount = instances.reduce((sum, instance) => sum + channelCount(instance.assistantState, 0), 0);
+  const instanceChannelCount = instances.reduce((sum, instance) => sum + channelCount(instance.assistantState, 0), 0);
+  const parsedChannelCount = Math.max(instanceChannelCount, catalogChannelCount);
+  const instanceSelectedChannelName =
+    instances.find((widget) => typeof widget.assistantState?.selectedChannelName === "string")?.assistantState?.selectedChannelName;
+  const selectedChannelName =
+    typeof instanceSelectedChannelName === "string" && instanceSelectedChannelName.trim()
+      ? instanceSelectedChannelName.trim()
+      : catalogSelectedChannelName || undefined;
   return {
     moduleType: TV_MODULE_TYPE,
     tools: safeTools,
@@ -112,6 +127,7 @@ export function createTvScopedContext(tools: AssistantAction[], request: ScopedC
     stateSummary: {
       instanceCount: instances.length,
       focusedWidgetId: instances.find((widget) => widget.focused)?.widgetId,
+      selectedChannelName,
       selectedToolHint: request.selectedToolHint,
       parsedChannelListIncluded: allChannelNames.length > 0,
       availableChannelNames: allChannelNames,
@@ -147,6 +163,7 @@ export function createTvContextProvider(tools: AssistantAction[]) {
       stateSummary: {
         instanceCount: context.stateSummary.instanceCount,
         focusedWidgetId: context.stateSummary.focusedWidgetId,
+        selectedChannelName: context.stateSummary.selectedChannelName,
         selectedToolHint: context.stateSummary.selectedToolHint,
         parsedChannelListIncluded: Boolean(context.stateSummary.availableChannelNames),
         availableChannelNames: Array.isArray(context.stateSummary.availableChannelNames)

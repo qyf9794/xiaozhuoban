@@ -51,6 +51,7 @@ function normalizeChannelName(raw: string, fallback: string): string {
 export function normalizeTvChannelSearchName(raw: string): string {
   return raw
     .toUpperCase()
+    .replace(/BLOOMBERG\s*(?:TELEVISION|TV)?/g, "BLOOMBERG")
     .replace(/高清|标清|频道|综合|新闻|财经|体育|电影|电视剧|少儿/g, "")
     .replace(/[\s_-]+/g, "")
     .trim();

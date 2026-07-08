@@ -788,4 +788,31 @@ describe("daily widget assistant modules", () => {
     expect(tvContext.stateSummary.availableChannelCount).toBe(3);
     expect(JSON.stringify(tvContext)).not.toContain("m3u8");
   });
+
+  it("uses the cached TV channel catalog even when the TV widget is not mounted", () => {
+    const registry = new WidgetAssistantRegistry();
+    registerFirstBatchModules(registry);
+
+    const tvContext = registry.getScopedContextForModule("tv", {
+      userText: "打开电视看 Bloomberg",
+      compactContext: {
+        widgetCountsByType: {},
+        moduleStates: {
+          tv: {
+            selectedChannelName: "BBC News",
+            assistantChannelNames: ["BBC News", "Bloomberg TV", "NHK World"],
+            assistantChannelCount: 3
+          }
+        },
+        widgets: []
+      }
+    });
+
+    expect(tvContext).toBeTruthy();
+    if (!tvContext) return;
+    expect(tvContext.instances).toEqual([]);
+    expect(tvContext.stateSummary.availableChannelNames).toEqual(["Bloomberg TV", "BBC News", "NHK World"]);
+    expect(tvContext.stateSummary.availableChannelCount).toBe(3);
+    expect(tvContext.stateSummary.selectedChannelName).toBe("BBC News");
+  });
 });

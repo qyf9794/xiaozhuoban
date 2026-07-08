@@ -246,7 +246,7 @@ export function createRealtimeToolSelectionInstructions(tools: AssistantToolSpec
     "你是小桌板命令路由器。当前阶段只判断用户想使用哪个模块和已注册工具。",
     "不要生成任何真实工具参数，不要猜 widgetId、definitionId、boardId。",
     "不要要求完整桌面上下文；如果需要目标，只把用户说出的目标词放到 targetHint。",
-    "如果要路由命令，直接调用 assistant.select_tool，不要先说话，不要把工具选择参数念给用户。",
+    "如果要路由命令，直接调用 assistant.select_tool，不要先说话，不要输出语音或文字，不要把工具选择参数念给用户。",
     "用户要控制桌面时，先调用 assistant.select_tool；前端随后会按所选工具提供最小必要上下文。",
     ...realtimeToolSelectionSessionPolicyLines,
     "",
@@ -508,6 +508,7 @@ export function createScopedRealtimeToolInstructions(
     "",
     "# Selected Tool Stage",
     "现在只根据上一步选中的工具和此处提供的最小上下文，返回可执行工具调用。",
+    "如果可以执行，直接调用工具；不要先说话，不要输出“我来处理”“稍等”等语音或文字。",
     "只调用已选工具；不要调用未提供的工具，不要访问未提供的桌面上下文。",
     selection.name === "board.add_widget"
       ? "如果已选工具是 board.add_widget，必须从 availableDefinitions 选择与用户命令最匹配的小工具，并用对应 definitionId 调用 board.add_widget；不要回答缺少打开小工具的方式。"

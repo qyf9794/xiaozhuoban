@@ -185,6 +185,27 @@ describe("RealtimeToolExposurePlanner", () => {
     expect(plan.exposedTools.map((item) => item.name)).toEqual(expect.arrayContaining(["tv.play", "tv.select_channel", "board.add_widget"]));
   });
 
+  it("uses the cached TV channel catalog when no TV widget is mounted", () => {
+    const plan = buildRealtimeToolExposurePlan(
+      "打开电视看 Bloomberg",
+      context({
+        widgets: [],
+        focusedWidget: undefined,
+        widgetCountsByType: {},
+        moduleStates: {
+          tv: {
+            assistantChannelNames: ["BBC News", "Bloomberg TV", "NHK World"],
+            assistantChannelCount: 3
+          }
+        }
+      }),
+      tools
+    );
+
+    expect(plan.selectedModules).toContain("tv");
+    expect(plan.exposedTools.map((item) => item.name)).toEqual(expect.arrayContaining(["tv.play", "tv.select_channel", "board.add_widget"]));
+  });
+
   it("prioritizes TV tools for uppercase channel viewing commands even when market is focused", () => {
     const plan = buildRealtimeToolExposurePlan(
       "我想用电视看HBO频道",

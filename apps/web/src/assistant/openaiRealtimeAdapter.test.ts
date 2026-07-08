@@ -3275,6 +3275,132 @@ describe("OpenAI realtime adapter helpers", () => {
     ]);
   });
 
+  it("opens music locally with a play follow-up when Realtime selects playback but no music widget is mounted", async () => {
+    const calls: unknown[] = [];
+    const sent: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall(call) {
+        calls.push(call);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "board.add_widget",
+        description: "添加小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop"
+      },
+      {
+        name: "music.play",
+        description: "播放音乐",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      },
+      {
+        name: "music.search",
+        description: "搜索音乐",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: {},
+      availableDefinitions: [{ definitionId: "wd_music", type: "music", name: "音乐播放器" }],
+      widgets: []
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
+      }
+    });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_music_play_missing_widget",
+      name: "assistant.select_tool",
+      arguments: { name: "music.play", selectedModule: "music", targetHint: "王菲 红豆", userCommand: "播放王菲的红豆", confidence: 0.95 },
+      source: "realtime"
+    });
+    await Promise.resolve();
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        name: "board.add_widget",
+        arguments: {
+          definitionId: "wd_music",
+          followUp: { name: "music.play", arguments: { query: "王菲的红豆" } }
+        }
+      })
+    ]);
+    expect(sent).toEqual([
+      expect.objectContaining({ type: "conversation.item.create" })
+    ]);
+    expect(JSON.stringify(sent)).toContain("local_add_widget_shortcut");
+  });
+
+  it("opens the target widget locally when a selected widget-detail tool has no mounted instance", async () => {
+    const calls: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall(call) {
+        calls.push(call);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "board.add_widget",
+        description: "添加小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop"
+      },
+      {
+        name: "weather.set_city",
+        description: "设置天气城市",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "widget-detail",
+        widgetType: "weather",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: {},
+      availableDefinitions: [{ definitionId: "wd_weather", type: "weather", name: "天气" }],
+      widgets: []
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send() {}
+      }
+    });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_weather_missing_widget",
+      name: "assistant.select_tool",
+      arguments: { name: "weather.set_city", selectedModule: "weather", targetHint: "上海", userCommand: "上海天气", confidence: 0.95 },
+      source: "realtime"
+    });
+    await Promise.resolve();
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        name: "board.add_widget",
+        arguments: { definitionId: "wd_weather" }
+      })
+    ]);
+  });
+
   it("adds countdown widgets locally with a duration follow-up", async () => {
     const calls: unknown[] = [];
     const adapter = new OpenAIRealtimeWebRtcAdapter({

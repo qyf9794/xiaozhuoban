@@ -31,6 +31,7 @@ import { createTranslateAssistantModule } from "../widgets/modules/translate/ass
 import { createTvAssistantModule } from "../widgets/modules/tv/assistant";
 import { createWeatherAssistantModule } from "../widgets/modules/weather/assistant";
 import { createWorldClockAssistantModule } from "../widgets/modules/worldClock/assistant";
+import { readTvAssistantChannelCatalog } from "../widgets/tvChannelCatalog";
 
 const MOBILE_VIEWPORT_MAX = 900;
 
@@ -49,6 +50,7 @@ function createContextInput(): ContextSummarizerInput {
   const activeBoard = state.boards.find((board) => board.id === state.activeBoardId);
   const definitionById = new Map(state.widgetDefinitions.map((definition) => [definition.id, definition]));
   const activeWidgets = state.widgetInstances.filter((widget) => widget.boardId === state.activeBoardId);
+  const tvChannelCatalog = readTvAssistantChannelCatalog();
   const viewport =
     typeof window === "undefined"
       ? undefined
@@ -79,6 +81,16 @@ function createContextInput(): ContextSummarizerInput {
       name: definition.name
     })),
     maxWidgets: Math.min(16, Math.max(8, activeWidgets.length)),
+    moduleStates: tvChannelCatalog
+      ? {
+          tv: {
+            assistantChannelNames: tvChannelCatalog.channelNames,
+            assistantChannelCount: tvChannelCatalog.channelCount,
+            selectedChannelName: tvChannelCatalog.selectedChannelName,
+            updatedAt: tvChannelCatalog.updatedAt
+          }
+        }
+      : undefined,
     viewport,
     recentWidgetIds: activeWidgets.slice(-3).map((widget) => widget.id),
     widgets: activeWidgets.map((widget, index) => {

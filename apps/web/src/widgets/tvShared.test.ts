@@ -47,6 +47,16 @@ describe("findTvChannel", () => {
     expect(findTvChannel(channels, "BBC")?.id).toBe("2");
   });
 
+  it("matches Bloomberg channel aliases from voice commands", () => {
+    const channels = [
+      { id: "1", name: "Bloomberg TV", url: "https://example.com/bloomberg-tv.m3u8" },
+      { id: "2", name: "NHK World", url: "https://example.com/nhk.m3u8" }
+    ];
+
+    expect(findTvChannel(channels, "Bloomberg")?.id).toBe("1");
+    expect(findTvChannel(channels, "Bloomberg Television")?.id).toBe("1");
+  });
+
   it("falls back to the built-in CCTV news channel for common aliases", () => {
     expect(findFallbackTvChannel("CCTV13")?.name).toBe("CCTV-13 新闻");
     expect(findFallbackTvChannel("央视新闻")?.name).toBe("CCTV-13 新闻");

@@ -369,13 +369,14 @@ function looksLikeTvDefinitionId(value: unknown): boolean {
 }
 
 function hasExplicitTvChannelText(value: string): boolean {
-  return /(BBC|CNN|CCTV|CGTN|央视|频道|台|电影|新闻|体育|财经|少儿|卫视|\d+)/i.test(value);
+  return /(BBC|CNN|CCTV|CGTN|Bloomberg|彭博|央视|频道|台|电影|新闻|体育|财经|少儿|卫视|\d+)/i.test(value);
 }
 
 function extractTvChannelNameFromText(value: string): string {
   if (/BBC/i.test(value)) return "BBC";
   if (/CNN/i.test(value)) return "CNN";
   if (/CGTN/i.test(value)) return "CGTN";
+  if (/Bloomberg|彭博/i.test(value)) return "Bloomberg";
   const cctv = value.match(/CCTV\s*[-_]?\s*(\d{1,2})/i);
   if (cctv) return `CCTV${cctv[1]}`;
   if (/央视.*新闻|新闻.*央视|CCTV\s*13/i.test(value)) return "CCTV13";
@@ -2287,7 +2288,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         selectedTool: AssistantToolSpec;
         selectedModule?: string;
         scopedTools: AssistantToolSpec[];
-        selection: RealtimeTextToolSelection & { name: string };
+        selection: RealtimeTextToolSelection & { name: string; requestedToolName?: string };
       }
     | {
         ok: false;
@@ -2335,19 +2336,13 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     ]);
     const sortedCandidates = this.sortToolsForSelectionIntent(scopedCandidates, selection, selectedModule).slice(0, MAX_SCOPED_SELECTION_TOOLS);
 
-    const legacyCandidate = selection.name ? sortedCandidates.find((tool) => tool.name === selection.name) : undefined;
     const hasMountedSelectedModule = selectedModule ? context.widgets.some((widget) => widget.type === selectedModule) : false;
     const canUseLocalAddWidgetFollowUp = Boolean(
       selectedModule &&
         addWidgetTool &&
         shouldIncludeAddWidget &&
         !hasMountedSelectedModule &&
-        (
-          isPureOpenWidgetText(input) ||
-          (selectedModule === "countdown" && parseCountdownSecondsFromText(input)) ||
-          (selectedModule === "tv" && (extractTvChannelNameFromText(input) || /电视|電視|直播/.test(input))) ||
-          (selectedModule === "music" && extractMusicQueryFromText(input))
-        )
+        (isPureOpenWidgetText(input) || legacySelectedTool?.scope === "widget-detail")
     );
     const pureOpenAddWidget =
       selectedModule &&
@@ -2357,7 +2352,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       (isPureOpenWidgetText(input) || canUseLocalAddWidgetFollowUp)
         ? addWidgetTool
         : undefined;
-    const selectedTool = legacyCandidate ?? pureOpenAddWidget ?? sortedCandidates.find((tool) => tool.name !== REALTIME_ADD_WIDGET_TOOL_NAME) ?? sortedCandidates[0];
+    const legacyCandidate = selection.name ? sortedCandidates.find((tool) => tool.name === selection.name) : undefined;
+    const selectedTool = pureOpenAddWidget ?? legacyCandidate ?? sortedCandidates.find((tool) => tool.name !== REALTIME_ADD_WIDGET_TOOL_NAME) ?? sortedCandidates[0];
     if (!selectedTool) {
       return {
         ok: false,
@@ -2382,6 +2378,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       selection: {
         ...selection,
         name: selectedTool.name,
+        requestedToolName: selection.name !== selectedTool.name ? selection.name : undefined,
         selectedModule,
         userCommand: selection.userCommand || input
       }
@@ -3083,7 +3080,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
 
   private createLocalAddWidgetShortcut(
     selectionCall: AssistantToolCall,
-    selection: NonNullable<ReturnType<typeof parseToolSelectionArguments>>,
+    selection: NonNullable<ReturnType<typeof parseToolSelectionArguments>> & { requestedToolName?: string },
     commandTraceId?: string
   ): { call: AssistantToolCall; definition: RealtimeDefinitionSummary; targetText: string } | null {
     if (!this.currentContext?.availableDefinitions?.length) return null;
@@ -3103,7 +3100,13 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const countdownSeconds = definition.type === "countdown" ? parseCountdownSecondsFromText(input) : undefined;
     const musicQuery = definition.type === "music" && !pureOpenWidget ? extractMusicQueryFromText(input) : "";
     const tvChannelName = definition.type === "tv" ? extractTvChannelNameFromText(input) : "";
-    if (!pureOpenWidget && !countdownSeconds && !musicQuery && !tvChannelName) {
+    const shouldOpenMissingWidget = Boolean(
+      selection.requestedToolName &&
+        selection.requestedToolName !== REALTIME_ADD_WIDGET_TOOL_NAME &&
+        definition.type &&
+        !this.currentContext.widgets.some((widget) => widget.type === definition.type)
+    );
+    if (!pureOpenWidget && !countdownSeconds && !musicQuery && !tvChannelName && !shouldOpenMissingWidget) {
       return null;
     }
     const argumentsWithOptionalFollowUp: Record<string, unknown> = { definitionId: definition.definitionId };

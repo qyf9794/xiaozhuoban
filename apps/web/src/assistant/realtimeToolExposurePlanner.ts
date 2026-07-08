@@ -175,9 +175,16 @@ function readWidgetAssistantStringList(value: unknown): string[] {
 }
 
 function contextTvChannelNames(context: CompactAssistantContext): string[] {
-  return context.widgets
-    .filter((widget) => widget.type === "tv")
-    .flatMap((widget) => readWidgetAssistantStringList(widget.assistantState?.channelNames));
+  return [
+    ...context.widgets
+      .filter((widget) => widget.type === "tv")
+      .flatMap((widget) => [
+        ...readWidgetAssistantStringList(widget.assistantState?.channelNames),
+        ...readWidgetAssistantStringList(widget.assistantState?.assistantChannelNames)
+      ]),
+    ...readWidgetAssistantStringList(context.moduleStates?.tv?.channelNames),
+    ...readWidgetAssistantStringList(context.moduleStates?.tv?.assistantChannelNames)
+  ];
 }
 
 function hasTvChannelNameMatch(input: string, context: CompactAssistantContext): boolean {

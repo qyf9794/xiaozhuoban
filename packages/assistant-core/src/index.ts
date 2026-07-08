@@ -187,6 +187,7 @@ export interface CompactAssistantContext {
   }>;
   widgetCountsByType: Record<string, number>;
   widgets: CompactWidgetSummary[];
+  moduleStates?: Record<string, Record<string, unknown>>;
   focusedWidget?: CompactWidgetSummary;
   viewport?: CompactViewportSummary;
   pendingConfirmation?: Pick<ConfirmationRequest, "id" | "actionName" | "message">;
@@ -214,6 +215,7 @@ export interface ContextSummarizerInput {
     name: string;
   }>;
   widgets: WidgetContextSnapshot[];
+  moduleStates?: Record<string, Record<string, unknown>>;
   focusedWidgetId?: string;
   recentWidgetIds?: string[];
   viewport?: CompactViewportSummary;
@@ -546,6 +548,7 @@ export class ContextSummarizer {
       viewport: input.viewport,
       widgetCountsByType,
       widgets,
+      moduleStates: input.moduleStates,
       focusedWidget,
       pendingConfirmation: input.pendingConfirmation
         ? {
