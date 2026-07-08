@@ -72,7 +72,12 @@ describe("realtime session config", () => {
       required: ["definitionId"],
       additionalProperties: false
     });
-    expect(tools.find((tool) => decodeRealtimeToolName(tool.name) === "widget.focus")?.strict).toBe(true);
+    expect(tools.find((tool) => decodeRealtimeToolName(tool.name) === "widget.focus")?.parameters).toMatchObject({
+      type: "object",
+      required: ["widgetId"],
+      additionalProperties: false
+    });
+    expect(tools.find((tool) => "strict" in tool)).toBeUndefined();
     expect(tools.find((tool) => decodeRealtimeToolName(tool.name) === "board.add_widget")?.strict).toBeUndefined();
   });
 
@@ -91,10 +96,10 @@ describe("realtime session config", () => {
       required: ["widgetId"],
       additionalProperties: false
     });
-    expect(removeWidget.strict).toBe(true);
+    expect(removeWidget.strict).toBeUndefined();
   });
 
-  it("does not mark optional-field schemas strict until they are strict-compatible", () => {
+  it("keeps optional-field schemas constrained without sending top-level strict", () => {
     const sidebar = serializeAssistantToolForRealtime({
       name: "app.sidebar.set",
       description: "切换侧边栏",
@@ -117,10 +122,10 @@ describe("realtime session config", () => {
     const tools = createInitialRealtimeTools();
 
     expect(tools.map((tool) => tool.name)).toEqual(["assistant__dot__select_tool", "assistant__dot__execute_command"]);
+    expect(JSON.stringify(tools[0]?.parameters)).toContain("name");
     expect(JSON.stringify(tools[0]?.parameters)).toContain("selectedModule");
-    expect(JSON.stringify(tools[0]?.parameters)).toContain("intent");
     expect(JSON.stringify(tools[0]?.parameters)).toContain("board");
-    expect(JSON.stringify(tools[0]?.parameters)).not.toContain("board.add_widget");
+    expect(JSON.stringify(tools[0]?.parameters)).toContain("board.add_widget");
     expect(JSON.stringify(tools[0]?.parameters)).not.toContain("widgetId");
     expect(JSON.stringify(tools[1]?.parameters)).toContain("command");
   });
@@ -197,7 +202,7 @@ describe("realtime session config", () => {
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("优先调用 assistant.select_tool");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("才调用 assistant.execute_command");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("scoped session.update 失败");
-    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("优先选择最接近的模块和工具");
+    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("优先选择最接近的已注册工具");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("删除用户数据");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("回复要短");
   });

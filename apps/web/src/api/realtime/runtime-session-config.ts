@@ -41,10 +41,11 @@ export const XIAOZHUOBAN_REALTIME_INSTRUCTIONS = [
   "你是小桌板里的语音助手，负责控制小桌板 Web 桌面、已加载小工具和已注册工具。",
   "",
   "# Tool Policy",
-  "- 需要控制桌面、窗口或小工具时，优先调用 assistant.select_tool，只选择模块、意图、目标提示和置信度。",
-  "- 前端会在你选择模块/意图后通过 session.update 提供最小必要上下文和少量可执行工具 schema。",
+  "- 需要控制桌面、窗口或小工具时，优先调用 assistant.select_tool，选择最准确的已注册工具名、目标提示和置信度。",
+  "- 决定调用 assistant.select_tool 时不要先说话或复述选择参数，直接调用工具，等待工具结果。",
+  "- 前端会在你选择工具后通过 session.update 提供最小必要上下文和少量可执行工具 schema。",
   "- 只有在 assistant.select_tool 不可用、scoped session.update 失败、data channel 不可用，或前端明确要求 transcript fallback 时，才调用 assistant.execute_command。",
-  "- 如果当前阶段没看到精确工具，不要直接回答缺少工具；优先选择最接近的模块和工具，让前端加载 scoped tools。",
+  "- 如果当前阶段没看到精确工具，不要直接回答缺少工具；优先选择最接近的已注册工具，让前端加载 scoped tools。",
   "- 不要编造 widgetId、definitionId 或完整桌面状态；本地 harness 会解析、确认、校验和执行。",
   "- 普通问候或闲聊可以直接简短回答，不需要调用工具。",
   "- 清空内容、删除用户数据、覆盖内容、批量修改数据必须请求确认。",
@@ -178,33 +179,6 @@ const fallbackInitialModuleTypes = [
   "worldClock"
 ];
 
-const realtimeSelectionIntentTypes = [
-  "open",
-  "close",
-  "focus",
-  "fullscreen",
-  "move",
-  "resize",
-  "bring_to_front",
-  "search",
-  "play",
-  "pause",
-  "resume",
-  "set",
-  "refresh",
-  "add",
-  "remove",
-  "switch",
-  "create",
-  "rename",
-  "toggle",
-  "write",
-  "translate",
-  "calculate",
-  "convert",
-  "unknown"
-];
-
 function stringSchema() {
   return { type: "string" };
 }
@@ -225,18 +199,18 @@ export function createRealtimeToolSelectionTool(
   return {
     type: "function",
     name: encodeRealtimeToolName(REALTIME_TOOL_SELECTION_TOOL_NAME),
-    description: "Select the Xiaozhuoban module and high-level intent before desktop context or real tools are provided.",
+    description: "Select the single best registered Xiaozhuoban tool before any desktop context is provided.",
     parameters: objectSchema(
       {
+        name: {
+          type: "string",
+          enum: tools.map((tool) => tool.name),
+          description: "Selected registered tool name."
+        },
         selectedModule: {
           type: "string",
           enum: moduleTypes,
-          description: "Selected Xiaozhuoban module or surface, such as music, tv, weather, market, window, widget, or board."
-        },
-        intent: {
-          type: "string",
-          enum: realtimeSelectionIntentTypes,
-          description: "The user's high-level intent. Do not encode real tool names here."
+          description: "Selected Xiaozhuoban module type when known."
         },
         targetHint: {
           type: "string",
@@ -248,7 +222,7 @@ export function createRealtimeToolSelectionTool(
         },
         confidence: { type: "number" }
       },
-      ["selectedModule", "intent"]
+      ["name"]
     )
   };
 }

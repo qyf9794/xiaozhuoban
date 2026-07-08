@@ -154,7 +154,7 @@ const INTENT_TOOL_PRIORITIES: Record<string, string[]> = {
   play: ["music.play", "tv.play", "tv.select_channel", "recorder.play"],
   pause: ["music.pause", "tv.pause", "countdown.pause", "recorder.pause"],
   resume: ["music.resume", "countdown.resume"],
-  set: ["countdown.set", "weather.set_city", "market.set_indices", "worldClock.set_zones", "calculator.set_display", "converter.set", "translate.set_draft"],
+  set: ["tv.select_channel", "tv.play", "countdown.set", "weather.set_city", "market.set_indices", "worldClock.set_zones", "calculator.set_display", "converter.set", "translate.set_draft"],
   refresh: ["headline.request_refresh"],
   add: ["board.add_widget", "todo.add_item", "clipboard.add_text"],
   switch: ["board.switch", "tv.select_channel"],
@@ -259,6 +259,15 @@ function normalizeMusicToolArguments(args: Record<string, unknown>): Record<stri
   delete nextArgs.autoPlay;
   delete nextArgs.autoplay;
   return nextArgs;
+}
+
+function extractMusicQueryFromText(text: string): string {
+  return text
+    .replace(/^(我想听|想听|我要听|播放|放一下|放一首|来一首|来个|搜索|搜一下|搜一点|找一下|找一点)/, "")
+    .replace(/(的歌|歌曲|音乐|歌单|不一定播放|先搜一下|先搜索一下)$/g, "")
+    .replace(/[，。！？、,.!?;；:："'“”‘’]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normalizeCountdownToolArguments(args: Record<string, unknown>): Record<string, unknown> {
@@ -987,7 +996,7 @@ function normalizeRealtimePlanArguments(
 }
 
 function parseToolSelectionArguments(value: unknown): {
-  name?: string;
+  name: string;
   selectedModule?: string;
   intent?: string;
   targetHint?: string;
@@ -1001,7 +1010,7 @@ function parseToolSelectionArguments(value: unknown): {
   const intent = typeof parsed.intent === "string" ? parsed.intent : undefined;
   const targetHint = typeof parsed.targetHint === "string" ? parsed.targetHint : undefined;
   const userCommand = typeof parsed.userCommand === "string" ? parsed.userCommand : undefined;
-  if (!name && !selectedModule && !intent && !targetHint && !userCommand) return null;
+  if (!name) return null;
   return {
     name,
     selectedModule,
@@ -1087,6 +1096,11 @@ function createUserFacingRealtimeToolResult(call: AssistantToolCall, result: Ass
       seed: `${call.id}|${call.name}|${result.message}`
     })
   };
+}
+
+function isFinalLocalSelectorResult(call: AssistantToolCall, result: AssistantToolResult): boolean {
+  if (call.name !== REALTIME_TOOL_SELECTION_TOOL_NAME || result.status !== "success" || !isRecord(result.data)) return false;
+  return result.data.execution === "local_add_widget_shortcut" || result.data.execution === "local_bulk_shortcut";
 }
 
 function isBulkWindowSelectionText(...values: Array<string | undefined>): boolean {
@@ -2204,8 +2218,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
 
   private findToolSpec(toolName: string): AssistantToolSpec | undefined {
     return (
-      this.currentTools.find((tool) => tool.name === toolName) ??
-      this.moduleRegistry?.findModuleForTool(toolName)?.tools.find((action) => action.spec.name === toolName)?.spec
+      this.moduleRegistry?.findModuleForTool(toolName)?.tools.find((action) => action.spec.name === toolName)?.spec ??
+      this.currentTools.find((tool) => tool.name === toolName)
     );
   }
 
@@ -2322,12 +2336,25 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const sortedCandidates = this.sortToolsForSelectionIntent(scopedCandidates, selection, selectedModule).slice(0, MAX_SCOPED_SELECTION_TOOLS);
 
     const legacyCandidate = selection.name ? sortedCandidates.find((tool) => tool.name === selection.name) : undefined;
+    const hasMountedSelectedModule = selectedModule ? context.widgets.some((widget) => widget.type === selectedModule) : false;
+    const canUseLocalAddWidgetFollowUp = Boolean(
+      selectedModule &&
+        addWidgetTool &&
+        shouldIncludeAddWidget &&
+        !hasMountedSelectedModule &&
+        (
+          isPureOpenWidgetText(input) ||
+          (selectedModule === "countdown" && parseCountdownSecondsFromText(input)) ||
+          (selectedModule === "tv" && (extractTvChannelNameFromText(input) || /电视|電視|直播/.test(input))) ||
+          (selectedModule === "music" && extractMusicQueryFromText(input))
+        )
+    );
     const pureOpenAddWidget =
       selectedModule &&
       addWidgetTool &&
       sortedCandidates.some((tool) => tool.name === REALTIME_ADD_WIDGET_TOOL_NAME) &&
-      selection.intent === "open" &&
-      isPureOpenWidgetText(input)
+      (selection.intent === "open" || canUseLocalAddWidgetFollowUp) &&
+      (isPureOpenWidgetText(input) || canUseLocalAddWidgetFollowUp)
         ? addWidgetTool
         : undefined;
     const selectedTool = legacyCandidate ?? pureOpenAddWidget ?? sortedCandidates.find((tool) => tool.name !== REALTIME_ADD_WIDGET_TOOL_NAME) ?? sortedCandidates[0];
@@ -2431,12 +2458,13 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       commandTraceId
     });
     const userFacingResult = createUserFacingRealtimeToolResult(call, result);
+    const continueResponse = call.name === REALTIME_TOOL_SELECTION_TOOL_NAME && !isFinalLocalSelectorResult(call, result);
     createRealtimeToolResultEvents(call, userFacingResult, {
       activeResponseId: this.activeResponseId,
       responseMode: this.connectMode === "audio" ? "voice" : "text",
-      continueResponse: call.name === REALTIME_TOOL_SELECTION_TOOL_NAME
+      continueResponse
     }).forEach((event) => this.sendEvent(event, { queueWhenClosed: false, commandTraceId }));
-    if (hadActiveResponse && call.name === REALTIME_TOOL_SELECTION_TOOL_NAME) {
+    if (hadActiveResponse && continueResponse) {
       this.pendingResponseCreateAfterActiveToolResult = true;
     }
   }
@@ -3071,8 +3099,11 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const definition = scored[0]?.definition;
     if (!definition) return null;
     const input = selection.userCommand || selection.targetHint || definition.name;
+    const pureOpenWidget = isPureOpenWidgetText(input);
     const countdownSeconds = definition.type === "countdown" ? parseCountdownSecondsFromText(input) : undefined;
-    if (!isPureOpenWidgetText(input) && !countdownSeconds) {
+    const musicQuery = definition.type === "music" && !pureOpenWidget ? extractMusicQueryFromText(input) : "";
+    const tvChannelName = definition.type === "tv" ? extractTvChannelNameFromText(input) : "";
+    if (!pureOpenWidget && !countdownSeconds && !musicQuery && !tvChannelName) {
       return null;
     }
     const argumentsWithOptionalFollowUp: Record<string, unknown> = { definitionId: definition.definitionId };
@@ -3081,12 +3112,17 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         name: "countdown.set",
         arguments: { totalSeconds: countdownSeconds, start: true }
       };
+    } else if (definition.type === "music" && musicQuery) {
+      const wantsSearchOnly = /搜|搜索|找|不一定播放|先别播|先不要播/.test(input);
+      argumentsWithOptionalFollowUp.followUp = {
+        name: wantsSearchOnly ? "music.search" : "music.play",
+        arguments: { query: musicQuery }
+      };
     } else if (definition.type === "tv") {
-      const channelName = extractTvChannelNameFromText(input);
-      if (channelName) {
+      if (tvChannelName) {
         argumentsWithOptionalFollowUp.followUp = {
           name: "tv.play",
-          arguments: { channelName }
+          arguments: { channelName: tvChannelName }
         };
       }
     }

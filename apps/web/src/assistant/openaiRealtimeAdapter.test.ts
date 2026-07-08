@@ -1509,6 +1509,111 @@ describe("OpenAI realtime adapter helpers", () => {
     ]));
   });
 
+  it("sanitizes realtime tool calls with strict module registry specs before handing them to Harness", () => {
+    const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
+    const diagnostics: Array<{ type: string; toolName?: string; data?: unknown }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      },
+      onFunctionCall(call) {
+        calls.push({ name: call.name, arguments: call.arguments as Record<string, unknown> });
+      }
+    });
+    const registry = new WidgetAssistantRegistry();
+    registry.register({
+      type: "music",
+      definition: { id: "wd_music", type: "music", name: "音乐" },
+      aliases: ["音乐"],
+      shortcuts: [],
+      tools: [
+        {
+          spec: {
+            name: "music.play",
+            description: "播放音乐",
+            parameters: createStrictObjectSchema({
+              widgetId: { type: "string", required: true },
+              query: { type: "string" },
+              kind: { type: "string" }
+            }),
+            argumentKeys: ["widgetId", "query", "kind"],
+            scope: "widget-detail",
+            widgetType: "music",
+            requiresTarget: true
+          },
+          execute: () => ({ status: "success", message: "ok" })
+        }
+      ],
+      context: {
+        getScopedContext: () => ({
+          moduleType: "music",
+          tools: [],
+          toolSchemas: {},
+          instances: [],
+          stateSummary: { instanceCount: 1 },
+          shortcutExamples: [],
+          executionPolicy: { defaultMode: "latest-wins" },
+          riskPolicy: { safe: ["music.play"], confirm: [], destructive: [] }
+        })
+      },
+      realtime: {
+        exposeCatalog: () => ({
+          type: "music",
+          displayName: "音乐",
+          aliases: ["音乐"],
+          capabilities: ["播放音乐"],
+          shortcutExamples: ["播放王菲"],
+          riskSummary: []
+        }),
+        getScopedContext: () => ({
+          moduleType: "music",
+          tools: [],
+          toolSchemas: {},
+          instances: [],
+          stateSummary: { instanceCount: 1 },
+          shortcutExamples: [],
+          executionPolicy: { defaultMode: "latest-wins" },
+          riskPolicy: { safe: ["music.play"], confirm: [], destructive: [] }
+        })
+      },
+      executionPolicy: { defaultMode: "latest-wins" }
+    });
+    adapter.updateModules(registry);
+    adapter.updateTools([
+      {
+        name: "music.play",
+        description: "播放音乐",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: { music: 1 },
+      widgets: [{ widgetId: "wi_music", definitionId: "wd_music", type: "music", name: "音乐", order: 1, summary: "" }]
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean }, { sessionReady: true });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "call_music_extra",
+      name: "music.play",
+      arguments: { widgetId: "wi_music", query: "王菲", action: "play", source: "voice" },
+      source: "realtime"
+    });
+
+    expect(calls).toEqual([{ name: "music.play", arguments: { widgetId: "wi_music", query: "王菲" } }]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.function_call.arguments_sanitized",
+        toolName: "music.play",
+        data: { removedKeys: ["action", "source"] }
+      })
+    ]));
+  });
+
   it("drops undeclared realtime tool arguments before Harness validation", () => {
     const diagnostics: Array<{ type: string; operationId?: string; toolName?: string; data?: unknown }> = [];
     const calls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
@@ -2433,9 +2538,9 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(tools.map((tool) => tool.name)).toContain("board.add_widget");
     expect(event.session.type).toBe("realtime");
     expect(event.session.tools[0].name).toBe("assistant__dot__select_tool");
+    expect(JSON.stringify(event.session.tools[0].parameters)).toContain("name");
     expect(JSON.stringify(event.session.tools[0].parameters)).toContain("selectedModule");
-    expect(JSON.stringify(event.session.tools[0].parameters)).toContain("intent");
-    expect(JSON.stringify(event.session.tools[0].parameters)).not.toContain("board.add_widget");
+    expect(JSON.stringify(event.session.tools[0].parameters)).toContain("board.add_widget");
     expect(JSON.stringify(event.session.tools[0].parameters)).not.toContain("widgetId");
   });
 
@@ -2919,8 +3024,7 @@ describe("OpenAI realtime adapter helpers", () => {
       expect.objectContaining({
         type: "conversation.item.create",
         item: expect.objectContaining({ type: "function_call_output", call_id: "select_open_tv" })
-      }),
-      { type: "response.create", response: { output_modalities: ["text"], max_output_tokens: 480 } }
+      })
     ]);
     expect(JSON.stringify(sent)).toContain("local_add_widget_shortcut");
     expect(sent).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: "session.update" })]));
@@ -3022,6 +3126,89 @@ describe("OpenAI realtime adapter helpers", () => {
         transcript: "打开音乐播放器"
       })
     ]);
+  });
+
+  it("routes TV channel set intent to select channel instead of fullscreen", () => {
+    const diagnostics: Array<{ type: string; status?: string; toolName?: string; data?: Record<string, unknown> }> = [];
+    const sent: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "tv.fullscreen",
+        description: "电视全屏",
+        parameters: createStrictObjectSchema({ widgetId: { type: "string", required: true } }),
+        argumentKeys: ["widgetId"],
+        scope: "widget-detail",
+        widgetType: "tv",
+        requiresTarget: true
+      },
+      {
+        name: "tv.select_channel",
+        description: "选择频道",
+        parameters: createStrictObjectSchema({
+          widgetId: { type: "string", required: true },
+          channelName: { type: "string" }
+        }),
+        argumentKeys: ["widgetId", "channelName"],
+        scope: "widget-detail",
+        widgetType: "tv",
+        requiresTarget: true
+      },
+      {
+        name: "tv.play",
+        description: "播放电视",
+        parameters: createStrictObjectSchema({
+          widgetId: { type: "string", required: true },
+          channelName: { type: "string" }
+        }),
+        argumentKeys: ["widgetId", "channelName"],
+        scope: "widget-detail",
+        widgetType: "tv",
+        requiresTarget: true
+      },
+      {
+        name: "board.add_widget",
+        description: "添加小工具",
+        parameters: createStrictObjectSchema({ definitionId: { type: "string", required: true } }),
+        argumentKeys: ["definitionId"],
+        scope: "desktop"
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: { tv: 1 },
+      widgets: [{ widgetId: "wi_tv", definitionId: "wd_tv", type: "tv", name: "电视", order: 1, summary: "" }]
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
+      }
+    });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_tv_bbc",
+      name: "assistant.select_tool",
+      arguments: { name: "tv.select_channel", selectedModule: "tv", targetHint: "BBC", userCommand: "切到BBC", confidence: 0.95 },
+      source: "realtime"
+    });
+
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.tool_selection.success",
+        status: "success",
+        toolName: "tv.select_channel"
+      })
+    ]));
+    expect(JSON.stringify(sent)).toContain("tv__dot__select_channel");
   });
 
   it("repairs missing add-widget arguments after a scoped music selection", () => {

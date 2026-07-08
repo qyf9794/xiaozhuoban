@@ -352,33 +352,6 @@ export function createInitialRegisteredRealtimeTools(): RealtimeFunctionTool[] {
     .map((metadata) => serializeAssistantToolForRealtime(toAssistantToolSpec(metadata), metadata.parameters));
 }
 
-const realtimeSelectionIntentTypes = [
-  "open",
-  "close",
-  "focus",
-  "fullscreen",
-  "move",
-  "resize",
-  "bring_to_front",
-  "search",
-  "play",
-  "pause",
-  "resume",
-  "set",
-  "refresh",
-  "add",
-  "remove",
-  "switch",
-  "create",
-  "rename",
-  "toggle",
-  "write",
-  "translate",
-  "calculate",
-  "convert",
-  "unknown"
-];
-
 function selectionModuleTypes(tools: AssistantToolSpec[]): string[] {
   return [
     ...new Set([
@@ -399,18 +372,18 @@ export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[]): Rea
   return {
     type: "function",
     name: encodeRealtimeToolName(REALTIME_TOOL_SELECTION_TOOL_NAME),
-    description: "Select the Xiaozhuoban module and high-level intent before desktop context or real tools are provided.",
+    description: "Select the single best registered Xiaozhuoban tool before any desktop context is provided.",
     parameters: objectSchema(
       {
+        name: {
+          type: "string",
+          enum: tools.map((tool) => tool.name),
+          description: "Selected registered tool name."
+        },
         selectedModule: {
           type: "string",
           enum: selectionModuleTypes(tools),
-          description: "Selected Xiaozhuoban module or surface, such as music, tv, weather, market, window, widget, or board."
-        },
-        intent: {
-          type: "string",
-          enum: realtimeSelectionIntentTypes,
-          description: "The user's high-level intent. Do not encode real tool names here."
+          description: "Selected Xiaozhuoban module type when known."
         },
         targetHint: {
           type: "string",
@@ -422,7 +395,7 @@ export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[]): Rea
         },
         confidence: { type: "number" }
       },
-      ["selectedModule", "intent"]
+      ["name"]
     )
   };
 }
@@ -454,26 +427,8 @@ export function serializeAssistantToolForRealtime(
     type: "function",
     name: encodeRealtimeToolName(tool.name),
     description: tool.description,
-    parameters: resolvedParameters,
-    ...(isStrictRealtimeToolSchema(resolvedParameters) ? { strict: true } : {})
+    parameters: resolvedParameters
   };
-}
-
-function isStrictRealtimeToolSchema(schema: Record<string, unknown>): boolean {
-  if (schema.type !== "object" || schema.additionalProperties !== false) return false;
-  const properties = isRecord(schema.properties) ? schema.properties : null;
-  if (!properties) return false;
-  const propertyKeys = Object.keys(properties);
-  const required = Array.isArray(schema.required) ? schema.required : [];
-  if (!propertyKeys.every((key) => required.includes(key))) return false;
-  return propertyKeys.every((key) => {
-    const property = properties[key];
-    if (!isRecord(property)) return true;
-    const propertyType = property.type;
-    const types = Array.isArray(propertyType) ? propertyType : [propertyType];
-    if (!types.includes("object")) return true;
-    return isStrictRealtimeToolSchema(property);
-  });
 }
 
 function inferAssistantToolParameters(tool: AssistantToolSpec): Record<string, unknown> {

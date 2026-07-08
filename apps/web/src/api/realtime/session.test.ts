@@ -138,17 +138,17 @@ describe("realtime session API", () => {
       "assistant__dot__select_tool",
       "assistant__dot__execute_command"
     ]);
+    expect(JSON.stringify(payload.session.tools[0].parameters)).toContain("name");
     expect(JSON.stringify(payload.session.tools[0].parameters)).toContain("selectedModule");
-    expect(JSON.stringify(payload.session.tools[0].parameters)).toContain("intent");
     expect(JSON.stringify(payload.session.tools[0].parameters)).toContain("board");
-    expect(JSON.stringify(payload.session.tools[0].parameters)).not.toContain("board.add_widget");
+    expect(JSON.stringify(payload.session.tools[0].parameters)).toContain("board.add_widget");
     expect(JSON.stringify(payload.session.tools[0].parameters)).toContain("countdown");
     expect(JSON.stringify(payload.session.tools[0].parameters)).toContain("music");
     expect(JSON.stringify(payload.session.tools[0].parameters)).toContain("tv");
     expect(JSON.stringify(payload.session.tools[1].parameters)).toContain("command");
     expect(JSON.stringify(payload.session.tools[0].parameters)).not.toContain("widgetId");
     expect(payload.session.instructions).toContain("scoped session.update 失败");
-    expect(payload.session.instructions).toContain("优先选择最接近的模块");
+    expect(payload.session.instructions).toContain("优先选择最接近的已注册工具");
   });
 
   it("derives the OpenAI safety identifier from auth even when the request has none", async () => {
@@ -192,11 +192,11 @@ describe("realtime session API", () => {
     const [, init] = fetchMock.mock.calls[1] as [RequestInfo | URL, RequestInit];
     const payload = JSON.parse(String(init?.body));
     const selector = JSON.stringify(payload.session.tools[0]);
+    expect(selector).toContain("name");
     expect(selector).toContain("selectedModule");
-    expect(selector).toContain("intent");
     expect(selector).toContain("music");
     expect(selector).toContain("tv");
-    expect(selector).not.toContain("music.play");
+    expect(selector).toContain("music.play");
     expect(selector).not.toContain("播放音乐");
     expect(selector).not.toContain("bad tool");
     expect(selector).not.toContain("bad module");

@@ -166,11 +166,11 @@ describe("Realtime text tool call fallback", () => {
     const payload = createToolSelectionPayload({ input: "关闭音乐", context, tools });
     const serialized = JSON.stringify(payload);
 
+    expect(serialized).toContain("name");
     expect(serialized).toContain("selectedModule");
-    expect(serialized).toContain("intent");
     expect(serialized).toContain("music");
-    expect(serialized).not.toContain("widget.remove");
-    expect(serialized).not.toContain("music.pause");
+    expect(serialized).toContain("widget.remove");
+    expect(serialized).toContain("music.pause");
     expect(serialized).not.toContain("wi_music");
     expect(serialized).not.toContain("private note");
   });
@@ -192,14 +192,16 @@ describe("Realtime text tool call fallback", () => {
   it("creates realtime selection instructions and a selector tool without board widget context", () => {
     const instructions = createRealtimeToolSelectionInstructions(tools, moduleCatalog);
     const selector = createRealtimeToolSelectionTool(tools, moduleCatalog);
-    const selectorParameters = selector.parameters as { properties: { selectedModule: { enum: string[] } } };
+    const selectorParameters = selector.parameters as { properties: { name: { enum: string[] }; selectedModule: { enum: string[] } }; required: string[] };
     const serialized = JSON.stringify({ instructions, selector });
 
+    expect(selectorParameters.required).toEqual(["name"]);
+    expect(selectorParameters.properties.name.enum).toEqual(["widget.remove", "music.pause"]);
     expect(selectorParameters.properties.selectedModule.enum).toEqual(expect.arrayContaining(["countdown", "music", "tv", "weather"]));
+    expect(serialized).toContain("name");
     expect(serialized).toContain("selectedModule");
-    expect(serialized).toContain("intent");
-    expect(serialized).not.toContain("widget.remove");
-    expect(serialized).not.toContain("music.pause");
+    expect(serialized).toContain("widget.remove");
+    expect(serialized).toContain("music.pause");
 	    expect(serialized).toContain("模块目录");
 	    expect(serialized).toContain("toolCatalogVersion=cat_test");
 	    expect(serialized).toContain("weather");
