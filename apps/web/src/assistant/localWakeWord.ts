@@ -31,13 +31,17 @@ type SpeechRecognitionEventLike = {
   results: SpeechRecognitionResultListLike;
 };
 
+type SpeechRecognitionErrorEventLike = {
+  error?: string;
+};
+
 type SpeechRecognitionLike = {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
   maxAlternatives: number;
   onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event?: SpeechRecognitionErrorEventLike) => void) | null;
   onend: (() => void) | null;
   start: () => void;
   stop: () => void;
@@ -52,10 +56,17 @@ export interface BrowserSpeechWakeWordEngineOptions {
   onStatusChange?: (status: LocalWakeWordStatus) => void;
   wakeWords?: string[];
   lang?: string;
+  restartDelayMs?: number;
+  maxRestarts?: number;
+  stableRestartWindowMs?: number;
 }
 
 const DEFAULT_WAKE_WORDS = ["小桌板", "小桌伴", "小卓板", "小卓伴"];
 const WAKE_WORD_COMMAND_PREFIX = /^(，|,|。|\.|！|!|？|\?|:|：|-|—|请|帮我|给我|你|可以|能不能)+/;
+const TERMINAL_SPEECH_RECOGNITION_ERRORS = new Set(["not-allowed", "service-not-allowed", "audio-capture", "aborted"]);
+const DEFAULT_RESTART_DELAY_MS = 800;
+const DEFAULT_MAX_RESTARTS = 3;
+const DEFAULT_STABLE_RESTART_WINDOW_MS = 5000;
 
 function normalizeWakeText(value: string): string {
   return value
@@ -122,8 +133,52 @@ export function createBrowserSpeechWakeWordEngine(options: BrowserSpeechWakeWord
   let recognition: SpeechRecognitionLike | null = null;
   let active = false;
   let stopRequested = false;
+  let recognitionRunning = false;
+  let restartAttempts = 0;
+  let restartTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastStatus: LocalWakeWordStatus | null = null;
+  let lastStartAt = 0;
 
-  const emitStatus = (status: LocalWakeWordStatus) => options.onStatusChange?.(status);
+  const restartDelayMs = options.restartDelayMs ?? DEFAULT_RESTART_DELAY_MS;
+  const maxRestarts = options.maxRestarts ?? DEFAULT_MAX_RESTARTS;
+  const stableRestartWindowMs = options.stableRestartWindowMs ?? DEFAULT_STABLE_RESTART_WINDOW_MS;
+
+  const clearRestartTimer = () => {
+    if (!restartTimer) return;
+    clearTimeout(restartTimer);
+    restartTimer = null;
+  };
+
+  const emitStatus = (status: LocalWakeWordStatus) => {
+    if (lastStatus === status) return;
+    lastStatus = status;
+    options.onStatusChange?.(status);
+  };
+
+  const stopRecognition = (status: LocalWakeWordStatus) => {
+    active = false;
+    stopRequested = true;
+    recognitionRunning = false;
+    clearRestartTimer();
+    emitStatus(status);
+    try {
+      recognition?.stop();
+    } catch {
+      recognition?.abort?.();
+    }
+  };
+
+  const startRecognition = () => {
+    if (!recognition || recognitionRunning || !active || stopRequested) return;
+    try {
+      recognition.start();
+      recognitionRunning = true;
+      lastStartAt = Date.now();
+      emitStatus("listening");
+    } catch {
+      stopRecognition("error");
+    }
+  };
 
   const createRecognition = () => {
     if (!RecognitionCtor) return null;
@@ -138,6 +193,8 @@ export function createBrowserSpeechWakeWordEngine(options: BrowserSpeechWakeWord
       emitStatus("detected");
       stopRequested = true;
       active = false;
+      recognitionRunning = false;
+      clearRestartTimer();
       try {
         next.stop();
       } catch {
@@ -145,18 +202,31 @@ export function createBrowserSpeechWakeWordEngine(options: BrowserSpeechWakeWord
       }
       options.onWake(detection);
     };
-    next.onerror = () => {
+    next.onerror = (event) => {
       if (!active) return;
       emitStatus("error");
+      if (TERMINAL_SPEECH_RECOGNITION_ERRORS.has(event?.error ?? "")) {
+        stopRecognition("error");
+      }
     };
     next.onend = () => {
+      recognitionRunning = false;
       if (!active || stopRequested) return;
-      try {
-        next.start();
-        emitStatus("listening");
-      } catch {
-        emitStatus("error");
+      if (Date.now() - lastStartAt >= stableRestartWindowMs) {
+        restartAttempts = 0;
       }
+      if (restartAttempts >= maxRestarts) {
+        active = false;
+        stopRequested = true;
+        emitStatus("error");
+        return;
+      }
+      restartAttempts += 1;
+      clearRestartTimer();
+      restartTimer = setTimeout(() => {
+        restartTimer = null;
+        startRecognition();
+      }, restartDelayMs);
     };
     return next;
   };
@@ -168,25 +238,16 @@ export function createBrowserSpeechWakeWordEngine(options: BrowserSpeechWakeWord
         emitStatus("unsupported");
         return;
       }
+      if (active && recognitionRunning) return;
       active = true;
       stopRequested = false;
+      restartAttempts = 0;
+      clearRestartTimer();
       recognition = recognition ?? createRecognition();
-      try {
-        recognition?.start();
-        emitStatus("listening");
-      } catch {
-        emitStatus("error");
-      }
+      startRecognition();
     },
     stop() {
-      active = false;
-      stopRequested = true;
-      emitStatus(RecognitionCtor ? "idle" : "unsupported");
-      try {
-        recognition?.stop();
-      } catch {
-        recognition?.abort?.();
-      }
+      stopRecognition(RecognitionCtor ? "idle" : "unsupported");
     }
   };
 }

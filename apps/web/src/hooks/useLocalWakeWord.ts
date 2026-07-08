@@ -27,6 +27,7 @@ export function useLocalWakeWord({
   const [status, setStatus] = useState<LocalWakeWordStatus>("idle");
   const onWakeRef = useRef(onWake);
   const onDiagnosticRef = useRef(onDiagnostic);
+  const lastDiagnosticStatusRef = useRef<LocalWakeWordStatus | null>(null);
 
   onWakeRef.current = onWake;
   onDiagnosticRef.current = onDiagnostic;
@@ -43,7 +44,9 @@ export function useLocalWakeWord({
           void onWakeRef.current(detection);
         },
         onStatusChange: (nextStatus) => {
-          setStatus(nextStatus);
+          setStatus((currentStatus) => (currentStatus === nextStatus ? currentStatus : nextStatus));
+          if (lastDiagnosticStatusRef.current === nextStatus) return;
+          lastDiagnosticStatusRef.current = nextStatus;
           onDiagnosticRef.current?.({ type: "local_wake_word.status", status: nextStatus });
         }
       }),
