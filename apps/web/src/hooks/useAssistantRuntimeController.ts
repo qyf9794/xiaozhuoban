@@ -228,31 +228,14 @@ export function useAssistantRuntimeController({
         });
       });
 
-      const command = detection.command.trim();
-      if (command) {
-        try {
-          const response = await assistantRuntime.harness.handleRealtimeUserInput(command, { commandTraceId });
-          assistantRuntime.recordCommandRoute(response.route);
-          recordDiagnostic({
-            type: "local_wake_word.command_result",
-            commandTraceId,
-            status: response.result.status,
-            route: response.route,
-            toolName: response.call?.name,
-            operationId: response.call?.id,
-            message: response.result.message,
-            errorCode: response.result.errorCode,
-            data: { command, wakeWord: detection.wakeWord }
-          });
-        } catch (error) {
-          recordDiagnostic({
-            type: "local_wake_word.command_result",
-            commandTraceId,
-            status: "failed",
-            message: error instanceof Error ? error.message : "local wake command failed",
-            data: { command, wakeWord: detection.wakeWord }
-          });
-        }
+      const ignoredWakeTail = detection.command.trim();
+      if (ignoredWakeTail) {
+        recordDiagnostic({
+          type: "local_wake_word.command_ignored",
+          commandTraceId,
+          status: "ignored",
+          data: { command: ignoredWakeTail, wakeWord: detection.wakeWord }
+        });
       }
       await connectPromise;
       if (!wakeConnected) return;
@@ -260,12 +243,10 @@ export function useAssistantRuntimeController({
         type: "local_wake_word.connect_result",
         commandTraceId,
         status: "success",
-        data: { wakeWord: detection.wakeWord, command: command || undefined }
+        data: { wakeWord: detection.wakeWord, ignoredWakeTail: ignoredWakeTail || undefined }
       });
-      if (!command) {
-        assistantSpeechEventIdRef.current += 1;
-        setAssistantSpeech({ id: assistantSpeechEventIdRef.current, text: "我在，继续说。" });
-      }
+      assistantSpeechEventIdRef.current += 1;
+      setAssistantSpeech({ id: assistantSpeechEventIdRef.current, text: "我在，继续说。" });
     }
   });
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { WidgetAssistantRegistry, createPassthroughSchema, createStrictObjectSchema } from "@xiaozhuoban/assistant-core";
 import {
   DEFAULT_REALTIME_SESSION_UPDATE_TIMEOUT_MS,
@@ -989,9 +989,19 @@ describe("OpenAI realtime adapter helpers", () => {
       expect(diagnostics).toEqual(expect.arrayContaining([
         expect.objectContaining({ type: "realtime.connect.start", data: { mode: "text" } }),
         expect.objectContaining({ type: "realtime.microphone.permission", status: "skipped", data: { mode: "text" } }),
-        expect.objectContaining({ type: "realtime.session.created_ready", status: "connected" })
+        expect.objectContaining({ type: "realtime.session.created_ready", status: "connected" }),
+        expect.objectContaining({ type: "realtime.initial_selector_update", status: "started" })
       ]));
-      expect(sentEvents).toEqual([]);
+      expect(sentEvents).toEqual([
+        expect.objectContaining({
+          type: "session.update",
+          session: expect.objectContaining({
+            tool_choice: "auto",
+            tools: [expect.objectContaining({ name: "assistant__dot__select_tool" })]
+          })
+        })
+      ]);
+      adapter.disconnect();
     } finally {
       Object.defineProperty(globalThis, "RTCPeerConnection", {
         configurable: true,
@@ -1001,6 +1011,60 @@ describe("OpenAI realtime adapter helpers", () => {
         configurable: true,
         value: originalNavigator
       });
+    }
+  });
+
+  it("keeps realtime connected when the nonblocking initial selector update is not acknowledged", async () => {
+    vi.useFakeTimers();
+    const sentEvents: unknown[] = [];
+    const diagnostics: Array<{ type: string; status?: string; errorCode?: string }> = [];
+    const statuses: string[] = [];
+    try {
+      const adapter = new OpenAIRealtimeWebRtcAdapter({
+        sessionUpdateTimeoutMs: 25,
+        onStatusChange: (status) => statuses.push(status),
+        onDiagnostic: (event) => diagnostics.push(event)
+      });
+      Object.assign(
+        adapter as unknown as {
+          sessionReady: boolean;
+          dataChannel: { readyState: string; send: (payload: string) => void };
+        },
+        {
+          sessionReady: true,
+          dataChannel: {
+            readyState: "open",
+            send(payload: string) {
+              sentEvents.push(JSON.parse(payload) as unknown);
+            }
+          }
+        }
+      );
+
+      (adapter as unknown as { sendInitialToolSelectionUpdateIfReady: (reason: string) => void }).sendInitialToolSelectionUpdateIfReady(
+        "session_created"
+      );
+      await vi.advanceTimersByTimeAsync(30);
+
+      expect(sentEvents).toEqual([
+        expect.objectContaining({
+          type: "session.update",
+          session: expect.objectContaining({
+            tools: [expect.objectContaining({ name: "assistant__dot__select_tool" })]
+          })
+        })
+      ]);
+      expect(diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: "realtime.initial_selector_update", status: "started" }),
+        expect.objectContaining({
+          type: "realtime.initial_selector_update_timeout",
+          status: "fallback_available",
+          errorCode: "REALTIME_INITIAL_SELECTOR_UPDATE_TIMEOUT"
+        })
+      ]));
+      expect(statuses).not.toContain("session_failed");
+    } finally {
+      vi.useRealTimers();
     }
   });
 

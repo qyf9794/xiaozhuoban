@@ -1481,6 +1481,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private activeResponseId: string | null = null;
   private pendingResponseCreateAfterActiveToolResult = false;
   private activeCommandTraceId: string | null = null;
+  private initialToolSelectionUpdateSent = false;
+  private initialToolSelectionUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
   private activeRealtimeResponseTraceId: string | null = null;
   private realtimeResponseTraceIds = new Map<string, string>();
   private realtimeItemTraceIds = new Map<string, string>();
@@ -1576,6 +1578,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.activeResponseId = null;
     this.clearRealtimeTraceState();
     this.pendingResponseCreateAfterActiveToolResult = false;
+    this.initialToolSelectionUpdateSent = false;
+    this.clearInitialToolSelectionUpdateTimeout();
     this.pendingScopedToolSelectionResult = null;
     this.pendingTextCommandAfterSelectorUpdate = null;
     this.activeScopedToolSelection = null;
@@ -1701,6 +1705,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         this.emitDiagnostic({ type: "realtime.data_channel.open", status: "configuring" });
         this.armSessionUpdateTimeout();
         this.discardQueuedSessionUpdates("data_channel_open");
+        this.sendInitialToolSelectionUpdateIfReady("data_channel_open");
       };
       dataChannel.onmessage = (event) => this.handleRealtimeEventData(event.data);
       dataChannel.onclose = () => {
@@ -1764,6 +1769,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.activeResponseId = null;
     this.clearRealtimeTraceState();
     this.pendingResponseCreateAfterActiveToolResult = false;
+    this.initialToolSelectionUpdateSent = false;
+    this.clearInitialToolSelectionUpdateTimeout();
     this.pendingScopedToolSelectionResult = null;
     this.pendingTextCommandAfterSelectorUpdate = null;
     this.activeScopedToolSelection = null;
@@ -1794,6 +1801,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.clearSessionReadyPromise();
     this.discardQueuedSessionUpdates("close_resources");
     this.pendingResponseCreateAfterActiveToolResult = false;
+    this.initialToolSelectionUpdateSent = false;
+    this.clearInitialToolSelectionUpdateTimeout();
     this.pendingScopedToolSelectionResult = null;
     this.pendingTextCommandAfterSelectorUpdate = null;
     this.activeScopedToolSelection = null;
@@ -2050,6 +2059,18 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       data: { toolCount: tools.length, tools: tools.map((tool) => tool.name), toolCatalogVersion }
     });
     this.sendEvent(toolSelectionUpdate);
+  }
+
+  private sendInitialToolSelectionUpdateIfReady(reason: string): void {
+    if (this.initialToolSelectionUpdateSent || !this.sessionReady || this.dataChannel?.readyState !== "open") return;
+    this.initialToolSelectionUpdateSent = true;
+    this.emitDiagnostic({
+      type: "realtime.initial_selector_update",
+      status: "started",
+      data: { reason, toolCount: this.getEffectiveSessionTools().length }
+    });
+    this.sendEvent(this.createToolSelectionSessionUpdate(this.getEffectiveSessionTools()), { queueWhenClosed: false });
+    this.armInitialToolSelectionUpdateTimeout();
   }
 
   private createCommandExecutionSessionUpdate(): RealtimeEvent {
@@ -2980,10 +3001,12 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.resolveSessionReadyPromise();
       this.emitDiagnostic({ type: "realtime.session.created_ready", status: "connected" });
       this.options.onStatusChange?.("connected");
+      this.sendInitialToolSelectionUpdateIfReady("session_created");
       return;
     }
     if (event.type === "session.updated") {
       this.clearSessionUpdateTimeout();
+      this.clearInitialToolSelectionUpdateTimeout();
       this.sessionReady = true;
       this.resolveSessionReadyPromise();
       this.emitDiagnostic({ type: "realtime.session.updated", status: "connected" });
@@ -3315,6 +3338,31 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (this.sessionUpdateTimeout) {
       clearTimeout(this.sessionUpdateTimeout);
       this.sessionUpdateTimeout = null;
+    }
+  }
+
+  private armInitialToolSelectionUpdateTimeout(): void {
+    this.clearInitialToolSelectionUpdateTimeout();
+    const timeoutMs = this.options.sessionUpdateTimeoutMs ?? DEFAULT_REALTIME_SESSION_UPDATE_TIMEOUT_MS;
+    this.initialToolSelectionUpdateTimeout = setTimeout(() => {
+      this.emitDiagnostic({
+        type: "realtime.initial_selector_update_timeout",
+        status: "fallback_available",
+        errorCode: "REALTIME_INITIAL_SELECTOR_UPDATE_TIMEOUT",
+        data: {
+          timeoutMs,
+          sessionReady: this.sessionReady,
+          dataChannelState: this.dataChannel?.readyState ?? "missing"
+        }
+      });
+      this.initialToolSelectionUpdateTimeout = null;
+    }, timeoutMs);
+  }
+
+  private clearInitialToolSelectionUpdateTimeout(): void {
+    if (this.initialToolSelectionUpdateTimeout) {
+      clearTimeout(this.initialToolSelectionUpdateTimeout);
+      this.initialToolSelectionUpdateTimeout = null;
     }
   }
 }
