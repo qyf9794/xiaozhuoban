@@ -1701,7 +1701,6 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         this.emitDiagnostic({ type: "realtime.data_channel.open", status: "configuring" });
         this.armSessionUpdateTimeout();
         this.discardQueuedSessionUpdates("data_channel_open");
-        void this.updateTools(this.getEffectiveSessionTools());
       };
       dataChannel.onmessage = (event) => this.handleRealtimeEventData(event.data);
       dataChannel.onclose = () => {
@@ -2974,6 +2973,14 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.pendingResponseCreateAfterActiveToolResult = false;
       this.emitDiagnostic({ type: "realtime.response.create_after_tool_result", status: "sent" });
       this.sendEvent(createRealtimeResponseCreateEvent(this.connectMode === "audio" ? "voice" : "text"), { queueWhenClosed: false });
+    }
+    if (event.type === "session.created") {
+      this.clearSessionUpdateTimeout();
+      this.sessionReady = true;
+      this.resolveSessionReadyPromise();
+      this.emitDiagnostic({ type: "realtime.session.created_ready", status: "connected" });
+      this.options.onStatusChange?.("connected");
+      return;
     }
     if (event.type === "session.updated") {
       this.clearSessionUpdateTimeout();

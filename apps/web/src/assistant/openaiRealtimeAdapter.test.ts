@@ -843,7 +843,7 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(shouldQueueRealtimeEventWhenClosed({ type: "response.create" })).toBe(false);
   });
 
-  it("uses a mobile-tolerant default timeout for realtime session updates", () => {
+  it("uses a mobile-tolerant default timeout for scoped realtime session updates", () => {
     expect(DEFAULT_REALTIME_SESSION_UPDATE_TIMEOUT_MS).toBe(12_000);
   });
 
@@ -886,11 +886,6 @@ describe("OpenAI realtime adapter helpers", () => {
       send(payload: string) {
         const event = JSON.parse(payload) as { type?: string };
         sentEvents.push(event);
-        if (event.type === "session.update") {
-          queueMicrotask(() => {
-            this.onmessage?.({ data: JSON.stringify({ type: "session.updated", session: { type: "realtime" } }) });
-          });
-        }
       }
 
       close() {
@@ -927,6 +922,9 @@ describe("OpenAI realtime adapter helpers", () => {
 
       async setRemoteDescription() {
         this.channel?.onopen?.();
+        queueMicrotask(() => {
+          this.channel?.onmessage?.({ data: JSON.stringify({ type: "session.created", session: { type: "realtime" } }) });
+        });
       }
 
       close() {}
@@ -991,11 +989,9 @@ describe("OpenAI realtime adapter helpers", () => {
       expect(diagnostics).toEqual(expect.arrayContaining([
         expect.objectContaining({ type: "realtime.connect.start", data: { mode: "text" } }),
         expect.objectContaining({ type: "realtime.microphone.permission", status: "skipped", data: { mode: "text" } }),
-        expect.objectContaining({ type: "realtime.session.updated", status: "connected" })
+        expect.objectContaining({ type: "realtime.session.created_ready", status: "connected" })
       ]));
-      expect(sentEvents).toEqual(expect.arrayContaining([
-        expect.objectContaining({ type: "session.update", session: expect.objectContaining({ type: "realtime" }) })
-      ]));
+      expect(sentEvents).toEqual([]);
     } finally {
       Object.defineProperty(globalThis, "RTCPeerConnection", {
         configurable: true,

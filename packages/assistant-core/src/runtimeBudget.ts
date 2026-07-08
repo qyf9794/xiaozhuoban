@@ -36,7 +36,7 @@ export const DEFAULT_REALTIME_BUDGET_CONFIG: RealtimeBudgetConfig = {
   dailyBudgetUsd: 1,
   softLimitUsd: 0.8,
   hardLimitUsd: 1,
-  commandWindowIdleMs: 12_000,
+  commandWindowIdleMs: 45_000,
   dialogueIdleMs: 5 * 60_000,
   cooldownMs: 8_000,
   maxSingleCommandSessionMs: 5 * 60_000,
