@@ -48,9 +48,10 @@ describe("VoiceAssistantDock", () => {
   it("maps local wake word states to compact labels", () => {
     expect(getLocalWakeWordStatusText(false, true, "idle")).toBe("唤醒关闭");
     expect(getLocalWakeWordStatusText(true, false, "unsupported")).toBe("唤醒不可用");
-    expect(getLocalWakeWordStatusText(true, true, "listening")).toBe("小桌板待命");
+    expect(getLocalWakeWordStatusText(true, true, "idle")).toBe("唤醒待机，请说“小桌板”");
+    expect(getLocalWakeWordStatusText(true, true, "listening")).toBe("请说“小桌板”");
     expect(getLocalWakeWordStatusText(true, true, "detected")).toBe("已唤醒");
-    expect(getLocalWakeWordStatusText(true, true, "error")).toBe("唤醒出错");
+    expect(getLocalWakeWordStatusText(true, true, "error")).toBe("唤醒出错，请检查麦克风权限");
   });
 
   it("keeps newest text command history bounded", () => {

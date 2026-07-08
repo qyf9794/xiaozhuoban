@@ -63,7 +63,7 @@ export interface BrowserSpeechWakeWordEngineOptions {
 
 const DEFAULT_WAKE_WORDS = ["小桌板", "小桌伴", "小卓板", "小卓伴"];
 const WAKE_WORD_COMMAND_PREFIX = /^(，|,|。|\.|！|!|？|\?|:|：|-|—|请|帮我|给我|你|可以|能不能)+/;
-const TERMINAL_SPEECH_RECOGNITION_ERRORS = new Set(["not-allowed", "service-not-allowed", "audio-capture", "aborted"]);
+const TERMINAL_SPEECH_RECOGNITION_ERRORS = new Set(["not-allowed", "service-not-allowed", "audio-capture"]);
 const DEFAULT_RESTART_DELAY_MS = 800;
 const DEFAULT_MAX_RESTARTS = 3;
 const DEFAULT_STABLE_RESTART_WINDOW_MS = 5000;

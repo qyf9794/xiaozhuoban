@@ -157,6 +157,57 @@ describe("createRealtimeAssistantRuntime", () => {
     expect(adapter.sendTextCommand).toHaveBeenCalledWith("打开表盘时钟", { commandTraceId: "trace_text_1" });
   });
 
+  it("falls back to the classic WebRTC adapter when the Agents voice adapter fails to connect", async () => {
+    const diagnostics: Array<{ type: string; status?: string; message?: string }> = [];
+    const failingAgentsAdapter = {
+      connect: vi.fn(async () => {
+        throw new Error("SDK_CONNECT_FAILED");
+      }),
+      connectTextOnly: vi.fn(async () => {
+        throw new Error("REALTIME_TEXT_ONLY_UNAVAILABLE");
+      }),
+      disconnect: vi.fn(),
+      updateTools: vi.fn(),
+      updateContext: vi.fn(),
+      updateModules: vi.fn(),
+      sendToolResult: vi.fn()
+    };
+    const classicAdapter = {
+      connect: vi.fn(async () => undefined),
+      connectTextOnly: vi.fn(async () => undefined),
+      disconnect: vi.fn(),
+      updateTools: vi.fn(),
+      updateContext: vi.fn(),
+      updateModules: vi.fn(),
+      sendToolResult: vi.fn()
+    };
+    let factoryCalls = 0;
+    const runtime = createRealtimeAssistantRuntime({
+      useAgentsVoiceAdapter: true,
+      adapterOptions: {
+        onDiagnostic(event) {
+          diagnostics.push(event);
+        }
+      },
+      adapterFactory: () => {
+        factoryCalls += 1;
+        return factoryCalls === 1 ? failingAgentsAdapter : classicAdapter;
+      }
+    });
+
+    await runtime.connect();
+
+    expect(failingAgentsAdapter.connect).toHaveBeenCalledTimes(1);
+    expect(classicAdapter.connect).toHaveBeenCalledTimes(1);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.runtime.adapter_fallback",
+        status: "classic_webrtc",
+        message: "SDK_CONNECT_FAILED"
+      })
+    ]));
+  });
+
   it("records local hits and model fallbacks without adding realtime cost", () => {
     const { runtime } = createRuntimeWithFakeAdapter();
 

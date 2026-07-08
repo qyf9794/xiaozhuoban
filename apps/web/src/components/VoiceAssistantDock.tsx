@@ -57,10 +57,10 @@ export function getLocalWakeWordStatusText(
 ): string {
   if (!supported) return "唤醒不可用";
   if (!enabled) return "唤醒关闭";
-  if (status === "listening") return "小桌板待命";
+  if (status === "listening") return "请说“小桌板”";
   if (status === "detected") return "已唤醒";
-  if (status === "error") return "唤醒出错";
-  return "唤醒待机";
+  if (status === "error") return "唤醒出错，请检查麦克风权限";
+  return "唤醒待机，请说“小桌板”";
 }
 
 export function getVoiceAssistantErrorMessage(error: unknown): string {
@@ -463,6 +463,15 @@ export function VoiceAssistantDock({
     setState(getVoiceAssistantDockStateForRealtimeStatus(voiceStatus));
     setLastMessage(getVoiceAssistantConnectionMessage(voiceStatus));
   }, [voiceEnabled, voiceStatus]);
+
+  useEffect(() => {
+    if (!onToggleWakeWord || !wakeWordEnabled) return;
+    const nextMessage = getLocalWakeWordStatusText(wakeWordEnabled, wakeWordSupported, wakeWordStatus);
+    setLastMessage(nextMessage);
+    if (wakeWordStatus === "listening" || wakeWordStatus === "detected" || wakeWordStatus === "error" || !wakeWordSupported) {
+      openMobileTextPanel({ focusInput: false });
+    }
+  }, [onToggleWakeWord, wakeWordEnabled, wakeWordSupported, wakeWordStatus]);
 
   useEffect(() => {
     setMobileTextPanelOpen(false);

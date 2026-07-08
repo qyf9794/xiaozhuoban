@@ -31,6 +31,8 @@ type RuntimeRealtimeAdapter = AssistantRealtimeAdapter & {
   sendTextCommand?: (input: string, options?: { commandTraceId?: string }) => void;
 };
 
+type RuntimeRealtimeAdapterKind = "agents_voice_sdk" | "classic_webrtc";
+
 function createLazyAgentsVoiceAdapter(options: OpenAIRealtimeWebRtcAdapterOptions): RuntimeRealtimeAdapter {
   let adapter: RuntimeRealtimeAdapter | null = null;
   let adapterPromise: Promise<RuntimeRealtimeAdapter> | null = null;
@@ -279,17 +281,19 @@ export function createRealtimeAssistantRuntime(options: {
   const shouldUseAgentsVoiceAdapter = () =>
     typeof options.useAgentsVoiceAdapter === "function" ? options.useAgentsVoiceAdapter() : Boolean(options.useAgentsVoiceAdapter);
   let activeAdapter: RuntimeRealtimeAdapter | null = null;
+  let activeAdapterKind: RuntimeRealtimeAdapterKind | null = null;
   let cachedTools: AssistantToolSpec[] = [];
   let cachedContext: Parameters<NonNullable<AssistantRealtimeAdapter["updateContext"]>>[0] | null = null;
   let cachedModules: Parameters<NonNullable<AssistantRealtimeAdapter["updateModules"]>>[0] | null = null;
   let cachedCommandTraceId: string | null = null;
-  const createRuntimeAdapter = () => {
-    const adapterKind = shouldUseAgentsVoiceAdapter() ? "agents_voice_sdk" : "classic_webrtc";
+  const createRuntimeAdapter = (forcedKind?: RuntimeRealtimeAdapterKind) => {
+    const adapterKind = forcedKind ?? (shouldUseAgentsVoiceAdapter() ? "agents_voice_sdk" : "classic_webrtc");
     const nextAdapter = options.adapterFactory
       ? options.adapterFactory(adapterOptions)
       : adapterKind === "agents_voice_sdk"
         ? createLazyAgentsVoiceAdapter(adapterOptions)
         : new OpenAIRealtimeWebRtcAdapter(adapterOptions);
+    activeAdapterKind = adapterKind;
     emitDiagnostic?.({ type: "realtime.runtime.adapter_selected", status: adapterKind });
     if (cachedTools.length) {
       void nextAdapter.updateTools(cachedTools);
@@ -307,6 +311,11 @@ export function createRealtimeAssistantRuntime(options: {
   };
   const getAdapter = () => {
     activeAdapter ??= createRuntimeAdapter();
+    return activeAdapter;
+  };
+  const switchAdapter = (kind: RuntimeRealtimeAdapterKind) => {
+    activeAdapter?.disconnect();
+    activeAdapter = createRuntimeAdapter(kind);
     return activeAdapter;
   };
   const adapter: RuntimeRealtimeAdapter = {
@@ -356,7 +365,19 @@ export function createRealtimeAssistantRuntime(options: {
     if (!gate.allowed) {
       throw new Error(gate.reason);
     }
-    await adapter.connect();
+    try {
+      await adapter.connect();
+    } catch (error) {
+      if (activeAdapterKind !== "agents_voice_sdk") {
+        throw error;
+      }
+      emitDiagnostic?.({
+        type: "realtime.runtime.adapter_fallback",
+        status: "classic_webrtc",
+        message: error instanceof Error ? error.message : "agents voice adapter connect failed"
+      });
+      await switchAdapter("classic_webrtc").connect();
+    }
   };
   const connectTextOnlyWithReason = async (reason: "manual" | "wake") => {
     const gate = runtimeController.requestRealtime(reason);
@@ -367,7 +388,23 @@ export function createRealtimeAssistantRuntime(options: {
     if (!adapter.connectTextOnly) {
       throw new Error("REALTIME_TEXT_ONLY_UNAVAILABLE");
     }
-    await adapter.connectTextOnly();
+    try {
+      await adapter.connectTextOnly();
+    } catch (error) {
+      if (activeAdapterKind !== "agents_voice_sdk") {
+        throw error;
+      }
+      emitDiagnostic?.({
+        type: "realtime.runtime.adapter_fallback",
+        status: "classic_webrtc",
+        message: error instanceof Error ? error.message : "agents voice adapter text-only connect failed"
+      });
+      const fallbackAdapter = switchAdapter("classic_webrtc");
+      if (!fallbackAdapter.connectTextOnly) {
+        throw new Error("REALTIME_TEXT_ONLY_UNAVAILABLE");
+      }
+      await fallbackAdapter.connectTextOnly();
+    }
   };
   const disconnectRealtime = (reason: "manual" | "idle_timeout" | "max_session_timeout" = "manual") => {
     clearIdleTimer();

@@ -116,6 +116,29 @@ describe("local wake word", () => {
     vi.useRealTimers();
   });
 
+  it("treats browser aborted events as retryable interruptions", () => {
+    vi.useFakeTimers();
+    FakeSpeechRecognition.instances = [];
+    const statuses: string[] = [];
+    const engine = createBrowserSpeechWakeWordEngine({
+      recognitionCtor: FakeSpeechRecognition as unknown as SpeechRecognitionConstructor,
+      onWake: vi.fn(),
+      onStatusChange: (status) => statuses.push(status),
+      restartDelayMs: 50,
+      maxRestarts: 2
+    });
+
+    engine.start();
+    FakeSpeechRecognition.instances[0]?.emitError("aborted");
+    FakeSpeechRecognition.instances[0]?.emitEnd();
+    vi.advanceTimersByTime(50);
+
+    expect(FakeSpeechRecognition.instances[0]?.stop).not.toHaveBeenCalled();
+    expect(FakeSpeechRecognition.instances[0]?.start).toHaveBeenCalledTimes(2);
+    expect(statuses).toEqual(["listening", "error", "listening"]);
+    vi.useRealTimers();
+  });
+
   it("resets restart attempts after a stable recognition run", () => {
     vi.useFakeTimers();
     FakeSpeechRecognition.instances = [];
