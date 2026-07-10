@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createPassthroughSchema, type AssistantToolSpec, type CompactAssistantContext } from "@xiaozhuoban/assistant-core";
 import {
+  createRealtimeCommandPlanUpdate,
+  createRealtimePlanSelectionTool,
   createRealtimeToolSelectionInstructions,
   createRealtimeToolSelectionRequestBody,
   createRealtimeToolSelectionTool,
@@ -10,6 +12,8 @@ import {
   createScopedToolCallPayload,
   createToolSelectionPayload,
   extractToolSelectionFromResponsesPayload,
+  parseRealtimePlanSelectionArguments,
+  parseRealtimeSubmittedCommandPlan,
   parseRealtimeTextToolSelectionResponse
 } from "./realtimeTextToolCall";
 
@@ -359,5 +363,44 @@ describe("Realtime text tool call fallback", () => {
     expect(serialized).toContain("wd_music");
     expect(serialized).toContain("不要回答缺少打开小工具的方式");
     expect(serialized).toContain("默认打开 dialClock");
+  });
+
+  it("keeps the full user command and every selected step in the realtime planning protocol", () => {
+    const selectionTool = createRealtimePlanSelectionTool([musicPlayTool, countdownSetTool], moduleCatalog);
+    expect(selectionTool.name).toBe("assistant__dot__select_plan");
+
+    const selection = parseRealtimePlanSelectionArguments({
+      userCommand: "播放音乐，同时设置一个叫会议的五分钟倒计时",
+      steps: [
+        { id: "play", name: "music.play", selectedModule: "music", connector: "start" },
+        { id: "timer", name: "countdown.set", selectedModule: "countdown", connector: "parallel" }
+      ]
+    });
+    expect(selection).toMatchObject({
+      userCommand: "播放音乐，同时设置一个叫会议的五分钟倒计时",
+      steps: [{ name: "music.play" }, { name: "countdown.set", connector: "parallel" }]
+    });
+
+    const update = createRealtimeCommandPlanUpdate({
+      command: selection!.userCommand!,
+      context,
+      tools: [addWidgetTool, musicPlayTool, countdownSetTool],
+      selection: selection!
+    });
+    expect(update.session.tools[0]?.name).toBe("assistant__dot__submit_plan");
+    expect(JSON.stringify(update)).toContain("播放音乐，同时设置一个叫会议的五分钟倒计时");
+
+    const plan = parseRealtimeSubmittedCommandPlan({
+      commands: [
+        { id: "play", module: "music", tool: "music.play", args: {}, risk: "safe", confidence: 0.96 },
+        { id: "timer", module: "countdown", tool: "countdown.set", args: { totalSeconds: 300, label: "会议", start: true }, risk: "safe", confidence: 0.97 }
+      ],
+      executionGroups: [{ id: "parallel", mode: "parallel", commandIds: ["play", "timer"] }],
+      confidence: 0.96,
+      needsConfirmation: false
+    }, selection!.userCommand!, [musicPlayTool, countdownSetTool]);
+    expect(plan?.commands).toHaveLength(2);
+    expect(plan?.commands[1]?.args).toMatchObject({ totalSeconds: 300, label: "会议", start: true });
+    expect(plan?.executionGroups[0]?.mode).toBe("parallel");
   });
 });

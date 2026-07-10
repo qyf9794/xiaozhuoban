@@ -16,6 +16,7 @@ import {
   parseRealtimeFunctionCallEvent,
   reduceRealtimeActiveResponseId,
   resolveRealtimeConnectFailureStatus,
+  resolveRealtimeRemoteAudioStream,
   resolveMicrophoneAccessErrorCode,
   resolveRealtimeMicrophoneLevel,
   resolveRealtimePeerStatus,
@@ -25,6 +26,17 @@ import {
 } from "./openaiRealtimeAdapter";
 
 describe("OpenAI realtime adapter helpers", () => {
+  it("builds a remote audio stream when Safari omits RTCTrackEvent.streams", () => {
+    class TestMediaStream {
+      constructor(readonly tracks: unknown[]) {}
+    }
+    vi.stubGlobal("MediaStream", TestMediaStream);
+    const track = { kind: "audio" };
+    const stream = resolveRealtimeRemoteAudioStream({ streams: [], track: track as MediaStreamTrack });
+    expect(stream).toBeInstanceOf(TestMediaStream);
+    expect((stream as unknown as TestMediaStream).tracks).toEqual([track]);
+    vi.unstubAllGlobals();
+  });
   it("normalizes microphone samples into a bounded voice level", () => {
     expect(resolveRealtimeMicrophoneLevel(new Uint8Array([128, 128, 128, 128]))).toBe(0);
     expect(resolveRealtimeMicrophoneLevel(new Uint8Array([0, 255, 0, 255]))).toBe(1);
@@ -580,7 +592,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "session.update",
         session: expect.objectContaining({
           type: "realtime",
-          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
+          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_plan" })]),
           tool_choice: "auto"
         })
       })
@@ -594,7 +606,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "session.update",
         session: expect.objectContaining({
           type: "realtime",
-          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
+          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_plan" })]),
           tool_choice: "auto"
         })
       }),
@@ -997,7 +1009,7 @@ describe("OpenAI realtime adapter helpers", () => {
           type: "session.update",
           session: expect.objectContaining({
             tool_choice: "auto",
-            tools: [expect.objectContaining({ name: "assistant__dot__select_tool" })]
+            tools: [expect.objectContaining({ name: "assistant__dot__select_plan" })]
           })
         })
       ]);
@@ -1050,7 +1062,7 @@ describe("OpenAI realtime adapter helpers", () => {
         expect.objectContaining({
           type: "session.update",
           session: expect.objectContaining({
-            tools: [expect.objectContaining({ name: "assistant__dot__select_tool" })]
+            tools: [expect.objectContaining({ name: "assistant__dot__select_plan" })]
           })
         })
       ]);
@@ -1145,7 +1157,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "session.update",
         session: expect.objectContaining({
           type: "realtime",
-          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
+          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_plan" })]),
           tool_choice: "auto"
         })
       })
@@ -1158,7 +1170,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "session.update",
         session: expect.objectContaining({
           type: "realtime",
-          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
+          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_plan" })]),
           tool_choice: "auto"
         })
       }),
@@ -1359,8 +1371,8 @@ describe("OpenAI realtime adapter helpers", () => {
       .queuedEvents[0];
     expect(event.type).toBe("session.update");
     expect(event.session.type).toBe("realtime");
-    expect(event.session.instructions).toContain("assistant.select_tool");
-    expect(event.session.tools[0].name).toBe("assistant__dot__select_tool");
+    expect(event.session.instructions).toContain("assistant.select_plan");
+    expect(event.session.tools[0].name).toBe("assistant__dot__select_plan");
   });
 
   it("adds the active command trace id to adapter diagnostics", () => {
@@ -2099,7 +2111,7 @@ describe("OpenAI realtime adapter helpers", () => {
       expect.objectContaining({
         type: "session.update",
         session: expect.objectContaining({
-          tools: [expect.objectContaining({ name: "assistant__dot__select_tool" })]
+          tools: [expect.objectContaining({ name: "assistant__dot__select_plan" })]
         })
       })
     ]);
@@ -2537,7 +2549,7 @@ describe("OpenAI realtime adapter helpers", () => {
       .queuedEvents[0];
     expect(tools.map((tool) => tool.name)).toContain("board.add_widget");
     expect(event.session.type).toBe("realtime");
-    expect(event.session.tools[0].name).toBe("assistant__dot__select_tool");
+    expect(event.session.tools[0].name).toBe("assistant__dot__select_plan");
     expect(JSON.stringify(event.session.tools[0].parameters)).toContain("name");
     expect(JSON.stringify(event.session.tools[0].parameters)).toContain("selectedModule");
     expect(JSON.stringify(event.session.tools[0].parameters)).toContain("board.add_widget");
@@ -3574,6 +3586,108 @@ describe("OpenAI realtime adapter helpers", () => {
         toolName: "assistant.select_tool"
       })
     ]));
+  });
+
+  it("submits a complete multi-step realtime plan only after the plan context update", async () => {
+    const sent: Array<Record<string, unknown>> = [];
+    const receivedPlans: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onCommandPlan(input, plan) {
+        receivedPlans.push({ input, plan });
+        return { status: "success", message: "done" };
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "music.pause",
+        description: "暂停音乐",
+        parameters: createStrictObjectSchema({ widgetId: { type: "string", required: true } }),
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      },
+      {
+        name: "countdown.set",
+        description: "设置倒计时",
+        parameters: createStrictObjectSchema({
+          widgetId: { type: "string", required: true },
+          totalSeconds: { type: "number" },
+          label: { type: "string" },
+          start: { type: "boolean" }
+        }),
+        scope: "widget-detail",
+        widgetType: "countdown",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: { music: 1, countdown: 1 },
+      widgets: [
+        { widgetId: "wi_music", definitionId: "wd_music", type: "music", name: "音乐", order: 1, summary: "playing" },
+        { widgetId: "wi_countdown", definitionId: "wd_countdown", type: "countdown", name: "倒计时", order: 2, summary: "idle" }
+      ]
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as Record<string, unknown>);
+        }
+      }
+    });
+    const internals = adapter as unknown as {
+      handleFunctionCall: (call: unknown) => void;
+      handleRealtimeEventData: (event: unknown) => void;
+    };
+
+    internals.handleFunctionCall({
+      id: "select_plan_1",
+      name: "assistant.select_plan",
+      arguments: {
+        userCommand: "暂停音乐，同时设置一个叫会议的五分钟倒计时",
+        steps: [
+          { id: "pause", name: "music.pause", selectedModule: "music", connector: "start", confidence: 0.98 },
+          { id: "timer", name: "countdown.set", selectedModule: "countdown", connector: "parallel", confidence: 0.98 }
+        ]
+      },
+      source: "realtime"
+    });
+
+    expect(receivedPlans).toEqual([]);
+    expect(JSON.stringify(sent[0])).toContain("assistant__dot__submit_plan");
+    internals.handleRealtimeEventData({ type: "session.updated" });
+    internals.handleFunctionCall({
+      id: "submit_plan_1",
+      name: "assistant.submit_plan",
+      arguments: {
+        commands: [
+          { id: "pause", module: "music", tool: "music.pause", args: {}, risk: "safe", confidence: 0.98 },
+          { id: "timer", module: "countdown", tool: "countdown.set", args: { totalSeconds: 300, label: "会议", start: true }, risk: "safe", confidence: 0.98 }
+        ],
+        executionGroups: [{ id: "parallel", mode: "parallel", commandIds: ["pause", "timer"] }],
+        confidence: 0.98,
+        needsConfirmation: false
+      },
+      source: "realtime"
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(receivedPlans).toEqual([
+      expect.objectContaining({
+        input: "暂停音乐，同时设置一个叫会议的五分钟倒计时",
+        plan: expect.objectContaining({
+          commands: [
+            expect.objectContaining({ tool: "music.pause", args: { widgetId: "wi_music" } }),
+            expect.objectContaining({ tool: "countdown.set", args: { totalSeconds: 300, label: "会议", start: true, widgetId: "wi_countdown" } })
+          ],
+          executionGroups: [expect.objectContaining({ mode: "parallel", commandIds: ["pause", "timer"] })]
+        })
+      })
+    ]);
   });
 
   it("does not process realtime function calls before session.updated", () => {

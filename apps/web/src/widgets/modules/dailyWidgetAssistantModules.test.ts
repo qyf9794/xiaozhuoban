@@ -402,6 +402,17 @@ describe("daily widget assistant modules", () => {
     expect(countdownResult.ok).toBe(false);
     expect(countdownResult.errors[0]).toMatchObject({ code: "EXTRA_ARGUMENTS" });
 
+    const namedCountdownPlan = createCommandPlanFromToolCalls("设置一个叫会议的十分钟倒计时", [
+      {
+        id: "call_named_countdown",
+        name: "countdown.set",
+        arguments: { widgetId: "countdown_1", minutes: 10, label: "会议", start: true },
+        source: "realtime"
+      }
+    ]);
+    namedCountdownPlan.commands[0]!.module = "countdown";
+    expect(validator.validate(namedCountdownPlan).ok).toBe(true);
+
     const worldClockPlan = createCommandPlanFromToolCalls("NYC and Tokyo time", [
       {
         id: "call_world_clock",

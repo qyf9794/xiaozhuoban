@@ -61,12 +61,17 @@ export type RealtimeTextPlanSelectionStep = RealtimeTextToolSelection & {
 
 export type RealtimeTextPlanSelection = {
   steps: RealtimeTextPlanSelectionStep[];
+  userCommand?: string;
 };
 
 const SELECT_TOOL_NAME = "assistant.select_tool";
+const SELECT_PLAN_TOOL_NAME = "assistant.select_plan";
+const SUBMIT_PLAN_TOOL_NAME = "assistant.submit_plan";
 const ADD_WIDGET_TOOL_NAME = REALTIME_ADD_WIDGET_TOOL_NAME;
 
 export const REALTIME_TOOL_SELECTION_TOOL_NAME = SELECT_TOOL_NAME;
+export const REALTIME_PLAN_SELECTION_TOOL_NAME = SELECT_PLAN_TOOL_NAME;
+export const REALTIME_PLAN_SUBMISSION_TOOL_NAME = SUBMIT_PLAN_TOOL_NAME;
 
 function parsePlanConnector(value: unknown): RealtimeTextPlanSelectionStep["connector"] {
   return value === "parallel" || value === "sequential" || value === "start" ? value : undefined;
@@ -293,6 +298,236 @@ export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[], modu
       required: ["name"],
       additionalProperties: false
     }
+  };
+}
+
+export function createRealtimePlanSelectionInstructions(
+  tools: AssistantToolSpec[],
+  moduleCatalog?: RealtimeModuleCatalogItem[]
+) {
+  const catalogVersion = getRealtimeCatalogVersion(moduleCatalog);
+  return [
+    "你是小桌板 Realtime 命令规划器。先分析用户整句话涉及的全部动作和工具。",
+    "需要控制小桌板时，直接调用 assistant.select_plan，一次返回完整、有序的步骤列表。",
+    "此阶段只选择工具，不生成真实参数，不猜 widgetId、definitionId 或 boardId。",
+    "多步骤命令不能只返回第一步；同时发生的步骤 connector=parallel，前后发生的步骤 connector=sequential。",
+    "纯问候或闲聊不调用工具，直接简短回复。",
+    ...realtimeToolSelectionSessionPolicyLines,
+    "",
+    "# 版本",
+    catalogVersion ? `toolCatalogVersion=${catalogVersion}` : "toolCatalogVersion=unknown",
+    "",
+    "# 模块目录",
+    moduleCatalogText(moduleCatalog) || "- 未提供模块目录",
+    "",
+    "# 工具目录",
+    toolCatalog(tools)
+  ].join("\n");
+}
+
+export function createRealtimePlanSelectionTool(
+  tools: AssistantToolSpec[],
+  moduleCatalog?: RealtimeModuleCatalogItem[]
+): RealtimeFunctionTool {
+  return {
+    type: "function",
+    name: SELECT_PLAN_TOOL_NAME.replace(/\./g, "__dot__"),
+    description: "Select every registered Xiaozhuoban tool needed for the complete user command, in execution order.",
+    parameters: {
+      type: "object",
+      properties: {
+        steps: {
+          type: "array",
+          minItems: 1,
+          maxItems: 12,
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              name: { type: "string", enum: tools.map((tool) => tool.name) },
+              selectedModule: { type: "string", enum: selectionModuleTypes(tools, moduleCatalog) },
+              targetHint: { type: "string" },
+              connector: { type: "string", enum: ["start", "sequential", "parallel"] },
+              confidence: { type: "number" }
+            },
+            required: ["name", "connector"],
+            additionalProperties: false
+          }
+        },
+        userCommand: { type: "string", description: "The complete normalized user command without dropping any step." }
+      },
+      required: ["steps", "userCommand"],
+      additionalProperties: false
+    }
+  };
+}
+
+export function parseRealtimePlanSelectionArguments(value: unknown): RealtimeTextPlanSelection | null {
+  const args = parseArguments(value);
+  const steps = Array.isArray(args.steps) ? args.steps : [];
+  const parsed = steps
+    .filter((step): step is Record<string, unknown> => Boolean(step) && typeof step === "object" && !Array.isArray(step))
+    .map((step, index) => ({
+      id: typeof step.id === "string" ? step.id : `step_${index + 1}`,
+      name: typeof step.name === "string" ? step.name : "",
+      selectedModule: typeof step.selectedModule === "string" ? step.selectedModule : undefined,
+      targetHint: typeof step.targetHint === "string" ? step.targetHint : undefined,
+      confidence: typeof step.confidence === "number" ? step.confidence : undefined,
+      connector: parsePlanConnector(step.connector) ?? (index === 0 ? "start" : "sequential")
+    }))
+    .filter((step) => step.name);
+  return parsed.length
+    ? { steps: parsed, userCommand: typeof args.userCommand === "string" ? args.userCommand : undefined }
+    : null;
+}
+
+export function createRealtimeCommandPlanSubmissionTool(tools: AssistantToolSpec[]): RealtimeFunctionTool {
+  return {
+    type: "function",
+    name: SUBMIT_PLAN_TOOL_NAME.replace(/\./g, "__dot__"),
+    description: "Submit one complete Xiaozhuoban command plan for local validation, confirmation, and execution.",
+    parameters: {
+      type: "object",
+      properties: {
+        commands: {
+          type: "array",
+          minItems: 1,
+          maxItems: 16,
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              module: { type: "string" },
+              tool: { type: "string", enum: tools.map((tool) => tool.name) },
+              args: { type: "object", additionalProperties: true },
+              risk: { type: "string", enum: ["safe", "confirm", "destructive"] },
+              confidence: { type: "number" },
+              dependsOn: { type: "array", items: { type: "string" } }
+            },
+            required: ["id", "module", "tool", "args", "risk", "confidence"],
+            additionalProperties: false
+          }
+        },
+        executionGroups: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              mode: { type: "string", enum: ["sequential", "parallel"] },
+              commandIds: { type: "array", items: { type: "string" } }
+            },
+            required: ["id", "mode", "commandIds"],
+            additionalProperties: false
+          }
+        },
+        confidence: { type: "number" },
+        needsConfirmation: { type: "boolean" }
+      },
+      required: ["commands", "executionGroups", "confidence", "needsConfirmation"],
+      additionalProperties: false
+    }
+  };
+}
+
+export function createRealtimeCommandPlanUpdate(input: {
+  command: string;
+  context: CompactAssistantContext;
+  tools: AssistantToolSpec[];
+  selection: RealtimeTextPlanSelection;
+  moduleContexts?: RealtimeScopedModuleContext[];
+}) {
+  const selectedNames = new Set(input.selection.steps.map((step) => step.name));
+  const selectedTools = input.tools.filter(
+    (tool) => selectedNames.has(tool.name) || tool.name === ADD_WIDGET_TOOL_NAME || tool.name === "assistant.confirm" || tool.name === "assistant.cancel"
+  );
+  return {
+    type: "session.update",
+    session: {
+      type: "realtime",
+      instructions: [
+        createRealtimeContextInstructions(input.context),
+        "",
+        "# Realtime Complete Plan Stage",
+        "根据已选步骤和最小模块上下文生成完整 CommandPlan，并调用 assistant.submit_plan。",
+        "必须保留全部步骤、顺序、并行关系和用户参数。不要直接调用具体 UI 工具。",
+        "缺少小工具实例时，把 board.add_widget 和后续内容工具写成独立步骤，并用 dependsOn 表达依赖。",
+        "不要使用 board.add_widget.followUp；不要编造真实 widgetId，可省略待创建实例的 widgetId，由 Harness 解析。",
+        "清空、删除、覆盖等风险动作标记 destructive，并设置 needsConfirmation=true。",
+        "",
+        `用户完整命令：${input.command}`,
+        `已选步骤：${JSON.stringify(input.selection.steps)}`,
+        `模块上下文：${JSON.stringify((input.moduleContexts ?? []).map((context) => ({
+          moduleType: context.moduleType,
+          instances: context.instances,
+          stateSummary: context.stateSummary,
+          executionPolicy: context.executionPolicy,
+          riskPolicy: context.riskPolicy
+        })))}`,
+        `可执行工具 schema：${JSON.stringify(selectedTools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          widgetType: tool.widgetType,
+          risk: tool.risk,
+          parameters: "jsonSchema" in tool.parameters ? tool.parameters.jsonSchema : undefined
+        })))}`
+      ].join("\n"),
+      audio: createRealtimeSessionAudioConfig(),
+      tools: [createRealtimeCommandPlanSubmissionTool(selectedTools)],
+      tool_choice: "required",
+      parallel_tool_calls: false
+    }
+  };
+}
+
+export function parseRealtimeSubmittedCommandPlan(
+  value: unknown,
+  input: string,
+  tools: AssistantToolSpec[]
+): CommandPlan | null {
+  const args = parseArguments(value);
+  const rawCommands = Array.isArray(args.commands) ? args.commands : [];
+  const toolsByName = new Map(tools.map((tool) => [tool.name, tool]));
+  const commands: CommandPlan["commands"] = rawCommands
+    .filter((command): command is Record<string, unknown> => Boolean(command) && typeof command === "object" && !Array.isArray(command))
+    .flatMap((command, index) => {
+      const tool = typeof command.tool === "string" ? command.tool : "";
+      const spec = toolsByName.get(tool);
+      if (!spec) return [];
+      return [{
+        id: typeof command.id === "string" ? command.id : `cmd_${index + 1}`,
+        module: typeof command.module === "string" ? command.module : spec.widgetType ?? tool.split(".")[0] ?? "unknown",
+        tool,
+        args: command.args && typeof command.args === "object" && !Array.isArray(command.args) ? command.args as Record<string, unknown> : {},
+        risk: command.risk === "destructive" || command.risk === "confirm" ? command.risk : spec.risk === "destructive" ? "destructive" : spec.risk === "confirm" ? "confirm" : "safe",
+        confidence: typeof command.confidence === "number" ? command.confidence : 0.75,
+        dependsOn: Array.isArray(command.dependsOn) ? command.dependsOn.filter((id): id is string => typeof id === "string") : undefined,
+        source: "realtime" as const,
+        requiresHarnessValidation: true as const
+      }];
+    });
+  if (!commands.length) return null;
+  const commandIds = new Set(commands.map((command) => command.id));
+  const rawGroups = Array.isArray(args.executionGroups) ? args.executionGroups : [];
+  const executionGroups = rawGroups
+    .filter((group): group is Record<string, unknown> => Boolean(group) && typeof group === "object" && !Array.isArray(group))
+    .map((group, index) => ({
+      id: typeof group.id === "string" ? group.id : `group_${index + 1}`,
+      mode: group.mode === "parallel" ? "parallel" as const : "sequential" as const,
+      commandIds: Array.isArray(group.commandIds) ? group.commandIds.filter((id): id is string => typeof id === "string" && commandIds.has(id)) : []
+    }))
+    .filter((group) => group.commandIds.length);
+  return {
+    id: `realtime_plan_${Date.now()}`,
+    sourceText: input,
+    normalizedText: input.trim().toLowerCase(),
+    commands,
+    dependencies: commands.flatMap((command) => (command.dependsOn ?? []).map((from) => ({ from, to: command.id }))),
+    executionGroups: executionGroups.length ? executionGroups : [{ id: "group_1", mode: "sequential", commandIds: commands.map((command) => command.id) }],
+    confidence: typeof args.confidence === "number" ? args.confidence : Math.min(...commands.map((command) => command.confidence)),
+    needsConfirmation: typeof args.needsConfirmation === "boolean" ? args.needsConfirmation : commands.some((command) => command.risk !== "safe"),
+    createdBy: "realtime-2",
+    requiresHarnessValidation: true
   };
 }
 
