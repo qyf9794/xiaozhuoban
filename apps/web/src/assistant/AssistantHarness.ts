@@ -488,6 +488,51 @@ export class AssistantHarness {
     }
   }
 
+  async handleRealtimeCommandPlan(
+    input: string,
+    plan: CommandPlan,
+    options: AssistantHandleUserInputOptions = {}
+  ): Promise<AssistantHarnessResponse> {
+    const startedAt = Date.now();
+    const commandTraceId = options.commandTraceId ?? createId("trace");
+    this.startDiagnostics(input, commandTraceId);
+    await this.options.realtime.setActiveCommandTraceId?.(commandTraceId);
+    try {
+      this.markRealtimeUsed();
+      const violations = getForbiddenToolViolations(input, plan.commands.map((command) => command.tool));
+      if (violations.length) {
+        this.recordPolicyValidationErrors(violations);
+        const response: AssistantHarnessResponse = {
+          route: "model",
+          result: {
+            status: "failed",
+            message: "Realtime 计划包含被本地策略禁止的工具，已停止执行。",
+            errorCode: "REALTIME_PLAN_POLICY_REJECTED",
+            data: { violations }
+          }
+        };
+        await this.audit({ route: "model", result: response.result, durationMs: Date.now() - startedAt });
+        this.finishDiagnostics(response);
+        return response;
+      }
+      const response = await this.handleModelCommandPlan(input, plan, startedAt);
+      this.finishDiagnostics(response);
+      return response;
+    } catch (error) {
+      this.finishDiagnostics({
+        route: "model",
+        result: {
+          status: "failed",
+          message: error instanceof Error ? error.message : "助手执行失败",
+          errorCode: "ASSISTANT_COMMAND_FAILED"
+        }
+      });
+      throw error;
+    } finally {
+      await this.options.realtime.setActiveCommandTraceId?.(null);
+    }
+  }
+
   private async handleUserInputInternal(input: string, startedAt: number): Promise<AssistantHarnessResponse> {
     if (!this.pendingConfirmation) {
       const learningResponse = await this.handlePendingLearningInput(input, startedAt);

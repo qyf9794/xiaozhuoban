@@ -1386,6 +1386,36 @@ describe("AssistantHarness", () => {
     expect(executed).toEqual(["music.play:wi_music", "countdown.set:wi_countdown"]);
   });
 
+  it("executes a submitted realtime command plan without reparsing its semantics", async () => {
+    const input = "暂停音乐，同时设置一个叫会议的五分钟倒计时";
+    const plan = createRealtimePlanWithCalls(input, [
+      { name: "music.pause", arguments: { widgetId: "wi_music" } },
+      { name: "countdown.set", arguments: { widgetId: "wi_countdown", totalSeconds: 300, label: "会议", start: true } }
+    ]);
+    plan.executionGroups = [{ id: "submitted", mode: "sequential", commandIds: plan.commands.map((command) => command.id) }];
+    const { harness, executed, sentResults, auditEvents, activeTraceIds } = createHarness({
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_music", definitionId: "wd_music", type: "music", name: "音乐", order: 3 },
+          { widgetId: "wi_countdown", definitionId: "wd_countdown", type: "countdown", name: "倒计时", order: 4 }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeCommandPlan(input, plan, { commandTraceId: "trace_submitted_plan" });
+
+    expect(response.route).toBe("model");
+    expect(response.result.message).toBe("music.pause done；countdown.set done");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["music.pause:wi_music", "countdown.set:wi_countdown"]);
+    expect(sentResults).toHaveLength(2);
+    expect(auditEvents).toHaveLength(2);
+    expect(activeTraceIds).toEqual(["trace_submitted_plan", null]);
+  });
+
   it("prepends fullscreen exit when realtime only resizes after an exit-fullscreen request", async () => {
     const modelPlan: CommandPlan = {
       id: "plan_exit_fullscreen_resize",

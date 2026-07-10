@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { CommandPlan } from "@xiaozhuoban/assistant-core";
 import type { OpenAIRealtimeWebRtcAdapterOptions, RealtimeConnectionStatus } from "./openaiRealtimeAdapter";
 import { createRealtimeAssistantRuntime, shouldFallbackUnhandledVoiceTranscriptToHarness } from "./createRealtimeAssistantRuntime";
 
@@ -243,6 +244,44 @@ describe("createRealtimeAssistantRuntime", () => {
         commandTraceId: "voice_1",
         route: "shortcut"
       })
+    ]));
+  });
+
+  it("passes submitted realtime command plans directly to the harness", async () => {
+    const { runtime, getAdapterOptions, diagnostics } = createRuntimeWithFakeAdapter();
+    const plan: CommandPlan = {
+      id: "plan_1",
+      sourceText: "暂停音乐",
+      normalizedText: "暂停音乐",
+      commands: [{
+        id: "cmd_1",
+        module: "music",
+        tool: "music.pause",
+        args: { widgetId: "wi_music" },
+        risk: "safe",
+        confidence: 0.98,
+        source: "realtime",
+        requiresHarnessValidation: true
+      }],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_1"] }],
+      confidence: 0.98,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const handleRealtimeCommandPlan = vi.spyOn(runtime.harness, "handleRealtimeCommandPlan").mockResolvedValue({
+      route: "model",
+      call: { id: "cmd_1", name: "music.pause", arguments: { widgetId: "wi_music" }, source: "realtime" },
+      result: { status: "success", message: "已暂停" }
+    });
+
+    const result = await getAdapterOptions()?.onCommandPlan?.("暂停音乐", plan, { callId: "submit_1", commandTraceId: "voice_plan_1" });
+
+    expect(result).toEqual({ status: "success", message: "已暂停" });
+    expect(handleRealtimeCommandPlan).toHaveBeenCalledWith("暂停音乐", plan, { commandTraceId: "voice_plan_1" });
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "realtime.runtime.command_plan_result", status: "success", commandTraceId: "voice_plan_1" })
     ]));
   });
 

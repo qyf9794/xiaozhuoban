@@ -6,7 +6,8 @@ import {
   type AssistantToolSpec,
   type CommandPlan,
   type CompactAssistantContext,
-  type RealtimeModuleCatalogItem
+  type RealtimeModuleCatalogItem,
+  type RealtimeScopedModuleContext
 } from "@xiaozhuoban/assistant-core";
 import type { AssistantRealtimeAdapter } from "./AssistantHarness";
 import type { AssistantDiagnosticEvent } from "./assistantDiagnostics";
@@ -22,16 +23,21 @@ import {
 } from "./realtimeSessionConfig";
 import { REALTIME_ADD_WIDGET_TOOL_NAME, findRealtimeWidgetType, realtimeWidgetAliases } from "./realtimeRoutingPolicy";
 import {
+  REALTIME_PLAN_SELECTION_TOOL_NAME,
+  REALTIME_PLAN_SUBMISSION_TOOL_NAME,
   REALTIME_TOOL_SELECTION_TOOL_NAME,
+  createRealtimeCommandPlanUpdate,
+  createRealtimePlanSelectionInstructions,
+  createRealtimePlanSelectionTool,
   createRealtimeCommandPlanRequestBody,
   createRealtimePlanSelectionRequestBody,
   createRealtimeScopedToolCallRequestBody,
-  createRealtimeToolSelectionInstructions,
   createRealtimeToolSelectionRequestBody,
-  createRealtimeToolSelectionTool,
   createScopedRealtimeContext,
   createScopedRealtimeToolUpdate,
   parseRealtimeCommandPlanResponse,
+  parseRealtimePlanSelectionArguments,
+  parseRealtimeSubmittedCommandPlan,
   parseRealtimeTextToolCallResponse,
   parseRealtimeTextPlanSelectionResponse,
   parseRealtimeTextToolSelectionResponse,
@@ -63,6 +69,11 @@ export interface OpenAIRealtimeWebRtcAdapterOptions {
   onFunctionCall?: (call: AssistantToolCall) => void | Promise<void>;
   onCommand?: (
     input: string,
+    options: { callId: string; commandTraceId?: string }
+  ) => AssistantToolResult | Promise<AssistantToolResult>;
+  onCommandPlan?: (
+    input: string,
+    plan: CommandPlan,
     options: { callId: string; commandTraceId?: string }
   ) => AssistantToolResult | Promise<AssistantToolResult>;
   onUserTranscript?: (
@@ -101,6 +112,12 @@ type PendingScopedToolSelectionResult = {
   call: AssistantToolCall;
   result: AssistantToolResult;
   commandTraceId?: string;
+};
+type PendingPlanSelectionResult = PendingScopedToolSelectionResult;
+type ActiveRealtimePlanSelection = {
+  selection: NonNullable<ReturnType<typeof parseRealtimePlanSelectionArguments>>;
+  input: string;
+  tools: AssistantToolSpec[];
 };
 type PendingTextCommandAfterSelectorUpdate = {
   events: RealtimeEvent[];
@@ -1329,6 +1346,15 @@ export function resolveRealtimeConnectFailureStatus(error: unknown): RealtimeCon
   return "failed";
 }
 
+export function resolveRealtimeRemoteAudioStream(
+  event: Pick<RTCTrackEvent, "streams" | "track">
+): MediaStream | undefined {
+  const remoteStream = event.streams?.[0];
+  if (remoteStream) return remoteStream;
+  if (!event.track || typeof MediaStream === "undefined") return undefined;
+  return new MediaStream([event.track]);
+}
+
 export function extractRealtimeEventErrorMessage(event: unknown): string {
   if (!isRecord(event)) return "REALTIME_SESSION_UPDATE_FAILED";
   const error = isRecord(event.error) ? event.error : null;
@@ -1550,8 +1576,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private remoteAudioLevel = 0;
   private remoteAudioElement: HTMLAudioElement | null = null;
   private pendingScopedToolSelectionResult: PendingScopedToolSelectionResult | null = null;
+  private pendingPlanSelectionResult: PendingPlanSelectionResult | null = null;
   private pendingTextCommandAfterSelectorUpdate: PendingTextCommandAfterSelectorUpdate | null = null;
   private activeScopedToolSelection: RealtimeTargetHint | null = null;
+  private activeRealtimePlanSelection: ActiveRealtimePlanSelection | null = null;
   private connectMode: RealtimeConnectMode = "text";
 
   constructor(private readonly options: OpenAIRealtimeWebRtcAdapterOptions = {}) {}
@@ -1632,8 +1660,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.initialToolSelectionUpdateSent = false;
     this.clearInitialToolSelectionUpdateTimeout();
     this.pendingScopedToolSelectionResult = null;
+    this.pendingPlanSelectionResult = null;
     this.pendingTextCommandAfterSelectorUpdate = null;
     this.activeScopedToolSelection = null;
+    this.activeRealtimePlanSelection = null;
 
     let stream: MediaStream | null = null;
     if (mode === "audio") {
@@ -1747,8 +1777,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       peerConnection.onconnectionstatechange = () => handlePeerStateChange(peerConnection.connectionState);
       peerConnection.oniceconnectionstatechange = () => handlePeerStateChange(peerConnection.iceConnectionState);
       peerConnection.ontrack = (event) => {
-        const [remoteStream] = event.streams;
-        this.attachRemoteAudioStream(remoteStream);
+        this.attachRemoteAudioStream(resolveRealtimeRemoteAudioStream(event));
       };
 
       dataChannel.onopen = () => {
@@ -1823,8 +1852,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.initialToolSelectionUpdateSent = false;
     this.clearInitialToolSelectionUpdateTimeout();
     this.pendingScopedToolSelectionResult = null;
+    this.pendingPlanSelectionResult = null;
     this.pendingTextCommandAfterSelectorUpdate = null;
     this.activeScopedToolSelection = null;
+    this.activeRealtimePlanSelection = null;
     this.options.onStatusChange?.("disconnected");
   }
 
@@ -1855,8 +1886,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.initialToolSelectionUpdateSent = false;
     this.clearInitialToolSelectionUpdateTimeout();
     this.pendingScopedToolSelectionResult = null;
+    this.pendingPlanSelectionResult = null;
     this.pendingTextCommandAfterSelectorUpdate = null;
     this.activeScopedToolSelection = null;
+    this.activeRealtimePlanSelection = null;
     this.clearRealtimeTraceState();
   }
 
@@ -1866,6 +1899,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (!audio) return;
     audio.pause();
     audio.srcObject = null;
+    audio.remove?.();
     this.remoteAudioElement = null;
   }
 
@@ -1961,8 +1995,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.activeRealtimeResponseTraceId = commandTraceId;
     this.pendingResponseCreateAfterActiveToolResult = false;
     this.pendingScopedToolSelectionResult = null;
+    this.pendingPlanSelectionResult = null;
     this.pendingTextCommandAfterSelectorUpdate = null;
     this.activeScopedToolSelection = null;
+    this.activeRealtimePlanSelection = null;
 
     const activeResponseId = this.activeResponseId;
     const shouldClearOutputAudio = this.connectMode === "audio" && (Boolean(activeResponseId) || this.remoteAudioLevel > REMOTE_AUDIO_CLEAR_LEVEL);
@@ -1999,8 +2035,14 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.releaseRemoteAudioElement();
     const audio = new Audio();
     audio.autoplay = true;
+    audio.muted = false;
+    audio.volume = 1;
     audio.setAttribute("playsinline", "true");
+    if (audio.style) audio.style.display = "none";
     audio.srcObject = remoteStream;
+    if (typeof Node !== "undefined" && audio instanceof Node) {
+      document.body?.appendChild(audio);
+    }
     this.remoteAudioElement = audio;
     this.startRemoteAudioLevelMonitor(remoteStream);
     void audio.play?.().catch((error) => {
@@ -2144,9 +2186,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       type: "session.update",
       session: {
         type: "realtime",
-        instructions: createRealtimeToolSelectionInstructions(tools, capabilityCatalog),
+        instructions: createRealtimePlanSelectionInstructions(tools, capabilityCatalog),
         audio: createRealtimeSessionAudioConfig(),
-        tools: [createRealtimeToolSelectionTool(tools, capabilityCatalog)],
+        tools: [createRealtimePlanSelectionTool(tools, capabilityCatalog)],
         tool_choice: "auto",
         parallel_tool_calls: false
       }
@@ -2455,7 +2497,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       commandTraceId
     });
     const userFacingResult = createUserFacingRealtimeToolResult(call, result);
-    const continueResponse = call.name === REALTIME_TOOL_SELECTION_TOOL_NAME && !isFinalLocalSelectorResult(call, result);
+    const continueResponse =
+      call.name === REALTIME_PLAN_SELECTION_TOOL_NAME ||
+      call.name === REALTIME_PLAN_SUBMISSION_TOOL_NAME ||
+      (call.name === REALTIME_TOOL_SELECTION_TOOL_NAME && !isFinalLocalSelectorResult(call, result));
     createRealtimeToolResultEvents(call, userFacingResult, {
       activeResponseId: this.activeResponseId,
       responseMode: this.connectMode === "audio" ? "voice" : "text",
@@ -2499,8 +2544,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.activeResponseId = null;
       this.pendingResponseCreateAfterActiveToolResult = false;
       this.pendingScopedToolSelectionResult = null;
+      this.pendingPlanSelectionResult = null;
       this.pendingTextCommandAfterSelectorUpdate = null;
       this.activeScopedToolSelection = null;
+      this.activeRealtimePlanSelection = null;
     }
     this.emitDiagnostic({
       type: "realtime.text_command.reset_selector_tool",
@@ -2720,6 +2767,14 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.handleRealtimeCommandExecution(call, commandTraceId);
       return;
     }
+    if (call.name === REALTIME_PLAN_SELECTION_TOOL_NAME) {
+      this.handlePlanSelection(call, commandTraceId);
+      return;
+    }
+    if (call.name === REALTIME_PLAN_SUBMISSION_TOOL_NAME) {
+      this.handlePlanSubmission(call, commandTraceId);
+      return;
+    }
     if (call.name === REALTIME_TOOL_SELECTION_TOOL_NAME) {
       this.emitDiagnostic({
         type: "realtime.function_call.selection",
@@ -2839,6 +2894,141 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
           status: "failed",
           message,
           errorCode: "REALTIME_COMMAND_HANDLER_FAILED"
+        });
+      });
+  }
+
+  private handlePlanSelection(call: AssistantToolCall, commandTraceId?: string): void {
+    const selection = parseRealtimePlanSelectionArguments(call.arguments);
+    const tracedInput = commandTraceId ? this.realtimeTraceUserTranscripts.get(commandTraceId)?.input ?? "" : "";
+    const input = selection?.userCommand || tracedInput || "";
+    if (!selection || !input || !this.currentContext) {
+      this.sendToolResult(call, {
+        status: "needs_clarification",
+        message: "我需要完整的命令内容和当前桌面上下文。",
+        errorCode: "PLAN_SELECTION_CONTEXT_MISSING"
+      });
+      return;
+    }
+    const lowConfidenceStep = selection.steps.find(
+      (step) => typeof step.confidence === "number" && step.confidence < REALTIME_TOOL_SELECTION_CONFIDENCE_THRESHOLD
+    );
+    if (lowConfidenceStep) {
+      this.sendToolResult(call, {
+        status: "needs_clarification",
+        message: "我需要再确认其中一个操作。",
+        errorCode: "PLAN_SELECTION_LOW_CONFIDENCE",
+        data: { stepId: lowConfidenceStep.id, tool: lowConfidenceStep.name }
+      });
+      return;
+    }
+
+    const selectedTools: AssistantToolSpec[] = [];
+    const resolvedSteps = selection.steps.map((step) => {
+      const requestedTool = this.findToolSpec(step.name);
+      if (!requestedTool) return null;
+      const selectedModule =
+        step.selectedModule ??
+        requestedTool.widgetType ??
+        this.moduleRegistry?.findModuleForTool(requestedTool.name)?.type ??
+        requestedTool.name.split(".")[0];
+      selectedTools.push(requestedTool);
+      return { ...step, selectedModule, userCommand: input };
+    });
+    if (resolvedSteps.some((step) => !step)) {
+      const unknownTools = selection.steps.filter((step) => !this.findToolSpec(step.name)).map((step) => step.name);
+      this.sendToolResult(call, {
+        status: "failed",
+        message: `命令计划包含未注册工具：${unknownTools.join("、")}`,
+        errorCode: "PLAN_SELECTION_UNKNOWN_TOOL"
+      });
+      return;
+    }
+
+    const normalizedSelection = {
+      ...selection,
+      userCommand: input,
+      steps: resolvedSteps.filter((step): step is NonNullable<typeof step> => Boolean(step))
+    };
+    const addWidgetTool = this.findToolSpec(REALTIME_ADD_WIDGET_TOOL_NAME);
+    if (addWidgetTool) selectedTools.push(addWidgetTool);
+    const tools = this.uniqueTools(selectedTools);
+    const moduleContexts = normalizedSelection.steps
+      .map((step) => step.selectedModule
+        ? this.moduleRegistry?.getScopedContextForModule(step.selectedModule, {
+            userText: input,
+            selectedToolHint: step.name,
+            compactContext: this.currentContext!,
+            tools
+          }) ?? undefined
+        : undefined)
+      .filter((context): context is RealtimeScopedModuleContext => Boolean(context))
+      .filter((context, index, contexts) => contexts.findIndex((item) => item.moduleType === context.moduleType) === index);
+
+    this.activeRealtimePlanSelection = { selection: normalizedSelection, input, tools };
+    this.pendingPlanSelectionResult = {
+      call,
+      commandTraceId,
+      result: {
+        status: "success",
+        message: "已识别完整操作序列，正在生成执行计划。",
+        data: { steps: normalizedSelection.steps.map((step) => step.name) }
+      }
+    };
+    if (commandTraceId) this.realtimeTraceCommandToolCalls.add(commandTraceId);
+    this.sendEvent(createRealtimeCommandPlanUpdate({
+      command: input,
+      context: this.currentContext,
+      tools,
+      selection: normalizedSelection,
+      moduleContexts
+    }));
+    this.emitDiagnostic({
+      type: "realtime.plan_selection.success",
+      status: "success",
+      operationId: call.id,
+      commandTraceId,
+      data: { input, steps: normalizedSelection.steps.map((step) => step.name), modules: moduleContexts.map((item) => item.moduleType) }
+    });
+  }
+
+  private handlePlanSubmission(call: AssistantToolCall, commandTraceId?: string): void {
+    const active = this.activeRealtimePlanSelection;
+    const parsed = active ? parseRealtimeSubmittedCommandPlan(call.arguments, active.input, active.tools) : null;
+    if (!active || !parsed || !this.currentContext) {
+      this.sendToolResult(call, {
+        status: "failed",
+        message: "没有可执行的完整命令计划。",
+        errorCode: "REALTIME_COMMAND_PLAN_MISSING"
+      });
+      return;
+    }
+    const plan = normalizeRealtimePlanArguments(parsed, this.currentContext, active.tools, active.selection.steps);
+    this.activeRealtimePlanSelection = null;
+    if (commandTraceId) this.realtimeTraceCommandToolCalls.add(commandTraceId);
+    void Promise.resolve(this.options.onCommandPlan?.(active.input, plan, { callId: call.id, commandTraceId }))
+      .then((result) => {
+        const finalResult = result ?? {
+          status: "failed" as const,
+          message: "本地命令计划执行器不可用。",
+          errorCode: "REALTIME_COMMAND_PLAN_HANDLER_MISSING"
+        };
+        this.emitDiagnostic({
+          type: "realtime.function_call.command_plan_result",
+          status: finalResult.status,
+          operationId: call.id,
+          commandTraceId,
+          message: finalResult.message,
+          errorCode: finalResult.errorCode,
+          data: { commandCount: plan.commands.length, tools: plan.commands.map((command) => command.tool) }
+        });
+        this.sendToolResult(call, finalResult);
+      })
+      .catch((error) => {
+        this.sendToolResult(call, {
+          status: "failed",
+          message: error instanceof Error ? error.message : "命令计划执行失败",
+          errorCode: "REALTIME_COMMAND_PLAN_HANDLER_FAILED"
         });
       });
   }
@@ -3230,6 +3420,18 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
           commandTraceId: pendingSelection.commandTraceId
         });
         this.sendToolResult(pendingSelection.call, pendingSelection.result);
+      }
+      const pendingPlanSelection = this.pendingPlanSelectionResult;
+      if (pendingPlanSelection) {
+        this.pendingPlanSelectionResult = null;
+        this.emitDiagnostic({
+          type: "realtime.plan_selection.result_send_after_session_update",
+          status: "sent",
+          operationId: pendingPlanSelection.call.id,
+          toolName: pendingPlanSelection.call.name,
+          commandTraceId: pendingPlanSelection.commandTraceId
+        });
+        this.sendToolResult(pendingPlanSelection.call, pendingPlanSelection.result);
       }
       const pendingTextCommand = this.pendingTextCommandAfterSelectorUpdate;
       if (pendingTextCommand) {

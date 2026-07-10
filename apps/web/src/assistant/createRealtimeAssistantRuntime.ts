@@ -245,6 +245,35 @@ export function createRealtimeAssistantRuntime(options: {
         };
       }
     },
+    async onCommandPlan(input, plan, commandOptions) {
+      try {
+        const response = await harness.handleRealtimeCommandPlan(input, plan, { commandTraceId: commandOptions.commandTraceId });
+        runtimeController.recordFallback();
+        notifyRuntime();
+        emitDiagnostic?.({
+          type: "realtime.runtime.command_plan_result",
+          status: response.result.status,
+          commandTraceId: commandOptions.commandTraceId,
+          route: response.route,
+          toolName: response.call?.name,
+          operationId: response.call?.id,
+          message: response.result.message,
+          errorCode: response.result.errorCode,
+          data: { input, commandCount: plan.commands.length, tools: plan.commands.map((command) => command.tool) }
+        });
+        return response.result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "realtime command plan harness failed";
+        emitDiagnostic?.({
+          type: "realtime.runtime.command_plan_result",
+          status: "failed",
+          commandTraceId: commandOptions.commandTraceId,
+          message,
+          data: { input }
+        });
+        return { status: "failed", message, errorCode: "REALTIME_COMMAND_PLAN_HANDLER_FAILED" };
+      }
+    },
     onUnhandledUserTranscript(input, transcriptOptions) {
       if (!shouldFallbackUnhandledVoiceTranscriptToHarness(input)) {
         return;
