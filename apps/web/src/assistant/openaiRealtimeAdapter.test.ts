@@ -2107,13 +2107,7 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(newTrace).toMatch(/^voice_/);
     expect(sent).toEqual([
       { type: "response.cancel" },
-      { type: "output_audio_buffer.clear" },
-      expect.objectContaining({
-        type: "session.update",
-        session: expect.objectContaining({
-          tools: [expect.objectContaining({ name: "assistant__dot__select_plan" })]
-        })
-      })
+      { type: "output_audio_buffer.clear" }
     ]);
     expect(diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -2129,7 +2123,7 @@ describe("OpenAI realtime adapter helpers", () => {
       }),
       expect.objectContaining({
         type: "realtime.voice.selector_reset",
-        status: "sent",
+        status: "deferred_active_response",
         commandTraceId: newTrace
       }),
       expect.objectContaining({
@@ -2137,6 +2131,30 @@ describe("OpenAI realtime adapter helpers", () => {
         status: "interrupted",
         operationId: "call_old",
         commandTraceId: "trace_old"
+      })
+    ]));
+
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "response.cancelled", response: { id: "resp_old" } });
+
+    expect(sent).toEqual([
+      { type: "response.cancel" },
+      { type: "output_audio_buffer.clear" },
+      expect.objectContaining({
+        type: "session.update",
+        session: expect.objectContaining({
+          tools: [expect.objectContaining({ name: "assistant__dot__select_plan" })]
+        })
+      })
+    ]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.voice.selector_reset",
+        status: "sent",
+        commandTraceId: newTrace
       })
     ]));
   });

@@ -1605,6 +1605,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private pendingScopedToolSelectionResult: PendingScopedToolSelectionResult | null = null;
   private pendingPlanSelectionResult: PendingPlanSelectionResult | null = null;
   private pendingTextCommandAfterSelectorUpdate: PendingTextCommandAfterSelectorUpdate | null = null;
+  private pendingToolSelectionResetAfterActiveResponse: { commandTraceId: string } | null = null;
   private activeScopedToolSelection: RealtimeTargetHint | null = null;
   private activeRealtimePlanSelection: ActiveRealtimePlanSelection | null = null;
   private connectMode: RealtimeConnectMode = "text";
@@ -1689,6 +1690,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.pendingScopedToolSelectionResult = null;
     this.pendingPlanSelectionResult = null;
     this.pendingTextCommandAfterSelectorUpdate = null;
+    this.pendingToolSelectionResetAfterActiveResponse = null;
     this.activeScopedToolSelection = null;
     this.activeRealtimePlanSelection = null;
 
@@ -1881,6 +1883,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.pendingScopedToolSelectionResult = null;
     this.pendingPlanSelectionResult = null;
     this.pendingTextCommandAfterSelectorUpdate = null;
+    this.pendingToolSelectionResetAfterActiveResponse = null;
     this.activeScopedToolSelection = null;
     this.activeRealtimePlanSelection = null;
     this.options.onStatusChange?.("disconnected");
@@ -1915,6 +1918,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.pendingScopedToolSelectionResult = null;
     this.pendingPlanSelectionResult = null;
     this.pendingTextCommandAfterSelectorUpdate = null;
+    this.pendingToolSelectionResetAfterActiveResponse = null;
     this.activeScopedToolSelection = null;
     this.activeRealtimePlanSelection = null;
     this.clearRealtimeTraceState();
@@ -2024,6 +2028,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.pendingScopedToolSelectionResult = null;
     this.pendingPlanSelectionResult = null;
     this.pendingTextCommandAfterSelectorUpdate = null;
+    this.pendingToolSelectionResetAfterActiveResponse = null;
     this.activeScopedToolSelection = null;
     this.activeRealtimePlanSelection = null;
 
@@ -2037,7 +2042,6 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         commandTraceId
       });
       this.sendEvent({ type: "response.cancel" }, { queueWhenClosed: false, commandTraceId });
-      this.activeResponseId = null;
     }
     if (shouldClearOutputAudio) {
       this.emitDiagnostic({
@@ -2047,6 +2051,21 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       });
       this.sendEvent({ type: "output_audio_buffer.clear" }, { queueWhenClosed: false, commandTraceId });
     }
+    if (activeResponseId) {
+      this.pendingToolSelectionResetAfterActiveResponse = { commandTraceId };
+      this.emitDiagnostic({
+        type: "realtime.voice.selector_reset",
+        status: "deferred_active_response",
+        commandTraceId,
+        data: { toolCount: this.getEffectiveSessionTools().length, activeResponseId }
+      });
+      return commandTraceId;
+    }
+    this.sendToolSelectionReset(commandTraceId);
+    return commandTraceId;
+  }
+
+  private sendToolSelectionReset(commandTraceId?: string): void {
     this.emitDiagnostic({
       type: "realtime.voice.selector_reset",
       status: "sent",
@@ -2054,7 +2073,6 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       data: { toolCount: this.getEffectiveSessionTools().length }
     });
     this.sendEvent(this.createToolSelectionSessionUpdate(), { queueWhenClosed: false, commandTraceId });
-    return commandTraceId;
   }
 
   private attachRemoteAudioStream(remoteStream: MediaStream | undefined): void {
@@ -3502,6 +3520,11 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private handleRealtimeLifecycleEvent(event: RealtimeEvent, commandTraceId?: string): void {
     const previousActiveResponseId = this.activeResponseId;
     this.activeResponseId = reduceRealtimeActiveResponseId(this.activeResponseId, event);
+    if (previousActiveResponseId && !this.activeResponseId && this.pendingToolSelectionResetAfterActiveResponse) {
+      const pending = this.pendingToolSelectionResetAfterActiveResponse;
+      this.pendingToolSelectionResetAfterActiveResponse = null;
+      this.sendToolSelectionReset(pending.commandTraceId);
+    }
     if (previousActiveResponseId && !this.activeResponseId && this.pendingResponseCreateAfterActiveToolResult) {
       this.pendingResponseCreateAfterActiveToolResult = false;
       this.emitDiagnostic({ type: "realtime.response.create_after_tool_result", status: "sent" });
