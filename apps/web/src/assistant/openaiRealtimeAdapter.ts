@@ -33,6 +33,8 @@ import {
   createRealtimePlanSelectionRequestBody,
   createRealtimeScopedToolCallRequestBody,
   createRealtimeToolSelectionRequestBody,
+  createRealtimeToolSelectionInstructions,
+  createRealtimeToolSelectionTool,
   createScopedRealtimeContext,
   createScopedRealtimeToolUpdate,
   parseRealtimeCommandPlanResponse,
@@ -2231,9 +2233,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       type: "session.update",
       session: {
         type: "realtime",
-        instructions: createRealtimePlanSelectionInstructions(tools, capabilityCatalog),
+        instructions: createRealtimeToolSelectionInstructions(tools, capabilityCatalog),
         audio: createRealtimeSessionAudioConfig(),
-        tools: [createRealtimePlanSelectionTool(tools, capabilityCatalog)],
+        tools: [createRealtimeToolSelectionTool(tools, capabilityCatalog)],
         tool_choice: "auto",
         parallel_tool_calls: false
       }

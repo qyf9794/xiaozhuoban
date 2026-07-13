@@ -592,7 +592,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "session.update",
         session: expect.objectContaining({
           type: "realtime",
-          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_plan" })]),
+          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
           tool_choice: "auto"
         })
       })
@@ -606,7 +606,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "session.update",
         session: expect.objectContaining({
           type: "realtime",
-          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_plan" })]),
+          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
           tool_choice: "auto"
         })
       }),
@@ -1009,7 +1009,7 @@ describe("OpenAI realtime adapter helpers", () => {
           type: "session.update",
           session: expect.objectContaining({
             tool_choice: "auto",
-            tools: [expect.objectContaining({ name: "assistant__dot__select_plan" })]
+            tools: [expect.objectContaining({ name: "assistant__dot__select_tool" })]
           })
         })
       ]);
@@ -1062,7 +1062,7 @@ describe("OpenAI realtime adapter helpers", () => {
         expect.objectContaining({
           type: "session.update",
           session: expect.objectContaining({
-            tools: [expect.objectContaining({ name: "assistant__dot__select_plan" })]
+            tools: [expect.objectContaining({ name: "assistant__dot__select_tool" })]
           })
         })
       ]);
@@ -1157,7 +1157,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "session.update",
         session: expect.objectContaining({
           type: "realtime",
-          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_plan" })]),
+          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
           tool_choice: "auto"
         })
       })
@@ -1170,7 +1170,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "session.update",
         session: expect.objectContaining({
           type: "realtime",
-          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_plan" })]),
+          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
           tool_choice: "auto"
         })
       }),
@@ -1371,8 +1371,8 @@ describe("OpenAI realtime adapter helpers", () => {
       .queuedEvents[0];
     expect(event.type).toBe("session.update");
     expect(event.session.type).toBe("realtime");
-    expect(event.session.instructions).toContain("assistant.select_plan");
-    expect(event.session.tools[0].name).toBe("assistant__dot__select_plan");
+    expect(event.session.instructions).toContain("assistant.select_tool");
+    expect(event.session.tools[0].name).toBe("assistant__dot__select_tool");
   });
 
   it("adds the active command trace id to adapter diagnostics", () => {
@@ -2146,7 +2146,7 @@ describe("OpenAI realtime adapter helpers", () => {
       expect.objectContaining({
         type: "session.update",
         session: expect.objectContaining({
-          tools: [expect.objectContaining({ name: "assistant__dot__select_plan" })]
+          tools: [expect.objectContaining({ name: "assistant__dot__select_tool" })]
         })
       })
     ]);
@@ -2638,7 +2638,7 @@ describe("OpenAI realtime adapter helpers", () => {
       .queuedEvents[0];
     expect(tools.map((tool) => tool.name)).toContain("board.add_widget");
     expect(event.session.type).toBe("realtime");
-    expect(event.session.tools[0].name).toBe("assistant__dot__select_plan");
+    expect(event.session.tools[0].name).toBe("assistant__dot__select_tool");
     expect(JSON.stringify(event.session.tools[0].parameters)).toContain("name");
     expect(JSON.stringify(event.session.tools[0].parameters)).toContain("selectedModule");
     expect(JSON.stringify(event.session.tools[0].parameters)).toContain("board.add_widget");
