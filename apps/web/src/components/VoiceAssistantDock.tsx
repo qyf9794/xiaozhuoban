@@ -741,10 +741,12 @@ export function VoiceAssistantDock({
     setState("connecting");
     setLastMessage(getVoiceAssistantConnectionMessage("connecting"));
     setOperation({ phase: "thinking", command: "连接语音" });
+    keepMobileTextPanelOpen();
     try {
       await onConnectVoice();
       if (connectAttemptIdRef.current !== attemptId) return;
       setOperation({ phase: "success", command: "连接语音", message: "语音已连接" });
+      keepMobileTextPanelOpen();
       onDiagnostic?.({ type: "voice.connect.result", commandTraceId, status: "success" });
     } catch (error) {
       if (connectAttemptIdRef.current !== attemptId) return;
@@ -753,6 +755,7 @@ export function VoiceAssistantDock({
       setLastMessage(message);
       setOperation({ phase: "error", command: "连接语音", message });
       setState("error");
+      keepMobileTextPanelOpen();
     } finally {
       if (connectAttemptIdRef.current === attemptId) {
         connectInFlightRef.current = false;
@@ -789,6 +792,7 @@ export function VoiceAssistantDock({
     setState("disconnected");
     setLastMessage(getVoiceAssistantConnectionMessage("disconnected"));
     setOperation({ phase: "idle" });
+    keepMobileTextPanelOpen();
   };
 
   const onOrbPointerDown = (event: PointerEvent<HTMLButtonElement>) => {

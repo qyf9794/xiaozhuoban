@@ -79,7 +79,9 @@ export function Toolbar({
   onEditDisplayName,
   settingsOpenRequestId,
   realtimeHighAccuracyMode = false,
-  onToggleRealtimeHighAccuracyMode
+  onToggleRealtimeHighAccuracyMode,
+  agentsVoiceAdapterEnabled = false,
+  onToggleAgentsVoiceAdapter
 }: {
   board: Board;
   definitions: WidgetDefinition[];
@@ -102,6 +104,8 @@ export function Toolbar({
   settingsOpenRequestId?: number;
   realtimeHighAccuracyMode?: boolean;
   onToggleRealtimeHighAccuracyMode?: () => void;
+  agentsVoiceAdapterEnabled?: boolean;
+  onToggleAgentsVoiceAdapter?: () => void;
 }) {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -378,6 +382,22 @@ export function Toolbar({
               >
                 <span>高准确率模式</span>
                 <TinySwitch checked={realtimeHighAccuracyMode} />
+              </button>
+              <button
+                onClick={() => {
+                  onToggleAgentsVoiceAdapter?.();
+                }}
+                className="glass-dropdown-item"
+                aria-pressed={agentsVoiceAdapterEnabled}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10
+                }}
+              >
+                <span>SDK 语音测试</span>
+                <TinySwitch checked={agentsVoiceAdapterEnabled} />
               </button>
               <button
                 onClick={() => {

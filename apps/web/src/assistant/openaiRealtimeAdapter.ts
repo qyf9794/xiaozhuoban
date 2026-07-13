@@ -155,6 +155,10 @@ const MICROPHONE_ECHO_CEILING = 0.12;
 const MAX_INTERRUPTED_TRACE_IDS = 32;
 const MAX_RECENT_ASSISTANT_TRANSCRIPTS = 12;
 const RECENT_ASSISTANT_TRANSCRIPT_TTL_MS = 12_000;
+const LEGACY_REALTIME_COMMAND_PLAN_TOOL_NAMES = new Set([
+  "assistant.submit_plan",
+  "assistant.submit_command_plan"
+]);
 const MAX_SCOPED_SELECTION_TOOLS = 8;
 const GENERIC_SELECTION_MODULES = new Set(["app", "board", "widget", "window"]);
 const MODULE_OPEN_INTENTS = new Set(["open", "add", "create", "play", "search", "set"]);
@@ -1098,6 +1102,29 @@ function createSafeRealtimeToolCallDiagnosticData(call: AssistantToolCall): Reco
 
 function shouldSendRealtimeToolResult(call: AssistantToolCall): boolean {
   return call.source === "realtime";
+}
+
+function isLegacyRealtimeCommandPlanTool(name: string): boolean {
+  return LEGACY_REALTIME_COMMAND_PLAN_TOOL_NAMES.has(name);
+}
+
+function extractLegacyRealtimeCommandText(call: AssistantToolCall, fallbackText = ""): string {
+  const args = isRecord(call.arguments) ? call.arguments : {};
+  const candidates = [
+    args.command,
+    args.userCommand,
+    args.sourceText,
+    args.normalizedText,
+    args.input,
+    fallbackText,
+    call.transcript
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  return "";
 }
 
 function createUserFacingRealtimeToolResult(call: AssistantToolCall, result: AssistantToolResult): AssistantToolResult {
@@ -2775,6 +2802,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.handlePlanSubmission(call, commandTraceId);
       return;
     }
+    if (isLegacyRealtimeCommandPlanTool(call.name)) {
+      this.handleLegacyRealtimeCommandPlan(call, commandTraceId);
+      return;
+    }
     if (call.name === REALTIME_TOOL_SELECTION_TOOL_NAME) {
       this.emitDiagnostic({
         type: "realtime.function_call.selection",
@@ -2827,6 +2858,79 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.realtimeTraceCommandToolCalls.add(commandTraceId);
     }
     void this.options.onFunctionCall?.(toolCall);
+  }
+
+  private handleLegacyRealtimeCommandPlan(call: AssistantToolCall, commandTraceId?: string): void {
+    const fallbackText =
+      (commandTraceId ? this.realtimeTraceUserTranscripts.get(commandTraceId)?.input ?? "" : "") ||
+      this.activeScopedToolSelection?.userCommand ||
+      "";
+    const command = extractLegacyRealtimeCommandText(call, fallbackText);
+    if (!command) {
+      this.emitDiagnostic({
+        type: "realtime.function_call.legacy_plan",
+        status: "needs_clarification",
+        operationId: call.id,
+        toolName: call.name,
+        commandTraceId,
+        errorCode: "REALTIME_COMMAND_PLAN_MISSING"
+      });
+      this.sendToolResult(call, {
+        status: "needs_clarification",
+        message: "我需要听到要执行的具体指令。",
+        errorCode: "REALTIME_COMMAND_PLAN_MISSING"
+      });
+      return;
+    }
+    if (commandTraceId) {
+      this.realtimeTraceCommandToolCalls.add(commandTraceId);
+      this.realtimeTraceUserTranscripts.delete(commandTraceId);
+    }
+    this.emitDiagnostic({
+      type: "realtime.function_call.legacy_plan",
+      status: "fallback_command_started",
+      operationId: call.id,
+      toolName: call.name,
+      commandTraceId,
+      data: { input: command }
+    });
+    void Promise.resolve(this.options.onCommand?.(command, { callId: call.id, commandTraceId }))
+      .then((result) => {
+        const finalResult = result ?? {
+          status: "failed",
+          message: "本地命令执行器不可用。",
+          errorCode: "REALTIME_COMMAND_HANDLER_MISSING"
+        };
+        this.emitDiagnostic({
+          type: "realtime.function_call.legacy_plan_result",
+          status: finalResult.status,
+          operationId: call.id,
+          toolName: call.name,
+          commandTraceId,
+          message: finalResult.message,
+          errorCode: finalResult.errorCode,
+          data: { input: command }
+        });
+        this.sendToolResult(call, finalResult);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "命令执行失败";
+        this.emitDiagnostic({
+          type: "realtime.function_call.legacy_plan_result",
+          status: "failed",
+          operationId: call.id,
+          toolName: call.name,
+          commandTraceId,
+          message,
+          errorCode: "REALTIME_COMMAND_HANDLER_FAILED",
+          data: { input: command }
+        });
+        this.sendToolResult(call, {
+          status: "failed",
+          message,
+          errorCode: "REALTIME_COMMAND_HANDLER_FAILED"
+        });
+      });
   }
 
   private handleRealtimeCommandExecution(call: AssistantToolCall, commandTraceId?: string): void {
@@ -2996,6 +3100,16 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const active = this.activeRealtimePlanSelection;
     const parsed = active ? parseRealtimeSubmittedCommandPlan(call.arguments, active.input, active.tools) : null;
     if (!active || !parsed || !this.currentContext) {
+      const fallbackText =
+        (active?.input ?? "") ||
+        (commandTraceId ? this.realtimeTraceUserTranscripts.get(commandTraceId)?.input ?? "" : "") ||
+        this.activeScopedToolSelection?.userCommand ||
+        "";
+      const command = extractLegacyRealtimeCommandText(call, fallbackText);
+      if (command) {
+        this.handleLegacyRealtimeCommandPlan(call, commandTraceId);
+        return;
+      }
       this.sendToolResult(call, {
         status: "failed",
         message: "没有可执行的完整命令计划。",

@@ -47,6 +47,12 @@ function isUnsupportedToolRealtimeReply(text: string): boolean {
   return /(没有|缺少|无法|不能).{0,16}(工具|音乐|播放|播放器|电视|频道|打开|执行)/.test(text);
 }
 
+function isProvisionalRealtimeActionReply(text: string): boolean {
+  const compact = text.replace(/\s+/g, "").trim();
+  if (!compact) return false;
+  return /^(好的|好|可以|明白|收到|没问题|行|马上|现在|我来|让我).{0,28}(帮你|为你|给你|来|去|看看|处理|执行|打开|关闭|设置|切换|播放|搜索|整理|写进|添加|倒计时)/.test(compact);
+}
+
 function getAssistantRuntimeText(status: { mode: AssistantRuntimeMode; metrics: RealtimeBudgetMetrics } | null) {
   if (!status) return "本地待机 · Realtime 按需连接";
   const activeSeconds = Math.round(status.metrics.realtimeActiveMs / 1000);
@@ -122,7 +128,11 @@ export function useAssistantRuntimeController({
         lastCommandLikeUserSpeechRef.current &&
         shouldFallbackUnhandledVoiceTranscriptToHarness(lastCommandLikeUserSpeechRef.current) &&
         isUnsupportedToolRealtimeReply(assistantSpeechText);
-      if (!shouldSuppressUnsupportedReply) {
+      const shouldSuppressProvisionalReply =
+        lastCommandLikeUserSpeechRef.current &&
+        shouldFallbackUnhandledVoiceTranscriptToHarness(lastCommandLikeUserSpeechRef.current) &&
+        isProvisionalRealtimeActionReply(assistantSpeechText);
+      if (!shouldSuppressUnsupportedReply && !shouldSuppressProvisionalReply) {
         assistantSpeechEventIdRef.current += 1;
         setAssistantSpeech({ id: assistantSpeechEventIdRef.current, text: assistantSpeechText });
       }

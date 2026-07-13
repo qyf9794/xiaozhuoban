@@ -90,6 +90,7 @@ export function App() {
     assistantOperation,
     assistantRuntime,
     assistantSpeech,
+    agentsVoiceAdapterEnabled,
     localWakeWordEnabled,
     localWakeWordAudioLevel,
     localWakeWordStatus,
@@ -100,6 +101,7 @@ export function App() {
     recordDiagnostic,
     retrySync,
     runtimeStatusText,
+    setAgentsVoiceAdapterEnabled,
     setLocalWakeWordEnabled,
     setRealtimeHighAccuracyMode,
     syncLastError,
@@ -214,6 +216,8 @@ export function App() {
               settingsOpenRequestId={settingsOpenRequestId}
               realtimeHighAccuracyMode={realtimeHighAccuracyMode}
               onToggleRealtimeHighAccuracyMode={() => setRealtimeHighAccuracyMode((value) => !value)}
+              agentsVoiceAdapterEnabled={agentsVoiceAdapterEnabled}
+              onToggleAgentsVoiceAdapter={() => setAgentsVoiceAdapterEnabled((value) => !value)}
               fullscreen={fullscreen}
               onToggleFullscreen={() => {
                 if (document.fullscreenElement) {

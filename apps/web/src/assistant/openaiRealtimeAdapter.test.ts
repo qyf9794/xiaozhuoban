@@ -2535,6 +2535,77 @@ describe("OpenAI realtime adapter helpers", () => {
     ]));
   });
 
+  it("executes legacy realtime submit-plan calls through the transcript command fallback", async () => {
+    const commands: Array<{ input: string; commandTraceId?: string }> = [];
+    const sent: unknown[] = [];
+    const diagnostics: Array<{ type: string; status?: string; errorCode?: string; toolName?: string }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onCommand(input, options) {
+        commands.push({ input, commandTraceId: options.commandTraceId });
+        return { status: "success", message: "已设置倒计时" };
+      },
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
+      }
+    });
+
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "input_audio_buffer.speech_started", item_id: "item_countdown" });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "conversation.item.input_audio_transcription.completed",
+      item_id: "item_countdown",
+      transcript: "倒计时五分钟"
+    });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "response.created", response: { id: "resp_countdown" } });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "response.function_call_arguments.done",
+      call_id: "call_legacy_plan",
+      name: "assistant__dot__submit_plan",
+      arguments: "{}"
+    });
+    await vi.waitFor(() => expect(commands).toHaveLength(1));
+
+    expect(commands[0]?.input).toBe("倒计时五分钟");
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.function_call.legacy_plan",
+        status: "fallback_command_started",
+        toolName: "assistant.submit_plan"
+      }),
+      expect.objectContaining({
+        type: "realtime.function_call.legacy_plan_result",
+        status: "success",
+        toolName: "assistant.submit_plan"
+      })
+    ]));
+    expect(JSON.stringify(sent)).toContain("call_legacy_plan");
+    expect(JSON.stringify(sent)).not.toContain("REALTIME_COMMAND_PLAN_MISSING");
+  });
+
   it("falls back to initial selector tools if voice connects before harness initialization finishes", () => {
     const adapter = new OpenAIRealtimeWebRtcAdapter();
 
