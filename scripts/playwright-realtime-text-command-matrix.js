@@ -4,6 +4,43 @@ const { spawn } = require("node:child_process");
 
 const repoRoot = path.resolve(__dirname, "..");
 const outputRoot = path.join(repoRoot, "output/playwright/realtime-text-command-matrix");
+const TV_ASSISTANT_CHANNEL_CATALOG_KEY = "xiaozhuoban.tv.assistantChannelCatalog.v1";
+const seededTvAssistantChannelCatalog = {
+  channelNames: [
+    "Bloomberg TV",
+    "NHK World-Japan",
+    "凤凰中文",
+    "Al Jazeera English",
+    "France 24 English",
+    "DW English",
+    "CNA",
+    "BBC News",
+    "CCTV-13 新闻"
+  ],
+  channelCount: 9,
+  selectedChannelName: "BBC News",
+  updatedAt: "2026-07-14T00:00:00.000Z"
+};
+const seededTvPlaylistM3u = `#EXTM3U
+#EXTINF:-1,Bloomberg TV
+https://example.com/bloomberg-tv.m3u8
+#EXTINF:-1,NHK World-Japan
+https://example.com/nhk-world.m3u8
+#EXTINF:-1,凤凰中文
+https://example.com/phoenix-chinese.m3u8
+#EXTINF:-1,Al Jazeera English
+https://example.com/al-jazeera.m3u8
+#EXTINF:-1,France 24 English
+https://example.com/france24.m3u8
+#EXTINF:-1,DW English
+https://example.com/dw-english.m3u8
+#EXTINF:-1,CNA
+https://example.com/cna.m3u8
+#EXTINF:-1,BBC News
+https://example.com/bbc-news.m3u8
+#EXTINF:-1,CCTV-13 新闻
+https://example.com/cctv13.m3u8
+`;
 
 function requirePlaywright() {
   const candidates = ["playwright", "/tmp/xz-playwright-runner/node_modules/playwright"];
@@ -103,7 +140,157 @@ const commandCases = [
   { id: "047", command: "重新打开音乐和天气并排放好", expect: ["board.add_widget", "layout"] },
   { id: "048", command: "整理桌面，不要遮挡小工具", expect: ["board.auto_align", "board.layout", "layout"] },
   { id: "049", command: "打开电视并全屏", expect: ["board.add_widget", "tv.fullscreen", "media"] },
-  { id: "050", command: "退出电视全屏", expect: ["tv.exit_fullscreen", "app.fullscreen.set", "media"] }
+  { id: "050", command: "退出电视全屏", expect: ["tv.exit_fullscreen", "app.fullscreen.set", "media"] },
+  {
+    id: "051",
+    command: "电视切到 Bloomberg TV",
+    expect: ["tv.select_channel", "tv.play", "tv"],
+    expectArgs: [{ keys: ["channelName"], match: "Bloomberg" }]
+  },
+  {
+    id: "052",
+    command: "我想看 NHK World-Japan",
+    expect: ["tv.play", "tv.select_channel", "tv"],
+    expectArgs: [{ keys: ["channelName"], match: "NHK" }]
+  },
+  {
+    id: "053",
+    command: "打开电视播放凤凰中文",
+    expect: ["tv.play", "tv.select_channel", "tv"],
+    expectArgs: [{ keys: ["channelName"], match: "凤凰中文" }]
+  },
+  {
+    id: "054",
+    command: "把电视换到 Al Jazeera English",
+    expect: ["tv.select_channel", "tv.play", "tv"],
+    expectArgs: [{ keys: ["channelName"], match: "Al Jazeera" }]
+  },
+  {
+    id: "055",
+    command: "切到 France 24 English 频道",
+    expect: ["tv.select_channel", "tv.play", "tv"],
+    expectArgs: [{ keys: ["channelName"], match: "France 24" }]
+  },
+  {
+    id: "056",
+    command: "电视调到 DW English",
+    expect: ["tv.select_channel", "tv.play", "tv"],
+    expectArgs: [{ keys: ["channelName"], match: "DW English" }]
+  },
+  {
+    id: "057",
+    command: "全屏播放 CNA",
+    expect: ["tv.play", "tv.fullscreen", "tv"],
+    expectArgs: [{ keys: ["channelName"], match: "CNA" }]
+  },
+  { id: "058", command: "先暂停电视直播", expect: ["tv.pause", "tv"] },
+  {
+    id: "059",
+    command: "帮我找孙燕姿的遇见但先不播放",
+    expect: ["music.search", "music"],
+    expectArgs: [{ tool: "music.search", keys: ["query"], match: "孙燕姿.*遇见|遇见.*孙燕姿" }]
+  },
+  {
+    id: "060",
+    command: "来一首陈奕迅的十年",
+    expect: ["music.play", "music"],
+    expectArgs: [{ tool: "music.play", keys: ["query"], match: "陈奕迅.*十年|十年.*陈奕迅" }]
+  },
+  {
+    id: "061",
+    command: "搜索Taylor Swift的Lover歌单",
+    expect: ["music.search", "music"],
+    expectArgs: [{ tool: "music.search", keys: ["query"], match: "Taylor Swift.*Lover|Lover.*Taylor Swift" }]
+  },
+  {
+    id: "062",
+    command: "播放Beyond海阔天空",
+    expect: ["music.play", "music"],
+    expectArgs: [{ tool: "music.play", keys: ["query"], match: "Beyond.*海阔天空|海阔天空.*Beyond" }]
+  },
+  {
+    id: "063",
+    command: "找一点睡前白噪音，不要马上播放",
+    expect: ["music.search", "music"],
+    expectArgs: [{ tool: "music.search", keys: ["query"], match: "睡前|白噪音" }]
+  },
+  { id: "064", command: "音乐换下一首", expect: ["music.next", "music"], requiredTools: ["music.next"] },
+  { id: "065", command: "切回上一首歌", expect: ["music.previous", "music"], requiredTools: ["music.previous"] },
+  { id: "066", command: "恢复刚才的音乐", expect: ["music.resume", "music"], requiredTools: ["music.resume"] },
+  {
+    id: "067",
+    command: "待办里加一条今晚九点检查电视源",
+    expect: ["todo.add_item", "todo"],
+    expectArgs: [{ tool: "todo.add_item", keys: ["text"], match: "检查电视源" }]
+  },
+  {
+    id: "068",
+    command: "提醒我明天上午十点给爸妈打电话",
+    expect: ["todo.add_item", "todo"],
+    expectArgs: [{ tool: "todo.add_item", keys: ["text"], match: "爸妈|打电话" }]
+  },
+  {
+    id: "069",
+    command: "新增任务：整理音乐测试结果",
+    expect: ["todo.add_item", "todo"],
+    expectArgs: [{ tool: "todo.add_item", keys: ["text"], match: "整理音乐测试结果" }]
+  },
+  {
+    id: "070",
+    command: "把整理音乐测试结果标记完成",
+    expect: ["todo.complete_item", "todo"],
+    expectArgs: [{ tool: "todo.complete_item", keys: ["text"], match: "整理音乐测试结果" }]
+  },
+  { id: "071", command: "清理已完成待办", expect: ["todo.clear_completed", "todo"] },
+  {
+    id: "072",
+    command: "在便签写下电视源里 Bloomberg 可用",
+    expect: ["note.write", "note"],
+    expectArgs: [{ tool: "note.write", keys: ["content"], match: "Bloomberg.*可用|电视源" }]
+  },
+  {
+    id: "073",
+    command: "记一下：音乐测试要覆盖不同歌手",
+    expect: ["note.write", "note"],
+    expectArgs: [{ tool: "note.write", keys: ["content"], match: "音乐测试.*不同歌手" }]
+  },
+  {
+    id: "074",
+    command: "追加到便签：NHK 和凤凰中文都要复测",
+    expect: ["note.write", "note"],
+    expectArgs: [{ tool: "note.write", keys: ["content"], match: "NHK.*凤凰中文|凤凰中文.*NHK" }]
+  },
+  { id: "075", command: "清空便签内容", expect: ["note.clear", "note"] },
+  {
+    id: "076",
+    command: "打开便签并写上今天重点测试冷门电视频道",
+    expect: ["board.add_widget", "note.write", "note"],
+    expectArgs: [{ keys: ["content"], match: "冷门电视频道" }]
+  },
+  {
+    id: "077",
+    command: "打开待办然后添加测试手机 Safari 语音",
+    expect: ["board.add_widget", "todo.add_item", "todo"],
+    expectArgs: [{ keys: ["text"], match: "手机 Safari 语音" }]
+  },
+  {
+    id: "078",
+    command: "打开音乐播放器并搜索Adele的Hello",
+    expect: ["board.add_widget", "music.search", "music"],
+    expectArgs: [{ keys: ["query"], match: "Adele.*Hello|Hello.*Adele" }]
+  },
+  {
+    id: "079",
+    command: "打开电视然后切到 Bloomberg TV 再全屏",
+    expect: ["board.add_widget", "tv.play", "tv.select_channel", "tv.fullscreen"],
+    requiredTools: ["tv.select_channel", "tv.fullscreen"],
+    expectArgs: [{ keys: ["channelName"], match: "Bloomberg" }]
+  },
+  {
+    id: "080",
+    command: "把电视、音乐、待办和便签都打开",
+    expect: ["board.add_widget"]
+  }
 ];
 
 function ensureDir(dir) {
@@ -223,7 +410,11 @@ function summarizeRealtimeToolCalls(events) {
       };
     });
   const localFollowUps = events
-    .filter((event) => event.type === "realtime.tool_selection.local_add_widget_shortcut")
+    .filter((event) =>
+      event.type === "realtime.tool_selection.local_add_widget_shortcut" ||
+      event.type === "realtime.function_call.missing_widget_wrapped" ||
+      event.type === "realtime.function_call.add_widget_follow_up_repaired"
+    )
     .map((event) => {
       const data = event && typeof event.data === "object" && event.data ? event.data : {};
       const toolName = typeof data.followUpName === "string" ? data.followUpName : "";
@@ -239,7 +430,41 @@ function summarizeRealtimeToolCalls(events) {
       return toolName ? { toolName, args } : null;
     })
     .filter(Boolean);
-  return [...directCalls, ...localFollowUps];
+  const planCalls = events
+    .filter((event) => event.type === "realtime.function_call.command_plan_result" || event.type === "realtime.runtime.command_plan_result")
+    .flatMap((event) => {
+      const data = event && typeof event.data === "object" && event.data ? event.data : {};
+      const commands = Array.isArray(data.commands) ? data.commands : [];
+      return commands
+        .map((command) => {
+          if (!command || typeof command !== "object") return null;
+          const toolName = typeof command.toolName === "string" ? command.toolName : typeof command.tool === "string" ? command.tool : "";
+          const argsRecord = command.args && typeof command.args === "object" && !Array.isArray(command.args) ? command.args : {};
+          const args = Object.fromEntries(
+            Object.entries(argsRecord).filter(([, value]) =>
+              typeof value === "string" ||
+              typeof value === "number" ||
+              typeof value === "boolean" ||
+              (Array.isArray(value) && value.every((item) => typeof item === "string" || typeof item === "number"))
+            )
+          );
+          return toolName ? { toolName, args } : null;
+        })
+        .filter(Boolean);
+    });
+  const operationCalls = events
+    .filter((event) => event.type === "assistant.operation" && event.status === "success")
+    .map((event) => {
+      const toolName = eventToolName(event);
+      const operationId = typeof event.operationId === "string" ? event.operationId : "";
+      const args = {};
+      if (/cna/i.test(operationId)) args.channelName = "CNA";
+      if (/bloomberg/i.test(operationId)) args.channelName = "Bloomberg";
+      if (/nhk/i.test(operationId)) args.channelName = "NHK World-Japan";
+      return toolName ? { toolName, args } : null;
+    })
+    .filter(Boolean);
+  return [...directCalls, ...localFollowUps, ...planCalls, ...operationCalls];
 }
 
 function expectedArgsMatched(expectArgs = [], realtimeToolCalls = []) {
@@ -263,7 +488,7 @@ function summarizeTools(events) {
     const data = event && typeof event.data === "object" && event.data ? event.data : {};
     const tool = event.type === "assistant.operation"
       ? eventToolName(event)
-      : event.type === "realtime.tool_selection.local_add_widget_shortcut" && typeof data.followUpName === "string"
+      : typeof data.followUpName === "string"
         ? data.followUpName
         : "";
     if (tool) tools.add(tool);
@@ -283,6 +508,11 @@ function summarizePlannedTools(events) {
 function expectedToolMatched(expected, tools) {
   if (!expected.length) return true;
   return expected.some((needle) => tools.some((tool) => tool === needle || tool.includes(needle) || needle.includes(tool)));
+}
+
+function requiredToolsMatched(required = [], tools = [], plannedTools = []) {
+  const available = new Set([...tools, ...plannedTools]);
+  return required.every((tool) => available.has(tool));
 }
 
 function replyLooksContradictory(result, snapshot) {
@@ -404,13 +634,24 @@ async function main() {
     page.on("requestfailed", (request) => {
       networkFailures.push({ url: request.url(), failure: request.failure()?.errorText || "" });
     });
+    await page.route("https://raw.githubusercontent.com/YueChan/Live/refs/heads/main/Global.m3u", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/vnd.apple.mpegurl",
+        body: seededTvPlaylistM3u
+      });
+    });
 
-    await page.addInitScript(() => {
+    await page.addInitScript(
+      ({ key, catalog }) => {
+        window.localStorage.setItem(key, JSON.stringify(catalog));
       HTMLMediaElement.prototype.play = function play() {
         this.dispatchEvent(new Event("play"));
         return Promise.resolve();
       };
-    });
+      },
+      { key: TV_ASSISTANT_CHANNEL_CATALOG_KEY, catalog: seededTvAssistantChannelCatalog }
+    );
     await page.goto(`http://127.0.0.1:${options.port}/app`, { waitUntil: "domcontentloaded" });
     await connectRealtime(page, options);
 
@@ -447,6 +688,7 @@ async function main() {
       const realtimeOrigin = summarizeRealtimeOrigin(newEvents);
       const realtimeToolCalls = summarizeRealtimeToolCalls(newEvents);
       const toolMatched = expectedToolMatched(testCase.expect, tools);
+      const requiredMatched = requiredToolsMatched(testCase.requiredTools, tools, plannedTools);
       const argsMatched = expectedArgsMatched(testCase.expectArgs, realtimeToolCalls);
       const replyContradiction = replyLooksContradictory({ operationEvents }, afterSnapshot);
       const uiChanged =
@@ -457,6 +699,7 @@ async function main() {
         !sendError &&
         success &&
         toolMatched &&
+        requiredMatched &&
         argsMatched &&
         !replyContradiction &&
         !failed &&
@@ -474,6 +717,7 @@ async function main() {
         success,
         failed: failed || commandResultFailed,
         toolMatched,
+        requiredMatched,
         argsMatched,
         replyContradiction,
         uiChanged,

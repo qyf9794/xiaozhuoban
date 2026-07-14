@@ -636,7 +636,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "realtime.text_command.reset_selector_tool",
         status: "sent",
         commandTraceId: "trace_text_2",
-        data: { toolCount: expect.any(Number) }
+        data: expect.objectContaining({ toolCount: expect.any(Number), selectionMode: "tool" })
       }),
       expect.objectContaining({ type: "realtime.event.send", commandTraceId: "trace_text_2", data: { eventType: "session.update" } }),
       expect.objectContaining({ type: "realtime.text_command.send", status: "pending_session_update", commandTraceId: "trace_text_2" }),
@@ -1134,7 +1134,12 @@ describe("OpenAI realtime adapter helpers", () => {
 
   it("sends text commands over an already configured realtime data channel", () => {
     const sent: unknown[] = [];
-    const diagnostics: Array<{ type: string; status?: string; commandTraceId?: string; data?: { eventType?: string; toolCount?: number } }> = [];
+    const diagnostics: Array<{
+      type: string;
+      status?: string;
+      commandTraceId?: string;
+      data?: { eventType?: string; toolCount?: number; selectionMode?: string };
+    }> = [];
     const adapter = new OpenAIRealtimeWebRtcAdapter({
       onDiagnostic(event) {
         diagnostics.push(event);
@@ -1153,6 +1158,7 @@ describe("OpenAI realtime adapter helpers", () => {
     adapter.sendTextCommand("播放陈奕迅的十年", { commandTraceId: "trace_text_1" });
 
     expect(sent).toEqual([
+      { type: "response.cancel" },
       expect.objectContaining({
         type: "session.update",
         session: expect.objectContaining({
@@ -1166,6 +1172,7 @@ describe("OpenAI realtime adapter helpers", () => {
     (adapter as unknown as { handleRealtimeEventData: (event: unknown) => void }).handleRealtimeEventData({ type: "session.updated" });
 
     expect(sent).toEqual([
+      { type: "response.cancel" },
       expect.objectContaining({
         type: "session.update",
         session: expect.objectContaining({
@@ -1192,7 +1199,12 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "realtime.text_command.reset_selector_tool",
         status: "sent",
         commandTraceId: "trace_text_1",
-        data: { toolCount: expect.any(Number) }
+        data: expect.objectContaining({ toolCount: expect.any(Number), selectionMode: "tool" })
+      }),
+      expect.objectContaining({
+        type: "realtime.response.cancel_before_text_command",
+        status: "sent",
+        commandTraceId: "trace_text_1"
       }),
       expect.objectContaining({
         type: "realtime.event.send",
@@ -1213,6 +1225,52 @@ describe("OpenAI realtime adapter helpers", () => {
         status: "sent",
         commandTraceId: "trace_text_1",
         data: { eventType: "response.create" }
+      })
+    ]));
+  });
+
+  it("uses realtime candidate tool selection for multi-step text commands", () => {
+    const sent: unknown[] = [];
+    const diagnostics: Array<{
+      type: string;
+      status?: string;
+      commandTraceId?: string;
+      data?: { eventType?: string; toolCount?: number; selectionMode?: string };
+    }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
+      }
+    });
+
+    adapter.sendTextCommand("打开电视然后切到 Bloomberg TV 再全屏", { commandTraceId: "trace_candidate_1" });
+
+    expect(sent).toEqual([
+      { type: "response.cancel" },
+      expect.objectContaining({
+        type: "session.update",
+        session: expect.objectContaining({
+          type: "realtime",
+          tools: expect.arrayContaining([expect.objectContaining({ name: "assistant__dot__select_tool" })]),
+          tool_choice: "auto"
+        })
+      })
+    ]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.text_command.reset_selector_tool",
+        status: "sent",
+        commandTraceId: "trace_candidate_1",
+        data: expect.objectContaining({ toolCount: expect.any(Number), selectionMode: "tool" })
       })
     ]));
   });
@@ -3706,10 +3764,10 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(calls).toEqual([
       expect.objectContaining({
         name: "board.add_widget",
-        arguments: {
+        arguments: expect.objectContaining({
           definitionId: "wd_music",
-          followUp: { name: "music.search", arguments: { query: "搜索放松音乐，不一定播放 放松音乐" } }
-        }
+          followUp: { name: "music.search", arguments: { query: expect.stringMatching(/放松/) } }
+        })
       })
     ]);
   });

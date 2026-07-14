@@ -196,10 +196,14 @@ describe("Realtime text tool call fallback", () => {
   it("creates realtime selection instructions and a selector tool without board widget context", () => {
     const instructions = createRealtimeToolSelectionInstructions(tools, moduleCatalog);
     const selector = createRealtimeToolSelectionTool(tools, moduleCatalog);
-    const selectorParameters = selector.parameters as { properties: { name: { enum: string[] }; selectedModule: { enum: string[] } }; required: string[] };
+    const selectorParameters = selector.parameters as {
+      properties: { candidateTools: { items: { enum: string[] } }; name: { enum: string[] }; selectedModule: { enum: string[] } };
+      required: string[];
+    };
     const serialized = JSON.stringify({ instructions, selector });
 
-    expect(selectorParameters.required).toEqual(["name"]);
+    expect(selectorParameters.required).toEqual(["candidateTools"]);
+    expect(selectorParameters.properties.candidateTools.items.enum).toEqual(["widget.remove", "music.pause"]);
     expect(selectorParameters.properties.name.enum).toEqual(["widget.remove", "music.pause"]);
     expect(selectorParameters.properties.selectedModule.enum).toEqual(expect.arrayContaining(["countdown", "music", "tv", "weather"]));
     expect(serialized).toContain("name");
@@ -230,6 +234,24 @@ describe("Realtime text tool call fallback", () => {
     );
 
     expect(selection).toEqual({ name: "widget.remove", targetHint: "音乐", confidence: 0.9 });
+  });
+
+  it("extracts candidate tool selections", () => {
+    const selection = extractToolSelectionFromResponsesPayload(
+      {
+        output: [
+          {
+            type: "function_call",
+            name: "assistant__dot__select_tool",
+            call_id: "call_1",
+            arguments: JSON.stringify({ candidateTools: ["music.pause", "widget.remove"], targetHint: "音乐", confidence: 0.9 })
+          }
+        ]
+      },
+      new Set(tools.map((tool) => tool.name))
+    );
+
+    expect(selection).toEqual({ name: "music.pause", candidateTools: ["music.pause", "widget.remove"], targetHint: "音乐", confidence: 0.9 });
   });
 
   it("parses selection responses from the backend", () => {
@@ -347,6 +369,21 @@ describe("Realtime text tool call fallback", () => {
     expect(update?.session.audio?.input?.transcription).toEqual({ model: "gpt-4o-mini-transcribe" });
     expect(serialized).toContain("widget__dot__remove");
     expect(serialized).not.toContain("music__dot__pause");
+    expect(serialized).toContain("wi_music");
+    expect(serialized).not.toContain("private note");
+  });
+
+  it("creates a scoped realtime session update with candidate tools", () => {
+    const update = createScopedRealtimeToolUpdate(
+      { input: "关闭音乐", context, tools },
+      { name: "music.pause", candidateTools: ["music.pause", "widget.remove"], targetHint: "音乐" }
+    );
+    const serialized = JSON.stringify(update);
+
+    expect(update?.type).toBe("session.update");
+    expect(serialized).toContain("候选工具");
+    expect(serialized).toContain("music__dot__pause");
+    expect(serialized).toContain("widget__dot__remove");
     expect(serialized).toContain("wi_music");
     expect(serialized).not.toContain("private note");
   });

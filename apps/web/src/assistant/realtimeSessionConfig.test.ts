@@ -204,7 +204,8 @@ describe("realtime session config", () => {
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("scoped session.update 失败");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("优先选择最接近的已注册工具");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("删除用户数据");
-    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("回复要短");
+    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("自然简洁");
+    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("不要为了简短人为截断内容");
   });
 
   it("appends compact board context for Realtime session updates", () => {

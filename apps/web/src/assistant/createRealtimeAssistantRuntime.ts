@@ -271,7 +271,22 @@ export function createRealtimeAssistantRuntime(options: {
           operationId: response.call?.id,
           message: response.result.message,
           errorCode: response.result.errorCode,
-          data: { input, commandCount: plan.commands.length, tools: plan.commands.map((command) => command.tool) }
+          data: {
+            input,
+            commandCount: plan.commands.length,
+            tools: plan.commands.map((command) => command.tool),
+            commands: plan.commands.map((command) => ({
+              toolName: command.tool,
+              args: Object.fromEntries(
+                Object.entries(command.args ?? {}).filter(([, value]) =>
+                  typeof value === "string" ||
+                  typeof value === "number" ||
+                  typeof value === "boolean" ||
+                  (Array.isArray(value) && value.every((item) => typeof item === "string" || typeof item === "number"))
+                )
+              )
+            }))
+          }
         });
         return response.result;
       } catch (error) {

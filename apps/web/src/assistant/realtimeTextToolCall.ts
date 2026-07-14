@@ -46,6 +46,7 @@ export type RealtimeTextToolCallResponse = {
 
 export type RealtimeTextToolSelection = {
   name: string;
+  candidateTools?: string[];
   selectedModule?: string;
   intent?: string;
   targetHint?: string;
@@ -227,7 +228,7 @@ export function createRealtimeToolSelectionPrompt(
 ) {
   const catalogVersion = getRealtimeCatalogVersion(moduleCatalog);
   return [
-    "你是小桌板命令路由器。先只判断用户想使用哪个模块和已注册工具，不要生成工具参数。",
+    "你是小桌板命令路由器。先只判断用户想使用哪个模块，并从工具目录中选择 1 到 4 个候选工具，不要选择最终工具，不要生成工具参数。",
     "你只能基于模块目录、工具目录和用户命令选择；此阶段不会提供桌面上下文。",
     ...realtimeToolSelectionPolicyLines,
     "没有足够把握时不要调用工具。",
@@ -248,13 +249,15 @@ export function createRealtimeToolSelectionPrompt(
 export function createRealtimeToolSelectionInstructions(tools: AssistantToolSpec[], moduleCatalog?: RealtimeModuleCatalogItem[]) {
   const catalogVersion = getRealtimeCatalogVersion(moduleCatalog);
   return [
-    "你是小桌板命令路由器。当前阶段只判断用户想使用哪个模块和已注册工具。",
-    "不要生成任何真实工具参数，不要猜 widgetId、definitionId、boardId。",
+    "你是小桌板命令路由器。当前阶段只根据目录选择 3 到 4 个最相关的候选工具，不选择最终工具。",
+    "不要生成任何真实工具参数，不要猜 widgetId、definitionId、boardId，不要把某个候选工具当成最终执行工具。",
     "不要要求完整桌面上下文；如果需要目标，只把用户说出的目标词放到 targetHint。",
     "如果要路由命令，直接调用 assistant.select_tool，不要先说话，不要输出语音或文字，不要把工具选择参数念给用户。",
-    "用户要控制桌面时，先调用 assistant.select_tool；前端随后会按所选工具提供最小必要上下文。",
+    "用户要控制桌面时，先调用 assistant.select_tool；前端随后会按候选工具提供最小必要上下文，再由你选择最终工具并调用。",
     "只要用户说的是打开、关闭、播放、搜索、查询、设置、添加、写入、完成、勾掉、暂停、继续、重置、切换、全屏、换算、转换、翻译等桌面动作，必须调用 assistant.select_tool。",
-    "完成/勾掉待办事项选择 todo.complete_item；添加/提醒待办选择 todo.add_item；暂停/继续/重置倒计时分别选择 countdown.pause/countdown.resume/countdown.reset。",
+    "candidateTools 必须严格来自工具目录里的已注册工具名；不能返回模块名、别名、意图名、中文说明或未注册工具。",
+    "candidateTools 按相关性排序，通常返回 3 到 4 个；非常明确的单一命令也至少返回 1 个。",
+    "完成/勾掉待办事项候选包含 todo.complete_item；添加/提醒待办候选包含 todo.add_item；暂停/继续/重置倒计时分别包含 countdown.pause/countdown.resume/countdown.reset。",
     ...realtimeToolSelectionSessionPolicyLines,
     "",
     "# 版本",
@@ -270,17 +273,28 @@ export function createRealtimeToolSelectionInstructions(tools: AssistantToolSpec
 
 export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[], moduleCatalog?: RealtimeModuleCatalogItem[]): RealtimeFunctionTool {
   const moduleTypes = selectionModuleTypes(tools, moduleCatalog);
+  const toolNames = tools.map((tool) => tool.name);
   return {
     type: "function",
     name: SELECT_TOOL_NAME.replace(/\./g, "__dot__"),
-    description: "Select the single best registered Xiaozhuoban tool before any desktop context is provided.",
+    description: "Select 1 to 4 candidate Xiaozhuoban tools before desktop context is provided. Do not choose the final execution tool in this stage.",
     parameters: {
       type: "object",
       properties: {
+        candidateTools: {
+          type: "array",
+          minItems: 1,
+          maxItems: 4,
+          items: {
+            type: "string",
+            enum: toolNames
+          },
+          description: "Candidate registered tool names, ordered by relevance. This is not the final tool choice."
+        },
         name: {
           type: "string",
-          enum: tools.map((tool) => tool.name),
-          description: "Selected registered tool name."
+          enum: toolNames,
+          description: "Backward-compatible first candidate tool name. Prefer candidateTools."
         },
         selectedModule: {
           type: "string",
@@ -297,7 +311,7 @@ export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[], modu
         },
         confidence: { type: "number" }
       },
-      required: ["name"],
+      required: ["candidateTools"],
       additionalProperties: false
     }
   };
@@ -504,7 +518,7 @@ export function parseRealtimeSubmittedCommandPlan(
         risk: command.risk === "destructive" || command.risk === "confirm" ? command.risk : spec.risk === "destructive" ? "destructive" : spec.risk === "confirm" ? "confirm" : "safe",
         confidence: typeof command.confidence === "number" ? command.confidence : 0.75,
         dependsOn: Array.isArray(command.dependsOn) ? command.dependsOn.filter((id): id is string => typeof id === "string") : undefined,
-        source: "realtime" as const,
+        source: "text" as const,
         requiresHarnessValidation: true as const
       }];
     });
@@ -537,6 +551,7 @@ export function createToolSelectionPayload(
   request: RealtimeTextToolCallRequest,
   options: { model?: string } = {}
 ) {
+  const toolNames = request.tools.map((tool) => tool.name);
   return {
     model: options.model ?? XIAOZHUOBAN_REALTIME_MODEL,
     input: [
@@ -549,17 +564,24 @@ export function createToolSelectionPayload(
       {
         type: "function",
         name: SELECT_TOOL_NAME.replace(/\./g, "__dot__"),
-        description: "Select the single best registered Xiaozhuoban tool for the user's command.",
+        description: "Select 1 to 4 candidate Xiaozhuoban tools for the user's command. Do not choose the final execution tool in this stage.",
         parameters: {
           type: "object",
           properties: {
-            name: { type: "string", description: "Selected registered tool name." },
+            candidateTools: {
+              type: "array",
+              minItems: 1,
+              maxItems: 4,
+              items: { type: "string", enum: toolNames },
+              description: "Candidate registered tool names, ordered by relevance."
+            },
+            name: { type: "string", enum: toolNames, description: "Backward-compatible first candidate tool name." },
             selectedModule: { type: "string", description: "Selected Xiaozhuoban module type when known." },
             targetHint: { type: "string", description: "Short widget or board target words from the user command." },
             userCommand: { type: "string", description: "A short normalized version of the user's command." },
             confidence: { type: "number" }
           },
-          required: ["name"],
+          required: ["candidateTools"],
           additionalProperties: false
         }
       }
@@ -583,6 +605,22 @@ function getSelectedWidgetType(tool: AssistantToolSpec, selection: RealtimeTextT
   return (
     selection.selectedModule ||
     tool.widgetType ||
+    findRealtimeWidgetType(input, selection.targetHint)
+  );
+}
+
+function getCandidateToolNames(selection: RealtimeTextToolSelection): string[] {
+  const names = Array.isArray(selection.candidateTools)
+    ? selection.candidateTools.filter((name): name is string => typeof name === "string" && Boolean(name.trim()))
+    : [];
+  if (selection.name) names.push(selection.name);
+  return [...new Set(names)].slice(0, 4);
+}
+
+function getSelectedWidgetTypeForTools(tools: AssistantToolSpec[], selection: RealtimeTextToolSelection, input: string) {
+  return (
+    selection.selectedModule ||
+    tools.find((tool) => tool.widgetType)?.widgetType ||
     findRealtimeWidgetType(input, selection.targetHint)
   );
 }
@@ -622,10 +660,20 @@ export function createScopedRealtimeContext(
   selection: RealtimeTextToolSelection,
   input: string
 ): CompactAssistantContext {
-  const selectedWidgetType = getSelectedWidgetType(tool, selection, input);
-  const includeBoards = tool.name.startsWith("board.") || tool.name === "assistant.confirm" || tool.name === "assistant.cancel";
-  const widgets = tool.requiresTarget || tool.name.startsWith("widget.") ? selectScopedWidgets(context, selectedWidgetType, selection) : [];
-  const includeDefinitions = tool.name === ADD_WIDGET_TOOL_NAME || (tool.requiresTarget && widgets.length === 0);
+  return createScopedRealtimeContextForTools(context, [tool], selection, input);
+}
+
+export function createScopedRealtimeContextForTools(
+  context: CompactAssistantContext,
+  tools: AssistantToolSpec[],
+  selection: RealtimeTextToolSelection,
+  input: string
+): CompactAssistantContext {
+  const selectedWidgetType = getSelectedWidgetTypeForTools(tools, selection, input);
+  const includeBoards = tools.some((tool) => tool.name.startsWith("board.") || tool.name === "assistant.confirm" || tool.name === "assistant.cancel");
+  const needsWidgetContext = tools.some((tool) => tool.requiresTarget || tool.name.startsWith("widget."));
+  const widgets = needsWidgetContext ? selectScopedWidgets(context, selectedWidgetType, selection) : [];
+  const includeDefinitions = tools.some((tool) => tool.name === ADD_WIDGET_TOOL_NAME || (tool.requiresTarget && widgets.length === 0));
 
   return {
     contextVersion: context.contextVersion,
@@ -637,7 +685,7 @@ export function createScopedRealtimeContext(
     availableBoards: includeBoards ? context.availableBoards : undefined,
     focusedWidget:
       context.focusedWidget &&
-      (tool.requiresTarget || tool.name.startsWith("widget.")) &&
+      needsWidgetContext &&
       (!selectedWidgetType || context.focusedWidget.type === selectedWidgetType)
         ? context.focusedWidget
         : undefined,
@@ -647,12 +695,30 @@ export function createScopedRealtimeContext(
   };
 }
 
+function getExecutableToolsForCandidates(
+  tools: AssistantToolSpec[],
+  candidateTools: AssistantToolSpec[],
+  scopedContext: CompactAssistantContext,
+  selectedWidgetType: string | undefined
+) {
+  const addWidgetTool = tools.find((tool) => tool.name === ADD_WIDGET_TOOL_NAME);
+  const shouldAddWidget =
+    candidateTools.some((tool) => tool.requiresTarget) &&
+    scopedContext.widgets.length === 0 &&
+    canAddWidgetForSelectedTool(scopedContext, selectedWidgetType) &&
+    addWidgetTool &&
+    !candidateTools.some((tool) => tool.name === ADD_WIDGET_TOOL_NAME);
+  return shouldAddWidget ? [...candidateTools, addWidgetTool] : candidateTools;
+}
+
 export function createScopedToolCallPayload(
   request: RealtimeTextToolCallRequest,
   selection: RealtimeTextToolSelection,
   options: { model?: string } = {}
 ) {
-  const tool = request.tools.find((candidate) => candidate.name === selection.name);
+  const candidateNames = getCandidateToolNames(selection);
+  const candidateTools = request.tools.filter((candidate) => candidateNames.includes(candidate.name));
+  const tool = candidateTools[0];
   if (!tool || !request.context) {
     return {
       model: options.model ?? XIAOZHUOBAN_REALTIME_MODEL,
@@ -662,7 +728,7 @@ export function createScopedToolCallPayload(
           content: [
             "# Text Command Fallback",
             "缺少已选工具或局部上下文，因此不能生成可执行工具调用。",
-            `已选工具：${selection.name ?? "未选择"}`,
+            `候选工具：${candidateNames.join(", ") || "未选择"}`,
             `用户命令：${request.input}`
           ].join("\n")
         }
@@ -673,9 +739,9 @@ export function createScopedToolCallPayload(
       max_output_tokens: 80
     };
   }
-  const scopedContext = createScopedRealtimeContext(request.context, tool, selection, request.input);
-  const selectedWidgetType = getSelectedWidgetType(tool, selection, request.input);
-  const executableTools = getExecutableToolsForSelection(request.tools, tool, scopedContext, selectedWidgetType);
+  const scopedContext = createScopedRealtimeContextForTools(request.context, candidateTools, selection, request.input);
+  const selectedWidgetType = getSelectedWidgetTypeForTools(candidateTools, selection, request.input);
+  const executableTools = getExecutableToolsForCandidates(request.tools, candidateTools, scopedContext, selectedWidgetType);
   return {
     model: options.model ?? XIAOZHUOBAN_REALTIME_MODEL,
     input: [
@@ -699,13 +765,17 @@ export function createScopedToolCallPayload(
             : "",
           "",
           "# Text Command Fallback",
-          "现在只根据上一步选中的工具和最小必要上下文，返回可执行工具调用。",
+          "现在根据原始用户命令、候选工具和最小必要上下文，选择最终工具并返回可执行工具调用。",
+          "复杂命令可以调用多个已提供工具；需要顺序时按原始命令顺序依次调用，互不依赖时可以并发调用。",
           "不要访问未提供的桌面上下文；如果缺少目标或信息不足，不要调用工具。",
           executableTools.some((candidate) => candidate.name === ADD_WIDGET_TOOL_NAME) && tool.name !== ADD_WIDGET_TOOL_NAME
-            ? `如果当前没有 ${selectedWidgetType ?? "目标"} 小工具实例，但 availableDefinitions 中有对应定义，可以调用 board.add_widget，并在 followUp 中填写已选工具 ${tool.name} 及原始参数。`
+            ? `如果当前没有 ${selectedWidgetType ?? "目标"} 小工具实例，但 availableDefinitions 中有对应定义，可以调用 board.add_widget，并在 followUp 中填写候选工具之一及原始参数。`
             : "",
           "",
-          `已选工具：${selection.name}`,
+          "# Original User Command",
+          request.input,
+          "",
+          `候选工具：${executableTools.map((candidate) => candidate.name).join(", ")}`,
           selection.targetHint ? `目标提示：${selection.targetHint}` : "",
           `用户命令：${request.input}`
         ]
@@ -715,7 +785,7 @@ export function createScopedToolCallPayload(
     ],
     tools: executableTools.map((candidate) => serializeAssistantToolForRealtime(candidate)),
     tool_choice: executableTools.length ? "auto" : "none",
-    parallel_tool_calls: false,
+    parallel_tool_calls: true,
     max_output_tokens: 120
   };
 }
@@ -726,6 +796,7 @@ export function createScopedRealtimeToolInstructions(
   input: string,
   moduleContext?: RealtimeScopedModuleContext
 ) {
+  const candidateNames = getCandidateToolNames(selection);
   return [
     createRealtimeContextInstructions(context),
     moduleContext
@@ -743,22 +814,33 @@ export function createScopedRealtimeToolInstructions(
         ].join("\n")
       : "",
     "",
-    "# Selected Tool Stage",
-    "现在只根据上一步选中的工具和此处提供的最小上下文，返回可执行工具调用。",
+    "# Candidate Tool Stage",
+    "现在根据原始用户命令、候选工具完整上下文和当前桌面上下文，选择最终工具并返回可执行 function_call。",
+    "原始用户命令是最高优先级；不要只根据候选工具名称猜意图。",
     "如果可以执行，直接调用工具；不要先说话，不要输出“我来处理”“稍等”等语音或文字。",
-    "只调用已选工具；不要调用未提供的工具，不要访问未提供的桌面上下文。",
-    selection.name === "board.add_widget"
+    "复杂命令可以调用多个已提供工具。需要顺序时按原始命令顺序依次调用；互不依赖时可以并发调用。",
+    "只调用候选工具列表中实际提供的工具；不要调用未提供的工具，不要访问未提供的桌面上下文。",
+    candidateNames.some((name) => name.startsWith("music."))
+      ? "音乐工具选择规则：用户说播放、来一首、来个、想听具体歌手/歌曲时选择 music.play；用户说搜索、找、搜且明确不播放时选择 music.search；恢复、继续、接着播选择 music.resume；上一首选择 music.previous；下一首选择 music.next。"
+      : "",
+    candidateNames.some((name) => name.startsWith("tv."))
+      ? "电视工具选择规则：用户说播放、看、切到、换到具体频道时调用 tv.play 或 tv.select_channel；原始命令同时包含“全屏”且工具列表提供 tv.fullscreen 时，必须在播放/切台后继续调用 tv.fullscreen。"
+      : "",
+    candidateNames.includes("board.add_widget")
       ? "如果已选工具是 board.add_widget，必须从 availableDefinitions 选择与用户命令最匹配的小工具，并用对应 definitionId 调用 board.add_widget；不要回答缺少打开小工具的方式。"
       : "",
-    selection.name === "board.add_widget"
+    candidateNames.includes("board.add_widget")
       ? "用户只说“时钟”时默认打开 dialClock/表盘时钟；只有明确说“世界时钟、世界时间、时区、东京时间、纽约时间”等才打开 worldClock。"
       : "",
-    selection.name !== "board.add_widget" && context.widgets.length === 0 && (context.availableDefinitions?.length ?? 0) > 0
-      ? `如果当前没有目标小工具实例，但工具列表提供了 board.add_widget，可以先用匹配的 definitionId 调用 board.add_widget，并在 followUp 中填写已选工具 ${selection.name} 及原始参数。`
+    !candidateNames.includes("board.add_widget") && context.widgets.length === 0 && (context.availableDefinitions?.length ?? 0) > 0
+      ? `如果当前没有目标小工具实例，但工具列表提供了 board.add_widget，可以先用匹配的 definitionId 调用 board.add_widget，并在 followUp 中填写候选工具之一及原始参数。`
       : "",
     "如果缺少目标或信息不足，不要猜测参数，直接简短说明需要澄清。",
     "",
-    `已选工具：${selection.name ?? "未选择"}`,
+    "# Original User Command",
+    input,
+    "",
+    `候选工具：${candidateNames.join(", ") || selection.name || "未选择"}`,
     selection.targetHint ? `目标提示：${selection.targetHint}` : "",
     `用户命令：${input}`
   ]
@@ -770,11 +852,12 @@ export function createScopedRealtimeToolUpdate(
   request: RealtimeTextToolCallRequest,
   selection: RealtimeTextToolSelection
 ) {
-  const tool = request.tools.find((candidate) => candidate.name === selection.name);
-  if (!tool || !request.context) return null;
-  const scopedContext = createScopedRealtimeContext(request.context, tool, selection, request.input);
-  const selectedWidgetType = getSelectedWidgetType(tool, selection, request.input);
-  const executableTools = getExecutableToolsForSelection(request.tools, tool, scopedContext, selectedWidgetType);
+  const candidateNames = getCandidateToolNames(selection);
+  const candidateTools = request.tools.filter((candidate) => candidateNames.includes(candidate.name));
+  if (!candidateTools.length || !request.context) return null;
+  const scopedContext = createScopedRealtimeContextForTools(request.context, candidateTools, selection, request.input);
+  const selectedWidgetType = getSelectedWidgetTypeForTools(candidateTools, selection, request.input);
+  const executableTools = getExecutableToolsForCandidates(request.tools, candidateTools, scopedContext, selectedWidgetType);
   return {
     type: "session.update",
     session: {
@@ -783,7 +866,7 @@ export function createScopedRealtimeToolUpdate(
       audio: createRealtimeSessionAudioConfig(),
       tools: executableTools.map((candidate) => serializeAssistantToolForRealtime(candidate)),
       tool_choice: executableTools.length ? "required" : "none",
-      parallel_tool_calls: false
+      parallel_tool_calls: true
     }
   };
 }
@@ -843,19 +926,25 @@ export function extractToolSelectionFromResponsesPayload(
   const functionCall = findResponsesFunctionCall(payload);
   if (!functionCall || decodeRealtimeToolName(String(functionCall.name)) !== SELECT_TOOL_NAME) return null;
   const args = parseArguments(functionCall.arguments);
-  const name = typeof args.name === "string" ? args.name : "";
-  if (name && !allowedToolNames.has(name)) return null;
+  const candidateTools = Array.isArray(args.candidateTools)
+    ? args.candidateTools.filter((name): name is string => typeof name === "string" && allowedToolNames.has(name)).slice(0, 4)
+    : [];
+  const name = typeof args.name === "string" && allowedToolNames.has(args.name)
+    ? args.name
+    : candidateTools[0] ?? "";
   if (!name) return null;
   const selectedModule = typeof args.selectedModule === "string" ? args.selectedModule : undefined;
   const intent = typeof args.intent === "string" ? args.intent : undefined;
-  return {
+  const parsedSelection: RealtimeTextToolSelection = {
     name,
-    selectedModule,
-    intent,
-    targetHint: typeof args.targetHint === "string" ? args.targetHint : undefined,
-    userCommand: typeof args.userCommand === "string" ? args.userCommand : undefined,
-    confidence: typeof args.confidence === "number" ? args.confidence : undefined
+    ...(candidateTools.length ? { candidateTools } : {}),
+    ...(selectedModule ? { selectedModule } : {}),
+    ...(intent ? { intent } : {}),
+    ...(typeof args.targetHint === "string" ? { targetHint: args.targetHint } : {}),
+    ...(typeof args.userCommand === "string" ? { userCommand: args.userCommand } : {}),
+    ...(typeof args.confidence === "number" ? { confidence: args.confidence } : {})
   };
+  return parsedSelection;
 }
 
 export function parseRealtimeTextToolCallResponse(value: unknown): AssistantToolCall | null {
@@ -877,18 +966,23 @@ export function parseRealtimeTextToolSelectionResponse(value: unknown): Realtime
   const selection = (value as Record<string, unknown>).selection;
   if (!selection || typeof selection !== "object") return null;
   const record = selection as Record<string, unknown>;
-  const name = typeof record.name === "string" ? record.name : undefined;
+  const candidateTools = Array.isArray(record.candidateTools)
+    ? record.candidateTools.filter((name): name is string => typeof name === "string" && Boolean(name.trim())).slice(0, 4)
+    : [];
+  const name = typeof record.name === "string" ? record.name : candidateTools[0];
   const selectedModule = typeof record.selectedModule === "string" ? record.selectedModule : undefined;
   const intent = typeof record.intent === "string" ? record.intent : undefined;
   if (!name) return null;
-  return {
+  const parsedSelection: RealtimeTextToolSelection = {
     name,
-    selectedModule,
-    intent,
-    targetHint: typeof record.targetHint === "string" ? record.targetHint : undefined,
-    userCommand: typeof record.userCommand === "string" ? record.userCommand : undefined,
-    confidence: typeof record.confidence === "number" ? record.confidence : undefined
+    ...(candidateTools.length ? { candidateTools } : {}),
+    ...(selectedModule ? { selectedModule } : {}),
+    ...(intent ? { intent } : {}),
+    ...(typeof record.targetHint === "string" ? { targetHint: record.targetHint } : {}),
+    ...(typeof record.userCommand === "string" ? { userCommand: record.userCommand } : {}),
+    ...(typeof record.confidence === "number" ? { confidence: record.confidence } : {})
   };
+  return parsedSelection;
 }
 
 export function parseRealtimeTextPlanSelectionResponse(value: unknown): RealtimeTextPlanSelection | null {

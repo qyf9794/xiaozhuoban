@@ -36,6 +36,7 @@ import {
   createRealtimeToolSelectionInstructions,
   createRealtimeToolSelectionTool,
   createScopedRealtimeContext,
+  createScopedRealtimeContextForTools,
   createScopedRealtimeToolUpdate,
   parseRealtimeCommandPlanResponse,
   parseRealtimePlanSelectionArguments,
@@ -126,7 +127,7 @@ type PendingTextCommandAfterSelectorUpdate = {
   commandTraceId: string;
   inputLength: number;
 };
-type RealtimeTargetHint = Pick<RealtimeTextToolSelection, "selectedModule" | "targetHint"> & {
+type RealtimeTargetHint = Pick<RealtimeTextToolSelection, "selectedModule" | "targetHint" | "candidateTools"> & {
   userCommand?: string;
   selectedToolName?: string;
 };
@@ -287,11 +288,110 @@ function normalizeMusicToolArguments(args: Record<string, unknown>): Record<stri
 
 function extractMusicQueryFromText(text: string): string {
   return text
-    .replace(/^(我想听|想听|我要听|播放|放一下|放一首|来一首|来个|搜索|搜一下|搜一点|找一下|找一点)/, "")
+    .replace(/^(帮我|麻烦你|麻烦|请你|请)/, "")
+    .replace(/^(我想听|想听|我要听|播放|放一下|放一首|来一首|来个|搜索|搜一下|搜一点|找一下|找一点|找)/, "")
+    .replace(/不一定播放/g, "")
+    .replace(/(但|但是)?(先)?(不|不要|别|不用)(马上)?播放/g, "")
     .replace(/(的歌|歌曲|音乐|歌单|不一定播放|先搜一下|先搜索一下)$/g, "")
     .replace(/[，。！？、,.!?;；:："'“”‘’]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function stripLeadingAssistantActionText(text: string): string {
+  return text
+    .replace(/^(帮我|麻烦你|麻烦|请你|请)/, "")
+    .replace(/[，。！？、,.!?;；"'“”‘’]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractNoteContentFromText(text: string): string {
+  return stripLeadingAssistantActionText(text)
+    .replace(/^打开便签(?:并|然后|后)?(?:写上|写下|记录|记下|追加)?/, "")
+    .replace(/^在?便签(?:里|中)?(?:写上|写下|记录|记下|追加|新增|添加)?/, "")
+    .replace(/^追加到便签[:：]?/, "")
+    .replace(/^(记一下|记下|记录一下|记录|写一下|写下|写上)[:：]?/, "")
+    .trim();
+}
+
+function extractTodoTextFromText(text: string): string {
+  return stripLeadingAssistantActionText(text)
+    .replace(/^打开待办(?:然后|并|后)?(?:添加|新增|加一条|加入)?/, "")
+    .replace(/^待办(?:里|中)?(?:添加|新增|加一条|加入)?/, "")
+    .replace(/^(添加|新增|加一条|加入)(?:一个|一条)?(?:待办|任务|事项)?[:：]?/, "")
+    .replace(/^(提醒我|提醒|叫我|记得|别忘了)/, "")
+    .trim();
+}
+
+function normalizeTvChannelNameForMatch(value: string): string {
+  return value
+    .toUpperCase()
+    .replace(/BLOOMBERG\s*(?:TELEVISION|TV)?/g, "BLOOMBERG")
+    .replace(/高清|标清|频道|电视台|综合|新闻|财经|体育|电影|电视剧|少儿/g, "")
+    .replace(/[\s_-]+/g, "")
+    .trim();
+}
+
+function findContextTvChannelName(input: string, context: CompactAssistantContext | null): string {
+  if (!context) return "";
+  const moduleTvState = context.moduleStates?.tv as Record<string, unknown> | undefined;
+  const names = [
+    ...((moduleTvState?.assistantChannelNames as unknown[] | undefined) ?? []),
+    ...((moduleTvState?.channelNames as unknown[] | undefined) ?? []),
+    ...context.widgets
+      .filter((widget) => widget.type === "tv")
+      .flatMap((widget) => [
+        ...((widget.assistantState?.assistantChannelNames as unknown[] | undefined) ?? []),
+        ...((widget.assistantState?.channelNames as unknown[] | undefined) ?? [])
+      ])
+  ].filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  const normalizedInput = normalizeTvChannelNameForMatch(input);
+  return (
+    names.find((name) => {
+      const normalizedName = normalizeTvChannelNameForMatch(name);
+      return Boolean(normalizedName) && (normalizedInput.includes(normalizedName) || normalizedName.includes(normalizedInput));
+    }) ?? ""
+  );
+}
+
+function inferWidgetDefinitionTypeFromText(value: string): string {
+  if (/tv|television|电视|直播|频道/i.test(value)) return "tv";
+  if (/music|音乐|歌曲|播放器/i.test(value)) return "music";
+  if (/todo|待办|任务|清单/i.test(value)) return "todo";
+  if (/note|便签|笔记/i.test(value)) return "note";
+  return "";
+}
+
+function shouldUseRealtimePlanSelectionCommand(text: string): boolean {
+  const compact = text.replace(/\s+/g, "");
+  if (!compact) return false;
+  if (/^(追加到?便签|在?便签|便签里|便签中|记一下|记下|记录一下|写下|写上)/.test(compact)) return false;
+  if (/^(待办里|待办中|添加待办|新增任务|提醒我|提醒|叫我)/.test(compact)) return false;
+  const moduleHits = [
+    /电视|直播|频道|CCTV|BBC|NHK|Bloomberg|凤凰|CNA|France|DW/i,
+    /音乐|歌曲|歌手|播放器|Adele|Taylor|Beyond|王菲|周杰伦|陈奕迅/i,
+    /待办|任务|清单|提醒/,
+    /便签|笔记|记下|写下/
+  ].filter((pattern) => pattern.test(text)).length;
+  if (moduleHits >= 2 && /(都打开|全部打开|全都打开|同时|一起|以及|和|、)/.test(compact)) return true;
+  if (/全屏|fullscreen/i.test(compact) && /(播放|看|切到|换到|调到)/.test(compact) && /电视|直播|频道|CCTV|BBC|NHK|Bloomberg|凤凰|CNA|France|DW|AlJazeera/i.test(compact)) {
+    return true;
+  }
+  const hasConnector = /(然后|再|并且|同时|以及|、|，|,)/.test(text);
+  const actionCount = [
+    /打开|新增|添加|加一条/.test(compact),
+    /写下|写上|记下/.test(compact),
+    /播放|切到|换到|全屏/.test(compact),
+    /暂停|恢复|清空|完成/.test(compact)
+  ].filter(Boolean).length;
+  return hasConnector && actionCount >= 2;
+}
+
+function shouldRewriteMusicPlayToResume(input: string): boolean {
+  const compact = input.replace(/\s+/g, "");
+  if (!compact || !/(音乐|歌曲|歌|播放)/.test(compact)) return false;
+  return /(恢复|继续|接着|接着播|继续播|恢复播放|继续播放)/.test(compact) && !/(播放.{0,8}(王菲|周杰伦|陈奕迅|Beyond|Adele|Taylor|孙燕姿)|来一首|来个|搜索|搜|找)/i.test(input);
 }
 
 function extractMarketIndexCodesFromText(text: string): string[] {
@@ -471,7 +571,7 @@ function normalizeTodoToolArguments(toolName: string, args: Record<string, unkno
   }
   if (toolName === "todo.add_item" && typeof nextArgs.text === "string") {
     nextArgs.text = nextArgs.text
-      .replace(/^(给?待办(?:加|添加)?一条|添加待办|加一条待办|待办[:：]?)/, "")
+      .replace(/^(给?待办(?:里|中)?(?:加|添加)?一条|在?待办(?:里|中)?(?:加|添加)?一条|添加待办|加一条待办|待办[:：]?)/, "")
       .trim() || nextArgs.text;
   }
   if (toolName === "todo.complete_item" && typeof nextArgs.text === "string") {
@@ -520,6 +620,12 @@ function extractTvChannelNameFromText(value: string): string {
   if (/BBC/i.test(value)) return "BBC";
   if (/CNN/i.test(value)) return "CNN";
   if (/CGTN/i.test(value)) return "CGTN";
+  if (/CNA/i.test(value)) return "CNA";
+  if (/NHK\s*World(?:-Japan)?|NHK/i.test(value)) return "NHK World-Japan";
+  if (/Al\s*Jazeera/i.test(value)) return "Al Jazeera English";
+  if (/France\s*24/i.test(value)) return "France 24 English";
+  if (/DW\s*English|Deutsche\s*Welle/i.test(value)) return "DW English";
+  if (/凤凰中文|Phoenix\s*Chinese/i.test(value)) return "凤凰中文";
   if (/Bloomberg|彭博/i.test(value)) return "Bloomberg";
   const cctv = value.match(/CCTV\s*[-_]?\s*(\d{1,2})/i);
   if (cctv) return `CCTV${cctv[1]}`;
@@ -553,6 +659,10 @@ function normalizeRealtimeToolArguments(toolName: string, args: Record<string, u
   let nextArgs = args;
   if (toolName === "music.search" || toolName === "music.play") {
     nextArgs = normalizeMusicToolArguments(nextArgs);
+    if (typeof nextArgs.query !== "string" || !nextArgs.query.trim()) {
+      const query = extractMusicQueryFromText(fallbackText);
+      if (query) nextArgs = { ...nextArgs, query };
+    }
   }
   if (toolName === "todo.add_item" || toolName === "todo.complete_item") {
     nextArgs = normalizeTodoToolArguments(toolName, nextArgs, fallbackText);
@@ -1032,7 +1142,11 @@ function inferAddWidgetDefinitionForCall(
   if (!context || call.name !== "board.add_widget" || !isRecord(call.arguments) || typeof call.arguments.definitionId === "string") {
     return call;
   }
-  const selectedTool = hint?.selectedToolName ? tools.find((tool) => tool.name === hint.selectedToolName) : undefined;
+  const selectedTool = hint?.selectedToolName
+    ? tools.find((tool) => tool.name === hint.selectedToolName)
+    : hint?.candidateTools
+      ?.map((toolName) => tools.find((tool) => tool.name === toolName))
+      .find((tool): tool is AssistantToolSpec => Boolean(tool && tool.scope === "widget-detail"));
   const targetType =
     (hint?.selectedModule && context.availableDefinitions?.some((definition) => definition.type === hint.selectedModule)
       ? hint.selectedModule
@@ -1047,15 +1161,141 @@ function inferAddWidgetDefinitionForCall(
   if (followUpName === "music.search" || followUpName === "music.play") {
     nextArgs.followUp = {
       name: followUpName,
-      arguments: normalizeMusicToolArguments({ query: input })
+      arguments: createFollowUpArgumentsFromText(followUpName, {}, input)
     };
   } else if (followUpName === "tv.play" || followUpName === "tv.select_channel") {
     nextArgs.followUp = {
       name: followUpName,
-      arguments: normalizeTvToolArguments({}, input)
+      arguments: createFollowUpArgumentsFromText(followUpName, {}, input)
+    };
+  } else if (followUpName === "todo.add_item" || followUpName === "todo.complete_item") {
+    nextArgs.followUp = {
+      name: followUpName,
+      arguments: createFollowUpArgumentsFromText(followUpName, {}, input)
+    };
+  } else if (followUpName === "note.write") {
+    nextArgs.followUp = {
+      name: followUpName,
+      arguments: createFollowUpArgumentsFromText(followUpName, {}, input)
+    };
+  } else if (followUpName === "countdown.set") {
+    nextArgs.followUp = {
+      name: followUpName,
+      arguments: createFollowUpArgumentsFromText(followUpName, {}, input)
+    };
+  } else if (followUpName === "market.set_indices") {
+    nextArgs.followUp = {
+      name: followUpName,
+      arguments: createFollowUpArgumentsFromText(followUpName, {}, input)
+    };
+  } else if (followUpName === "converter.set") {
+    nextArgs.followUp = {
+      name: followUpName,
+      arguments: createFollowUpArgumentsFromText(followUpName, {}, input)
+    };
+  } else if (followUpName === "translate.set_draft") {
+    nextArgs.followUp = {
+      name: followUpName,
+      arguments: extractTranslateArgsFromText(input)
     };
   }
   return { ...call, arguments: nextArgs };
+}
+
+function createFollowUpArgumentsFromText(toolName: string, args: Record<string, unknown>, fallbackText: string): Record<string, unknown> {
+  let nextArgs = normalizeRealtimeToolArguments(toolName, args, fallbackText);
+  if (toolName === "note.write" && (typeof nextArgs.content !== "string" || !nextArgs.content.trim())) {
+    const content = extractNoteContentFromText(fallbackText) || fallbackText.trim();
+    if (content) nextArgs = { ...nextArgs, content };
+  }
+  return nextArgs;
+}
+
+function repairBoardAddWidgetFollowUp(
+  call: AssistantToolCall,
+  context: CompactAssistantContext | null,
+  tools: AssistantToolSpec[],
+  hint: RealtimeTargetHint | undefined,
+  fallbackText: string
+): AssistantToolCall {
+  if (!context || call.name !== REALTIME_ADD_WIDGET_TOOL_NAME || !isRecord(call.arguments)) return call;
+  const args = call.arguments;
+  const followUp = isRecord(args.followUp) ? args.followUp : {};
+  const followUpName =
+    typeof followUp.name === "string"
+      ? followUp.name
+      : typeof followUp.tool === "string"
+        ? followUp.tool
+        : "";
+  if (followUpName === "tv.fullscreen" && extractTvChannelNameFromText(fallbackText)) {
+    return {
+      ...call,
+      arguments: {
+        ...args,
+        followUp: {
+          name: "tv.play",
+          arguments: createFollowUpArgumentsFromText("tv.play", {}, fallbackText)
+        }
+      }
+    };
+  }
+  if (followUpName && tools.some((tool) => tool.name === followUpName)) return call;
+
+  const definitionId = typeof args.definitionId === "string" ? args.definitionId : "";
+  const definitionType = definitionId ? context.availableDefinitions?.find((definition) => definition.definitionId === definitionId)?.type : undefined;
+  const candidateTool = hint?.candidateTools
+    ?.map((toolName) => tools.find((tool) => tool.name === toolName))
+    .find((tool): tool is AssistantToolSpec =>
+      Boolean(tool && tool.scope === "widget-detail" && (!definitionType || tool.widgetType === definitionType))
+    );
+  if (!candidateTool) return call;
+
+  const followUpArgs = isRecord(followUp.arguments)
+    ? followUp.arguments
+    : isRecord(followUp.args)
+      ? followUp.args
+      : {};
+  const nextArgs = { ...args };
+  delete nextArgs.followUpName;
+  delete nextArgs.followUpTool;
+  nextArgs.followUp = {
+    name: candidateTool.name,
+    arguments: createFollowUpArgumentsFromText(candidateTool.name, followUpArgs, fallbackText)
+  };
+  return { ...call, arguments: nextArgs };
+}
+
+function wrapMissingWidgetDetailCallWithAddWidget(
+  call: AssistantToolCall,
+  context: CompactAssistantContext | null,
+  tool: AssistantToolSpec | undefined,
+  fallbackText: string
+): AssistantToolCall {
+  if (!context || !tool || tool.scope !== "widget-detail" || !tool.requiresTarget || !tool.widgetType) return call;
+  if (context.widgets.some((widget) => widget.type === tool.widgetType)) return call;
+  const definition = context.availableDefinitions?.find((item) => item.type === tool.widgetType);
+  if (!definition) return call;
+  const followUpArgs = isRecord(call.arguments) ? call.arguments : {};
+  return {
+    ...call,
+    name: REALTIME_ADD_WIDGET_TOOL_NAME,
+    arguments: {
+      definitionId: definition.definitionId,
+      followUp: {
+        name: call.name,
+        arguments: normalizeRealtimeToolArguments(call.name, followUpArgs, fallbackText)
+      }
+    },
+    transcript: fallbackText || call.transcript
+  };
+}
+
+function shouldAppendTvFullscreenAfterCall(call: AssistantToolCall, fallbackText: string): boolean {
+  if (!/全屏|fullscreen/i.test(fallbackText)) return false;
+  if (call.name === "tv.play" || call.name === "tv.select_channel") return true;
+  if (call.name !== REALTIME_ADD_WIDGET_TOOL_NAME || !isRecord(call.arguments) || !isRecord(call.arguments.followUp)) return false;
+  const followUpName = typeof call.arguments.followUp.name === "string" ? call.arguments.followUp.name : "";
+  return followUpName === "tv.play" || followUpName === "tv.select_channel";
 }
 
 function normalizeRealtimePlanArguments(
@@ -1080,8 +1320,13 @@ function normalizeRealtimePlanArguments(
 
     if (command.tool === "board.add_widget") {
       const requestedType = typeof args.type === "string" ? args.type : typeof args.widgetType === "string" ? args.widgetType : "";
+      const requestedModuleType = definitionsByType.has(command.module) ? command.module : "";
+      const requestedIdType = inferWidgetDefinitionTypeFromText(`${command.id} ${command.module}`);
       const targetText = [
         requestedType,
+        requestedModuleType,
+        requestedIdType,
+        command.module,
         typeof args.definitionType === "string" ? args.definitionType : "",
         typeof args.name === "string" ? args.name : "",
         typeof args.widgetName === "string" ? args.widgetName : "",
@@ -1097,7 +1342,10 @@ function normalizeRealtimePlanArguments(
       const definitionId =
         typeof args.definitionId === "string"
           ? args.definitionId
-          : definitionsByType.get(requestedType)?.definitionId ?? (scoredDefinition && scoredDefinition.score > 0 ? scoredDefinition.definition.definitionId : undefined);
+          : definitionsByType.get(requestedType)?.definitionId ??
+            definitionsByType.get(requestedModuleType)?.definitionId ??
+            definitionsByType.get(requestedIdType)?.definitionId ??
+            (scoredDefinition && scoredDefinition.score > 0 ? scoredDefinition.definition.definitionId : undefined);
       delete args.type;
       delete args.widgetType;
       delete args.definitionType;
@@ -1115,10 +1363,14 @@ function normalizeRealtimePlanArguments(
       }
     }
 
-    const normalizedArgs = normalizeRealtimeToolArguments(command.tool, args);
+    const normalizedArgs = normalizeRealtimeToolArguments(command.tool, args, plan.sourceText || plan.normalizedText || "");
     if (normalizedArgs !== args) {
       Object.keys(args).forEach((key) => delete args[key]);
       Object.assign(args, normalizedArgs);
+    }
+    if ((command.tool === "tv.play" || command.tool === "tv.select_channel") && typeof args.channelName !== "string") {
+      const channelName = extractTvChannelNameFromText(plan.sourceText || plan.normalizedText || "");
+      if (channelName) args.channelName = channelName;
     }
 
     if (tool?.scope === "widget-detail" && tool.widgetType && typeof args.widgetId !== "string") {
@@ -1178,7 +1430,7 @@ function normalizeRealtimePlanArguments(
     commandsWithInsertedAdds.push(command);
   }
 
-  const normalizedCommands = commandsWithInsertedAdds.map((command) => {
+  let normalizedCommands = commandsWithInsertedAdds.map((command) => {
     const tool = toolsByName.get(command.tool);
     if (!tool?.widgetType || !addCommandByType.has(tool.widgetType) || command.tool === "board.add_widget") {
       return command;
@@ -1193,16 +1445,45 @@ function normalizeRealtimePlanArguments(
       dependsOn: Array.from(new Set([...(command.dependsOn ?? []), addCommandId]))
     };
   });
+  if (
+    /全屏|fullscreen/i.test(plan.sourceText || plan.normalizedText || "") &&
+    !normalizedCommands.some((command) => command.tool === "tv.fullscreen") &&
+    normalizedCommands.some((command) => command.tool === "tv.play" || command.tool === "tv.select_channel") &&
+    toolsByName.has("tv.fullscreen")
+  ) {
+    const previousTvCommand = [...normalizedCommands].reverse().find((command) => command.tool === "tv.play" || command.tool === "tv.select_channel");
+    const fullscreenCommand: CommandPlan["commands"][number] = {
+      id: "cmd_tv_fullscreen",
+      module: "tv",
+      tool: "tv.fullscreen",
+      args: previousTvCommand?.args && isRecord(previousTvCommand.args) && typeof previousTvCommand.args.widgetId === "string"
+        ? { widgetId: previousTvCommand.args.widgetId }
+        : {},
+      risk: "safe",
+      confidence: previousTvCommand?.confidence ?? plan.confidence,
+      source: previousTvCommand?.source ?? "text",
+      dependsOn: previousTvCommand ? [previousTvCommand.id] : undefined,
+      requiresHarnessValidation: true
+    };
+    normalizedCommands = [...normalizedCommands, fullscreenCommand];
+  }
   const groups = plan.executionGroups.map((group) => {
     const commandIds = group.commandIds.flatMap((id) => {
       const addCommandId = insertedAddBeforeCommand.get(id);
       return addCommandId ? [addCommandId, id] : [id];
     });
+    const appendedFullscreen = normalizedCommands.find((command) => command.id === "cmd_tv_fullscreen");
+    const commandIdsWithFullscreen =
+      appendedFullscreen && !commandIds.includes(appendedFullscreen.id)
+        ? [...commandIds, appendedFullscreen.id]
+        : commandIds;
     const containsAddDependency = group.commandIds.some((id) => {
       const command = normalizedCommands.find((item) => item.id === id);
-      return (command?.dependsOn ?? []).some((dependsOn) => commandIds.includes(dependsOn));
+      return (command?.dependsOn ?? []).some((dependsOn) => commandIdsWithFullscreen.includes(dependsOn));
     });
-    return containsAddDependency ? { ...group, commandIds, mode: "sequential" as const } : { ...group, commandIds };
+    return containsAddDependency || appendedFullscreen
+      ? { ...group, commandIds: commandIdsWithFullscreen, mode: "sequential" as const }
+      : { ...group, commandIds: commandIdsWithFullscreen };
   });
 
   return {
@@ -1212,8 +1493,46 @@ function normalizeRealtimePlanArguments(
   };
 }
 
+function createFallbackCommandPlanFromSelection(
+  input: string,
+  selection: NonNullable<ReturnType<typeof parseRealtimePlanSelectionArguments>>,
+  tools: AssistantToolSpec[]
+): CommandPlan | null {
+  const toolsByName = new Map(tools.map((tool) => [tool.name, tool]));
+  const commands: CommandPlan["commands"] = [];
+  selection.steps.forEach((step, index) => {
+    const spec = toolsByName.get(step.name);
+    if (!spec) return;
+    commands.push({
+      id: step.id || `cmd_${index + 1}`,
+      module: step.selectedModule ?? spec.widgetType ?? spec.name.split(".")[0],
+      tool: spec.name,
+      args: {},
+      risk: spec.risk === "destructive" || spec.risk === "confirm" ? spec.risk : "safe",
+      confidence: step.confidence ?? 0.75,
+      dependsOn: step.connector === "parallel" || index === 0 ? undefined : [selection.steps[index - 1]?.id || `cmd_${index}`],
+      source: "text",
+      requiresHarnessValidation: true
+    });
+  });
+  if (!commands.length) return null;
+  return {
+    id: `realtime_selection_plan_${Date.now()}`,
+    sourceText: input,
+    normalizedText: input.trim().toLowerCase(),
+    commands,
+    dependencies: commands.flatMap((command) => (command.dependsOn ?? []).map((from) => ({ from, to: command.id }))),
+    executionGroups: [{ id: "group_1", mode: "sequential", commandIds: commands.map((command) => command.id) }],
+    confidence: Math.min(...commands.map((command) => command.confidence)),
+    needsConfirmation: commands.some((command) => command.risk !== "safe"),
+    createdBy: "realtime-2",
+    requiresHarnessValidation: true
+  };
+}
+
 function parseToolSelectionArguments(value: unknown): {
   name: string;
+  candidateTools?: string[];
   selectedModule?: string;
   intent?: string;
   targetHint?: string;
@@ -1222,7 +1541,10 @@ function parseToolSelectionArguments(value: unknown): {
 } | null {
   const parsed = parseArguments(value);
   if (!isRecord(parsed)) return null;
-  const name = typeof parsed.name === "string" ? parsed.name : undefined;
+  const candidateTools = Array.isArray(parsed.candidateTools)
+    ? parsed.candidateTools.filter((name): name is string => typeof name === "string" && Boolean(name.trim())).slice(0, 4)
+    : [];
+  const name = typeof parsed.name === "string" ? parsed.name : candidateTools[0];
   const selectedModule = typeof parsed.selectedModule === "string" ? parsed.selectedModule : undefined;
   const intent = typeof parsed.intent === "string" ? parsed.intent : undefined;
   const targetHint = typeof parsed.targetHint === "string" ? parsed.targetHint : undefined;
@@ -1230,6 +1552,7 @@ function parseToolSelectionArguments(value: unknown): {
   if (!name) return null;
   return {
     name,
+    ...(candidateTools.length ? { candidateTools } : {}),
     selectedModule,
     intent,
     targetHint,
@@ -1255,6 +1578,9 @@ function parseRealtimeCommandExecutionArguments(value: unknown): { command: stri
 
 const SAFE_REALTIME_DIAGNOSTIC_ARG_KEYS = new Set([
   "query",
+  "text",
+  "content",
+  "sourceText",
   "kind",
   "resultIndex",
   "cityCode",
@@ -1303,6 +1629,9 @@ function createSafeRealtimeToolCallDiagnosticData(call: AssistantToolCall): Reco
     if (followUpName) data.followUpName = followUpName;
     if (typeof followUpArgs.channelName === "string") data.channelName = followUpArgs.channelName;
     if (typeof followUpArgs.query === "string") data.query = followUpArgs.query;
+    if (typeof followUpArgs.text === "string") data.text = followUpArgs.text;
+    if (typeof followUpArgs.content === "string") data.content = followUpArgs.content;
+    if (typeof followUpArgs.sourceText === "string") data.sourceText = followUpArgs.sourceText;
   }
   return Object.keys(data).length ? data : undefined;
 }
@@ -2470,6 +2799,21 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     };
   }
 
+  private createPlanSelectionSessionUpdate(tools: AssistantToolSpec[] = this.getEffectiveSessionTools()): RealtimeEvent {
+    const capabilityCatalog = this.createCapabilityCatalog(tools);
+    return {
+      type: "session.update",
+      session: {
+        type: "realtime",
+        instructions: createRealtimePlanSelectionInstructions(tools, capabilityCatalog),
+        audio: createRealtimeSessionAudioConfig(),
+        tools: [createRealtimePlanSelectionTool(tools, capabilityCatalog)],
+        tool_choice: "auto",
+        parallel_tool_calls: false
+      }
+    };
+  }
+
   private getEffectiveSessionTools(): AssistantToolSpec[] {
     return this.currentTools.length > 0 ? this.currentTools : createInitialRealtimeToolSpecs();
   }
@@ -2531,7 +2875,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     commandTraceId?: string
   ): string {
     const tracedInput = commandTraceId ? this.realtimeTraceUserTranscripts.get(commandTraceId)?.input ?? "" : "";
-    return selection.userCommand || tracedInput || selection.targetHint || selection.selectedModule || selection.intent || selection.name || "";
+    return selection.userCommand || tracedInput || selection.targetHint || selection.selectedModule || selection.intent || selection.name || selection.candidateTools?.[0] || "";
   }
 
   private findToolSpec(toolName: string): AssistantToolSpec | undefined {
@@ -2563,7 +2907,25 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       if (tool?.widgetType) return tool.widgetType;
       return this.moduleRegistry?.findModuleForTool(selection.name)?.type ?? selection.name.split(".")[0];
     }
+    const firstCandidate = selection.candidateTools?.find(Boolean);
+    if (firstCandidate) {
+      const tool = this.findToolSpec(firstCandidate);
+      if (tool?.widgetType) return tool.widgetType;
+      return this.moduleRegistry?.findModuleForTool(firstCandidate)?.type ?? firstCandidate.split(".")[0];
+    }
     return undefined;
+  }
+
+  private resolveCandidateToolSpecs(selection: NonNullable<ReturnType<typeof parseToolSelectionArguments>>, tools: AssistantToolSpec[]) {
+    const requestedNames = [
+      ...(Array.isArray(selection.candidateTools) ? selection.candidateTools : []),
+      selection.name
+    ].filter((name): name is string => typeof name === "string" && Boolean(name.trim()));
+    return this.uniqueTools(
+      [...new Set(requestedNames)]
+        .map((name) => tools.find((tool) => tool.name === name) ?? this.findToolSpec(name))
+        .filter((tool): tool is AssistantToolSpec => Boolean(tool))
+    );
   }
 
   private uniqueTools(tools: AssistantToolSpec[]): AssistantToolSpec[] {
@@ -2605,7 +2967,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         selectedTool: AssistantToolSpec;
         selectedModule?: string;
         scopedTools: AssistantToolSpec[];
-        selection: RealtimeTextToolSelection & { name: string; requestedToolName?: string };
+        candidateMode: boolean;
+        selection: RealtimeTextToolSelection & { name: string; requestedToolName?: string; candidateTools?: string[] };
       }
     | {
         ok: false;
@@ -2617,7 +2980,11 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (!input) {
       return { ok: false, input, exposedTools: [], excludedReasons: {} };
     }
-    const legacySelectedTool = selection.name ? tools.find((tool) => tool.name === selection.name) ?? this.findToolSpec(selection.name) : undefined;
+    const candidateToolSpecs = this.resolveCandidateToolSpecs(selection, tools);
+    const candidateMode = Boolean(selection.candidateTools?.length);
+    const legacySelectedTool = selection.name
+      ? tools.find((tool) => tool.name === selection.name) ?? this.findToolSpec(selection.name)
+      : candidateToolSpecs[0];
     const pureOpenWidget = isPureOpenWidgetText(input);
     const inferredOpenWidgetType = pureOpenWidget ? findRealtimeWidgetType(input, selection.targetHint) : undefined;
     const selectedModule = inferredOpenWidgetType ?? this.resolveSelectedModuleFromSelection(selection, input, legacySelectedTool);
@@ -2631,16 +2998,19 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const exposedToolNames = new Set(exposedTools);
     const intentPriorityNames = new Set([
       ...(selection.intent ? INTENT_TOOL_PRIORITIES[selection.intent] ?? [] : []),
+      ...(selection.candidateTools ?? []),
       ...(selection.name ? [selection.name] : [])
     ]);
     const intentTools = tools.filter((tool) => intentPriorityNames.has(tool.name));
-    const baseTools = exposurePlan.exposedTools.length
-      ? this.uniqueTools([
-          ...exposurePlan.exposedTools.filter((tool) => !selectedModule || this.isToolForSelectionModule(tool, selectedModule)),
-          ...exposurePlan.exposedTools.filter((tool) => intentPriorityNames.has(tool.name)),
-          ...moduleTools.filter((tool) => exposedToolNames.has(tool.name))
-        ])
-      : this.uniqueTools([...moduleTools, ...intentTools]);
+    const baseTools = candidateMode && candidateToolSpecs.length
+      ? candidateToolSpecs
+      : exposurePlan.exposedTools.length
+        ? this.uniqueTools([
+            ...exposurePlan.exposedTools.filter((tool) => !selectedModule || this.isToolForSelectionModule(tool, selectedModule)),
+            ...exposurePlan.exposedTools.filter((tool) => intentPriorityNames.has(tool.name)),
+            ...moduleTools.filter((tool) => exposedToolNames.has(tool.name))
+          ])
+        : this.uniqueTools([...moduleTools, ...intentTools]);
 
     const shouldIncludeAddWidget =
       Boolean(
@@ -2656,7 +3026,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       ...(shouldIncludeAddWidget && addWidgetTool ? [addWidgetTool] : []),
       ...(pureOpenWidget && selectedModule && hasMountedSelectedModule && focusWidgetTool ? [focusWidgetTool] : [])
     ]);
-    const sortedCandidates = this.sortToolsForSelectionIntent(scopedCandidates, selection, selectedModule).slice(0, MAX_SCOPED_SELECTION_TOOLS);
+    const sortedCandidates = candidateMode
+      ? scopedCandidates.slice(0, MAX_SCOPED_SELECTION_TOOLS)
+      : this.sortToolsForSelectionIntent(scopedCandidates, selection, selectedModule).slice(0, MAX_SCOPED_SELECTION_TOOLS);
 
     const canUseLocalAddWidgetFollowUp = Boolean(
       selectedModule &&
@@ -2696,9 +3068,11 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       selectedTool,
       selectedModule,
       scopedTools,
+      candidateMode,
       selection: {
         ...selection,
         name: selectedTool.name,
+        candidateTools: candidateMode ? scopedTools.map((tool) => tool.name).slice(0, MAX_SCOPED_SELECTION_TOOLS) : selection.candidateTools,
         requestedToolName: selection.name !== selectedTool.name ? selection.name : undefined,
         selectedModule,
         userCommand: selection.userCommand || input
@@ -2778,7 +3152,6 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const userFacingResult = createUserFacingRealtimeToolResult(call, result);
     const continueResponse =
       call.name === REALTIME_PLAN_SELECTION_TOOL_NAME ||
-      call.name === REALTIME_PLAN_SUBMISSION_TOOL_NAME ||
       (call.name === REALTIME_TOOL_SELECTION_TOOL_NAME && !isFinalLocalSelectorResult(call, result));
     createRealtimeToolResultEvents(call, userFacingResult, {
       activeResponseId: this.activeResponseId,
@@ -2812,29 +3185,31 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     }
     const commandTraceId = options.commandTraceId ?? createRealtimeVoiceCommandTraceId(`text_${Date.now()}`);
     this.activeRealtimeResponseTraceId = commandTraceId;
-    if (this.activeResponseId) {
-      this.emitDiagnostic({
-        type: "realtime.response.cancel_before_text_command",
-        status: "sent",
-        operationId: this.activeResponseId,
-        commandTraceId
-      });
-      this.sendEvent({ type: "response.cancel" }, { queueWhenClosed: false, commandTraceId });
-      this.activeResponseId = null;
-      this.pendingResponseCreateAfterActiveToolResult = false;
-      this.pendingScopedToolSelectionResult = null;
-      this.pendingPlanSelectionResult = null;
-      this.pendingTextCommandAfterSelectorUpdate = null;
-      this.activeScopedToolSelection = null;
-      this.activeRealtimePlanSelection = null;
-    }
+    this.emitDiagnostic({
+      type: "realtime.response.cancel_before_text_command",
+      status: "sent",
+      operationId: this.activeResponseId ?? undefined,
+      commandTraceId,
+      data: { reason: this.activeResponseId ? "tracked_active_response" : "preemptive" }
+    });
+    this.sendEvent({ type: "response.cancel" }, { queueWhenClosed: false, commandTraceId });
+    this.activeResponseId = null;
+    this.pendingResponseCreateAfterActiveToolResult = false;
+    this.pendingScopedToolSelectionResult = null;
+    this.pendingPlanSelectionResult = null;
+    this.pendingTextCommandAfterSelectorUpdate = null;
+    this.activeScopedToolSelection = null;
+    this.activeRealtimePlanSelection = null;
     this.emitDiagnostic({
       type: "realtime.text_command.reset_selector_tool",
       status: "sent",
       commandTraceId,
-      data: { toolCount: this.getEffectiveSessionTools().length }
+      data: { toolCount: this.getEffectiveSessionTools().length, selectionMode: "tool" }
     });
-    this.sendEvent(this.createToolSelectionSessionUpdate(), { queueWhenClosed: false, commandTraceId });
+    this.sendEvent(this.createToolSelectionSessionUpdate(), {
+      queueWhenClosed: false,
+      commandTraceId
+    });
     this.pendingTextCommandAfterSelectorUpdate = {
       events: createRealtimeTextCommandEvents(text),
       commandTraceId,
@@ -2844,7 +3219,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       type: "realtime.text_command.send",
       status: "pending_session_update",
       commandTraceId,
-      data: { inputLength: text.length }
+      data: { inputLength: text.length, selectionMode: "tool" }
     });
   }
 
@@ -2975,6 +3350,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         selectedModule: selection?.selectedModule,
         intent: selection?.intent,
         targetHint: selection?.targetHint,
+        candidateTools: selection?.candidateTools,
         scopedTools: resolvedSelection?.ok ? resolvedSelection.scopedTools.map((tool) => tool.name) : undefined
       }
     });
@@ -2993,12 +3369,12 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       return null;
     }
 
-    const scopedContext = createScopedRealtimeContext(contextWithVersions, resolvedSelection.selectedTool, resolvedSelection.selection, input);
+    const scopedContext = createScopedRealtimeContextForTools(contextWithVersions, resolvedSelection.scopedTools, resolvedSelection.selection, input);
     const selectedModule = resolvedSelection.selectedModule;
     const moduleContext = selectedModule
       ? this.moduleRegistry?.getScopedContextForModule(selectedModule, {
           userText: input,
-          selectedToolHint: resolvedSelection.selectedTool.name,
+          selectedToolHint: resolvedSelection.scopedTools.map((tool) => tool.name).join(","),
           compactContext: contextWithVersions,
           tools: resolvedSelection.scopedTools
         })
@@ -3095,6 +3471,22 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       void this.options.onFunctionCall?.(exitFullscreenCall);
       return;
     }
+    if (call.name.startsWith("music.") && call.name !== "music.resume" && shouldRewriteMusicPlayToResume(fallbackText)) {
+      call = {
+        ...call,
+        name: "music.resume",
+        arguments: {},
+        transcript: fallbackText
+      };
+      this.emitDiagnostic({
+        type: "realtime.function_call.music_resume_rewrite",
+        status: "success",
+        operationId: call.id,
+        toolName: call.name,
+        commandTraceId,
+        data: { input: fallbackText }
+      });
+    }
     const realtimeTargetHint = this.activeScopedToolSelection ?? (fallbackText ? { userCommand: fallbackText, targetHint: fallbackText } : undefined);
     const sanitized = sanitizeRealtimeToolCallArguments(call, this.findToolSpec(call.name), fallbackText);
     const addWidgetBoundCall = inferAddWidgetDefinitionForCall(
@@ -3104,8 +3496,44 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       realtimeTargetHint,
       fallbackText
     );
+    const repairedAddWidgetCall = repairBoardAddWidgetFollowUp(
+      addWidgetBoundCall,
+      this.currentContext,
+      this.currentTools,
+      realtimeTargetHint,
+      fallbackText
+    );
+    if (
+      repairedAddWidgetCall.name === REALTIME_ADD_WIDGET_TOOL_NAME &&
+      JSON.stringify(repairedAddWidgetCall.arguments) !== JSON.stringify(addWidgetBoundCall.arguments)
+    ) {
+      this.emitDiagnostic({
+        type: "realtime.function_call.add_widget_follow_up_repaired",
+        status: "success",
+        operationId: call.id,
+        toolName: repairedAddWidgetCall.name,
+        commandTraceId,
+        data: createSafeRealtimeToolCallDiagnosticData(repairedAddWidgetCall)
+      });
+    }
+    const missingWidgetBoundCall = wrapMissingWidgetDetailCallWithAddWidget(
+      repairedAddWidgetCall,
+      this.currentContext,
+      this.findToolSpec(repairedAddWidgetCall.name),
+      fallbackText
+    );
+    if (missingWidgetBoundCall.name !== repairedAddWidgetCall.name) {
+      this.emitDiagnostic({
+        type: "realtime.function_call.missing_widget_wrapped",
+        status: "success",
+        operationId: call.id,
+        toolName: missingWidgetBoundCall.name,
+        commandTraceId,
+        data: createSafeRealtimeToolCallDiagnosticData(missingWidgetBoundCall)
+      });
+    }
     const toolCall = completeRealtimeToolArguments(
-      bindWindowToolTargetForCall(addWidgetBoundCall, this.currentContext, this.currentTools, realtimeTargetHint),
+      bindWindowToolTargetForCall(missingWidgetBoundCall, this.currentContext, this.currentTools, realtimeTargetHint),
       this.currentContext,
       fallbackText
     );
@@ -3131,7 +3559,29 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (commandTraceId) {
       this.realtimeTraceCommandToolCalls.add(commandTraceId);
     }
-    void this.options.onFunctionCall?.(toolCall);
+    const execution = Promise.resolve(this.options.onFunctionCall?.(toolCall));
+    if (shouldAppendTvFullscreenAfterCall(toolCall, fallbackText)) {
+      void execution.then(() => {
+        const fullscreenCall: AssistantToolCall = {
+          id: `${toolCall.id}_tv_fullscreen_followup`,
+          name: "tv.fullscreen",
+          arguments: {},
+          source: "shortcut",
+          transcript: fallbackText
+        };
+        this.emitDiagnostic({
+          type: "realtime.function_call.tv_fullscreen_followup",
+          status: "started",
+          operationId: fullscreenCall.id,
+          toolName: fullscreenCall.name,
+          commandTraceId,
+          data: { input: fallbackText }
+        });
+        return this.options.onFunctionCall?.(fullscreenCall);
+      });
+    } else {
+      void execution;
+    }
   }
 
   private handleLegacyRealtimeCommandPlan(call: AssistantToolCall, commandTraceId?: string): void {
@@ -3372,7 +3822,22 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
 
   private handlePlanSubmission(call: AssistantToolCall, commandTraceId?: string): void {
     const active = this.activeRealtimePlanSelection;
-    const parsed = active ? parseRealtimeSubmittedCommandPlan(call.arguments, active.input, active.tools) : null;
+    const parsedPlan = active
+      ? parseRealtimeSubmittedCommandPlan(call.arguments, active.input, active.tools) ??
+        createFallbackCommandPlanFromSelection(active.input, active.selection, active.tools)
+      : null;
+    const parsed = parsedPlan && active
+      ? {
+          ...parsedPlan,
+          commands: parsedPlan.commands.map((command) => {
+            if ((command.tool !== "tv.play" && command.tool !== "tv.select_channel") || !isRecord(command.args) || typeof command.args.channelName === "string") {
+              return command;
+            }
+            const channelName = extractTvChannelNameFromText(active.input);
+            return channelName ? { ...command, args: { ...command.args, channelName } } : command;
+          })
+        }
+      : null;
     if (!active || !parsed || !this.currentContext) {
       const fallbackText =
         (active?.input ?? "") ||
@@ -3408,7 +3873,19 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
           commandTraceId,
           message: finalResult.message,
           errorCode: finalResult.errorCode,
-          data: { commandCount: plan.commands.length, tools: plan.commands.map((command) => command.tool) }
+          data: {
+            commandCount: plan.commands.length,
+            tools: plan.commands.map((command) => command.tool),
+            commands: plan.commands.map((command) => ({
+              toolName: command.tool,
+              args: createSafeRealtimeToolCallDiagnosticData({
+                id: command.id,
+                name: command.tool,
+                arguments: command.args,
+                source: "realtime"
+              })
+            }))
+          }
         });
         this.sendToolResult(call, finalResult);
       })
@@ -3476,6 +3953,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const resolvedConcreteSelection = resolvedSelection.selection;
 
     if (
+      !resolvedSelection.candidateMode &&
       selectedTool.name === "widget.remove" &&
       isBulkWindowSelectionText(resolvedConcreteSelection.userCommand, resolvedConcreteSelection.targetHint)
     ) {
@@ -3513,7 +3991,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       return;
     }
 
-    if (selectedTool.name === "board.add_widget") {
+    if (!resolvedSelection.candidateMode && selectedTool.name === "board.add_widget") {
       const addWidgetShortcut = this.createLocalAddWidgetShortcut(call, resolvedConcreteSelection, commandTraceId);
       if (addWidgetShortcut) {
         this.emitDiagnostic({
@@ -3549,6 +4027,20 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
               isRecord(addWidgetShortcut.call.arguments.followUp.arguments) &&
               typeof addWidgetShortcut.call.arguments.followUp.arguments.query === "string"
                 ? addWidgetShortcut.call.arguments.followUp.arguments.query
+                : undefined,
+            text:
+              isRecord(addWidgetShortcut.call.arguments) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp.arguments) &&
+              typeof addWidgetShortcut.call.arguments.followUp.arguments.text === "string"
+                ? addWidgetShortcut.call.arguments.followUp.arguments.text
+                : undefined,
+            content:
+              isRecord(addWidgetShortcut.call.arguments) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp.arguments) &&
+              typeof addWidgetShortcut.call.arguments.followUp.arguments.content === "string"
+                ? addWidgetShortcut.call.arguments.followUp.arguments.content
                 : undefined,
             value:
               isRecord(addWidgetShortcut.call.arguments) &&
@@ -3624,7 +4116,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       selectedModule,
       targetHint: resolvedConcreteSelection.targetHint,
       userCommand: resolvedSelection.input,
-      selectedToolName: selectedTool.name
+      candidateTools: resolvedConcreteSelection.candidateTools,
+      selectedToolName: resolvedSelection.candidateMode ? undefined : selectedTool.name
     };
     const update = createScopedRealtimeToolUpdate(
       {
@@ -3634,7 +4127,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         moduleContext: selectedModule
           ? this.moduleRegistry?.getScopedContextForModule(selectedModule, {
               userText: resolvedSelection.input,
-              selectedToolHint: selectedTool.name,
+              selectedToolHint: resolvedSelection.candidateMode ? resolvedSelection.scopedTools.map((tool) => tool.name).join(",") : selectedTool.name,
               compactContext: this.currentContext,
               tools: resolvedSelection.scopedTools
             }) ?? undefined
@@ -3665,6 +4158,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         message: "已选择工具，正在读取所需上下文。",
         data: {
           selectedTool: selectedTool.name,
+          candidateTools: resolvedConcreteSelection.candidateTools,
           targetHint: resolvedConcreteSelection.targetHint,
           selectedModule,
           intent: resolvedConcreteSelection.intent,
@@ -3680,6 +4174,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       operationId: call.id,
       toolName: selectedTool.name,
       data: {
+        candidateMode: resolvedSelection.candidateMode,
+        candidateTools: resolvedConcreteSelection.candidateTools,
         targetHint: resolvedConcreteSelection.targetHint,
         selectedModule,
         intent: resolvedConcreteSelection.intent,
@@ -3741,8 +4237,11 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       definition.type === "music" && !pureOpenWidget && !/(切到|切换到|聚焦|当前小工具|播放器)/.test(input)
         ? extractMusicQueryFromText(input)
         : "";
-    const tvChannelName = definition.type === "tv" ? extractTvChannelNameFromText(input) : "";
+    const tvChannelName =
+      definition.type === "tv" ? extractTvChannelNameFromText(input) || findContextTvChannelName(input, this.currentContext) : "";
     const tvFullscreen = definition.type === "tv" && /全屏|fullscreen/i.test(input) && !hasExplicitTvChannelText(input);
+    const noteContent = definition.type === "note" ? extractNoteContentFromText(input) : "";
+    const todoText = definition.type === "todo" ? extractTodoTextFromText(input) : "";
     const recorderStart = definition.type === "recorder" && /(开始|启动|录一段|录音)/.test(input) && !/(停止|结束|暂停)/.test(input);
     const marketIndexCodes = definition.type === "market" ? extractMarketIndexCodesFromText(input) : [];
     const marketQuery = definition.type === "market" && marketIndexCodes.length === 0 ? extractMarketQueryFromText(input) : "";
@@ -3762,6 +4261,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       !musicQuery &&
       !tvChannelName &&
       !tvFullscreen &&
+      !noteContent &&
+      !todoText &&
       !recorderStart &&
       marketIndexCodes.length === 0 &&
       !marketQuery &&
@@ -3795,6 +4296,16 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
           arguments: {}
         };
       }
+    } else if (definition.type === "note" && noteContent) {
+      argumentsWithOptionalFollowUp.followUp = {
+        name: "note.write",
+        arguments: { content: noteContent, mode: "append" }
+      };
+    } else if (definition.type === "todo" && todoText) {
+      argumentsWithOptionalFollowUp.followUp = {
+        name: "todo.add_item",
+        arguments: { text: todoText }
+      };
     } else if (definition.type === "market") {
       if (marketIndexCodes.length) {
         argumentsWithOptionalFollowUp.followUp = {

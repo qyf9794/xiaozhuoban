@@ -369,16 +369,27 @@ function selectionModuleTypes(tools: AssistantToolSpec[]): string[] {
 }
 
 export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[]): RealtimeFunctionTool {
+  const toolNames = tools.map((tool) => tool.name);
   return {
     type: "function",
     name: encodeRealtimeToolName(REALTIME_TOOL_SELECTION_TOOL_NAME),
-    description: "Select the single best registered Xiaozhuoban tool before any desktop context is provided.",
+    description: "Select 1 to 4 candidate Xiaozhuoban tools before desktop context is provided. Do not choose the final execution tool in this stage.",
     parameters: objectSchema(
       {
+        candidateTools: {
+          type: "array",
+          minItems: 1,
+          maxItems: 4,
+          items: {
+            type: "string",
+            enum: toolNames
+          },
+          description: "Candidate registered tool names, ordered by relevance. This is not the final tool choice."
+        },
         name: {
           type: "string",
-          enum: tools.map((tool) => tool.name),
-          description: "Selected registered tool name."
+          enum: toolNames,
+          description: "Backward-compatible first candidate tool name. Prefer candidateTools."
         },
         selectedModule: {
           type: "string",
@@ -395,7 +406,7 @@ export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[]): Rea
         },
         confidence: { type: "number" }
       },
-      ["name"]
+      ["candidateTools"]
     )
   };
 }

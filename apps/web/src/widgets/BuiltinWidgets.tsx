@@ -35,7 +35,7 @@ import {
   summarizeTvChannelNamesForAssistant,
   type TvChannel
 } from "./tvShared";
-import { rememberTvAssistantChannelCatalog } from "./tvChannelCatalog";
+import { readTvAssistantChannelCatalog, rememberTvAssistantChannelCatalog } from "./tvChannelCatalog";
 import {
   CHINA_TIME_ZONE,
   DEFAULT_WORLD_CLOCK_ZONES,
@@ -4089,30 +4089,49 @@ export function BuiltinWidgetView({
       const selectChannel = (args: Record<string, unknown>) => {
         const channelName = typeof args.channelName === "string" ? args.channelName.trim() : "";
         const channelUrl = typeof args.channelUrl === "string" ? args.channelUrl.trim() : "";
+        const assistantCatalog = readTvAssistantChannelCatalog();
+        const catalogMatch = channelName
+          ? findTvChannel(
+              (assistantCatalog?.channelNames ?? []).map((name, index) => ({
+                id: `assistant_catalog_${index}`,
+                name,
+                url: ""
+              })),
+              channelName
+            )
+          : undefined;
         const selected =
           (channelUrl ? channels.find((channel) => channel.url === channelUrl) : null) ??
           (channelName ? findTvChannel(channels, channelName) ?? findFallbackTvChannel(channelName) : null) ??
           (channelUrl || channelName ? null : channels[0]);
+        const pendingCatalogChannelName = !selected && !channelUrl ? catalogMatch?.name : undefined;
 
-        if (!selected && !channelUrl) {
+        if (!selected && !channelUrl && !pendingCatalogChannelName) {
           return { status: "failed" as const, message: "没有找到这个电视频道", errorCode: "TV_CHANNEL_NOT_FOUND" };
         }
 
         const nextUrl = selected?.url ?? channelUrl;
-        const nextName = selected?.name ?? channelName;
+        const nextName = selected?.name ?? pendingCatalogChannelName ?? channelName;
         const channelsForAssistant =
           selected && !channels.some((channel) => channel.url === selected.url) ? [selected, ...channels] : channels;
         if (selected && channelsForAssistant !== channels) {
           setChannels((current) => (current.some((channel) => channel.url === selected.url) ? current : [selected, ...current]));
         }
-        rememberTvAssistantChannelCatalog(channelsForAssistant, nextName);
+        if (channelsForAssistant.length > 0) {
+          rememberTvAssistantChannelCatalog(channelsForAssistant, nextName);
+        }
         setPlaybackError("");
         onStateChange({
           ...latestStateRef.current,
           selectedChannelUrl: nextUrl,
           selectedChannelName: nextName,
-          assistantChannelNames: summarizeTvChannelNamesForAssistant(channelsForAssistant),
-          assistantChannelCount: channelsForAssistant.length
+          assistantChannelNames: [
+            ...new Set([
+              ...summarizeTvChannelNamesForAssistant(channelsForAssistant),
+              ...(assistantCatalog?.channelNames ?? [])
+            ])
+          ],
+          assistantChannelCount: Math.max(channelsForAssistant.length, assistantCatalog?.channelCount ?? 0)
         });
         return { status: "success" as const, message: "已切换电视频道", data: { channelName: nextName, channelUrl: nextUrl } };
       };
@@ -4121,6 +4140,9 @@ export function BuiltinWidgetView({
         async play(args) {
           const selected = selectChannel(args);
           if (selected.status !== "success") return selected;
+          if (!selected.data.channelUrl) {
+            return { status: "success", message: "已选择频道，等待频道列表解析后播放", data: selected.data };
+          }
           const video = videoRef.current;
           if (!video) {
             return { status: "failed", message: "电视播放器还没有准备好", errorCode: "TV_PLAYER_NOT_READY" };
