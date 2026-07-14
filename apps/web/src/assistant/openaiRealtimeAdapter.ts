@@ -3978,9 +3978,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
 
     const selectedTool = resolvedSelection.selectedTool;
     const resolvedConcreteSelection = resolvedSelection.selection;
+    const selectedModule = resolvedSelection.selectedModule ?? this.resolveSelectedModuleForToolSelection(selectedTool, resolvedConcreteSelection);
 
     if (
-      !resolvedSelection.candidateMode &&
       selectedTool.name === "widget.remove" &&
       isBulkWindowSelectionText(resolvedConcreteSelection.userCommand, resolvedConcreteSelection.targetHint)
     ) {
@@ -4018,8 +4018,22 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       return;
     }
 
-    if (!resolvedSelection.candidateMode && selectedTool.name === "board.add_widget") {
-      const addWidgetShortcut = this.createLocalAddWidgetShortcut(call, resolvedConcreteSelection, commandTraceId);
+    const shouldTryLocalAddWidgetShortcut =
+      selectedTool.name === "board.add_widget" ||
+      Boolean(
+        resolvedSelection.candidateMode &&
+          selectedModule &&
+          resolvedSelection.scopedTools.some((tool) => tool.name === REALTIME_ADD_WIDGET_TOOL_NAME) &&
+          this.currentContext?.availableDefinitions?.some((definition) => definition.type === selectedModule) &&
+          !this.currentContext?.widgets.some((widget) => widget.type === selectedModule)
+      );
+    if (shouldTryLocalAddWidgetShortcut) {
+      const addWidgetSelection = {
+        ...resolvedConcreteSelection,
+        name: REALTIME_ADD_WIDGET_TOOL_NAME,
+        requestedToolName: selectedTool.name === REALTIME_ADD_WIDGET_TOOL_NAME ? resolvedConcreteSelection.requestedToolName : selectedTool.name
+      };
+      const addWidgetShortcut = this.createLocalAddWidgetShortcut(call, addWidgetSelection, commandTraceId);
       if (addWidgetShortcut) {
         this.emitDiagnostic({
           type: "realtime.tool_selection.local_add_widget_shortcut",
@@ -4138,7 +4152,6 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       }
     }
 
-    const selectedModule = resolvedSelection.selectedModule ?? this.resolveSelectedModuleForToolSelection(selectedTool, resolvedConcreteSelection);
     this.activeScopedToolSelection = {
       selectedModule,
       targetHint: resolvedConcreteSelection.targetHint,

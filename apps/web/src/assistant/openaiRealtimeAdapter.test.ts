@@ -2340,7 +2340,7 @@ describe("OpenAI realtime adapter helpers", () => {
     ]));
   });
 
-  it("keeps interrupted selector calls so a completed command is not swallowed by VAD", () => {
+  it("keeps interrupted selector calls so a completed command is not swallowed by VAD", async () => {
     const diagnostics: Array<{ type: string; status?: string; commandTraceId?: string; operationId?: string; toolName?: string; data?: unknown }> = [];
     const sent: unknown[] = [];
     const adapter = new OpenAIRealtimeWebRtcAdapter({
@@ -2445,6 +2445,8 @@ describe("OpenAI realtime adapter helpers", () => {
         })
       }
     });
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -2455,13 +2457,15 @@ describe("OpenAI realtime adapter helpers", () => {
         commandTraceId: "trace_music"
       }),
       expect.objectContaining({
-        type: "realtime.tool_selection.success",
-        status: "success",
+        type: "realtime.tool_selection.local_add_widget_shortcut",
+        status: "started",
         operationId: "call_select_music",
         toolName: "music.play",
         data: expect.objectContaining({
-          selectedModule: "music",
-          scopedTools: expect.arrayContaining(["music.play", "music.search", "board.add_widget"])
+          definitionId: "wd_music",
+          definitionType: "music",
+          followUpName: "music.play",
+          query: "陈奕迅的歌"
         })
       })
     ]));
@@ -2471,14 +2475,11 @@ describe("OpenAI realtime adapter helpers", () => {
         operationId: "call_select_music"
       })
     ]));
-    expect(sent).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        type: "session.update",
-        session: expect.objectContaining({
-          tools: expect.arrayContaining([expect.objectContaining({ name: "music__dot__play" })])
-        })
-      })
-    ]));
+    const serializedSent = JSON.stringify(sent);
+    expect(serializedSent).toContain("conversation.item.create");
+    expect(serializedSent).toContain("function_call_output");
+    expect(serializedSent).toContain("call_select_music");
+    expect(serializedSent).toContain("local_add_widget_shortcut");
   });
 
   it("falls back when a voice transcript finishes without a command tool call", async () => {
@@ -3349,6 +3350,82 @@ describe("OpenAI realtime adapter helpers", () => {
     ]));
   });
 
+  it("routes candidate-mode close-all-window selections through the local bulk shortcut", async () => {
+    const calls: unknown[] = [];
+    const sent: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall: (call) => {
+        calls.push(call);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "widget.remove",
+        description: "删除小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop",
+        risk: "safe",
+        requiresTarget: true
+      },
+      {
+        name: "app.fullscreen.set",
+        description: "切换全屏",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop",
+        risk: "safe"
+      },
+      {
+        name: "board.add_widget",
+        description: "添加小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop"
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: { tv: 1, market: 1 },
+      widgets: [
+        { widgetId: "wi_tv", definitionId: "wd_tv", type: "tv", name: "电视", order: 1, summary: "" },
+        { widgetId: "wi_market", definitionId: "wd_market", type: "market", name: "全球指数", order: 2, summary: "" }
+      ]
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
+      }
+    });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_close_all_candidates",
+      name: "assistant.select_tool",
+      arguments: {
+        candidateTools: ["widget.remove", "app.fullscreen.set", "board.add_widget"],
+        targetHint: "窗口",
+        userCommand: "关闭所有窗口",
+        confidence: 0.9
+      },
+      source: "realtime"
+    });
+    await Promise.resolve();
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        id: "select_close_all_candidates_bulk_window_shortcut",
+        name: "widget.remove",
+        arguments: { targetText: "关闭所有窗口" },
+        source: "shortcut",
+        transcript: "关闭所有窗口"
+      })
+    ]);
+    expect(JSON.stringify(sent)).toContain("local_bulk_shortcut");
+    expect(JSON.stringify(sent)).not.toContain("app__dot__fullscreen__dot__set");
+  });
+
   it("executes add-widget selections locally to avoid a second realtime planning turn", async () => {
     const calls: unknown[] = [];
     const sent: unknown[] = [];
@@ -3983,6 +4060,85 @@ describe("OpenAI realtime adapter helpers", () => {
       expect.objectContaining({ type: "conversation.item.create" })
     ]);
     expect(JSON.stringify(sent)).toContain("local_add_widget_shortcut");
+  });
+
+  it("opens music locally with a play follow-up when candidate mode starts with add-widget", async () => {
+    const calls: unknown[] = [];
+    const sent: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall(call) {
+        calls.push(call);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "board.add_widget",
+        description: "添加小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop"
+      },
+      {
+        name: "music.play",
+        description: "播放音乐",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      },
+      {
+        name: "music.search",
+        description: "搜索音乐",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: {},
+      availableDefinitions: [{ definitionId: "wd_music", type: "music", name: "音乐播放器" }],
+      widgets: []
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
+      }
+    });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_music_candidates_missing_widget",
+      name: "assistant.select_tool",
+      arguments: {
+        candidateTools: ["board.add_widget", "music.search", "music.play"],
+        selectedModule: "music",
+        targetHint: "王菲",
+        userCommand: "我想听王菲的歌",
+        confidence: 0.9
+      },
+      source: "realtime"
+    });
+    await Promise.resolve();
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        id: "select_music_candidates_missing_widget_add_widget_shortcut",
+        name: "board.add_widget",
+        arguments: {
+          definitionId: "wd_music",
+          followUp: { name: "music.play", arguments: { query: "王菲" } }
+        },
+        source: "shortcut",
+        transcript: "我想听王菲的歌"
+      })
+    ]);
+    expect(JSON.stringify(sent)).toContain("local_add_widget_shortcut");
+    expect(JSON.stringify(sent)).not.toContain("music__dot__search");
   });
 
   it("opens the target widget locally when a selected widget-detail tool has no mounted instance", async () => {
