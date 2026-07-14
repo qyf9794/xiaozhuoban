@@ -2340,6 +2340,147 @@ describe("OpenAI realtime adapter helpers", () => {
     ]));
   });
 
+  it("keeps interrupted selector calls so a completed command is not swallowed by VAD", () => {
+    const diagnostics: Array<{ type: string; status?: string; commandTraceId?: string; operationId?: string; toolName?: string; data?: unknown }> = [];
+    const sent: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "board.add_widget",
+        description: "添加小工具",
+        parameters: createStrictObjectSchema({
+          definitionId: { type: "string", required: true }
+        }),
+        argumentKeys: ["definitionId"],
+        scope: "desktop",
+        risk: "safe"
+      },
+      {
+        name: "music.play",
+        description: "播放音乐",
+        parameters: createStrictObjectSchema({
+          widgetId: { type: "string", required: true },
+          query: { type: "string" }
+        }),
+        argumentKeys: ["widgetId", "query"],
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      },
+      {
+        name: "music.search",
+        description: "搜索音乐",
+        parameters: createStrictObjectSchema({
+          widgetId: { type: "string", required: true },
+          query: { type: "string", required: true }
+        }),
+        argumentKeys: ["widgetId", "query"],
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: {},
+      availableDefinitions: [{ definitionId: "wd_music", type: "music", name: "音乐播放器" }],
+      widgets: []
+    });
+    Object.assign(
+      adapter as unknown as {
+        sessionReady: boolean;
+        connectMode: string;
+        activeResponseId: string | null;
+        activeRealtimeResponseTraceId: string | null;
+        dataChannel: { readyState: string; send: (payload: string) => void };
+      },
+      {
+        sessionReady: true,
+        connectMode: "audio",
+        activeResponseId: "resp_old",
+        activeRealtimeResponseTraceId: "trace_music",
+        dataChannel: {
+          readyState: "open",
+          send(payload: string) {
+            sent.push(JSON.parse(payload) as unknown);
+          }
+        }
+      }
+    );
+    (adapter as unknown as { realtimeResponseTraceIds: Map<string, string> }).realtimeResponseTraceIds.set("resp_old", "trace_music");
+    (adapter as unknown as { realtimeTraceUserTranscripts: Map<string, { input: string }> }).realtimeTraceUserTranscripts.set(
+      "trace_music",
+      { input: "我想听陈奕迅的歌。" }
+    );
+
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "input_audio_buffer.speech_started", item_id: "item_tail_noise" });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "response.output_item.done",
+      response_id: "resp_old",
+      item: {
+        type: "function_call",
+        call_id: "call_select_music",
+        name: "assistant__dot__select_tool",
+        arguments: JSON.stringify({
+          name: "board.add_widget",
+          selectedModule: "music",
+          intent: "play",
+          targetHint: "陈奕迅",
+          userCommand: "我想听陈奕迅的歌。",
+          candidateTools: ["board.add_widget", "music.play", "music.search"],
+          confidence: 0.92
+        })
+      }
+    });
+
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.function_call.resume_interrupted_control_call",
+        status: "received",
+        operationId: "call_select_music",
+        toolName: "assistant.select_tool",
+        commandTraceId: "trace_music"
+      }),
+      expect.objectContaining({
+        type: "realtime.tool_selection.success",
+        status: "success",
+        operationId: "call_select_music",
+        toolName: "music.play",
+        data: expect.objectContaining({
+          selectedModule: "music",
+          scopedTools: expect.arrayContaining(["music.play", "music.search", "board.add_widget"])
+        })
+      })
+    ]));
+    expect(diagnostics).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.function_call.skip",
+        operationId: "call_select_music"
+      })
+    ]));
+    expect(sent).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "session.update",
+        session: expect.objectContaining({
+          tools: expect.arrayContaining([expect.objectContaining({ name: "music__dot__play" })])
+        })
+      })
+    ]));
+  });
+
   it("falls back when a voice transcript finishes without a command tool call", async () => {
     const fallbackInputs: Array<{ input: string; commandTraceId?: string; itemId?: string }> = [];
     const diagnostics: Array<{ type: string; commandTraceId?: string; status?: string; data?: Record<string, unknown> }> = [];

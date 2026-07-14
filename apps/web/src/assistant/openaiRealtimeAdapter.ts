@@ -1640,6 +1640,10 @@ function shouldSendRealtimeToolResult(call: AssistantToolCall): boolean {
   return call.source === "realtime";
 }
 
+function shouldSkipInterruptedRealtimeFunctionCall(callName: string): boolean {
+  return callName !== REALTIME_TOOL_SELECTION_TOOL_NAME && callName !== REALTIME_PLAN_SELECTION_TOOL_NAME;
+}
+
 function isLegacyRealtimeCommandPlanTool(name: string): boolean {
   return LEGACY_REALTIME_COMMAND_PLAN_TOOL_NAMES.has(name);
 }
@@ -3026,9 +3030,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       ...(shouldIncludeAddWidget && addWidgetTool ? [addWidgetTool] : []),
       ...(pureOpenWidget && selectedModule && hasMountedSelectedModule && focusWidgetTool ? [focusWidgetTool] : [])
     ]);
-    const sortedCandidates = candidateMode
-      ? scopedCandidates.slice(0, MAX_SCOPED_SELECTION_TOOLS)
-      : this.sortToolsForSelectionIntent(scopedCandidates, selection, selectedModule).slice(0, MAX_SCOPED_SELECTION_TOOLS);
+    const sortedCandidates = (candidateMode && !selection.intent
+      ? scopedCandidates
+      : this.sortToolsForSelectionIntent(scopedCandidates, selection, selectedModule)
+    ).slice(0, MAX_SCOPED_SELECTION_TOOLS);
 
     const canUseLocalAddWidgetFollowUp = Boolean(
       selectedModule &&
@@ -3045,7 +3050,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       (isPureOpenWidgetText(input) || canUseLocalAddWidgetFollowUp)
         ? addWidgetTool
         : undefined;
-    const legacyCandidate = selection.name ? sortedCandidates.find((tool) => tool.name === selection.name) : undefined;
+    const legacyCandidate = !candidateMode && selection.name ? sortedCandidates.find((tool) => tool.name === selection.name) : undefined;
     const selectedTool = pureOpenAddWidget ?? legacyCandidate ?? sortedCandidates.find((tool) => tool.name !== REALTIME_ADD_WIDGET_TOOL_NAME) ?? sortedCandidates[0];
     if (!selectedTool) {
       return {
@@ -3114,7 +3119,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   sendToolResult(call: AssistantToolCall, result: AssistantToolResult): void {
     const hadActiveResponse = Boolean(this.activeResponseId);
     const commandTraceId = this.functionCallTraceIds.get(call.id) ?? this.activeCommandTraceId ?? this.activeRealtimeResponseTraceId ?? undefined;
-    if (commandTraceId && this.interruptedRealtimeCommandTraceIds.has(commandTraceId)) {
+    if (commandTraceId && this.interruptedRealtimeCommandTraceIds.has(commandTraceId) && shouldSkipInterruptedRealtimeFunctionCall(call.name)) {
       this.emitDiagnostic({
         type: "realtime.tool_result.skip",
         status: "interrupted",
@@ -3126,6 +3131,18 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         data: { source: call.source }
       });
       return;
+    }
+    if (commandTraceId && this.interruptedRealtimeCommandTraceIds.has(commandTraceId)) {
+      this.emitDiagnostic({
+        type: "realtime.tool_result.resume_interrupted_control_call",
+        status: result.status,
+        operationId: call.id,
+        toolName: call.name,
+        message: result.message,
+        errorCode: result.errorCode,
+        commandTraceId,
+        data: { source: call.source }
+      });
     }
     if (!shouldSendRealtimeToolResult(call)) {
       this.emitDiagnostic({
@@ -3411,7 +3428,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (commandTraceId) {
       this.functionCallTraceIds.set(call.id, commandTraceId);
     }
-    if (commandTraceId && this.interruptedRealtimeCommandTraceIds.has(commandTraceId)) {
+    if (commandTraceId && this.interruptedRealtimeCommandTraceIds.has(commandTraceId) && shouldSkipInterruptedRealtimeFunctionCall(call.name)) {
       this.emitDiagnostic({
         type: "realtime.function_call.skip",
         status: "interrupted",
@@ -3421,6 +3438,16 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         data: { source: call.source }
       });
       return;
+    }
+    if (commandTraceId && this.interruptedRealtimeCommandTraceIds.has(commandTraceId)) {
+      this.emitDiagnostic({
+        type: "realtime.function_call.resume_interrupted_control_call",
+        status: "received",
+        operationId: call.id,
+        toolName: call.name,
+        commandTraceId,
+        data: { source: call.source }
+      });
     }
     if (call.name === REALTIME_COMMAND_EXECUTION_TOOL_NAME) {
       this.handleRealtimeCommandExecution(call, commandTraceId);
