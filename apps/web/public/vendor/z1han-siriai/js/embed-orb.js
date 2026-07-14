@@ -1,4 +1,4 @@
-import { SiriRenderer } from "./renderer.js?v=20260625-edge-highlight";
+import { SiriRenderer } from "./renderer.js?v=20260714-wave-rim-glints";
 import { createSiriState } from "./state.js?v=20260625-edge-highlight";
 
 const canvas = document.querySelector("#siri27-canvas");
