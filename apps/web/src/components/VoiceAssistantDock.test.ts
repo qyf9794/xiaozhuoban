@@ -178,6 +178,9 @@ describe("VoiceAssistantDock", () => {
 
   it("shows moving dots only for background processing without the text panel", () => {
     expect(getVoiceAssistantOrbVisualMode("connecting", { phase: "thinking" }, false)).toBe("thinking");
+    expect(getVoiceAssistantOrbVisualMode("connecting", { phase: "thinking" }, true)).toBe("thinking");
+    expect(getVoiceAssistantOrbVisualMode("disconnected", { phase: "idle" }, true, true)).toBe("thinking");
+    expect(getVoiceAssistantOrbVisualMode("listening", { phase: "idle" }, true, false)).toBe("listening");
     expect(getVoiceAssistantOrbVisualMode("thinking", { phase: "thinking" }, false)).toBe("thinking");
     expect(getVoiceAssistantOrbVisualMode("executing", { phase: "executing" }, false)).toBe("thinking");
     expect(getVoiceAssistantOrbVisualMode("listening", { phase: "executing" }, false)).toBe("thinking");

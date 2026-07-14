@@ -206,6 +206,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
 
+function isPureLocalSystemToolCall(call: AssistantToolCall): boolean {
+  if (call.name.startsWith("app.") || call.name.startsWith("widget.")) return true;
+  if (!call.name.startsWith("board.")) return false;
+  if (call.name === "board.add_widget") {
+    return !isRecord(call.arguments) || !isRecord(call.arguments.followUp);
+  }
+  return true;
+}
+
+function isPureLocalSystemShortcutPlan(groups: AssistantToolCall[][] | null): groups is AssistantToolCall[][] {
+  const calls = groups?.flat() ?? [];
+  return calls.length > 0 && calls.every(isPureLocalSystemToolCall);
+}
+
+function shouldDeferSingleRealtimeLocalSystemShortcut(input: string): boolean {
+  return /(同时|一起|以及|并且|并排|排成|和|、|，|然后|再)/.test(input);
+}
+
 function getTargetText(args: unknown) {
   if (!isRecord(args)) return "";
   const value = args.targetText ?? args.target ?? args.widgetRef;
@@ -1023,9 +1041,10 @@ export class AssistantHarness {
     this.startDiagnostics(input, commandTraceId);
     await this.options.realtime.setActiveCommandTraceId?.(commandTraceId);
     try {
+      const localSystemResponse = this.pendingConfirmation ? null : await this.tryHandleRealtimeLocalSystemShortcut(input, startedAt);
       const response = this.pendingConfirmation
         ? await this.handleUserInputInternal(input, startedAt)
-        : await this.handleRealtimeModelInput(input, startedAt, this.getCurrentContext(), { recoverEmptyResult: true });
+        : localSystemResponse ?? await this.handleRealtimeModelInput(input, startedAt, this.getCurrentContext(), { recoverEmptyResult: true });
       this.finishDiagnostics(response);
       return response;
     } catch (error) {
@@ -1154,6 +1173,41 @@ export class AssistantHarness {
 
     const context = this.getCurrentContext();
     return this.handleRealtimeModelInput(input, startedAt, context);
+  }
+
+  private async tryHandleRealtimeLocalSystemShortcut(input: string, startedAt: number): Promise<AssistantHarnessResponse | null> {
+    if (isDiagnosticOrPreferenceIntent(input)) {
+      return null;
+    }
+    const shortcutContext = this.buildShortcutContext();
+    const bulkClosePlan = this.buildBulkWindowClosePlan(input, shortcutContext);
+    if (isPureLocalSystemShortcutPlan(bulkClosePlan)) {
+      return this.handleShortcutPlan(bulkClosePlan, startedAt);
+    }
+
+    const shortcutPlan = this.shouldDeferComplexShortcutSegment(input) ? null : this.buildShortcutPlan(input, shortcutContext);
+    if (isPureLocalSystemShortcutPlan(shortcutPlan)) {
+      return this.handleShortcutPlan(shortcutPlan, startedAt);
+    }
+
+    if (
+      this.hasSegmentedShortcutInput(input) ||
+      this.shouldDeferComplexShortcutSegment(input) ||
+      shouldDeferSingleRealtimeLocalSystemShortcut(input)
+    ) {
+      return null;
+    }
+    const shortcut = this.options.shortcutRouter.route(input, shortcutContext);
+    if (!shortcut.matched || !this.shouldExecuteLocalShortcut(shortcut.confidence) || !isPureLocalSystemToolCall(shortcut.toolCall)) {
+      return null;
+    }
+    const violations = getForbiddenToolViolations(input, getPolicyToolNamesForCall(shortcut.toolCall));
+    if (violations.length) {
+      this.recordPolicyValidationErrors(violations);
+      return null;
+    }
+    this.rememberAuditMetadata(shortcut.toolCall, input);
+    return this.handleFunctionCall(shortcut.toolCall, "shortcut", startedAt);
   }
 
   private async handleRealtimeModelInput(

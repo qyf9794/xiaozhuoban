@@ -580,6 +580,33 @@ describe("AssistantHarness", () => {
     });
   });
 
+  it("executes realtime local system operations directly without two-stage parsing", async () => {
+    const { harness, executed } = createHarness({
+      modelCall: {
+        id: "model_sidebar",
+        name: "assistant.runtime_diagnostics",
+        arguments: {},
+        source: "realtime"
+      }
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput("进入沉浸全屏", { commandTraceId: "voice_fullscreen_enter" });
+
+    expect(response.route).toBe("shortcut");
+    expect(response.call).toMatchObject({
+      name: "app.fullscreen.set",
+      arguments: { mode: "enter" }
+    });
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["app.fullscreen.set:none"]);
+    expect(harness.getLastDiagnostics()).toMatchObject({
+      commandTraceId: "voice_fullscreen_enter",
+      route: "shortcut",
+      usedRealtime: false
+    });
+  });
+
   it("confirms and executes a pending action", async () => {
     const { harness, executed } = createHarness();
     await harness.initialize();
@@ -658,7 +685,7 @@ describe("AssistantHarness", () => {
     expect(executed).toEqual([]);
   });
 
-  it("recovers a high-confidence local shortcut when realtime returns no tool", async () => {
+  it("executes a high-confidence realtime local system shortcut before empty realtime recovery", async () => {
     const input = "打开重大新闻";
     const { harness, executed } = createHarness({
       getContextInput: () => ({
@@ -675,11 +702,8 @@ describe("AssistantHarness", () => {
 
     expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
-    expect(harness.getLastDiagnostics()?.recovery).toMatchObject({
-      reason: "empty_model_result",
-      modelTools: [],
-      recoveredTool: "board.add_widget"
-    });
+    expect(harness.getLastDiagnostics()?.recovery).toBeUndefined();
+    expect(harness.getLastDiagnostics()?.usedRealtime).toBe(false);
     expect(executed).toEqual(["board.add_widget:none"]);
   });
 
@@ -1825,11 +1849,16 @@ describe("AssistantHarness", () => {
     const { harness, executed } = createHarness({ modelPlan });
     await harness.initialize();
 
-    const response = await harness.handleRealtimeUserInput("打开音乐播放器");
+    const response = await harness.handleRealtimeUserInput("打开音乐播放器", { commandTraceId: "voice_open_music" });
 
-    expect(response.route).toBe("model");
+    expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(executed).toEqual(["board.add_widget:none"]);
+    expect(harness.getLastDiagnostics()).toMatchObject({
+      commandTraceId: "voice_open_music",
+      route: "shortcut",
+      usedRealtime: false
+    });
   });
 
   it("removes redundant add-widget commands when a detail tool already has an existing target", async () => {
@@ -1932,7 +1961,7 @@ describe("AssistantHarness", () => {
     expect(executed).toEqual(["market.set_indices:wi_market"]);
   });
 
-  it("executes dependent commands sequentially when realtime puts them in a parallel group", async () => {
+  it("executes open-widget realtime system commands locally before dependent model plans", async () => {
     const modelPlan: CommandPlan = {
       id: "plan_open_then_focus_headline",
       sourceText: "打开重大新闻",
@@ -1981,12 +2010,12 @@ describe("AssistantHarness", () => {
 
     const response = await harness.handleRealtimeUserInput("打开重大新闻");
 
-    expect(response.route).toBe("model");
+    expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
-    expect(executed).toEqual(["board.add_widget:none", "widget.focus:wi_added_headline"]);
+    expect(executed).toEqual(["board.add_widget:none"]);
   });
 
-  it("removes dependencies that point to commands stripped from open-only plans", async () => {
+  it("executes open-only realtime system commands locally before dependency repair", async () => {
     const modelPlan: CommandPlan = {
       id: "plan_open_headline_with_redundant_refresh",
       sourceText: "打开重大新闻",
@@ -2035,12 +2064,12 @@ describe("AssistantHarness", () => {
 
     const response = await harness.handleRealtimeUserInput("打开重大新闻");
 
-    expect(response.route).toBe("model");
+    expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(executed).toEqual(["board.add_widget:none"]);
   });
 
-  it("removes accidental calculator display updates from open-only realtime plans", async () => {
+  it("executes calculator open-only realtime system commands locally", async () => {
     const modelPlan: CommandPlan = {
       id: "plan_open_calculator_only",
       sourceText: "打开计算器",
@@ -2089,7 +2118,7 @@ describe("AssistantHarness", () => {
 
     const response = await harness.handleRealtimeUserInput("打开计算器");
 
-    expect(response.route).toBe("model");
+    expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(executed).toEqual(["board.add_widget:none"]);
   });
@@ -2185,7 +2214,7 @@ describe("AssistantHarness", () => {
     expect(executed).toEqual(["board.add_widget:none", "widget.move:wi_added_tv"]);
   });
 
-  it("resolves current window removals from the spoken transcript when model arguments omit a target", async () => {
+  it("executes current window removals locally before model arguments are needed", async () => {
     const input = "关闭当前窗口";
     const { harness, executed } = createHarness({
       modelPlan: createRealtimePlanWithCalls(input, [
@@ -2196,12 +2225,12 @@ describe("AssistantHarness", () => {
 
     const response = await harness.handleRealtimeUserInput(input);
 
-    expect(response.route).toBe("model");
+    expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(executed).toEqual(["widget.remove:wi_tv"]);
   });
 
-  it("resolves generic current widget ids before executing window tools", async () => {
+  it("executes generic current widget removals locally before model arguments are needed", async () => {
     const input = "关闭当前窗口";
     const { harness, executed } = createHarness({
       modelPlan: createRealtimePlanWithCalls(input, [
@@ -2212,12 +2241,12 @@ describe("AssistantHarness", () => {
 
     const response = await harness.handleRealtimeUserInput(input);
 
-    expect(response.route).toBe("model");
+    expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(executed).toEqual(["widget.remove:wi_tv"]);
   });
 
-  it("does not play music for open or focus-only music player commands", async () => {
+  it("executes open or focus-only music player system commands locally without playing music", async () => {
     const modelPlan: CommandPlan = {
       id: "plan_focus_music_without_play",
       sourceText: "把当前小工具切到音乐播放器",
@@ -2263,12 +2292,12 @@ describe("AssistantHarness", () => {
 
     const response = await harness.handleRealtimeUserInput("把当前小工具切到音乐播放器");
 
-    expect(response.route).toBe("model");
+    expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(executed).toEqual(["board.add_widget:none"]);
   });
 
-  it("infers missing add-widget definition ids from command modules before validation", async () => {
+  it("keeps multi-widget system commands on the realtime plan path", async () => {
     const modelPlan: CommandPlan = {
       id: "plan_reopen_music_weather",
       sourceText: "重新打开音乐和天气并排放好",
@@ -2312,7 +2341,7 @@ describe("AssistantHarness", () => {
     expect(executed).toEqual(["board.add_widget:none", "board.add_widget:none"]);
   });
 
-  it("rewrites exit-fullscreen plans that accidentally call TV fullscreen", async () => {
+  it("executes exit-fullscreen system commands locally before model rewrite", async () => {
     const modelPlan = createRealtimePlanWithCalls("退出电视全屏", [
       { name: "tv.fullscreen", arguments: { widgetId: "wi_tv" } }
     ]);
@@ -2321,7 +2350,7 @@ describe("AssistantHarness", () => {
 
     const response = await harness.handleRealtimeUserInput("退出电视全屏");
 
-    expect(response.route).toBe("model");
+    expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("success");
     expect(executed).toEqual(["app.fullscreen.set:none"]);
   });

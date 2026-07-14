@@ -247,12 +247,13 @@ export function getVisibleVoiceAssistantOperation(
 export function getVoiceAssistantOrbVisualMode(
   visualState: VoiceAssistantDockState,
   visibleOperation: VoiceAssistantOperationStatus,
-  textPanelVisible: boolean
+  textPanelVisible: boolean,
+  wakeWordConnecting = false
 ): "idle" | "listening" | "thinking" {
+  if (visualState === "connecting" || wakeWordConnecting) return "thinking";
   const backgroundProcessing =
     !textPanelVisible &&
-    (visualState === "connecting" ||
-      visualState === "thinking" ||
+    (visualState === "thinking" ||
       visualState === "executing" ||
       visibleOperation.phase === "thinking" ||
       visibleOperation.phase === "executing");
@@ -539,9 +540,10 @@ export function VoiceAssistantDock({
     hasUndismissedPanelContent
   );
   const wakeWordListeningForOrb = voiceStatus !== "connected" && wakeWordEnabled && wakeWordStatus === "listening";
+  const wakeWordConnectingForOrb = voiceStatus !== "connected" && wakeWordEnabled && wakeWordStatus === "detected";
   const orbVisualMode = wakeWordListeningForOrb
     ? "listening"
-    : getVoiceAssistantOrbVisualMode(visualState, visibleOperation, textPanelVisible);
+    : getVoiceAssistantOrbVisualMode(visualState, visibleOperation, textPanelVisible, wakeWordConnectingForOrb);
   const inputAudioLevel = Math.max(voiceAudioLevel, wakeWordListeningForOrb ? wakeWordAudioLevel : 0);
   const orbAudioLevel = Math.pow(clampVoiceAssistantAudioLevel(Math.max(inputAudioLevel, assistantSpeechLevel)), 0.78);
   const orbColorMode = getVoiceAssistantOrbColorMode(voiceStatus);
