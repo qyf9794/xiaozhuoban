@@ -20,7 +20,7 @@
 // ============================================================================
 
 import { VERTEX_SHADER } from './shaders/vertex.glsl.js?v=20260625-edge-highlight';
-import { WAVE_FRAGMENT_SHADER } from './shaders/wave.frag.glsl.js?v=20260714-wave-rim-glints';
+import { WAVE_FRAGMENT_SHADER } from './shaders/wave.frag.glsl.js?v=20260714-wave-edge-reflection';
 import { DOTS_FRAGMENT_SHADER } from './shaders/dots.frag.glsl.js?v=20260625-edge-highlight';
 import { BACKGROUND_FRAGMENT_SHADER } from './shaders/background.frag.glsl.js?v=20260625-edge-highlight';
 import { EFFECT_COMPOSITE_FRAGMENT_SHADER } from './shaders/effect-composite.frag.glsl.js?v=20260625-edge-highlight';

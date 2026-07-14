@@ -14,8 +14,8 @@
 //     spectrumTri(); accumulated color is normalized by the hue weight sum.
 //   - Audio bands (uLow/uMid/uHigh) modulate amplitude, aberration, band fill
 //     and softness through the uXxxAmplitude/uMidXxx/uHighXxx scalars.
-//   - The resolved waveform receives six subtle rim glints so the listening
-//     wave shares the thinking dots' edge-reflection language.
+//   - The resolved waveform receives a soft continuous rim reflection near the
+//     orb edge so the listening wave feels embedded in the glass surface.
 //   - Output is premultiplied: alpha = max(rgb) * 1.15, blended ONE/1-SRC_A.
 // ============================================================================
 
@@ -179,24 +179,13 @@ void main() {
 	vec3 referenceCol = referencePalette * colorEnergy * 1.34;
 	col = mix(mix(referenceCol, col * referencePalette * 1.1, 0.18), col, clamp(uMonoMode, 0.0, 1.0));
 
-	float crestBand = exp(-pow(abs(py - waveBase) * 16.0, 2.0));
-	float rimBand = exp(-pow(max(abs(r - base) - 0.02, 0.0) * 18.0, 2.0)) * smoothstep(0.14, 0.7, r);
-	vec2 radial = p / max(r, 0.0001);
-	float sixGlint = 0.0;
-	vec3 glintHue = vec3(0.0);
-	for (int i = 0; i < 6; i += 1) {
-		float fi = float(i);
-		float angle = fi * 1.0471976 + tw * 0.12;
-		vec2 dir = vec2(cos(angle), sin(angle));
-		float lobe = pow(max(dot(radial, dir), 0.0), 20.0);
-		vec3 hue = mix(vec3(1.0, 0.92, 0.72), spectrumTri(fi * 0.62), 0.45);
-		sixGlint += lobe;
-		glintHue += hue * lobe;
-	}
-	glintHue /= max(vec3(sixGlint), vec3(0.0001));
-	float glintEnergy = saturate((lo + md * 0.72 + hi * 0.46) * 0.78 + colorEnergy * 0.2);
-	float waveGlint = saturate(sixGlint) * crestBand * rimBand * res * saturate(uLayerOpacity) * glintEnergy;
-	col += glintHue * waveGlint * 0.48;
+	float crestBand = exp(-pow(abs(py - waveBase) * 15.0, 2.0));
+	float sideEdge = smoothstep(0.58, 0.9, abs(px)) * (1.0 - smoothstep(0.96, 1.14, abs(px)));
+	float glassRim = exp(-pow(max(r - 0.68, 0.0) * 2.9, 2.0)) * smoothstep(0.2, 0.78, r);
+	float rimReflection = crestBand * sideEdge * glassRim * res * saturate(uLayerOpacity);
+	float reflectionEnergy = saturate((lo + md * 0.72 + hi * 0.46) * 0.62 + colorEnergy * 0.18);
+	vec3 reflectionColor = mix(vec3(0.76, 0.9, 1.0), vec3(1.0, 0.92, 0.72), smoothstep(0.0, 0.75, py - waveBase));
+	col += reflectionColor * rimReflection * reflectionEnergy * 0.38;
 
 	float monoLum = max(max(col.r, col.g), col.b);
 	vec3 monoCol = vec3(monoLum) * vec3(0.92, 0.96, 1.0);
