@@ -65,6 +65,31 @@ describe("assistantOperationStatus", () => {
     });
   });
 
+  it("clears the original waiting operation after confirmation settles", () => {
+    let snapshot: AssistantOperationSnapshot = { active: [] };
+    snapshot = updateAssistantOperationSnapshot(snapshot, {
+      id: "cmd_align",
+      phase: "waiting_confirmation",
+      route: "model",
+      toolName: "board.auto_align",
+      message: "确认执行 board.auto_align 吗？"
+    });
+    snapshot = updateAssistantOperationSnapshot(snapshot, {
+      id: "cmd_confirm",
+      phase: "success",
+      route: "shortcut",
+      toolName: "assistant.confirm",
+      message: "已整理桌面小工具"
+    });
+
+    expect(snapshot.active).toEqual([]);
+    expect(getAssistantOperationStatus(snapshot)).toEqual({
+      phase: "success",
+      command: "assistant.confirm",
+      message: "已整理桌面小工具"
+    });
+  });
+
   it("removes finished operations while keeping remaining active operations visible", () => {
     let snapshot: AssistantOperationSnapshot = { active: [] };
     snapshot = updateAssistantOperationSnapshot(snapshot, {

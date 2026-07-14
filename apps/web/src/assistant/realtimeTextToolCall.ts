@@ -253,6 +253,8 @@ export function createRealtimeToolSelectionInstructions(tools: AssistantToolSpec
     "不要要求完整桌面上下文；如果需要目标，只把用户说出的目标词放到 targetHint。",
     "如果要路由命令，直接调用 assistant.select_tool，不要先说话，不要输出语音或文字，不要把工具选择参数念给用户。",
     "用户要控制桌面时，先调用 assistant.select_tool；前端随后会按所选工具提供最小必要上下文。",
+    "只要用户说的是打开、关闭、播放、搜索、查询、设置、添加、写入、完成、勾掉、暂停、继续、重置、切换、全屏、换算、转换、翻译等桌面动作，必须调用 assistant.select_tool。",
+    "完成/勾掉待办事项选择 todo.complete_item；添加/提醒待办选择 todo.add_item；暂停/继续/重置倒计时分别选择 countdown.pause/countdown.resume/countdown.reset。",
     ...realtimeToolSelectionSessionPolicyLines,
     "",
     "# 版本",

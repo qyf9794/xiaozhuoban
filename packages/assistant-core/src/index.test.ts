@@ -705,6 +705,7 @@ describe("IntentShortcutRouter", () => {
       ["侧边栏重新显示", "app.sidebar.set", { mode: "show" }],
       ["进入沉浸全屏", "app.fullscreen.set", { mode: "enter" }],
       ["退出全屏回普通窗口", "app.fullscreen.set", { mode: "exit" }],
+      ["退出电视全屏", "app.fullscreen.set", { mode: "exit" }],
       ["打开小桌板设置", "app.settings.open", {}],
       ["打开搜索命令面板", "app.command_palette.open", {}],
       ["我要新建一个 AI 小工具", "app.ai_dialog.open", {}]
@@ -1475,6 +1476,17 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("routes put-to-clipboard wording to add text", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("把口令alpha 123放到剪贴板", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("clipboard.add_text");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_clipboard", text: "口令alpha 123" });
+    }
+  });
+
   it("routes pinned clipboard save wording to add pinned text", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("固定保存到剪贴板账号是 demo", context);
@@ -1789,10 +1801,12 @@ describe("IntentShortcutRouter", () => {
       availableWidgets: context.availableWidgets?.filter((widget) => widget.type !== "calculator")
     });
     const multiply = router.route("12乘以8", context);
+    const chained = router.route("算一下12乘以12再加8", context);
 
     expect(plus.matched).toBe(true);
     expect(chinesePlus.matched).toBe(true);
     expect(multiply.matched).toBe(true);
+    expect(chained.matched).toBe(true);
     if (plus.matched) {
       expect(plus.toolCall.name).toBe("calculator.set_display");
       expect(plus.toolCall.arguments).toEqual({ widgetId: "wi_calculator", display: "42" });
@@ -1813,6 +1827,10 @@ describe("IntentShortcutRouter", () => {
       expect(multiply.toolCall.name).toBe("calculator.set_display");
       expect(multiply.toolCall.arguments).toEqual({ widgetId: "wi_calculator", display: "96" });
       expect(multiply.confidence).toBeGreaterThanOrEqual(0.9);
+    }
+    if (chained.matched) {
+      expect(chained.toolCall.name).toBe("calculator.set_display");
+      expect(chained.toolCall.arguments).toEqual({ widgetId: "wi_calculator", display: "152" });
     }
   });
 
@@ -1868,6 +1886,28 @@ describe("IntentShortcutRouter", () => {
     if (result.matched) {
       expect(result.toolCall.name).toBe("market.set_indices");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_market", query: "微软" });
+    }
+  });
+
+  it("does not treat opening the market widget as a market symbol query", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("打开行情小工具", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("widget.focus");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_market" });
+    }
+  });
+
+  it("cleans stock chart wording before online market lookup", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("打开特斯拉股价和走势图", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("market.set_indices");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_market", query: "特斯拉" });
     }
   });
 
@@ -1934,6 +1974,17 @@ describe("IntentShortcutRouter", () => {
     if (result.matched) {
       expect(result.toolCall.name).toBe("worldClock.set_zones");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_worldClock", zones: ["纽约", "东京"] });
+    }
+  });
+
+  it("routes BBC TV requests to channel selection instead of generic focus", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("打开电视看BBC", context);
+
+    expect(result.matched).toBe(true);
+    if (result.matched) {
+      expect(result.toolCall.name).toBe("tv.play");
+      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_tv", channelName: "BBC" });
     }
   });
 

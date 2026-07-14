@@ -792,11 +792,20 @@ function inferCityName(input: string) {
     .replace(/^(帮我查一下|帮我查|查一下|查查|查询|切换到|切到|聚焦|再打开一个|再打开|打开一个|打开|显示|看看|看|查)/, "")
     .replace(/(今天|今日|明天|现在|当前|实时|这会儿|当地)$/g, "")
     .replace(/^(一个|一下|个|小工具|窗口|卡片|面板)/, "");
+  if (/(音乐|电视|新闻|头条|行情|市场|便签|待办|倒计时|剪贴板|翻译|计算器|换算|录音|并排|放好|以及|和)/.test(candidate)) return "";
   if (!candidate || /^(天气|weather|小工具|窗口|卡片|面板)$/i.test(candidate)) return "";
   return cleanCommandContent(candidate);
 }
 
 function inferTvChannelName(input: string) {
+  if (/BBC/i.test(input)) return "BBC";
+  if (/CNN/i.test(input)) return "CNN";
+  if (/CGTN/i.test(input)) return "CGTN";
+  if (/Bloomberg|彭博/i.test(input)) return "Bloomberg";
+  if (/NHK/i.test(input)) return "NHK";
+  if (/HBO/i.test(input)) return "HBO";
+  if (/TVB/i.test(input)) return "TVB";
+  if (/\bCNA\b/i.test(input)) return "CNA";
   const cctv = input.match(/CCTV\s*[\w+-]+/i);
   if (cctv) return cctv[0].replace(/\s+/g, "").toUpperCase();
   const aliases: Array<[RegExp, string]> = [
@@ -1164,10 +1173,10 @@ function inferTodoCompleteText(raw: string) {
 
 function inferClipboardText(raw: string) {
   const patterns = [
-    /(?:固定|置顶|钉住|pin)?\s*(?:保存|存一下|存|加入|添加|记录|复制|拷贝)(?:到|进)?(?:剪贴板|剪贴板历史)[：:\s]*(.+)/i,
-    /(?:剪贴板|剪贴板历史).*(?:固定|置顶|钉住|pin)?\s*(?:保存|存一下|存|加入|添加|记录|复制|拷贝)[：:\s]*(.+)/i,
+    /(?:固定|置顶|钉住|pin)?\s*(?:保存|存一下|存|加入|添加|记录|复制|拷贝|放)(?:到|进)?(?:剪贴板|剪贴板历史)[：:\s]*(.+)/i,
+    /(?:剪贴板|剪贴板历史).*(?:固定|置顶|钉住|pin)?\s*(?:保存|存一下|存|加入|添加|记录|复制|拷贝|放)[：:\s]*(.+)/i,
     /(?:固定|置顶|钉住|pin)?\s*(?:复制|拷贝|保存|存一下|存)\s*(.+?)(?:到|进)?(?:剪贴板|剪贴板历史)/i,
-    /把(.+?)(?:固定|置顶|钉住|pin)?\s*(?:保存|存一下|存|加入|添加|记录|复制|拷贝)(?:到|进)?(?:剪贴板|剪贴板历史)/i,
+    /把(.+?)(?:固定|置顶|钉住|pin)?\s*(?:保存|存一下|存|加入|添加|记录|复制|拷贝|放)(?:到|进)?(?:剪贴板|剪贴板历史)/i,
     /(?:固定|置顶|钉住|pin)\s*(?:保存|存一下|存|记录)\s*(.+)/i
   ];
   for (const pattern of patterns) {
@@ -1290,7 +1299,20 @@ function evaluateArithmeticExpression(expression: string) {
   }
 }
 
+function evaluateNaturalArithmeticExpression(raw: string) {
+  const normalizedRaw = raw.replace(/再(?=加上|加|减去|减|乘以|乘|除以|除)/g, "");
+  const match = normalizedRaw.match(/([零〇一二两三四五六七八九十百千万\d]+(?:\s*(?:加上|加|减去|减|乘以|乘|除以|除)\s*[零〇一二两三四五六七八九十百千万\d]+)+)/);
+  if (!match?.[1]) return null;
+  const expression = match[1].replace(/[零〇一二两三四五六七八九十百千万]+|\d+/g, (token) => {
+    const value = parseNumberToken(token);
+    return value === null ? token : String(value);
+  });
+  return evaluateArithmeticExpression(expression);
+}
+
 function inferCalculatorDisplay(raw: string) {
+  const naturalExpression = evaluateNaturalArithmeticExpression(raw);
+  if (naturalExpression) return naturalExpression;
   const chineseExpression = raw.match(/([零〇一二两三四五六七八九十\d]+)\s*(加上|加|减去|减|乘以|乘|除以|除)\s*([零〇一二两三四五六七八九十\d]+)/);
   if (chineseExpression) {
     const left = parseNumberToken(chineseExpression[1] ?? "");
@@ -1343,7 +1365,8 @@ function inferMarketIndexCodes(raw: string) {
 
 function inferMarketQuery(raw: string) {
   const query = cleanCommandContent(raw)
-    .replace(/(我要看|想看|看一下|看看|查看|查询|搜索|打开|看|股票|股价|走势|行情|价格|图像|图表|的)/g, " ")
+    .replace(/(我要看|想看|看一下|看看|查看|查询|搜索|打开|看|股票|股价|走势图|走势|行情|价格|图像|图表|小工具|窗口|面板|的)/g, " ")
+    .replace(/(?:^|\s)(和|及|以及|并排|放好)(?:\s|$)/g, " ")
     .replace(/\s+/g, " ")
     .trim();
   if (!query || /^(指数|市场|股票|股市)$/.test(query)) return "";
@@ -1505,7 +1528,10 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "app_fullscreen",
       match(normalized, raw, context) {
-        const fullscreen = /(沉浸|普通窗口|小桌板.*全屏|页面.*全屏|窗口.*全屏|全屏.*小桌板|全屏.*页面|全屏.*窗口)/.test(normalized);
+        const fullscreen =
+          /(沉浸|普通窗口|小桌板.*全屏|页面.*全屏|窗口.*全屏|全屏.*小桌板|全屏.*页面|全屏.*窗口)/.test(normalized) ||
+          /(?:退出|离开|关闭|取消).{0,12}(?:全屏|沉浸)/.test(normalized) ||
+          /(?:全屏|沉浸).{0,12}(?:退出|离开|关闭|取消)/.test(normalized);
         if (!fullscreen) return { matched: false, reason: "not_app_fullscreen" };
         const wantsExit =
           /(退出|离开|关闭).*(全屏|沉浸)/.test(normalized) ||
@@ -1784,7 +1810,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "clipboard_add",
       match(normalized, raw, context) {
-        const explicitClipboard = /(剪贴板|剪贴板历史)/.test(normalized) && /(保存|存一下|存|加入|添加|记录|复制|拷贝)/.test(normalized);
+        const explicitClipboard = /(剪贴板|剪贴板历史)/.test(normalized) && /(保存|存一下|存|加入|添加|记录|复制|拷贝|放)/.test(normalized);
         const pinnedSave = /(固定|置顶|钉住|pin)/i.test(raw) && /(保存|存一下|存|记录)/.test(normalized);
         if (!explicitClipboard && !pinnedSave) {
           return { matched: false, reason: "not_clipboard_add" };

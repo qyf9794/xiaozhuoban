@@ -4140,11 +4140,13 @@ export function BuiltinWidgetView({
           return selectChannel(args);
         },
         async fullscreen() {
-          const video = videoRef.current;
-          if (!video?.requestFullscreen) {
+          const fullscreenTarget = document.documentElement;
+          if (!fullscreenTarget.requestFullscreen) {
             return { status: "failed", message: "当前浏览器不支持电视全屏", errorCode: "TV_FULLSCREEN_UNAVAILABLE" };
           }
-          await video.requestFullscreen();
+          if (!document.fullscreenElement) {
+            await fullscreenTarget.requestFullscreen();
+          }
           return { status: "success", message: "已全屏电视" };
         }
       });

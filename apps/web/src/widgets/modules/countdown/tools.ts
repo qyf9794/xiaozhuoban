@@ -23,8 +23,15 @@ export const countdownToolArgSchemas = {
     minutes: { type: "number" },
     seconds: { type: "number" },
     totalSeconds: { type: "number" },
+    durationMs: { type: "number" },
+    durationSeconds: { type: "number" },
+    durationInMinutes: { type: "number" },
+    durationMinutes: { type: "number" },
+    durationText: { type: "string" },
+    time: { type: "string" },
     label: { type: "string" },
-    start: { type: "boolean" }
+    start: { type: "boolean" },
+    autoStart: { type: "boolean" }
   }),
   "countdown.pause": widgetIdArgsSchema,
   "countdown.resume": widgetIdArgsSchema,

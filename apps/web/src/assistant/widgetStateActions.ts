@@ -388,7 +388,14 @@ function normalizeTodoItems(raw: unknown): TodoStateItem[] {
 }
 
 function findTodoItemByText(items: TodoStateItem[], text: string) {
+  const normalizeTodoMatchText = (value: string) =>
+    value
+      .replace(/(今天|今日|明天|明早|明晚|今晚|早上|上午|中午|下午|晚上|一会儿|待会儿|等会儿)/g, "")
+      .replace(/(这个|这项|这条|待办|任务|清单|事项)/g, "")
+      .replace(/\s+/g, "")
+      .trim();
   const query = text.trim();
+  const normalizedQuery = normalizeTodoMatchText(query);
   if (!query) return null;
   const ordinal =
     /第?一条|第?1条|第一项|第?1项|第一个|第?1个/.test(query)
@@ -402,6 +409,10 @@ function findTodoItemByText(items: TodoStateItem[], text: string) {
   return (
     items.find((item) => item.text.trim() === query) ??
     items.find((item) => item.text.includes(query) || query.includes(item.text)) ??
+    items.find((item) => {
+      const normalizedItem = normalizeTodoMatchText(item.text);
+      return Boolean(normalizedQuery) && (normalizedItem.includes(normalizedQuery) || normalizedQuery.includes(normalizedItem));
+    }) ??
     null
   );
 }
@@ -517,7 +528,8 @@ function normalizeDirectMarketCode(raw: string): string | undefined {
 
 async function lookupMarketCodeOnline(raw: string): Promise<MarketTargetCode | undefined> {
   const query = raw
-    .replace(/(我要看|想看|看一下|看看|查看|查询|搜索|打开|看|股票|股价|走势|行情|价格|图像|图表|的)/g, " ")
+    .replace(/(我要看|想看|看一下|看看|查看|查询|搜索|打开|看|股票|股价|走势图|走势|行情|价格|图像|图表|的)/g, " ")
+    .replace(/(?:^|\s)(和|及|以及|并排|放好)(?:\s|$)/g, " ")
     .replace(/\s+/g, " ")
     .trim();
   if (!query || typeof fetch === "undefined") return undefined;

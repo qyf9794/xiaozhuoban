@@ -52,8 +52,8 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 048. [pass] tools=converter.set; mutations=state:wi_converter; command=2斤是多少克
 049. [pass] tools=converter.set; mutations=state:wi_converter; command=十二米换算公里
 050. [pass] tools=converter.set; mutations=state:wi_converter; command=两公斤换算成克
-051. [pass] tools=worldClock.set_zones; mutations=state:wi_worldClock; command=世界时钟显示北京伦敦纽约
-052. [pass] tools=worldClock.set_zones; mutations=state:wi_worldClock; command=看东京和巴黎时间
+051. [fail] tools=worldClock.set_zones; mutations=none; command=世界时钟显示北京伦敦纽约
+052. [fail] tools=worldClock.set_zones; mutations=none; command=看东京和巴黎时间
 053. [pass] tools=headline.request_refresh; mutations=state:wi_headline; command=刷新重大新闻
 054. [pass] tools=headline.request_refresh; mutations=state:wi_headline; command=今天有什么头条新闻
 055. [pass] tools=market.set_indices; mutations=state:wi_market; command=看美股三大指数
@@ -120,7 +120,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 116. [pass] tools=translate.set_draft; mutations=state:wi_translate; command=good night 帮我看中文，场景1
 117. [pass] tools=calculator.set_display; mutations=state:wi_calculator; command=十二乘十二，场景1
 118. [pass] tools=market.set_indices; mutations=state:wi_market; command=纳指给我看一眼，场景1
-119. [pass] tools=worldClock.set_zones; mutations=state:wi_worldClock; command=东京现在几点，场景1
+119. [fail] tools=worldClock.set_zones; mutations=none; command=东京现在几点，场景1
 120. [pass] tools=headline.request_refresh; mutations=state:wi_headline; command=看看刚刚有什么新闻，场景1
 121. [pass] tools=recorder.start; mutations=capability:wi_recorder:start,state:wi_recorder; command=帮我录一段，场景1
 122. [pass] tools=tv.select_channel; mutations=capability:wi_tv:selectChannel,state:wi_tv; command=电影频道打开，场景1
@@ -140,7 +140,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 136. [pass] tools=translate.set_draft; mutations=state:wi_translate; command=good night 帮我看中文，场景2
 137. [pass] tools=calculator.set_display; mutations=state:wi_calculator; command=十二乘十二，场景2
 138. [pass] tools=market.set_indices; mutations=state:wi_market; command=纳指给我看一眼，场景2
-139. [pass] tools=worldClock.set_zones; mutations=state:wi_worldClock; command=东京现在几点，场景2
+139. [fail] tools=worldClock.set_zones; mutations=none; command=东京现在几点，场景2
 140. [pass] tools=headline.request_refresh; mutations=state:wi_headline; command=看看刚刚有什么新闻，场景2
 141. [pass] tools=recorder.start; mutations=capability:wi_recorder:start,state:wi_recorder; command=帮我录一段，场景2
 142. [pass] tools=tv.select_channel; mutations=capability:wi_tv:selectChannel,state:wi_tv; command=电影频道打开，场景2
@@ -160,7 +160,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 156. [pass] tools=translate.set_draft; mutations=state:wi_translate; command=good night 帮我看中文，场景3
 157. [pass] tools=calculator.set_display; mutations=state:wi_calculator; command=十二乘十二，场景3
 158. [pass] tools=market.set_indices; mutations=state:wi_market; command=纳指给我看一眼，场景3
-159. [pass] tools=worldClock.set_zones; mutations=state:wi_worldClock; command=东京现在几点，场景3
+159. [fail] tools=worldClock.set_zones; mutations=none; command=东京现在几点，场景3
 160. [pass] tools=headline.request_refresh; mutations=state:wi_headline; command=看看刚刚有什么新闻，场景3
 161. [pass] tools=recorder.start; mutations=capability:wi_recorder:start,state:wi_recorder; command=帮我录一段，场景3
 162. [pass] tools=tv.play; mutations=capability:wi_tv:play,state:wi_tv; command=电影频道打开，场景3
@@ -180,7 +180,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 176. [pass] tools=translate.set_draft; mutations=state:wi_translate; command=good night 帮我看中文，场景4
 177. [pass] tools=calculator.set_display; mutations=state:wi_calculator; command=十二乘十二，场景4
 178. [pass] tools=market.set_indices; mutations=state:wi_market; command=纳指给我看一眼，场景4
-179. [pass] tools=worldClock.set_zones; mutations=state:wi_worldClock; command=东京现在几点，场景4
+179. [fail] tools=worldClock.set_zones; mutations=none; command=东京现在几点，场景4
 180. [pass] tools=headline.request_refresh; mutations=state:wi_headline; command=看看刚刚有什么新闻，场景4
 181. [pass] tools=recorder.start; mutations=capability:wi_recorder:start,state:wi_recorder; command=帮我录一段，场景4
 182. [pass] tools=tv.play; mutations=capability:wi_tv:play,state:wi_tv; command=电影频道打开，场景4
@@ -200,7 +200,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 196. [pass] tools=translate.set_draft; mutations=state:wi_translate; command=good night 帮我看中文，场景5
 197. [pass] tools=calculator.set_display; mutations=state:wi_calculator; command=十二乘十二，场景5
 198. [pass] tools=market.set_indices; mutations=state:wi_market; command=纳指给我看一眼，场景5
-199. [pass] tools=worldClock.set_zones; mutations=state:wi_worldClock; command=东京现在几点，场景5
+199. [fail] tools=worldClock.set_zones; mutations=none; command=东京现在几点，场景5
 200. [pass] tools=headline.request_refresh; mutations=state:wi_headline; command=看看刚刚有什么新闻，场景5
 201. [pass] tools=app.sidebar.set,app.settings.open; mutations=sidebar:false,settings; command=先把左侧边栏收起，然后打开设置检查语音入口
 202. [pass] tools=app.fullscreen.set,app.command_palette.open; mutations=fullscreenApp:false,palette; command=进入全屏后马上退出，再打开命令面板找音乐播放器
@@ -225,7 +225,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 221. [pass] tools=board.create; mutations=boardAdd:board_3; command=新建一个叫晨间复盘的桌板，然后切过去
 222. [pass] tools=board.rename,board.auto_align; mutations=boardRename:board_1,autoAlign; command=把当前桌板改名成项目冲刺，并整理所有小工具
 223. [pass] tools=board.switch,board.add_widget,headline.request_refresh,market.set_indices; mutations=switch:board_2,add:headline,state:wi_headline,state:wi_market; command=切到工作台桌板后打开新闻和行情
-224. [pass] tools=board.create,board.add_widget,weather.set_city,worldClock.set_zones; mutations=boardAdd:board_3,add:worldClock,state:wi_weather,state:wi_worldClock; command=新开旅行计划桌板，把天气、世界时钟和待办都放上去
+224. [fail] tools=board.create,board.add_widget,weather.set_city,worldClock.set_zones; mutations=boardAdd:board_3,add:worldClock,state:wi_weather; command=新开旅行计划桌板，把天气、世界时钟和待办都放上去
 225. [pass] tools=board.switch,dialClock.set_night_mode; mutations=switch:board_2,capability:wi_dialClock:setNightMode,state:wi_dialClock; command=回到夜间工作桌板，同时把表盘时钟调成夜间模式
 226. [pass] tools=board.create,board.add_widget; mutations=boardAdd:board_3,add:music; command=创建一个音乐练习桌板，再打开音乐和录音机
 227. [pass] tools=board.rename; mutations=boardRename:board_1; command=把当前桌板改成语音回归测试，不要删除任何小工具
@@ -325,15 +325,15 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 321. [pass] tools=weather.set_city,note.write; mutations=state:wi_weather,state:wi_note; command=查北京今天会不会下雨，顺便记到便签
 322. [pass] tools=weather.set_city,todo.add_item; mutations=state:wi_weather,state:wi_todo; command=看上海现在天气，如果冷就提醒我带外套
 323. [pass] tools=weather.set_city,todo.add_item; mutations=state:wi_weather,state:wi_todo; command=明早去杭州，帮我看天气并加一条待办
-324. [pass] tools=weather.set_city,worldClock.set_zones; mutations=state:wi_weather,state:wi_worldClock; command=洛杉矶天气打开看看，再显示本地时间
+324. [fail] tools=weather.set_city,worldClock.set_zones; mutations=state:wi_weather; command=洛杉矶天气打开看看，再显示本地时间
 325. [pass] tools=weather.set_city; mutations=state:wi_weather; command=广州天气怎么样，同时刷新空气相关摘要
 326. [pass] tools=weather.set_city; mutations=state:wi_weather; command=帮我查武汉今天适不适合跑步
 327. [pass] tools=weather.set_city,widget.bring_to_front,widget.focus; mutations=state:wi_weather,front:wi_headline,focus:wi_headline; command=成都天气卡片放最前，别打开新闻
 328. [pass] tools=weather.set_city,converter.set; mutations=state:wi_weather,state:wi_converter; command=波士顿现在冷不冷，再换算华氏和摄氏
 329. [pass] tools=board.add_widget,weather.set_city; mutations=add:weather,state:wi_weather; command=北京和上海天气都打开，我要对比
 330. [pass] tools=weather.set_city,todo.add_item; mutations=state:wi_weather,state:wi_todo; command=我明天出门，先查杭州天气再设早上八点提醒
-331. [pass] tools=weather.set_city,worldClock.set_zones; mutations=state:wi_weather,state:wi_worldClock; command=查东京天气，同时打开东京世界时钟
-332. [pass] tools=weather.set_city,worldClock.set_zones; mutations=state:wi_weather,state:wi_worldClock; command=给我看巴黎天气，顺便显示巴黎时间
+331. [fail] tools=weather.set_city,worldClock.set_zones; mutations=state:wi_weather; command=查东京天气，同时打开东京世界时钟
+332. [fail] tools=weather.set_city,worldClock.set_zones; mutations=state:wi_weather; command=给我看巴黎天气，顺便显示巴黎时间
 333. [pass] tools=weather.set_city; mutations=state:wi_weather; command=查深圳天气，不要误打开重大新闻
 334. [pass] tools=weather.set_city; mutations=state:wi_weather; command=外面适合带伞吗，默认看北京
 335. [pass] tools=weather.set_city,widget.focus; mutations=state:wi_weather,focus:wi_worldClock; command=帮我把天气城市改成纽约并聚焦天气卡片
@@ -342,20 +342,20 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 338. [pass] tools=weather.set_city; mutations=state:wi_weather; command=今天适合洗车吗，看上海天气
 339. [pass] tools=weather.set_city,translate.set_draft; mutations=state:wi_weather,state:wi_translate; command=查北京体感温度，然后翻译成英文一句话
 340. [pass] tools=board.add_widget,weather.set_city; mutations=add:weather,state:wi_weather; command=天气窗口如果没开，先打开再查武汉
-341. [pass] tools=board.add_widget,worldClock.set_zones; mutations=add:worldClock,state:wi_worldClock; command=显示北京伦敦纽约时间，并打开表盘时钟
-342. [pass] tools=worldClock.set_zones,dialClock.set_night_mode; mutations=state:wi_worldClock,capability:wi_dialClock:setNightMode,state:wi_dialClock; command=世界时钟加东京和巴黎，然后切到夜间模式
+341. [fail] tools=board.add_widget,worldClock.set_zones; mutations=add:worldClock; command=显示北京伦敦纽约时间，并打开表盘时钟
+342. [fail] tools=worldClock.set_zones,dialClock.set_night_mode; mutations=capability:wi_dialClock:setNightMode,state:wi_dialClock; command=世界时钟加东京和巴黎，然后切到夜间模式
 343. [pass] tools=countdown.set,music.play; mutations=state:wi_countdown,capability:wi_music:play,state:wi_music; command=设二十五分钟专注倒计时，同时播放轻音乐
 344. [pass] tools=countdown.pause,note.write; mutations=state:wi_countdown,state:wi_note; command=倒计时暂停后，便签记一下暂停原因是开会
 345. [pass] tools=countdown.resume,todo.add_item; mutations=state:wi_countdown,state:wi_todo; command=继续刚才的倒计时，结束后提醒我喝水
 346. [pass] tools=dialClock.set_night_mode,widget.resize; mutations=capability:wi_dialClock:setNightMode,state:wi_dialClock,resize:wi_dialClock; command=把表盘时钟调成夜间模式，并缩小一点
-347. [pass] tools=dialClock.set_night_mode,worldClock.set_zones; mutations=capability:wi_dialClock:setNightMode,state:wi_dialClock,state:wi_worldClock; command=关闭时钟夜间模式，再显示纽约时间
+347. [fail] tools=dialClock.set_night_mode,worldClock.set_zones; mutations=capability:wi_dialClock:setNightMode,state:wi_dialClock; command=关闭时钟夜间模式，再显示纽约时间
 348. [pass] tools=countdown.set,todo.add_item; mutations=state:wi_countdown,state:wi_todo; command=半小时后提醒我检查部署日志
 349. [pass] tools=countdown.set; mutations=state:wi_countdown; command=设置一分三十秒倒计时，名称叫泡茶
 350. [pass] tools=countdown.reset,countdown.set; mutations=state:wi_countdown,state:wi_countdown; command=把倒计时重置，然后重新设五分钟
-351. [pass] tools=worldClock.set_zones,weather.set_city; mutations=state:wi_worldClock,state:wi_weather; command=显示东京现在几点，同时查东京天气
+351. [fail] tools=worldClock.set_zones,weather.set_city; mutations=state:wi_weather; command=显示东京现在几点，同时查东京天气
 352. [pass] tools=todo.add_item; mutations=state:wi_todo; command=明早九点提醒我给客户回电话
 353. [pass] tools=countdown.set; mutations=state:wi_countdown; command=二十分钟后让我休息，不要打开待办列表
-354. [pass] tools=worldClock.set_zones; mutations=state:wi_worldClock; command=世界时钟只保留北京和旧金山
+354. [fail] tools=worldClock.set_zones; mutations=none; command=世界时钟只保留北京和旧金山
 355. [pass] tools=widget.move; mutations=move:wi_tv; command=表盘时钟放到桌面中央，别挡住电视
 356. [pass] tools=countdown.set,recorder.start; mutations=state:wi_countdown,capability:wi_recorder:start,state:wi_recorder; command=设一个四十五分钟会议倒计时并开始录音
 357. [pass] tools=countdown.pause,music.pause; mutations=state:wi_countdown,capability:wi_music:pause; command=暂停计时器，同时把音乐也暂停
@@ -426,7 +426,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 422. [pass] tools=market.set_indices,headline.request_refresh; mutations=state:wi_market,state:wi_headline; command=看纳指和道指，顺便刷新财经新闻
 423. [pass] tools=board.add_widget,market.set_indices; mutations=add:market,state:wi_market; command=打开恒生和上证行情，不要自动开全球指数
 424. [pass] tools=headline.request_refresh,note.write; mutations=state:wi_headline,state:wi_note; command=今天有什么头条新闻，结果追加到便签
-425. [pass] tools=market.set_indices,worldClock.set_zones; mutations=state:wi_market,state:wi_worldClock; command=看美股三大指数，同时显示纽约时间
+425. [fail] tools=market.set_indices,worldClock.set_zones; mutations=state:wi_market; command=看美股三大指数，同时显示纽约时间
 426. [pass] tools=headline.request_refresh; mutations=state:wi_headline; command=只刷新新闻，不要打开行情窗口
 427. [pass] tools=widget.move; mutations=move:wi_headline; command=把新闻窗口放到右侧，行情放到左侧
 428. [pass] tools=market.set_indices,widget.bring_to_front; mutations=state:wi_market,front:wi_market; command=查询上证指数后把市场窗口置顶
@@ -485,11 +485,11 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 481. [pass] tools=music.play,weather.set_city,note.write; mutations=capability:wi_music:play,state:wi_music,state:wi_weather,state:wi_note; command=播放陈奕迅十年，同时查上海天气并写到便签
 482. [pass] tools=board.add_widget,tv.select_channel,headline.request_refresh,music.pause; mutations=add:headline,capability:wi_tv:selectChannel,state:wi_tv,state:wi_headline,capability:wi_music:pause; command=打开电视 CCTV13，再刷新新闻，最后暂停音乐
 483. [pass] tools=weather.set_city,todo.add_item; mutations=state:wi_weather,state:wi_todo; command=查北京天气，如果适合出门就加待办买咖啡
-484. [pass] tools=board.add_widget,market.set_indices,headline.request_refresh,worldClock.set_zones,widget.move; mutations=add:worldClock,state:wi_market,state:wi_headline,state:wi_worldClock,move:wi_worldClock; command=打开市场行情、重大新闻和纽约时间，排成一列
+484. [fail] tools=board.add_widget,market.set_indices,headline.request_refresh,worldClock.set_zones,widget.move; mutations=add:worldClock,state:wi_market,state:wi_headline,move:wi_worldClock; command=打开市场行情、重大新闻和纽约时间，排成一列
 485. [pass] tools=recorder.start,countdown.set,board.add_widget; mutations=capability:wi_recorder:start,state:wi_recorder,state:wi_countdown,add:countdown; command=开始录音，设四十五分钟倒计时，并打开会议便签
 486. [pass] tools=board.add_widget,music.search; mutations=add:music,capability:wi_music:search,state:wi_music; command=搜索轻松音乐但先不播放，然后打开待办
 487. [pass] tools=translate.set_draft,clipboard.add_text; mutations=state:wi_translate,state:wi_clipboard; command=把 hello world 翻译成中文，再复制到剪贴板
-488. [pass] tools=board.create,board.add_widget,weather.set_city,worldClock.set_zones; mutations=boardAdd:board_3,add:worldClock,state:wi_weather,state:wi_worldClock; command=新建旅行桌板，打开杭州天气和东京时间
+488. [fail] tools=board.create,board.add_widget,weather.set_city,worldClock.set_zones; mutations=boardAdd:board_3,add:worldClock,state:wi_weather; command=新建旅行桌板，打开杭州天气和东京时间
 489. [pass] tools=widget.remove,widget.bring_to_front; mutations=remove:wi_messageBoard,front:wi_music; command=关闭留言板，再把音乐播放器放最前
 490. [pass] tools=music.play,countdown.set,todo.add_item; mutations=capability:wi_music:play,state:wi_music,state:wi_countdown,state:wi_todo; command=播放王菲红豆后，三分钟后提醒我检查是否试听
 491. [pass] tools=board.add_widget,app.sidebar.set; mutations=add:worldClock,sidebar:false; command=打开表盘时钟而不是世界时钟，然后隐藏侧栏
@@ -497,7 +497,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 493. [pass] tools=clipboard.clear,clipboard.add_text; mutations=state:wi_clipboard,state:wi_clipboard; command=清理剪贴板普通记录，再把项目口令固定
 494. [pass] tools=todo.add_item; mutations=state:wi_todo; command=添加待办提交报告，同时明早九点提醒
 495. [pass] tools=converter.set,messageBoard.send; mutations=state:wi_converter,capability:wi_messageBoard:send,state:wi_messageBoard; command=计算两公斤是多少克，把结果发到留言板
-496. [pass] tools=weather.set_city,worldClock.set_zones; mutations=state:wi_weather,state:wi_worldClock; command=天气改成武汉，世界时钟改成北京伦敦纽约
+496. [fail] tools=weather.set_city,worldClock.set_zones; mutations=state:wi_weather; command=天气改成武汉，世界时钟改成北京伦敦纽约
 497. [pass] tools=music.pause,recorder.start,board.add_widget; mutations=capability:wi_music:pause,capability:wi_recorder:start,state:wi_recorder,add:countdown; command=把音乐暂停，开始录音，然后打开倒计时
 498. [pass] tools=board.create,board.add_widget; mutations=boardAdd:board_3,add:calculator; command=新建学习桌板并打开翻译、计算器、便签
 499. [pass] tools=headline.request_refresh,note.write,clipboard.add_text; mutations=state:wi_headline,state:wi_note,state:wi_clipboard; command=刷新新闻后把摘要追加到便签并复制
@@ -553,7 +553,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 549. [pass] tools=widget.resize; mutations=resize:wi_music; command=音乐窗口不要全屏，只把封面放大
 550. [pass] tools=widget.move,dialClock.set_night_mode; mutations=move:wi_dialClock,capability:wi_dialClock:setNightMode,state:wi_dialClock; command=把表盘放到中间并打开夜间模式
 551. [pass] tools=app.sidebar.set,tv.fullscreen; mutations=sidebar:false,capability:wi_tv:fullscreen; command=电视全屏时隐藏侧边栏
-552. [pass] tools=widget.resize,worldClock.set_zones; mutations=resize:wi_worldClock,state:wi_worldClock; command=把世界时钟文字放大，显示北京伦敦纽约
+552. [fail] tools=widget.resize,worldClock.set_zones; mutations=resize:wi_worldClock; command=把世界时钟文字放大，显示北京伦敦纽约
 553. [pass] tools=widget.resize; mutations=resize:wi_todo; command=让待办窗口宽一点，长文本不要折断
 554. [pass] tools=widget.move,widget.resize; mutations=move:wi_clipboard,resize:wi_clipboard; command=把剪贴板窗口移到右侧并缩窄
 555. [pass] tools=app.sidebar.set; mutations=sidebar:true; command=显示侧边栏，但不要压缩音乐封面
@@ -588,14 +588,14 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 584. [pass] tools=countdown.set; mutations=state:wi_countdown; command=设三十分钟学习倒计时
 585. [pass] tools=note.write,translate.set_draft; mutations=state:wi_note,state:wi_translate; command=把单词 realtime 写到便签并翻译
 586. [pass] tools=calculator.set_display; mutations=state:wi_calculator; command=计算今天学习时间二十五加五十分钟
-587. [pass] tools=worldClock.set_zones; mutations=state:wi_worldClock; command=查东京时间安排外教课
+587. [fail] tools=worldClock.set_zones; mutations=none; command=查东京时间安排外教课
 588. [pass] tools=translate.set_draft; mutations=state:wi_translate; command=把 close sidebar 翻译成中文，不要执行命令
 589. [pass] tools=music.play; mutations=capability:wi_music:play,state:wi_music; command=播放轻柔钢琴帮助阅读
 590. [pass] tools=todo.add_item; mutations=state:wi_todo; command=新增待办：背二十个单词
 591. [pass] tools=translate.set_draft; mutations=state:wi_translate; command=把 hello world 翻译成英文解释一下
 592. [pass] tools=board.add_widget,recorder.start; mutations=add:recorder,capability:wi_recorder:start,state:wi_recorder; command=打开录音机录一段口语练习
 593. [pass] tools=recorder.stop; mutations=capability:wi_recorder:stop,state:wi_recorder; command=停止录音后播放检查发音
-594. [pass] tools=worldClock.set_zones; mutations=state:wi_worldClock; command=把巴黎时间和北京时间都显示出来
+594. [fail] tools=worldClock.set_zones; mutations=none; command=把巴黎时间和北京时间都显示出来
 595. [pass] tools=translate.set_draft; mutations=state:wi_translate; command=翻译这句：music is still in preview mode
 596. [pass] tools=note.write; mutations=state:wi_note; command=便签记下今天学到的三个命令
 597. [pass] tools=todo.add_item; mutations=state:wi_todo; command=设置十五分钟休息提醒
@@ -606,15 +606,15 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 602. [pass] tools=todo.add_item; mutations=state:wi_todo; command=明早七点提醒我带身份证和充电器
 603. [pass] tools=weather.set_city,note.write; mutations=state:wi_weather,state:wi_note; command=查北京到上海出行前天气，写到便签
 604. [pass] tools=todo.add_item; mutations=state:wi_todo; command=添加待办订酒店和买高铁票
-605. [pass] tools=worldClock.set_zones; mutations=state:wi_worldClock; command=显示东京、巴黎和纽约时间
+605. [fail] tools=worldClock.set_zones; mutations=none; command=显示东京、巴黎和纽约时间
 606. [pass] tools=music.play; mutations=capability:wi_music:play,state:wi_music; command=播放轻松音乐，一边整理旅行清单
 607. [pass] tools=converter.set; mutations=state:wi_converter; command=把 2 公斤行李换算成克
 608. [pass] tools=weather.set_city; mutations=state:wi_weather; command=查广州天气决定带不带伞
 609. [pass] tools=clipboard.add_text; mutations=state:wi_clipboard; command=把航班号 CA1234 存到剪贴板
-610. [pass] tools=board.add_widget,worldClock.set_zones,widget.move; mutations=add:worldClock,state:wi_worldClock,move:wi_worldClock; command=打开世界时钟并放到旅行桌板右侧
+610. [fail] tools=board.add_widget,worldClock.set_zones,widget.move; mutations=add:worldClock,move:wi_worldClock; command=打开世界时钟并放到旅行桌板右侧
 611. [pass] tools=todo.add_item; mutations=state:wi_todo; command=明天下午三点提醒我办理入住
 612. [pass] tools=translate.set_draft; mutations=state:wi_translate; command=翻译 hotel reservation 成中文
-613. [pass] tools=weather.set_city,worldClock.set_zones; mutations=state:wi_weather,state:wi_worldClock; command=查洛杉矶天气并显示当地时间
+613. [fail] tools=weather.set_city,worldClock.set_zones; mutations=state:wi_weather; command=查洛杉矶天气并显示当地时间
 614. [pass] tools=todo.add_item; mutations=state:wi_todo; command=添加待办：打印行程单
 615. [pass] tools=calculator.set_display; mutations=state:wi_calculator; command=把旅行预算 1999 加 299 算一下
 616. [pass] tools=widget.remove,widget.remove,board.add_widget,weather.set_city; mutations=remove:wi_music,remove:wi_tv,add:music,state:wi_weather; command=关闭电视，打开音乐和天气

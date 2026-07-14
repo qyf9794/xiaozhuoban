@@ -460,6 +460,21 @@ describe("widget state assistant actions", () => {
     expect(getWidget("market")?.state.marketSymbolLabels).toEqual({ usAAPL: "苹果 AAPL" });
   });
 
+  it("cleans stock lookup command wording before online market search", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ code: "usTSLA", label: "特斯拉 TSLA" })));
+    const { store, getWidget } = createStore();
+    const registry = createRegistry(store);
+
+    await registry.execute(
+      { id: "call_1", name: "market.set_indices", arguments: { query: "打开特斯拉股价和走势图" }, source: "test" },
+      { target: targetFor("market"), now: () => NOW }
+    );
+
+    expect(fetch).toHaveBeenCalledWith("/api/market/search?q=%E7%89%B9%E6%96%AF%E6%8B%89");
+    expect(getWidget("market")?.state.indexCodes).toEqual(["usTSLA"]);
+    expect(getWidget("market")?.state.marketSymbolLabels).toEqual({ usTSLA: "特斯拉 TSLA" });
+  });
+
   it("completes todo items by ordinal wording", async () => {
     const { store, getWidget } = createStore();
     const todo = getWidget("todo");

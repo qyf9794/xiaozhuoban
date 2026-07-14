@@ -125,6 +125,7 @@ export interface RealtimeAssistantRuntime {
   sendRealtimeTextCommand: (input: string, options?: { commandTraceId?: string }) => Promise<void>;
   disconnect: () => void;
   detectLocalWake: () => void;
+  noteRealtimeActivity: (source: string) => void;
   handleIdleElapsed: (idleMs: number) => void;
   handleMaxSessionElapsed: (activeMs: number) => void;
   recordCommandRoute: (route: AssistantRoute) => void;
@@ -188,6 +189,15 @@ export function createRealtimeAssistantRuntime(options: {
     if (timeoutMs <= 0) return;
     maxSessionTimer = globalThis.setTimeout(() => onElapsed(timeoutMs), timeoutMs);
   };
+  const noteRealtimeActivity = (source: string) => {
+    if (connectedAt === null || !runtimeController.mode.startsWith("realtime_")) return;
+    scheduleIdleTimer((idleMs) => runtimeApi.handleIdleElapsed(idleMs));
+    emitDiagnostic?.({
+      type: "realtime.runtime.activity",
+      status: "refreshed",
+      data: { source, mode: runtimeController.mode }
+    });
+  };
   const adapterOptions: OpenAIRealtimeWebRtcAdapterOptions = {
     ...options.adapterOptions,
     onStatusChange(status) {
@@ -206,9 +216,11 @@ export function createRealtimeAssistantRuntime(options: {
       options.onStatusChange?.(status);
     },
     async onFunctionCall(call) {
+      noteRealtimeActivity("function_call");
       await harness.handleFunctionCall(call, "function_call");
     },
     async onCommand(input, commandOptions) {
+      noteRealtimeActivity("command_tool");
       try {
         const response = await harness.handleRealtimeUserInput(input, { commandTraceId: commandOptions.commandTraceId });
         if (response.route === "shortcut" || response.route === "learned") {
@@ -474,6 +486,7 @@ export function createRealtimeAssistantRuntime(options: {
       if (!runtimeController.mode.startsWith("realtime_")) {
         await connectTextOnlyWithReason("manual");
       }
+      noteRealtimeActivity("text_command");
       adapter.sendTextCommand(input, options);
     },
     disconnect: disconnectRealtime,
@@ -481,6 +494,7 @@ export function createRealtimeAssistantRuntime(options: {
       runtimeController.detectLocalWake();
       notifyRuntime();
     },
+    noteRealtimeActivity,
     handleIdleElapsed(idleMs) {
       const previousMode = runtimeController.mode;
       const nextMode = runtimeController.idleElapsed(idleMs);

@@ -180,6 +180,7 @@ const INTENT_TOOL_PRIORITIES: Record<string, string[]> = {
   set: ["tv.select_channel", "tv.play", "countdown.set", "weather.set_city", "market.set_indices", "worldClock.set_zones", "calculator.set_display", "converter.set", "translate.set_draft"],
   refresh: ["headline.request_refresh"],
   add: ["board.add_widget", "todo.add_item", "clipboard.add_text"],
+  complete: ["todo.complete_item"],
   switch: ["board.switch", "tv.select_channel"],
   create: ["board.create", "board.add_widget"],
   rename: ["board.rename"],
@@ -293,13 +294,51 @@ function extractMusicQueryFromText(text: string): string {
     .trim();
 }
 
-function normalizeCountdownToolArguments(args: Record<string, unknown>): Record<string, unknown> {
+function extractMarketIndexCodesFromText(text: string): string[] {
+  const normalized = text.replace(/\s+/g, "");
+  const pairs: Array<[RegExp, string]> = [
+    [/(标普|标普500|S&P|sp500|spx|standard\s*&?\s*poor)/i, "usINX"],
+    [/(纳指|纳斯达克|纳斯达克100|NDX|nasdaq|nasdaq\s*100)/i, "usNDX"],
+    [/(道指|道琼斯|道琼斯工业|DJI|dow|dow\s*jones)/i, "usDJI"],
+    [/(恒生|港股|HSI|hang\s*seng)/i, "hkHSI"],
+    [/(上证|沪指|A股|a股|sh000001)/i, "sh000001"],
+    [/(深成|深证|深证成指|sz399001)/i, "sz399001"]
+  ];
+  const codes = pairs.filter(([pattern]) => pattern.test(normalized)).map(([, code]) => code);
+  if (codes.length) return Array.from(new Set(codes));
+  if (/(美股|美国股市|美国市场)/.test(text)) return ["usINX", "usNDX", "usDJI"];
+  if (/(港股|香港股市|香港市场)/.test(text)) return ["hkHSI"];
+  return [];
+}
+
+function extractMarketQueryFromText(text: string): string {
+  return text
+    .replace(/(我要看|想看|看一下|看看|查看|查询|搜索|打开|看|股票|股价|走势图|走势|行情|价格|图像|图表|小工具|窗口|面板|的)/g, " ")
+    .replace(/(?:^|\s)(和|及|以及|并排|放好)(?:\s|$)/g, " ")
+    .replace(/[，。！？、,.!?;；:："'“”‘’]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeCountdownToolArguments(args: Record<string, unknown>, fallbackText = ""): Record<string, unknown> {
   const nextArgs = { ...args };
   if (typeof nextArgs.totalSeconds !== "number") {
     if (typeof nextArgs.durationMs === "number") {
       nextArgs.totalSeconds = Math.max(0, Math.round(nextArgs.durationMs / 1000));
     } else if (typeof nextArgs.durationSeconds === "number") {
       nextArgs.totalSeconds = Math.max(0, Math.round(nextArgs.durationSeconds));
+    } else if (typeof nextArgs.durationInMinutes === "number") {
+      nextArgs.totalSeconds = Math.max(0, Math.round(nextArgs.durationInMinutes * 60));
+    } else if (typeof nextArgs.durationMinutes === "number") {
+      nextArgs.totalSeconds = Math.max(0, Math.round(nextArgs.durationMinutes * 60));
+    } else if (typeof nextArgs.minutes === "number") {
+      nextArgs.totalSeconds = Math.max(0, Math.round(nextArgs.minutes * 60));
+    } else if (typeof nextArgs.durationText === "string") {
+      nextArgs.totalSeconds = parseCountdownSecondsFromText(nextArgs.durationText);
+    } else if (typeof nextArgs.time === "string") {
+      nextArgs.totalSeconds = parseCountdownSecondsFromText(nextArgs.time);
+    } else if (fallbackText) {
+      nextArgs.totalSeconds = parseCountdownSecondsFromText(fallbackText);
     }
   }
   if (typeof nextArgs.start !== "boolean" && typeof nextArgs.autoStart === "boolean") {
@@ -307,8 +346,85 @@ function normalizeCountdownToolArguments(args: Record<string, unknown>): Record<
   }
   delete nextArgs.durationMs;
   delete nextArgs.durationSeconds;
+  delete nextArgs.durationInMinutes;
+  delete nextArgs.durationMinutes;
+  delete nextArgs.durationText;
+  delete nextArgs.minutes;
+  delete nextArgs.time;
   delete nextArgs.autoStart;
   return nextArgs;
+}
+
+function parseConverterArgsFromText(text: string): Record<string, unknown> {
+  const compact = text.replace(/\s+/g, "");
+  const amount = compact.match(/(\d+(?:\.\d+)?)/)?.[1];
+  const unit = (patterns: Array<[RegExp, string]>) => patterns.find(([pattern]) => pattern.test(compact))?.[1];
+  const fromUnit = unit([
+    [/公斤|千克|kg/i, "kg"],
+    [/克|g/i, "g"],
+    [/斤/, "kg"],
+    [/公里|千米|km/i, "km"],
+    [/米|m/i, "m"]
+  ]);
+  const toUnit = unit([
+    [/成克|到克|为克|換算成克|换算成克|转成克|to\s*g/i, "g"],
+    [/成公斤|到公斤|为公斤|换算成公斤|轉成公斤|to\s*kg/i, "kg"],
+    [/成公里|到公里|为公里|换算成公里|to\s*km/i, "km"],
+    [/成米|到米|为米|换算成米|to\s*m/i, "m"]
+  ]);
+  const category = /(公斤|千克|克|斤|kg|g)/i.test(compact) ? "weight" : /(公里|千米|米|km|m)/i.test(compact) ? "length" : undefined;
+  return {
+    ...(amount ? { value: Number(amount) } : {}),
+    ...(category ? { category } : {}),
+    ...(fromUnit ? { fromUnit } : {}),
+    ...(toUnit ? { toUnit } : {})
+  };
+}
+
+function normalizeConverterToolArguments(args: Record<string, unknown>, fallbackText = ""): Record<string, unknown> {
+  const parsed = parseConverterArgsFromText(fallbackText);
+  const nextArgs = { ...parsed, ...args };
+  const value = nextArgs.value ?? nextArgs.amount ?? nextArgs.inputValue ?? nextArgs.sourceValue ?? nextArgs.quantity;
+  if ((typeof value === "string" && value.trim()) || typeof value === "number") nextArgs.value = value;
+  const fromUnit = nextArgs.fromUnit ?? nextArgs.from ?? nextArgs.sourceUnit ?? nextArgs.inputUnit;
+  if (typeof fromUnit === "string" && fromUnit.trim()) nextArgs.fromUnit = fromUnit.trim();
+  const toUnit = nextArgs.toUnit ?? nextArgs.to ?? nextArgs.targetUnit ?? nextArgs.outputUnit;
+  if (typeof toUnit === "string" && toUnit.trim()) nextArgs.toUnit = toUnit.trim();
+  if (typeof nextArgs.category !== "string") {
+    const unitText = `${nextArgs.fromUnit ?? ""} ${nextArgs.toUnit ?? ""}`;
+    if (/\b(kg|g)\b|公斤|千克|克|斤/i.test(unitText)) nextArgs.category = "weight";
+    else if (/\b(km|m)\b|公里|千米|米/i.test(unitText)) nextArgs.category = "length";
+  }
+  delete nextArgs.amount;
+  delete nextArgs.inputValue;
+  delete nextArgs.sourceValue;
+  delete nextArgs.quantity;
+  delete nextArgs.from;
+  delete nextArgs.sourceUnit;
+  delete nextArgs.inputUnit;
+  delete nextArgs.to;
+  delete nextArgs.targetUnit;
+  delete nextArgs.outputUnit;
+  return nextArgs;
+}
+
+function extractTranslateArgsFromText(text: string): Record<string, unknown> {
+  const targetLang = /(英文|英语|English|into English|to English)/i.test(text)
+    ? "en"
+    : /(中文|汉语|Chinese|into Chinese|to Chinese)/i.test(text)
+      ? "zh-CN"
+      : undefined;
+  const sourceText = text
+    .replace(/^把/, "")
+    .replace(/翻译成(?:中文|英文|英语|汉语)/gi, "")
+    .replace(/(?:翻译一下|翻译|是什么意思|什么意思)/gi, "")
+    .replace(/[，。！？、,.!?;；:："'“”‘’]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return {
+    ...(sourceText ? { sourceText } : {}),
+    ...(targetLang ? { targetLang } : {})
+  };
 }
 
 function parseCountdownSecondsFromText(text: string): number | undefined {
@@ -372,8 +488,10 @@ function normalizeTodoToolArguments(toolName: string, args: Record<string, unkno
 
 function normalizeMarketToolArguments(args: Record<string, unknown>, fallbackText = ""): Record<string, unknown> {
   const nextArgs = { ...args };
+  if (Array.isArray(nextArgs.indexCodeHints) && !Array.isArray(nextArgs.indexCodes)) nextArgs.indexCodes = nextArgs.indexCodeHints;
+  if (typeof nextArgs.indexCodeHints === "string" && !Array.isArray(nextArgs.indexCodes)) nextArgs.indexCodes = [nextArgs.indexCodeHints];
   if (typeof nextArgs.query !== "string") {
-    const query = nextArgs.companyName ?? nextArgs.company ?? nextArgs.name ?? nextArgs.stockName ?? fallbackText;
+    const query = nextArgs.companyName ?? nextArgs.company ?? nextArgs.name ?? nextArgs.stockName ?? nextArgs.stockLookupHint ?? nextArgs.ticker ?? fallbackText;
     if (typeof query === "string" && query.trim()) {
       nextArgs.query = query.trim();
     }
@@ -384,6 +502,9 @@ function normalizeMarketToolArguments(args: Record<string, unknown>, fallbackTex
   delete nextArgs.company;
   delete nextArgs.name;
   delete nextArgs.stockName;
+  delete nextArgs.stockLookupHint;
+  delete nextArgs.indexCodeHints;
+  delete nextArgs.ticker;
   return nextArgs;
 }
 
@@ -437,7 +558,7 @@ function normalizeRealtimeToolArguments(toolName: string, args: Record<string, u
     nextArgs = normalizeTodoToolArguments(toolName, nextArgs, fallbackText);
   }
   if (toolName === "countdown.set") {
-    nextArgs = normalizeCountdownToolArguments(nextArgs);
+    nextArgs = normalizeCountdownToolArguments(nextArgs, fallbackText);
   }
   if (toolName === "note.write") {
     nextArgs = normalizeNoteToolArguments(nextArgs);
@@ -450,6 +571,56 @@ function normalizeRealtimeToolArguments(toolName: string, args: Record<string, u
   }
   if (toolName === "board.add_widget") {
     nextArgs = normalizeBoardAddWidgetArguments(nextArgs, fallbackText);
+  }
+  if (toolName === "worldClock.set_zones") {
+    const zones = nextArgs.zones ?? nextArgs.cities ?? nextArgs.city ?? nextArgs.timezones ?? nextArgs.timezone ?? nextArgs.locations ?? nextArgs.target ?? nextArgs.targetHint;
+    nextArgs = { ...nextArgs };
+    if (typeof zones === "string" && zones.trim()) nextArgs.zones = [zones.trim()];
+    if (Array.isArray(zones)) nextArgs.zones = zones.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+    delete nextArgs.cities;
+    delete nextArgs.city;
+    delete nextArgs.timezones;
+    delete nextArgs.timezone;
+    delete nextArgs.locations;
+    delete nextArgs.target;
+    delete nextArgs.targetHint;
+  }
+  if (toolName === "translate.set_draft") {
+    nextArgs = { ...nextArgs };
+    const sourceText = nextArgs.sourceText ?? nextArgs.text ?? nextArgs.content ?? nextArgs.query ?? fallbackText;
+    if (typeof sourceText === "string" && sourceText.trim()) nextArgs.sourceText = sourceText.trim();
+    if (typeof nextArgs.sourceLanguage === "string" && typeof nextArgs.sourceLang !== "string") nextArgs.sourceLang = nextArgs.sourceLanguage;
+    if (typeof nextArgs.targetLanguage === "string" && typeof nextArgs.targetLang !== "string") nextArgs.targetLang = nextArgs.targetLanguage;
+    if (typeof nextArgs.srcLang === "string" && typeof nextArgs.sourceLang !== "string") nextArgs.sourceLang = nextArgs.srcLang;
+    if (typeof nextArgs.tgtLang === "string" && typeof nextArgs.targetLang !== "string") nextArgs.targetLang = nextArgs.tgtLang;
+    delete nextArgs.text;
+    delete nextArgs.content;
+    delete nextArgs.query;
+    delete nextArgs.sourceLanguage;
+    delete nextArgs.targetLanguage;
+    delete nextArgs.srcLang;
+    delete nextArgs.tgtLang;
+  }
+  if (toolName === "clipboard.add_text") {
+    nextArgs = { ...nextArgs };
+    const text = nextArgs.text ?? nextArgs.content ?? nextArgs.value ?? nextArgs.clipText ?? nextArgs.clipboardText ?? nextArgs.query ?? fallbackText;
+    if (typeof text === "string" && text.trim()) nextArgs.text = text.trim();
+    delete nextArgs.content;
+    delete nextArgs.value;
+    delete nextArgs.clipText;
+    delete nextArgs.clipboardText;
+    delete nextArgs.query;
+  }
+  if (toolName === "calculator.set_display") {
+    nextArgs = { ...nextArgs };
+    const display = nextArgs.display ?? nextArgs.expression ?? nextArgs.result ?? nextArgs.value ?? fallbackText;
+    if ((typeof display === "string" && display.trim()) || typeof display === "number") nextArgs.display = display;
+    delete nextArgs.expression;
+    delete nextArgs.result;
+    delete nextArgs.value;
+  }
+  if (toolName === "converter.set") {
+    nextArgs = normalizeConverterToolArguments(nextArgs, fallbackText);
   }
   return nextArgs;
 }
@@ -502,7 +673,7 @@ function normalizeBoardAddWidgetArguments(args: Record<string, unknown>, fallbac
         followUp: {
           ...followUp,
           name: followUpName,
-          arguments: normalizeCountdownToolArguments(followUpArgs)
+          arguments: normalizeCountdownToolArguments(followUpArgs, fallbackText)
         }
       };
     }
@@ -909,9 +1080,31 @@ function normalizeRealtimePlanArguments(
 
     if (command.tool === "board.add_widget") {
       const requestedType = typeof args.type === "string" ? args.type : typeof args.widgetType === "string" ? args.widgetType : "";
-      const definitionId = typeof args.definitionId === "string" ? args.definitionId : definitionsByType.get(requestedType)?.definitionId;
+      const targetText = [
+        requestedType,
+        typeof args.definitionType === "string" ? args.definitionType : "",
+        typeof args.name === "string" ? args.name : "",
+        typeof args.widgetName === "string" ? args.widgetName : "",
+        typeof args.target === "string" ? args.target : "",
+        typeof args.targetHint === "string" ? args.targetHint : "",
+        plan.sourceText
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const scoredDefinition = (context.availableDefinitions ?? [])
+        .map((definition) => ({ definition, score: scoreDefinitionTarget(targetText, definition) }))
+        .sort((a, b) => b.score - a.score)[0];
+      const definitionId =
+        typeof args.definitionId === "string"
+          ? args.definitionId
+          : definitionsByType.get(requestedType)?.definitionId ?? (scoredDefinition && scoredDefinition.score > 0 ? scoredDefinition.definition.definitionId : undefined);
       delete args.type;
       delete args.widgetType;
+      delete args.definitionType;
+      delete args.name;
+      delete args.widgetName;
+      delete args.target;
+      delete args.targetHint;
       delete args.boardId;
       if (definitionId) {
         args.definitionId = definitionId;
@@ -1068,13 +1261,25 @@ const SAFE_REALTIME_DIAGNOSTIC_ARG_KEYS = new Set([
   "cityName",
   "zones",
   "channelName",
+  "indexCode",
   "indexCodes",
+  "symbol",
+  "symbols",
   "definitionId",
   "boardId",
   "enabled",
   "targetLang",
   "display",
   "expression",
+  "value",
+  "category",
+  "fromUnit",
+  "toUnit",
+  "sourceText",
+  "content",
+  "text",
+  "totalSeconds",
+  "start",
   "durationSeconds"
 ]);
 
@@ -1156,6 +1361,16 @@ function isBulkWindowSelectionText(...values: Array<string | undefined>): boolea
     return false;
   }
   return /(所有|全部|全都|全部的|所有的)/.test(normalized) && /(窗口|小工具|组件|面板)/.test(normalized);
+}
+
+function shouldAcceptLowConfidenceToolSelection(toolName: string, input: string, targetHint?: string): boolean {
+  const text = `${input} ${targetHint ?? ""}`.replace(/\s+/g, "");
+  if (!text) return false;
+  if (toolName === "countdown.pause") return /暂停.*(计时|倒计时|定时器)|先别计时/.test(text);
+  if (toolName === "countdown.resume") return /继续.*(计时|倒计时|定时器)|恢复计时/.test(text);
+  if (toolName === "countdown.reset") return /重置.*(计时|倒计时|定时器)|重新开始计时/.test(text);
+  if (toolName === "todo.complete_item") return /(完成|勾掉|做完|标记).*?(待办|任务|清单|咖啡豆|牛奶)/.test(text);
+  return false;
 }
 
 function getDeclaredToolParameterKeys(tool: AssistantToolSpec | undefined): Set<string> | null {
@@ -2024,6 +2239,19 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       });
       return commandTraceId;
     }
+    if (this.pendingTextCommandAfterSelectorUpdate) {
+      this.markRealtimeTraceEchoSuppressed(commandTraceId);
+      this.emitDiagnostic({
+        type: "realtime.voice.pending_text_command_speech_suppressed",
+        status: "started",
+        commandTraceId,
+        data: {
+          itemId,
+          pendingCommandTraceId: this.pendingTextCommandAfterSelectorUpdate.commandTraceId
+        }
+      });
+      return commandTraceId;
+    }
     this.markActiveRealtimeTracesInterrupted(commandTraceId);
     this.activeRealtimeResponseTraceId = commandTraceId;
     this.pendingResponseCreateAfterActiveToolResult = false;
@@ -2390,10 +2618,13 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       return { ok: false, input, exposedTools: [], excludedReasons: {} };
     }
     const legacySelectedTool = selection.name ? tools.find((tool) => tool.name === selection.name) ?? this.findToolSpec(selection.name) : undefined;
-    const selectedModule = this.resolveSelectedModuleFromSelection(selection, input, legacySelectedTool);
+    const pureOpenWidget = isPureOpenWidgetText(input);
+    const inferredOpenWidgetType = pureOpenWidget ? findRealtimeWidgetType(input, selection.targetHint) : undefined;
+    const selectedModule = inferredOpenWidgetType ?? this.resolveSelectedModuleFromSelection(selection, input, legacySelectedTool);
     const exposurePlan = this.createToolExposurePlan(input, context, tools);
     const exposedTools = exposurePlan.exposedTools.map((tool) => tool.name);
     const addWidgetTool = tools.find((tool) => tool.name === REALTIME_ADD_WIDGET_TOOL_NAME);
+    const focusWidgetTool = tools.find((tool) => tool.name === "widget.focus");
     const moduleTools = selectedModule
       ? tools.filter((tool) => this.isToolForSelectionModule(tool, selectedModule))
       : [];
@@ -2419,13 +2650,14 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
           context.availableDefinitions?.some((definition) => definition.type === selectedModule) &&
           (MODULE_OPEN_INTENTS.has(selection.intent ?? "") || !context.widgets.some((widget) => widget.type === selectedModule))
       );
+    const hasMountedSelectedModule = selectedModule ? context.widgets.some((widget) => widget.type === selectedModule) : false;
     const scopedCandidates = this.uniqueTools([
       ...baseTools,
-      ...(shouldIncludeAddWidget && addWidgetTool ? [addWidgetTool] : [])
+      ...(shouldIncludeAddWidget && addWidgetTool ? [addWidgetTool] : []),
+      ...(pureOpenWidget && selectedModule && hasMountedSelectedModule && focusWidgetTool ? [focusWidgetTool] : [])
     ]);
     const sortedCandidates = this.sortToolsForSelectionIntent(scopedCandidates, selection, selectedModule).slice(0, MAX_SCOPED_SELECTION_TOOLS);
 
-    const hasMountedSelectedModule = selectedModule ? context.widgets.some((widget) => widget.type === selectedModule) : false;
     const canUseLocalAddWidgetFollowUp = Boolean(
       selectedModule &&
         addWidgetTool &&
@@ -2747,7 +2979,11 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       }
     });
     if (!selection || !resolvedSelection?.ok) return null;
-    if (typeof selection.confidence === "number" && selection.confidence < REALTIME_TOOL_SELECTION_CONFIDENCE_THRESHOLD) {
+    if (
+      typeof selection.confidence === "number" &&
+      selection.confidence < REALTIME_TOOL_SELECTION_CONFIDENCE_THRESHOLD &&
+      !shouldAcceptLowConfidenceToolSelection(resolvedSelection.selectedTool.name, resolvedSelection.input, resolvedSelection.selection.targetHint)
+    ) {
       this.emitDiagnostic({
         type: "realtime.text_tool.select.low_confidence",
         status: "needs_clarification",
@@ -2841,6 +3077,24 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       (commandTraceId ? this.realtimeTraceUserTranscripts.get(commandTraceId)?.input ?? "" : "") ||
       this.activeScopedToolSelection?.userCommand ||
       "";
+    if (call.name === "tv.fullscreen" && /(退出|取消|关闭|關閉|離開|离开).{0,6}(全屏|fullscreen)|^(退出|取消|关闭|關閉)(电视)?全屏$/i.test(fallbackText)) {
+      const exitFullscreenCall: AssistantToolCall = {
+        ...call,
+        name: "app.fullscreen.set",
+        arguments: { enabled: false },
+        transcript: fallbackText
+      };
+      this.emitDiagnostic({
+        type: "realtime.function_call.fullscreen_exit_rewrite",
+        status: "success",
+        operationId: call.id,
+        toolName: exitFullscreenCall.name,
+        commandTraceId,
+        data: { input: fallbackText }
+      });
+      void this.options.onFunctionCall?.(exitFullscreenCall);
+      return;
+    }
     const realtimeTargetHint = this.activeScopedToolSelection ?? (fallbackText ? { userCommand: fallbackText, targetHint: fallbackText } : undefined);
     const sanitized = sanitizeRealtimeToolCallArguments(call, this.findToolSpec(call.name), fallbackText);
     const addWidgetBoundCall = inferAddWidgetDefinitionForCall(
@@ -3195,7 +3449,11 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       });
       return;
     }
-    if (typeof selection.confidence === "number" && selection.confidence < REALTIME_TOOL_SELECTION_CONFIDENCE_THRESHOLD) {
+    if (
+      typeof selection.confidence === "number" &&
+      selection.confidence < REALTIME_TOOL_SELECTION_CONFIDENCE_THRESHOLD &&
+      !shouldAcceptLowConfidenceToolSelection(resolvedSelection.selectedTool.name, resolvedSelection.input, resolvedSelection.selection.targetHint)
+    ) {
       this.emitDiagnostic({
         type: "realtime.tool_selection.low_confidence",
         status: "needs_clarification",
@@ -3277,6 +3535,63 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
               isRecord(addWidgetShortcut.call.arguments.followUp.arguments) &&
               typeof addWidgetShortcut.call.arguments.followUp.arguments.channelName === "string"
                 ? addWidgetShortcut.call.arguments.followUp.arguments.channelName
+                : undefined,
+            indexCodes:
+              isRecord(addWidgetShortcut.call.arguments) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp.arguments) &&
+              Array.isArray(addWidgetShortcut.call.arguments.followUp.arguments.indexCodes)
+                ? addWidgetShortcut.call.arguments.followUp.arguments.indexCodes
+                : undefined,
+            query:
+              isRecord(addWidgetShortcut.call.arguments) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp.arguments) &&
+              typeof addWidgetShortcut.call.arguments.followUp.arguments.query === "string"
+                ? addWidgetShortcut.call.arguments.followUp.arguments.query
+                : undefined,
+            value:
+              isRecord(addWidgetShortcut.call.arguments) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp.arguments) &&
+              (typeof addWidgetShortcut.call.arguments.followUp.arguments.value === "string" ||
+                typeof addWidgetShortcut.call.arguments.followUp.arguments.value === "number")
+                ? addWidgetShortcut.call.arguments.followUp.arguments.value
+                : undefined,
+            category:
+              isRecord(addWidgetShortcut.call.arguments) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp.arguments) &&
+              typeof addWidgetShortcut.call.arguments.followUp.arguments.category === "string"
+                ? addWidgetShortcut.call.arguments.followUp.arguments.category
+                : undefined,
+            fromUnit:
+              isRecord(addWidgetShortcut.call.arguments) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp.arguments) &&
+              typeof addWidgetShortcut.call.arguments.followUp.arguments.fromUnit === "string"
+                ? addWidgetShortcut.call.arguments.followUp.arguments.fromUnit
+                : undefined,
+            toUnit:
+              isRecord(addWidgetShortcut.call.arguments) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp.arguments) &&
+              typeof addWidgetShortcut.call.arguments.followUp.arguments.toUnit === "string"
+                ? addWidgetShortcut.call.arguments.followUp.arguments.toUnit
+                : undefined,
+            sourceText:
+              isRecord(addWidgetShortcut.call.arguments) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp.arguments) &&
+              typeof addWidgetShortcut.call.arguments.followUp.arguments.sourceText === "string"
+                ? addWidgetShortcut.call.arguments.followUp.arguments.sourceText
+                : undefined,
+            targetLang:
+              isRecord(addWidgetShortcut.call.arguments) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp) &&
+              isRecord(addWidgetShortcut.call.arguments.followUp.arguments) &&
+              typeof addWidgetShortcut.call.arguments.followUp.arguments.targetLang === "string"
+                ? addWidgetShortcut.call.arguments.followUp.arguments.targetLang
                 : undefined
           }
         });
@@ -3422,15 +3737,38 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const input = selection.userCommand || selection.targetHint || definition.name;
     const pureOpenWidget = isPureOpenWidgetText(input);
     const countdownSeconds = definition.type === "countdown" ? parseCountdownSecondsFromText(input) : undefined;
-    const musicQuery = definition.type === "music" && !pureOpenWidget ? extractMusicQueryFromText(input) : "";
+    const musicQuery =
+      definition.type === "music" && !pureOpenWidget && !/(切到|切换到|聚焦|当前小工具|播放器)/.test(input)
+        ? extractMusicQueryFromText(input)
+        : "";
     const tvChannelName = definition.type === "tv" ? extractTvChannelNameFromText(input) : "";
+    const tvFullscreen = definition.type === "tv" && /全屏|fullscreen/i.test(input) && !hasExplicitTvChannelText(input);
+    const recorderStart = definition.type === "recorder" && /(开始|启动|录一段|录音)/.test(input) && !/(停止|结束|暂停)/.test(input);
+    const marketIndexCodes = definition.type === "market" ? extractMarketIndexCodesFromText(input) : [];
+    const marketQuery = definition.type === "market" && marketIndexCodes.length === 0 ? extractMarketQueryFromText(input) : "";
+    const converterArgs = definition.type === "converter" ? normalizeConverterToolArguments({}, input) : {};
+    const hasConverterArgs = typeof converterArgs.value === "string" || typeof converterArgs.value === "number";
+    const translateArgs = definition.type === "translate" ? extractTranslateArgsFromText(input) : {};
+    const hasTranslateArgs = typeof translateArgs.sourceText === "string" && translateArgs.sourceText.trim().length > 0;
     const shouldOpenMissingWidget = Boolean(
       selection.requestedToolName &&
         selection.requestedToolName !== REALTIME_ADD_WIDGET_TOOL_NAME &&
         definition.type &&
         !this.currentContext.widgets.some((widget) => widget.type === definition.type)
     );
-    if (!pureOpenWidget && !countdownSeconds && !musicQuery && !tvChannelName && !shouldOpenMissingWidget) {
+    if (
+      !pureOpenWidget &&
+      !countdownSeconds &&
+      !musicQuery &&
+      !tvChannelName &&
+      !tvFullscreen &&
+      !recorderStart &&
+      marketIndexCodes.length === 0 &&
+      !marketQuery &&
+      !hasConverterArgs &&
+      !hasTranslateArgs &&
+      !shouldOpenMissingWidget
+    ) {
       return null;
     }
     const argumentsWithOptionalFollowUp: Record<string, unknown> = { definitionId: definition.definitionId };
@@ -3451,7 +3789,39 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
           name: "tv.play",
           arguments: { channelName: tvChannelName }
         };
+      } else if (tvFullscreen) {
+        argumentsWithOptionalFollowUp.followUp = {
+          name: "tv.fullscreen",
+          arguments: {}
+        };
       }
+    } else if (definition.type === "market") {
+      if (marketIndexCodes.length) {
+        argumentsWithOptionalFollowUp.followUp = {
+          name: "market.set_indices",
+          arguments: { indexCodes: marketIndexCodes }
+        };
+      } else if (marketQuery) {
+        argumentsWithOptionalFollowUp.followUp = {
+          name: "market.set_indices",
+          arguments: { query: marketQuery }
+        };
+      }
+    } else if (definition.type === "converter" && hasConverterArgs) {
+      argumentsWithOptionalFollowUp.followUp = {
+        name: "converter.set",
+        arguments: converterArgs
+      };
+    } else if (definition.type === "translate" && hasTranslateArgs) {
+      argumentsWithOptionalFollowUp.followUp = {
+        name: "translate.set_draft",
+        arguments: translateArgs
+      };
+    } else if (definition.type === "recorder" && recorderStart) {
+      argumentsWithOptionalFollowUp.followUp = {
+        name: "recorder.start",
+        arguments: {}
+      };
     }
     return {
       definition,

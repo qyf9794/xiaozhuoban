@@ -122,6 +122,13 @@ export function useAssistantRuntimeController({
   agentsVoiceAdapterEnabledRef.current = agentsVoiceAdapterEnabled;
 
   const recordDiagnostic = (event: AssistantDiagnosticEvent) => {
+    if (
+      event.type === "voice.realtime_text_command.submit" ||
+      event.type === "voice.text_command.submit" ||
+      event.type === "local_wake_word.detected"
+    ) {
+      assistantRuntime.noteRealtimeActivity(event.type);
+    }
     const assistantSpeechText = getAssistantSpeechTextFromDiagnostic(event);
     if (assistantSpeechText) {
       const shouldSuppressUnsupportedReply =
@@ -136,6 +143,15 @@ export function useAssistantRuntimeController({
         assistantSpeechEventIdRef.current += 1;
         setAssistantSpeech({ id: assistantSpeechEventIdRef.current, text: assistantSpeechText });
       }
+    }
+    if (
+      event.type === "assistant.operation" &&
+      (event.status === "success" || event.status === "failed" || event.status === "error") &&
+      typeof event.message === "string" &&
+      event.message.trim()
+    ) {
+      assistantSpeechEventIdRef.current += 1;
+      setAssistantSpeech({ id: assistantSpeechEventIdRef.current, text: event.message.trim() });
     }
     const userSpeechText = getUserSpeechTextFromDiagnostic(event);
     if (userSpeechText) {

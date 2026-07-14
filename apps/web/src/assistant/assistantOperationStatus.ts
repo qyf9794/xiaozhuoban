@@ -32,7 +32,11 @@ export function updateAssistantOperationSnapshot(
   snapshot: AssistantOperationSnapshot,
   event: AssistantOperationEvent
 ): AssistantOperationSnapshot {
-  const activeWithoutEvent = snapshot.active.filter((item) => item.id !== event.id);
+  const confirmationSettled =
+    (event.toolName === "assistant.confirm" || event.toolName === "assistant.cancel") &&
+    event.phase !== "running" &&
+    event.phase !== "waiting_confirmation";
+  const activeWithoutEvent = snapshot.active.filter((item) => item.id !== event.id && !(confirmationSettled && item.phase === "waiting_confirmation"));
   return {
     active: isActiveOperation(event) ? [...activeWithoutEvent, event] : activeWithoutEvent,
     last: event

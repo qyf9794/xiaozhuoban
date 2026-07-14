@@ -88,7 +88,7 @@ export interface AssistantOperationEvent {
   message?: string;
 }
 
-type AssistantRecoveryReason = "non_action_model_tools" | "forbidden_model_tools";
+type AssistantRecoveryReason = "non_action_model_tools" | "forbidden_model_tools" | "empty_model_result";
 
 export interface AssistantCommandDiagnostics {
   commandTraceId: string;
@@ -221,12 +221,194 @@ function removeTargetText(args: unknown) {
   return next;
 }
 
-function createTargetBoundArguments(args: unknown, target?: ResolvedWidgetTarget) {
+function createTargetBoundArguments(args: unknown, target?: ResolvedWidgetTarget, bindWidgetId = true) {
   const next = removeTargetText(args);
-  if (!target || !isRecord(next) || typeof next.widgetId === "string") {
+  if (!isRecord(next)) {
+    return next;
+  }
+  if (!bindWidgetId) {
+    const { widgetId: _widgetId, boardId: _boardId, definitionId: _definitionId, ...rest } = next;
+    return rest;
+  }
+  if (!target || typeof next.widgetId === "string") {
     return next;
   }
   return { ...next, widgetId: target.widgetId };
+}
+
+function shouldStripWidgetIdForWidgetDetail(spec: AssistantToolSpec | null | undefined, args: unknown, strippedArgs: unknown) {
+  if (spec?.scope !== "widget-detail" || !isRecord(args)) return false;
+  if (typeof args.widgetId !== "string" && typeof args.boardId !== "string" && typeof args.definitionId !== "string") return false;
+  if (!isRecord(strippedArgs)) return false;
+  const withWidgetId = spec.parameters.safeParse(args);
+  if (withWidgetId.success) return false;
+  return spec.parameters.safeParse(strippedArgs).success;
+}
+
+function normalizeDurationSeconds(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value > 10_000 ? Math.round(value / 1000) : Math.round(value);
+  }
+  if (typeof value !== "string") return undefined;
+  const compact = value.replace(/\s+/g, "");
+  const hours = compact.match(/(\d+(?:\.\d+)?)(?:小时|钟头|h)/i);
+  const minutes = compact.match(/(\d+(?:\.\d+)?)(?:分钟|分|m|min)/i);
+  const seconds = compact.match(/(\d+(?:\.\d+)?)(?:秒|s|sec)/i);
+  const total =
+    (hours ? Number(hours[1]) * 3600 : 0) +
+    (minutes ? Number(minutes[1]) * 60 : 0) +
+    (seconds ? Number(seconds[1]) : 0);
+  return total > 0 && Number.isFinite(total) ? Math.round(total) : undefined;
+}
+
+function normalizeMinuteDurationSeconds(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, Math.round(value * 60));
+  }
+  if (typeof value !== "string") return undefined;
+  const minutes = Number(value.replace(/[^\d.]/g, ""));
+  return Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes * 60) : undefined;
+}
+
+function normalizeHarnessToolArguments(toolName: string, args: unknown, transcript = ""): unknown {
+  if (!isRecord(args)) return args;
+  const next: Record<string, unknown> = { ...args };
+
+  if (toolName !== ADD_WIDGET_TOOL && !toolName.startsWith("board.") && !toolName.startsWith("app.")) {
+    delete next.boardId;
+    delete next.definitionId;
+  }
+
+  if (toolName === "music.search" || toolName === "music.play") {
+    const query = next.query ?? next.keyword ?? next.searchTerm ?? next.title ?? next.song ?? transcript;
+    if (typeof query === "string" && query.trim()) next.query = query.trim();
+    delete next.keyword;
+    delete next.searchTerm;
+    delete next.title;
+    delete next.song;
+  }
+
+  if (toolName === "market.set_indices") {
+    if (Array.isArray(next.indices) && !Array.isArray(next.indexCodes)) next.indexCodes = next.indices;
+    if (typeof next.indices === "string" && !Array.isArray(next.indexCodes)) next.indexCodes = [next.indices];
+    if (typeof next.indexPrimary === "string" && !Array.isArray(next.indexCodes)) next.indexCodes = [next.indexPrimary];
+    if (Array.isArray(next.indexCodeHints) && !Array.isArray(next.indexCodes)) next.indexCodes = next.indexCodeHints;
+    if (typeof next.indexCodeHints === "string" && !Array.isArray(next.indexCodes)) next.indexCodes = [next.indexCodeHints];
+    const query = next.query ?? next.companyName ?? next.company ?? next.name ?? next.stockName ?? next.stockLookupHint ?? next.ticker;
+    if (typeof query === "string" && query.trim()) next.query = query.trim();
+    delete next.indices;
+    delete next.indexPrimary;
+    delete next.indexCodeHints;
+    delete next.companyName;
+    delete next.company;
+    delete next.name;
+    delete next.stockName;
+    delete next.stockLookupHint;
+    delete next.ticker;
+  }
+
+  if (toolName === "countdown.set") {
+    const minuteSeconds = normalizeMinuteDurationSeconds(next.durationInMinutes ?? next.minutes ?? next.minute);
+    const totalSeconds =
+      typeof next.totalSeconds === "number"
+        ? next.totalSeconds
+        : minuteSeconds ?? normalizeDurationSeconds(next.duration ?? next.durationSeconds ?? next.durationMs ?? next.time ?? next.value);
+    if (totalSeconds) next.totalSeconds = totalSeconds;
+    if (next.autoStart !== undefined && next.start === undefined) next.start = next.autoStart === true;
+    delete next.duration;
+    delete next.durationInMinutes;
+    delete next.minutes;
+    delete next.minute;
+    delete next.durationSeconds;
+    delete next.durationMs;
+    delete next.time;
+    delete next.autoStart;
+    delete next.value;
+  }
+
+  if (toolName === "weather.set_city") {
+    const city = next.city ?? next.cityName ?? next.location ?? next.place ?? next.query;
+    if (typeof city === "string" && city.trim()) next.city = city.trim();
+    delete next.cityName;
+    delete next.location;
+    delete next.place;
+    delete next.query;
+  }
+
+  if (toolName === "worldClock.set_zones") {
+    const zones = next.zones ?? next.cities ?? next.city ?? next.timezones ?? next.timezone ?? next.locations ?? next.target ?? next.targetHint;
+    if (typeof zones === "string" && zones.trim()) next.zones = [zones.trim()];
+    if (Array.isArray(zones)) {
+      next.zones = zones
+        .map((item) => {
+          if (typeof item === "string") return item;
+          if (!isRecord(item)) return "";
+          const label = item.zone ?? item.timezone ?? item.city ?? item.name ?? item.label;
+          return typeof label === "string" ? label : "";
+        })
+        .filter((item): item is string => item.trim().length > 0);
+    }
+    delete next.cities;
+    delete next.city;
+    delete next.timezones;
+    delete next.timezone;
+    delete next.locations;
+    delete next.target;
+    delete next.targetHint;
+  }
+
+  if (toolName === "translate.set_draft") {
+    const sourceText = next.sourceText ?? next.text ?? next.content ?? next.query ?? transcript;
+    if (typeof sourceText === "string" && sourceText.trim()) next.sourceText = sourceText.trim();
+    if (typeof next.sourceLanguage === "string" && typeof next.sourceLang !== "string") next.sourceLang = next.sourceLanguage;
+    if (typeof next.targetLanguage === "string" && typeof next.targetLang !== "string") next.targetLang = next.targetLanguage;
+    if (typeof next.srcLang === "string" && typeof next.sourceLang !== "string") next.sourceLang = next.srcLang;
+    if (typeof next.tgtLang === "string" && typeof next.targetLang !== "string") next.targetLang = next.tgtLang;
+    delete next.text;
+    delete next.content;
+    delete next.query;
+    delete next.sourceLanguage;
+    delete next.targetLanguage;
+    delete next.srcLang;
+    delete next.tgtLang;
+  }
+
+  if (toolName === "clipboard.add_text") {
+    const text = next.text ?? next.content ?? next.value ?? next.clipText ?? next.clipboardText ?? next.query ?? transcript;
+    if (typeof text === "string" && text.trim()) next.text = text.trim();
+    delete next.content;
+    delete next.value;
+    delete next.clipText;
+    delete next.clipboardText;
+    delete next.query;
+  }
+
+  if (toolName === "calculator.set_display") {
+    const display = next.display ?? next.expression ?? next.result ?? next.value ?? transcript;
+    if ((typeof display === "string" && display.trim()) || typeof display === "number") next.display = display;
+    delete next.expression;
+    delete next.result;
+    delete next.value;
+  }
+
+  if (toolName === APP_FULLSCREEN_TOOL) {
+    if (/(退出|离开|取消|关闭|普通窗口|恢复)/.test(transcript)) {
+      next.mode = "exit";
+      next.enabled = false;
+    } else if (/(进入|打开|开启|全屏|沉浸)/.test(transcript) && next.mode !== "exit") {
+      next.mode = "enter";
+      next.enabled = true;
+    }
+  }
+
+  if (toolName === "tv.play" || toolName === "tv.select_channel") {
+    const channelName = next.channelName ?? next.channel ?? next.station;
+    if (typeof channelName === "string" && channelName.trim()) next.channelName = channelName.trim();
+    delete next.channel;
+    delete next.station;
+  }
+
+  return next;
 }
 
 function getPolicyToolNamesForCall(call: AssistantToolCall) {
@@ -345,6 +527,69 @@ function placeholderWidgetType(widgetId: string) {
 function placeholderDefinitionType(definitionId: string) {
   const match = /^wd_([A-Za-z]+)$/.exec(definitionId);
   return match?.[1] ?? "";
+}
+
+function isGenericWidgetReference(widgetId: string) {
+  return /^(current|active|focused|recent|selected|this|当前|这个|最近|最后)$/i.test(widgetId.trim());
+}
+
+function definitionAliasText(type: string) {
+  const aliases: Record<string, string> = {
+    music: "music 音乐 音乐播放器 歌曲 歌 播放器",
+    weather: "weather 天气",
+    tv: "tv 电视 直播",
+    recorder: "recorder 录音 录音机",
+    note: "note 便签 笔记",
+    todo: "todo 待办 清单 任务",
+    calculator: "calculator 计算器",
+    countdown: "countdown 倒计时 计时器 定时器",
+    headline: "headline 新闻 头条 重大新闻",
+    market: "market 行情 股票 指数",
+    worldClock: "worldClock 世界时钟 世界时间 时区",
+    translate: "translate 翻译",
+    converter: "converter 换算 单位 单位换算",
+    clipboard: "clipboard 剪贴板"
+  };
+  return aliases[type] ?? type;
+}
+
+function inferAddWidgetDefinitionId(
+  command: CommandPlanStep,
+  args: Record<string, unknown>,
+  sourceText: string,
+  context: CompactAssistantContext
+) {
+  if (typeof args.definitionId === "string" && context.availableDefinitions?.some((item) => item.definitionId === args.definitionId)) {
+    return args.definitionId;
+  }
+  const moduleType = command.module && command.module !== "board" ? command.module : "";
+  const directType =
+    moduleType ||
+    (typeof args.type === "string" ? args.type : "") ||
+    (typeof args.widgetType === "string" ? args.widgetType : "") ||
+    (typeof args.definitionType === "string" ? args.definitionType : "");
+  const directDefinition = directType ? context.availableDefinitions?.find((definition) => definition.type === directType) : undefined;
+  if (directDefinition) return directDefinition.definitionId;
+
+  const text = [
+    sourceText,
+    command.id,
+    command.module,
+    typeof args.name === "string" ? args.name : "",
+    typeof args.widgetName === "string" ? args.widgetName : "",
+    typeof args.target === "string" ? args.target : "",
+    typeof args.targetHint === "string" ? args.targetHint : ""
+  ]
+    .join(" ")
+    .toLowerCase();
+  const scored = (context.availableDefinitions ?? [])
+    .map((definition) => {
+      const aliases = `${definition.name} ${definition.type} ${definitionAliasText(definition.type)}`.toLowerCase().split(/\s+/).filter(Boolean);
+      const score = aliases.reduce((total, alias) => total + (text.includes(alias.toLowerCase()) ? alias.length : 0), 0);
+      return { definition, score };
+    })
+    .sort((a, b) => b.score - a.score)[0];
+  return scored && scored.score > 0 ? scored.definition.definitionId : undefined;
 }
 
 type ShortcutTargetCandidate = Pick<CompactWidgetSummary, "widgetId" | "definitionId" | "type" | "name" | "order"> &
@@ -470,7 +715,7 @@ export class AssistantHarness {
     try {
       const response = this.pendingConfirmation
         ? await this.handleUserInputInternal(input, startedAt)
-        : await this.handleRealtimeModelInput(input, startedAt, this.getCurrentContext());
+        : await this.handleRealtimeModelInput(input, startedAt, this.getCurrentContext(), { recoverEmptyResult: true });
       this.finishDiagnostics(response);
       return response;
     } catch (error) {
@@ -604,7 +849,8 @@ export class AssistantHarness {
   private async handleRealtimeModelInput(
     input: string,
     startedAt: number,
-    context: CompactAssistantContext = this.getCurrentContext()
+    context: CompactAssistantContext = this.getCurrentContext(),
+    options: { recoverEmptyResult?: boolean } = {}
   ): Promise<AssistantHarnessResponse> {
     const bulkClosePlan = this.buildBulkWindowClosePlan(input, this.buildShortcutContext());
     if (bulkClosePlan) {
@@ -641,6 +887,12 @@ export class AssistantHarness {
 
     const modelCall = await this.options.realtime.requestToolCall?.(input, context, this.currentTools, this.options.moduleRegistry);
     if (!modelCall) {
+      if (options.recoverEmptyResult) {
+        const recovered = await this.recoverLocalShortcutFromModelPlan(input, [], startedAt, "empty_model_result");
+        if (recovered) {
+          return recovered;
+        }
+      }
       const result: AssistantToolResult = {
         status: "needs_clarification",
         message: "我没听懂，可以再说短一点吗？"
@@ -686,7 +938,7 @@ export class AssistantHarness {
     reason: AssistantRecoveryReason | null,
     violations: CommandPolicyForbiddenViolation[] = []
   ): Promise<AssistantHarnessResponse | null> {
-    if (this.pendingConfirmation || modelToolNames.length === 0 || !reason) {
+    if (this.pendingConfirmation || !reason || (modelToolNames.length === 0 && reason !== "empty_model_result")) {
       return null;
     }
     if (reason === "non_action_model_tools" && isDiagnosticOrPreferenceIntent(input)) {
@@ -998,6 +1250,7 @@ export class AssistantHarness {
     route: AssistantRoute = "function_call",
     startedAt = Date.now()
   ): Promise<AssistantHarnessResponse> {
+    call = { ...call, arguments: normalizeHarnessToolArguments(call.name, call.arguments, call.transcript) };
     const normalizedCall = this.rewriteCountdownAddWidgetCall(call);
     if (normalizedCall !== call) {
       return this.handleFunctionCall(normalizedCall, route, startedAt);
@@ -1191,13 +1444,151 @@ export class AssistantHarness {
   }
 
   private repairRealtimePlanBeforeExecution(plan: CommandPlan, route: AssistantRoute): CommandPlan {
-    if (route !== "model") return plan;
-    if (!/(?:误触|退出|取消|离开|关闭).{0,12}(?:全屏|沉浸)|(?:恢复|回到).{0,8}普通窗口/.test(plan.sourceText)) {
-      return plan;
+    const context = this.getCurrentContext();
+    let normalizedPlan: CommandPlan = {
+      ...plan,
+      commands: plan.commands.map((command) => {
+        const normalizedArgs = normalizeHarnessToolArguments(command.tool, command.args, plan.sourceText);
+        const args = isRecord(normalizedArgs) ? { ...normalizedArgs } : normalizedArgs;
+        const spec = this.options.registry.get(command.tool);
+        if (command.tool === ADD_WIDGET_TOOL && isRecord(args)) {
+          const definitionId = inferAddWidgetDefinitionId(command, args, plan.sourceText, context);
+          if (definitionId) args.definitionId = definitionId;
+          delete args.type;
+          delete args.widgetType;
+          delete args.definitionType;
+          delete args.name;
+          delete args.widgetName;
+          delete args.target;
+          delete args.targetHint;
+        }
+        if (
+          isRecord(args) &&
+          spec?.requiresTarget &&
+          spec.widgetType &&
+          typeof args.widgetId !== "string"
+        ) {
+          const widget = context.widgets.find((item) => item.type === spec.widgetType);
+          if (widget) args.widgetId = widget.widgetId;
+        }
+        if (
+          isRecord(args) &&
+          spec?.requiresTarget &&
+          !spec.widgetType &&
+          (typeof args.widgetId !== "string" || isGenericWidgetReference(args.widgetId))
+        ) {
+          const resolution = this.options.targetResolver.resolve(plan.sourceText, {
+            widgets: context.widgets,
+            focusedWidget: context.focusedWidget
+          });
+          if (resolution.status === "resolved") {
+            args.widgetId = resolution.target.widgetId;
+          }
+        }
+        return { ...command, args: isRecord(args) ? args : command.args };
+      })
+    };
+    const hasExplicitTvChannelCommand = normalizedPlan.commands.some(
+      (command) =>
+        (command.tool === "tv.select_channel" || command.tool === "tv.play") &&
+        isRecord(command.args) &&
+        typeof command.args.channelName === "string" &&
+        command.args.channelName.trim()
+    );
+    const openTvOnly = /(打开|启动|唤出|调出).{0,8}(电视|直播)/.test(normalizedPlan.sourceText) && !hasExplicitTvChannelCommand;
+    const openMusicOnly =
+      /(打开|启动|唤出|调出|切到|切换到|聚焦|显示|看一下).{0,10}(音乐播放器|音乐|歌曲|歌)/.test(normalizedPlan.sourceText) &&
+      !/(播放(?!器)|想听|听(?!器)|来一首|放一首|放点|搜索|搜|查找|找一下|王菲|陈奕迅|周杰伦|红豆|十年)/.test(normalizedPlan.sourceText);
+    const openHeadlineOnly =
+      /(打开|启动|唤出|调出).{0,8}(重大新闻|新闻|头条|资讯)/.test(normalizedPlan.sourceText) &&
+      !/(刷新|更新|重新加载|换一批|最新|今天|今日|有什么|看一下|看看)/.test(normalizedPlan.sourceText);
+    const openWorldClockOnly =
+      /(打开|启动|唤出|调出).{0,8}(世界时钟|世界时间|时区)/.test(normalizedPlan.sourceText) &&
+      !/(几点|时间|东京|巴黎|纽约|伦敦|北京|上海|洛杉矶|首尔|新加坡|迪拜|悉尼)/.test(normalizedPlan.sourceText);
+    const openCalculatorOnly =
+      /(打开|启动|唤出|调出).{0,8}(计算器)/.test(normalizedPlan.sourceText) &&
+      !/(算(?!器)|计算(?!器)|等于|多少|加|减|乘|除|\d)/.test(normalizedPlan.sourceText);
+    const existingWidgetTypes = new Set(context.widgets.map((widget) => widget.type));
+    const definitionTypeById = new Map((context.availableDefinitions ?? []).map((definition) => [definition.definitionId, definition.type]));
+    const detailWidgetTypesInPlan = new Set(
+      normalizedPlan.commands
+        .map((command) => this.options.registry.get(command.tool)?.widgetType)
+        .filter((type): type is string => typeof type === "string" && existingWidgetTypes.has(type))
+    );
+    const redundantAddCommandIds = new Set(
+      normalizedPlan.commands
+        .filter((command) => {
+          if (command.tool !== ADD_WIDGET_TOOL || !isRecord(command.args) || typeof command.args.definitionId !== "string") {
+            return false;
+          }
+          const type = definitionTypeById.get(command.args.definitionId);
+          return Boolean(type && detailWidgetTypesInPlan.has(type));
+        })
+        .map((command) => command.id)
+    );
+    const removableCommandIds = new Set(
+      normalizedPlan.commands
+        .filter(
+          (command) =>
+            redundantAddCommandIds.has(command.id) ||
+            (command.tool === "tv.play" &&
+              (!isRecord(command.args) || typeof command.args.channelName !== "string" || !command.args.channelName.trim()) &&
+              (hasExplicitTvChannelCommand || openTvOnly)) ||
+            (command.tool === "music.play" &&
+              (!isRecord(command.args) || typeof command.args.query !== "string" || !command.args.query.trim() || openMusicOnly) &&
+              openMusicOnly) ||
+            (command.tool === "headline.request_refresh" && openHeadlineOnly) ||
+            (command.tool === "widget.focus" &&
+              (!isRecord(command.args) || typeof command.args.widgetId !== "string" || !command.args.widgetId.trim()) &&
+              normalizedPlan.commands.some((candidate) => candidate.tool === ADD_WIDGET_TOOL)) ||
+            (command.tool === "worldClock.set_zones" &&
+              (!isRecord(command.args) || !Array.isArray(command.args.zones) || command.args.zones.length === 0) &&
+              openWorldClockOnly) ||
+            (command.tool === "calculator.set_display" && openCalculatorOnly)
+        )
+        .map((command) => command.id)
+    );
+    if (removableCommandIds.size > 0) {
+      normalizedPlan = {
+        ...normalizedPlan,
+        commands: normalizedPlan.commands
+          .filter((command) => !removableCommandIds.has(command.id))
+          .map((command) => ({
+            ...command,
+            dependsOn: command.dependsOn?.filter((id) => !removableCommandIds.has(id))
+          })),
+        executionGroups: normalizedPlan.executionGroups
+          .map((group) => ({ ...group, commandIds: group.commandIds.filter((id) => !removableCommandIds.has(id)) }))
+          .filter((group) => group.commandIds.length > 0)
+      };
     }
-    const hasWindowFollowUp = plan.commands.some((command) => WIDGET_WINDOW_TOOLS.has(command.tool));
-    const hasFullscreenExit = plan.commands.some((command) => command.tool === APP_FULLSCREEN_TOOL);
-    if (!hasWindowFollowUp || hasFullscreenExit) return plan;
+    normalizedPlan = this.normalizePlanDependencies(normalizedPlan);
+    normalizedPlan = this.ensureDependentGroupsSequential(normalizedPlan);
+    if (route !== "model") return normalizedPlan;
+    const isFullscreenExitRequest = /(?:误触|退出|取消|离开|关闭).{0,12}(?:全屏|沉浸)|(?:恢复|回到).{0,8}普通窗口/.test(normalizedPlan.sourceText);
+    if (!isFullscreenExitRequest) {
+      return normalizedPlan;
+    }
+    const commandsAfterRemovingEnterFullscreen = normalizedPlan.commands.filter((command) => command.tool !== "tv.fullscreen" && command.tool !== "widget.fullscreen_focus");
+    const removedEnterFullscreenIds = new Set(
+      normalizedPlan.commands
+        .filter((command) => command.tool === "tv.fullscreen" || command.tool === "widget.fullscreen_focus")
+        .map((command) => command.id)
+    );
+    if (removedEnterFullscreenIds.size > 0) {
+      normalizedPlan = {
+        ...normalizedPlan,
+        commands: commandsAfterRemovingEnterFullscreen.map((command) => ({
+          ...command,
+          dependsOn: command.dependsOn?.filter((id) => !removedEnterFullscreenIds.has(id))
+        })),
+        executionGroups: normalizedPlan.executionGroups
+          .map((group) => ({ ...group, commandIds: group.commandIds.filter((id) => !removedEnterFullscreenIds.has(id)) }))
+          .filter((group) => group.commandIds.length > 0)
+      };
+    }
+    const hasFullscreenExit = normalizedPlan.commands.some((command) => command.tool === APP_FULLSCREEN_TOOL);
+    if (hasFullscreenExit) return normalizedPlan;
     const exitCommand: CommandPlanStep = {
       id: createId("policy_fullscreen_exit"),
       module: "app-shell",
@@ -1208,17 +1599,90 @@ export class AssistantHarness {
       source: "realtime",
       requiresHarnessValidation: true
     };
-    const firstGroup = plan.executionGroups[0];
+    const firstGroup = normalizedPlan.executionGroups[0];
+    const existingCommandIds = normalizedPlan.commands.map((command) => command.id);
     return {
-      ...plan,
-      commands: [exitCommand, ...plan.commands],
+      ...normalizedPlan,
+      commands: [exitCommand, ...normalizedPlan.commands],
       executionGroups: firstGroup
         ? [
             { ...firstGroup, mode: "sequential", commandIds: [exitCommand.id, ...firstGroup.commandIds] },
-            ...plan.executionGroups.slice(1)
+            ...normalizedPlan.executionGroups.slice(1)
           ]
-        : [{ id: "group_1", mode: "sequential", commandIds: [exitCommand.id, ...plan.commands.map((command) => command.id)] }]
+        : [{ id: "group_1", mode: "sequential", commandIds: [exitCommand.id, ...existingCommandIds] }]
     };
+  }
+
+  private ensureDependentGroupsSequential(plan: CommandPlan): CommandPlan {
+    const commandsById = new Map(plan.commands.map((command) => [command.id, command]));
+    return {
+      ...plan,
+      executionGroups: plan.executionGroups.map((group) => {
+        const groupCommandIds = new Set(group.commandIds);
+        const hasInGroupDependency = group.commandIds.some((id) => {
+          const command = commandsById.get(id);
+          return (command?.dependsOn ?? []).some((dependencyId) => groupCommandIds.has(dependencyId));
+        });
+        return hasInGroupDependency
+          ? { ...group, mode: "sequential" as const, commandIds: this.orderGroupCommandIdsByDependencies(group.commandIds, commandsById) }
+          : group;
+      })
+    };
+  }
+
+  private normalizePlanDependencies(plan: CommandPlan): CommandPlan {
+    const commandIds = new Set(plan.commands.map((command) => command.id));
+    const definitionTypeById = new Map((this.getCurrentContext().availableDefinitions ?? []).map((definition) => [definition.definitionId, definition.type]));
+    const addCommandByType = new Map<string, string>();
+    for (const command of plan.commands) {
+      if (command.tool !== ADD_WIDGET_TOOL || !isRecord(command.args) || typeof command.args.definitionId !== "string") {
+        continue;
+      }
+      const type = definitionTypeById.get(command.args.definitionId) ?? placeholderDefinitionType(command.args.definitionId);
+      if (type && !addCommandByType.has(type)) {
+        addCommandByType.set(type, command.id);
+      }
+    }
+
+    return {
+      ...plan,
+      commands: plan.commands.map((command) => {
+        const spec = this.options.registry.get(command.tool);
+        const plannedType =
+          isRecord(command.args) && typeof command.args.widgetId === "string" ? plannedWidgetType(command.args.widgetId) : "";
+        const widgetType = spec?.widgetType ?? plannedType;
+        const addDependency = widgetType ? addCommandByType.get(widgetType) : undefined;
+        const dependsOn = new Set((command.dependsOn ?? []).filter((id) => commandIds.has(id)));
+        if (addDependency && command.id !== addDependency) {
+          dependsOn.add(addDependency);
+        }
+        return {
+          ...command,
+          dependsOn: dependsOn.size > 0 ? [...dependsOn] : undefined
+        };
+      }),
+      dependencies: (plan.dependencies ?? []).filter((dependency) => commandIds.has(dependency.from) && commandIds.has(dependency.to))
+    };
+  }
+
+  private orderGroupCommandIdsByDependencies(commandIds: string[], commandsById: Map<string, CommandPlanStep>): string[] {
+    const groupIds = new Set(commandIds);
+    const ordered: string[] = [];
+    const visiting = new Set<string>();
+    const visited = new Set<string>();
+    const visit = (id: string) => {
+      if (visited.has(id) || visiting.has(id)) return;
+      visiting.add(id);
+      const command = commandsById.get(id);
+      for (const dependencyId of command?.dependsOn ?? []) {
+        if (groupIds.has(dependencyId)) visit(dependencyId);
+      }
+      visiting.delete(id);
+      visited.add(id);
+      ordered.push(id);
+    };
+    commandIds.forEach(visit);
+    return ordered;
   }
 
   private rewriteCommandFromCompletedAdds(
@@ -1382,6 +1846,7 @@ export class AssistantHarness {
     if (!spec) {
       return { status: "failed", message: `未知工具：${call.name}`, errorCode: "UNKNOWN_TOOL" };
     }
+    call = { ...call, arguments: normalizeHarnessToolArguments(call.name, call.arguments, call.transcript) };
     this.resolveDefinitionPlaceholderIfNeeded(call);
 
     const target = this.resolveTargetIfNeeded(call, spec);
@@ -1437,7 +1902,8 @@ export class AssistantHarness {
       return { status: "ready" };
     }
 
-    const targetText = getTargetText(call.arguments);
+    const explicitTargetText = getTargetText(call.arguments);
+    const targetText = explicitTargetText || call.transcript || call.name;
     if (isRecord(call.arguments) && typeof call.arguments.widgetId === "string") {
       const widgetId = call.arguments.widgetId;
       const context = this.getCurrentContext();
@@ -1461,6 +1927,16 @@ export class AssistantHarness {
             reason: "matched_by_id"
           }
         };
+      }
+      if (isGenericWidgetReference(widgetId)) {
+        const resolution = this.options.targetResolver.resolve(call.transcript || getTargetText(call.arguments) || widgetId, {
+          widgets: context.widgets,
+          focusedWidget: context.focusedWidget
+        });
+        if (resolution.status === "resolved") {
+          call.arguments = { ...call.arguments, widgetId: resolution.target.widgetId };
+          return { status: "ready", target: resolution.target };
+        }
       }
       const placeholderType = spec.widgetType ?? placeholderWidgetType(widgetId);
       const fallbackWidget = placeholderType
@@ -1554,13 +2030,19 @@ export class AssistantHarness {
 
   private async executeRegistryCall(call: AssistantToolCall, target?: ResolvedWidgetTarget): Promise<AssistantToolResult> {
     const controller = new AbortController();
+    const spec = this.options.registry.get(call.name);
     const context: Partial<AssistantActionContext> = {
       now: this.options.now,
       operationId: call.id,
       target,
       signal: controller.signal
     };
-    const task = this.options.registry.execute({ ...call, arguments: createTargetBoundArguments(call.arguments, target) }, context);
+    const targetBoundArgs = createTargetBoundArguments(call.arguments, target);
+    const strippedTargetArgs = createTargetBoundArguments(call.arguments, target, false);
+    const registryArgs = shouldStripWidgetIdForWidgetDetail(spec, targetBoundArgs, strippedTargetArgs)
+      ? strippedTargetArgs
+      : targetBoundArgs;
+    const task = this.options.registry.execute({ ...call, arguments: registryArgs }, context);
     const result = await withTimeout(task, this.resolveActionTimeoutMs(call));
     if (result === "timed_out") {
       controller.abort();

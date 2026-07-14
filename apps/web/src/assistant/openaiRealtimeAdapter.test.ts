@@ -1809,7 +1809,10 @@ describe("OpenAI realtime adapter helpers", () => {
           minutes: { type: "number" },
           seconds: { type: "number" },
           totalSeconds: { type: "number" },
-          start: { type: "boolean" }
+          durationMs: { type: "number" },
+          durationText: { type: "string" },
+          start: { type: "boolean" },
+          autoStart: { type: "boolean" }
         }),
         scope: "widget-detail",
         widgetType: "countdown",
@@ -1881,6 +1884,19 @@ describe("OpenAI realtime adapter helpers", () => {
         arguments: JSON.stringify({ widgetId: "wi_note", text: "今天测试语音", mode: "append" })
       }
     });
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "response.output_item.done",
+      item: {
+        type: "function_call",
+        call_id: "call_countdown_duration_text",
+        name: "countdown__dot__set",
+        arguments: JSON.stringify({ widgetId: "wi_countdown", durationText: "5分钟", autoStart: true })
+      }
+    });
 
     expect(calls).toEqual([
       { id: "call_countdown_alias", name: "countdown.set", arguments: { widgetId: "wi_countdown", totalSeconds: 600, start: true } },
@@ -1892,7 +1908,46 @@ describe("OpenAI realtime adapter helpers", () => {
           followUp: { name: "countdown.set", arguments: { totalSeconds: 300, start: true } }
         }
       },
-      { id: "call_note_text_alias", name: "note.write", arguments: { widgetId: "wi_note", content: "今天测试语音", mode: "append" } }
+      { id: "call_note_text_alias", name: "note.write", arguments: { widgetId: "wi_note", content: "今天测试语音", mode: "append" } },
+      { id: "call_countdown_duration_text", name: "countdown.set", arguments: { widgetId: "wi_countdown", totalSeconds: 300, start: true } }
+    ]);
+  });
+
+  it("normalizes realtime converter argument aliases before Harness validation", () => {
+    const calls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall(call) {
+        calls.push({ id: call.id, name: call.name, arguments: call.arguments as Record<string, unknown> });
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "converter.set",
+        description: "设置换算器",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "widget-detail",
+        widgetType: "converter",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: { converter: 1 },
+      widgets: [{ widgetId: "wi_converter", definitionId: "wd_converter", type: "converter", name: "单位换算器", order: 1, summary: "" }]
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean }, { sessionReady: true });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "call_converter_alias",
+      name: "converter.set",
+      arguments: { amount: 2, from: "kg", to: "g" },
+      transcript: "2公斤换算成克",
+      source: "realtime"
+    });
+
+    expect(calls).toEqual([
+      { id: "call_converter_alias", name: "converter.set", arguments: { widgetId: "wi_converter", value: 2, category: "weight", fromUnit: "kg", toUnit: "g" } }
     ]);
   });
 
@@ -2414,6 +2469,39 @@ describe("OpenAI realtime adapter helpers", () => {
         operationId: "call_music",
         toolName: "music.search",
         commandTraceId: trace
+      })
+    ]));
+  });
+
+  it("does not let an empty voice start clear a pending realtime text command", () => {
+    const diagnostics: Array<{ type: string; status?: string; commandTraceId?: string }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    Object.assign(adapter as unknown as { pendingTextCommandAfterSelectorUpdate: unknown; sessionReady: boolean }, {
+      sessionReady: true,
+      pendingTextCommandAfterSelectorUpdate: {
+        events: [],
+        commandTraceId: "text_realtime_pending",
+        inputLength: 16
+      }
+    });
+
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "input_audio_buffer.speech_started", item_id: "item_empty_voice" });
+
+    expect((adapter as unknown as { pendingTextCommandAfterSelectorUpdate: unknown }).pendingTextCommandAfterSelectorUpdate).toMatchObject({
+      commandTraceId: "text_realtime_pending"
+    });
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.voice.pending_text_command_speech_suppressed",
+        status: "started"
       })
     ]));
   });
@@ -3186,6 +3274,144 @@ describe("OpenAI realtime adapter helpers", () => {
     ]);
   });
 
+  it("adds market widgets locally with an index follow-up", async () => {
+    const calls: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall: (call) => {
+        calls.push(call);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "board.add_widget",
+        description: "添加小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop"
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: {},
+      availableDefinitions: [{ definitionId: "wd_market", type: "market", name: "行情" }],
+      widgets: []
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean }, { sessionReady: true });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_open_market_nasdaq",
+      name: "assistant.select_tool",
+      arguments: { name: "board.add_widget", selectedModule: "market", targetHint: "纳斯达克指数", userCommand: "我要看纳斯达克指数", confidence: 0.95 },
+      source: "realtime"
+    });
+    await Promise.resolve();
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        id: "select_open_market_nasdaq_add_widget_shortcut",
+        name: "board.add_widget",
+        arguments: {
+          definitionId: "wd_market",
+          followUp: { name: "market.set_indices", arguments: { indexCodes: ["usNDX"] } }
+        },
+        source: "shortcut",
+        transcript: "我要看纳斯达克指数"
+      })
+    ]);
+  });
+
+  it("adds converter widgets locally with a conversion follow-up", async () => {
+    const calls: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall: (call) => {
+        calls.push(call);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "board.add_widget",
+        description: "添加小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop"
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: {},
+      availableDefinitions: [{ definitionId: "wd_converter", type: "converter", name: "单位换算器" }],
+      widgets: []
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean }, { sessionReady: true });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_open_converter",
+      name: "assistant.select_tool",
+      arguments: { name: "board.add_widget", selectedModule: "converter", targetHint: "2公斤换算成克", userCommand: "2公斤换算成克", confidence: 0.95 },
+      source: "realtime"
+    });
+    await Promise.resolve();
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        id: "select_open_converter_add_widget_shortcut",
+        name: "board.add_widget",
+        arguments: {
+          definitionId: "wd_converter",
+          followUp: { name: "converter.set", arguments: { value: 2, category: "weight", fromUnit: "kg", toUnit: "g" } }
+        },
+        source: "shortcut",
+        transcript: "2公斤换算成克"
+      })
+    ]);
+  });
+
+  it("adds translate widgets locally with a translate follow-up", async () => {
+    const calls: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall: (call) => {
+        calls.push(call);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "board.add_widget",
+        description: "添加小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop"
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: {},
+      availableDefinitions: [{ definitionId: "wd_translate", type: "translate", name: "翻译" }],
+      widgets: []
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean }, { sessionReady: true });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_open_translate",
+      name: "assistant.select_tool",
+      arguments: { name: "board.add_widget", selectedModule: "translate", targetHint: "good night 中文", userCommand: "把good night翻译成中文", confidence: 0.95 },
+      source: "realtime"
+    });
+    await Promise.resolve();
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        id: "select_open_translate_add_widget_shortcut",
+        name: "board.add_widget",
+        arguments: {
+          definitionId: "wd_translate",
+          followUp: { name: "translate.set_draft", arguments: { sourceText: "good night", targetLang: "zh-CN" } }
+        },
+        source: "shortcut",
+        transcript: "把good night翻译成中文"
+      })
+    ]);
+  });
+
   it("treats opening a music player as a pure add-widget request", async () => {
     const calls: unknown[] = [];
     const adapter = new OpenAIRealtimeWebRtcAdapter({
@@ -3227,6 +3453,118 @@ describe("OpenAI realtime adapter helpers", () => {
         transcript: "打开音乐播放器"
       })
     ]);
+  });
+
+  it("rescues pure open-widget selections from a mismatched detail tool", async () => {
+    const calls: unknown[] = [];
+    const diagnostics: Array<{ type: string; status?: string; toolName?: string; data?: unknown }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall: (call) => {
+        calls.push(call);
+      },
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "weather.set_city",
+        description: "切换天气城市",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "widget-detail",
+        widgetType: "weather"
+      },
+      {
+        name: "board.add_widget",
+        description: "添加小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop"
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: {},
+      availableDefinitions: [{ definitionId: "wd_weather", type: "weather", name: "天气" }],
+      widgets: []
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean }, { sessionReady: true });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_open_weather",
+      name: "assistant.select_tool",
+      arguments: { name: "weather.set_city", selectedModule: "weather", targetHint: "小工具", userCommand: "打开天气小工具", confidence: 0.95 },
+      source: "realtime"
+    });
+    await Promise.resolve();
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        id: "select_open_weather_add_widget_shortcut",
+        name: "board.add_widget",
+        arguments: { definitionId: "wd_weather" },
+        source: "shortcut",
+        transcript: "打开天气小工具"
+      })
+    ]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.tool_selection.local_add_widget_shortcut",
+        status: "started",
+        toolName: "board.add_widget",
+        data: expect.objectContaining({ definitionId: "wd_weather", definitionType: "weather" })
+      })
+    ]));
+  });
+
+  it("accepts low-confidence selections when the selected control tool strongly matches the command", () => {
+    const diagnostics: Array<{ type: string; status?: string; toolName?: string }> = [];
+    const sent: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "countdown.pause",
+        description: "暂停倒计时",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "widget-detail",
+        widgetType: "countdown",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: { countdown: 1 },
+      widgets: [{ widgetId: "wi_countdown", definitionId: "wd_countdown", type: "countdown", name: "倒计时", order: 1, summary: "5分钟" }]
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
+      }
+    });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_pause_countdown",
+      name: "assistant.select_tool",
+      arguments: { name: "countdown.pause", selectedModule: "countdown", targetHint: "倒计时", userCommand: "暂停倒计时", confidence: 0.2 },
+      source: "realtime"
+    });
+
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "realtime.tool_selection.success", status: "success", toolName: "countdown.pause" })
+    ]));
+    expect(diagnostics).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "realtime.tool_selection.low_confidence" })
+    ]));
+    expect(sent).toEqual(expect.arrayContaining([expect.objectContaining({ type: "session.update" })]));
   });
 
   it("routes TV channel set intent to select channel instead of fullscreen", () => {
@@ -3588,8 +3926,19 @@ describe("OpenAI realtime adapter helpers", () => {
       source: "realtime"
     });
 
-    expect(calls).toEqual([]);
-    expect(sent).toEqual([expect.objectContaining({ type: "session.update" })]);
+    expect(calls).toEqual([
+      expect.objectContaining({
+        id: "select_open_tv_fullscreen_add_widget_shortcut",
+        name: "board.add_widget",
+        arguments: {
+          definitionId: "wd_tv",
+          followUp: { name: "tv.fullscreen", arguments: {} }
+        },
+        source: "shortcut",
+        transcript: "打开电视然后全屏"
+      })
+    ]);
+    expect(sent).toEqual([]);
   });
 
   it("waits for scoped session.updated before sending tool selection results", () => {
@@ -4431,6 +4780,74 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(plan?.commands[1]?.dependsOn).toEqual(["cmd_add_music"]);
     expect(plan?.commands[2]?.dependsOn).toEqual(["cmd_add_music"]);
     expect(plan?.executionGroups[0]).toMatchObject({ mode: "sequential" });
+  });
+
+  it("infers add-widget definition ids from natural widget names in realtime plans", async () => {
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      textToolCallEndpoint: "/api/realtime/tool-call",
+      fetchImpl: (async (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        if (body.phase === "plan_select") {
+          return new Response(
+            JSON.stringify({
+              planSelection: {
+                steps: [{ id: "board.add_widget", name: "board.add_widget", selectedModule: "worldClock", targetHint: "世界时钟", confidence: 1 }]
+              }
+            }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            plan: {
+              id: "plan_open_world_clock",
+              sourceText: "打开世界时钟",
+              normalizedText: "打开世界时钟",
+              commands: [
+                {
+                  id: "cmd_open_world_clock",
+                  module: "board",
+                  tool: "board.add_widget",
+                  args: { widgetName: "世界时钟" },
+                  risk: "safe",
+                  confidence: 0.9,
+                  source: "text",
+                  requiresHarnessValidation: true
+                }
+              ],
+              executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_open_world_clock"] }],
+              dependencies: [],
+              confidence: 0.9,
+              needsConfirmation: false,
+              createdBy: "text-llm",
+              requiresHarnessValidation: true
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }) as typeof fetch
+    });
+
+    const plan = await adapter.requestCommandPlan(
+      "打开世界时钟",
+      {
+        boardId: "board_1",
+        boardName: "默认桌板",
+        availableDefinitions: [{ definitionId: "wd_worldClock", type: "worldClock", name: "世界时钟" }],
+        widgetCountsByType: {},
+        widgets: []
+      },
+      [
+        {
+          name: "board.add_widget",
+          description: "添加小工具",
+          parameters: createPassthroughSchema<Record<string, unknown>>(),
+          scope: "desktop"
+        }
+      ]
+    );
+
+    expect(plan?.commands[0]?.args).toEqual({ definitionId: "wd_worldClock" });
   });
 
   it("binds realtime window remove plans to the mentioned widget instance", async () => {

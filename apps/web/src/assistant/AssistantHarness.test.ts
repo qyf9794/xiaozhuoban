@@ -104,6 +104,38 @@ function createTools(): AssistantToolSpec[] {
       requiresTarget: true
     },
     {
+      name: "market.set_indices",
+      description: "设置行情标的",
+      parameters: schema,
+      scope: "widget-detail",
+      widgetType: "market",
+      requiresTarget: true
+    },
+    {
+      name: "translate.set_draft",
+      description: "设置翻译草稿",
+      parameters: schema,
+      scope: "widget-detail",
+      widgetType: "translate",
+      requiresTarget: true
+    },
+    {
+      name: "clipboard.add_text",
+      description: "添加剪贴板文本",
+      parameters: schema,
+      scope: "widget-detail",
+      widgetType: "clipboard",
+      requiresTarget: true
+    },
+    {
+      name: "calculator.set_display",
+      description: "设置计算器显示",
+      parameters: schema,
+      scope: "widget-detail",
+      widgetType: "calculator",
+      requiresTarget: true
+    },
+    {
       name: "worldClock.set_zones",
       description: "设置世界时钟",
       parameters: schema,
@@ -174,6 +206,10 @@ function createRegistry(resultsByTool: Record<string, AssistantToolResult> = {})
   register("todo.add_item");
   register("todo.complete_item");
   register("headline.request_refresh");
+  register("market.set_indices");
+  register("translate.set_draft");
+  register("clipboard.add_text");
+  register("calculator.set_display");
   register("worldClock.set_zones");
   register("tv.play");
   register("tv.pause");
@@ -559,6 +595,43 @@ describe("AssistantHarness", () => {
     expect(response.route).toBe("shortcut");
     expect(response.result.status).toBe("needs_confirmation");
     expect(harness.getPendingConfirmation()?.actionName).toBe("board.auto_align");
+    expect(executed).toEqual([]);
+  });
+
+  it("recovers a high-confidence local shortcut when realtime returns no tool", async () => {
+    const input = "打开重大新闻";
+    const { harness, executed } = createHarness({
+      getContextInput: () => ({
+        ...createContextInput(),
+        availableDefinitions: [
+          ...(createContextInput().availableDefinitions ?? []),
+          { definitionId: "wd_headline", type: "headline", name: "重大新闻" }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput(input);
+
+    expect(response.route).toBe("shortcut");
+    expect(response.result.status).toBe("success");
+    expect(harness.getLastDiagnostics()?.recovery).toMatchObject({
+      reason: "empty_model_result",
+      modelTools: [],
+      recoveredTool: "board.add_widget"
+    });
+    expect(executed).toEqual(["board.add_widget:none"]);
+  });
+
+  it("keeps asking for clarification when realtime and local shortcuts both miss", async () => {
+    const { harness, executed } = createHarness();
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput("这个说法需要继续理解一下");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("needs_clarification");
+    expect(harness.getLastDiagnostics()?.recovery).toBeUndefined();
     expect(executed).toEqual([]);
   });
 
@@ -1190,6 +1263,52 @@ describe("AssistantHarness", () => {
     expect(executed).toEqual(["countdown.set:wi_countdown"]);
   });
 
+  it("normalizes countdown time aliases from realtime plans", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_countdown_time_alias",
+      sourceText: "倒计时5分钟",
+      normalizedText: "倒计时5分钟",
+      commands: [
+        {
+          id: "cmd_countdown",
+          module: "countdown",
+          tool: "countdown.set",
+          args: { widgetId: "wi_countdown", time: "5分钟", start: true },
+          risk: "safe",
+          confidence: 0.9,
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_countdown"] }],
+      confidence: 0.9,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({
+      modelPlan,
+      getContextInput: () => {
+        const base = createContextInput();
+        return {
+          ...base,
+          widgets: [
+            ...(base.widgets ?? []),
+            { widgetId: "wi_countdown", definitionId: "wd_countdown", type: "countdown", name: "倒计时", order: 3 }
+          ]
+        };
+      }
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput("倒计时5分钟");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["countdown.set:wi_countdown"]);
+  });
+
   it("does not auto-create learned shortcut candidates from successful model fallback", async () => {
     const learnedCommandStore = new LearnedCommandStore();
     const { harness } = createHarness({
@@ -1608,6 +1727,356 @@ describe("AssistantHarness", () => {
     expect(executed).toEqual(["board.add_widget:none", "music.play:wi_added_music"]);
   });
 
+  it("removes accidental playback from open-only realtime music plans", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_open_music_only",
+      sourceText: "打开音乐播放器",
+      normalizedText: "打开音乐播放器",
+      commands: [
+        {
+          id: "cmd_add_music",
+          module: "board",
+          tool: "board.add_widget",
+          args: { definitionId: "wd_music" },
+          risk: "safe",
+          confidence: 0.92,
+          source: "text",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "cmd_play_music",
+          module: "music",
+          tool: "music.play",
+          args: { widgetId: "planned_widget_music", query: "打开音乐播放器" },
+          risk: "safe",
+          confidence: 0.92,
+          dependsOn: ["cmd_add_music"],
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_add_music", "cmd_play_music"] }],
+      confidence: 0.92,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({ modelPlan });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput("打开音乐播放器");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["board.add_widget:none"]);
+  });
+
+  it("removes redundant add-widget commands when a detail tool already has an existing target", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_weather_detail_plus_redundant_add",
+      sourceText: "查一下上海今天的天气",
+      normalizedText: "查一下上海今天的天气",
+      commands: [
+        {
+          id: "cmd_weather",
+          module: "weather",
+          tool: "weather.set_city",
+          args: { widgetId: "wi_weather", city: "上海" },
+          risk: "safe",
+          confidence: 0.92,
+          source: "text",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "cmd_add_weather",
+          module: "board",
+          tool: "board.add_widget",
+          args: { definitionId: "wd_weather" },
+          risk: "safe",
+          confidence: 0.72,
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "parallel", commandIds: ["cmd_weather", "cmd_add_weather"] }],
+      confidence: 0.92,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({
+      modelPlan,
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_weather", definitionId: "wd_weather", type: "weather", name: "天气", order: 3, summary: "北京" }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput("查一下上海今天的天气");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["weather.set_city:wi_weather"]);
+  });
+
+  it("normalizes realtime stock lookup aliases before strict plan validation", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_stock_lookup_alias",
+      sourceText: "打开特斯拉股价和走势图",
+      normalizedText: "打开特斯拉股价和走势图",
+      commands: [
+        {
+          id: "cmd_market",
+          module: "market",
+          tool: "market.set_indices",
+          args: { widgetId: "wi_market", stockLookupHint: "特斯拉", indexCodeHints: ["TSLA"] },
+          risk: "safe",
+          confidence: 0.92,
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_market"] }],
+      confidence: 0.92,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({
+      modelPlan,
+      getContextInput: () => ({
+        ...createContextInput(),
+        availableDefinitions: [
+          ...(createContextInput().availableDefinitions ?? []),
+          { definitionId: "wd_market", type: "market", name: "行情" }
+        ],
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_market", definitionId: "wd_market", type: "market", name: "行情", order: 3, summary: "" }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput("打开特斯拉股价和走势图");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["market.set_indices:wi_market"]);
+  });
+
+  it("executes dependent commands sequentially when realtime puts them in a parallel group", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_open_then_focus_headline",
+      sourceText: "打开重大新闻",
+      normalizedText: "打开重大新闻",
+      commands: [
+        {
+          id: "cmd_add_headline",
+          module: "board",
+          tool: "board.add_widget",
+          args: { definitionId: "wd_headline" },
+          risk: "safe",
+          confidence: 0.92,
+          source: "text",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "cmd_focus_headline",
+          module: "widget",
+          tool: "widget.focus",
+          args: { widgetId: "planned_widget_headline" },
+          risk: "safe",
+          confidence: 0.92,
+          dependsOn: ["cmd_add_headline"],
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "parallel", commandIds: ["cmd_add_headline", "cmd_focus_headline"] }],
+      confidence: 0.92,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({
+      modelPlan,
+      getContextInput: () => ({
+        ...createContextInput(),
+        availableDefinitions: [
+          ...(createContextInput().availableDefinitions ?? []),
+          { definitionId: "wd_headline", type: "headline", name: "重大新闻" }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput("打开重大新闻");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["board.add_widget:none", "widget.focus:wi_added_headline"]);
+  });
+
+  it("removes dependencies that point to commands stripped from open-only plans", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_open_headline_with_redundant_refresh",
+      sourceText: "打开重大新闻",
+      normalizedText: "打开重大新闻",
+      commands: [
+        {
+          id: "cmd_refresh_headline",
+          module: "headline",
+          tool: "headline.request_refresh",
+          args: { widgetId: "planned_widget_headline" },
+          risk: "safe",
+          confidence: 0.72,
+          source: "text",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "cmd_add_headline",
+          module: "board",
+          tool: "board.add_widget",
+          args: { definitionId: "wd_headline" },
+          risk: "safe",
+          confidence: 0.92,
+          dependsOn: ["cmd_refresh_headline"],
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_refresh_headline", "cmd_add_headline"] }],
+      confidence: 0.92,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({
+      modelPlan,
+      getContextInput: () => ({
+        ...createContextInput(),
+        availableDefinitions: [
+          ...(createContextInput().availableDefinitions ?? []),
+          { definitionId: "wd_headline", type: "headline", name: "重大新闻" }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput("打开重大新闻");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["board.add_widget:none"]);
+  });
+
+  it("removes accidental calculator display updates from open-only realtime plans", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_open_calculator_only",
+      sourceText: "打开计算器",
+      normalizedText: "打开计算器",
+      commands: [
+        {
+          id: "cmd_add_calculator",
+          module: "board",
+          tool: "board.add_widget",
+          args: { definitionId: "wd_calculator" },
+          risk: "safe",
+          confidence: 0.92,
+          source: "text",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "cmd_calc",
+          module: "calculator",
+          tool: "calculator.set_display",
+          args: { widgetId: "planned_widget_calculator", display: "打开计算器" },
+          risk: "safe",
+          confidence: 0.72,
+          dependsOn: ["cmd_add_calculator"],
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_add_calculator", "cmd_calc"] }],
+      confidence: 0.92,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({
+      modelPlan,
+      getContextInput: () => ({
+        ...createContextInput(),
+        availableDefinitions: [
+          ...(createContextInput().availableDefinitions ?? []),
+          { definitionId: "wd_calculator", type: "calculator", name: "计算器" }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput("打开计算器");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["board.add_widget:none"]);
+  });
+
+  it("binds missing widget ids for realtime detail tools before strict validation", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_world_clock_missing_widget_id",
+      sourceText: "现在东京是几点",
+      normalizedText: "现在东京是几点",
+      commands: [
+        {
+          id: "cmd_world_clock",
+          module: "worldClock",
+          tool: "worldClock.set_zones",
+          args: { zones: [{ city: "东京" }] },
+          risk: "safe",
+          confidence: 0.92,
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_world_clock"] }],
+      confidence: 0.92,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({
+      modelPlan,
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: [
+          ...createContextInput().widgets,
+          { widgetId: "wi_worldClock", definitionId: "wd_worldClock", type: "worldClock", name: "世界时钟", order: 3, summary: "" }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput("现在东京是几点");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["worldClock.set_zones:wi_worldClock"]);
+  });
+
   it("rewrites planned widget ids for window tools after board.add_widget succeeds", async () => {
     const modelPlan: CommandPlan = {
       id: "plan_add_then_move_tv",
@@ -1654,6 +2123,209 @@ describe("AssistantHarness", () => {
     expect(response.route).toBe("model");
     expect(response.result.status).toBe("success");
     expect(executed).toEqual(["board.add_widget:none", "widget.move:wi_added_tv"]);
+  });
+
+  it("resolves current window removals from the spoken transcript when model arguments omit a target", async () => {
+    const input = "关闭当前窗口";
+    const { harness, executed } = createHarness({
+      modelPlan: createRealtimePlanWithCalls(input, [
+        { name: "widget.remove", arguments: {} }
+      ])
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput(input);
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["widget.remove:wi_tv"]);
+  });
+
+  it("resolves generic current widget ids before executing window tools", async () => {
+    const input = "关闭当前窗口";
+    const { harness, executed } = createHarness({
+      modelPlan: createRealtimePlanWithCalls(input, [
+        { name: "widget.remove", arguments: { widgetId: "current" } }
+      ])
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput(input);
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["widget.remove:wi_tv"]);
+  });
+
+  it("does not play music for open or focus-only music player commands", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_focus_music_without_play",
+      sourceText: "把当前小工具切到音乐播放器",
+      normalizedText: "把当前小工具切到音乐播放器",
+      commands: [
+        {
+          id: "cmd_add_music",
+          module: "board",
+          tool: "board.add_widget",
+          args: { definitionId: "wd_music" },
+          risk: "safe",
+          confidence: 0.92,
+          source: "text",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "cmd_play_music",
+          module: "music",
+          tool: "music.play",
+          args: { widgetId: "planned_widget_music" },
+          risk: "safe",
+          confidence: 0.78,
+          dependsOn: ["cmd_add_music"],
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_add_music", "cmd_play_music"] }],
+      confidence: 0.92,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({
+      modelPlan,
+      getContextInput: () => ({
+        ...createContextInput(),
+        widgets: createContextInput().widgets.filter((widget) => widget.type !== "music")
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput("把当前小工具切到音乐播放器");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["board.add_widget:none"]);
+  });
+
+  it("infers missing add-widget definition ids from command modules before validation", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_reopen_music_weather",
+      sourceText: "重新打开音乐和天气并排放好",
+      normalizedText: "重新打开音乐和天气并排放好",
+      commands: [
+        {
+          id: "cmd_add_music",
+          module: "music",
+          tool: "board.add_widget",
+          args: {},
+          risk: "safe",
+          confidence: 0.9,
+          source: "text",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "cmd_add_weather",
+          module: "weather",
+          tool: "board.add_widget",
+          args: {},
+          risk: "safe",
+          confidence: 0.9,
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_add_music", "cmd_add_weather"] }],
+      confidence: 0.9,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({ modelPlan });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput("重新打开音乐和天气并排放好");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["board.add_widget:none", "board.add_widget:none"]);
+  });
+
+  it("rewrites exit-fullscreen plans that accidentally call TV fullscreen", async () => {
+    const modelPlan = createRealtimePlanWithCalls("退出电视全屏", [
+      { name: "tv.fullscreen", arguments: { widgetId: "wi_tv" } }
+    ]);
+    const { harness, executed } = createHarness({ modelPlan });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput("退出电视全屏");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["app.fullscreen.set:none"]);
+  });
+
+  it("repairs missing add-widget dependencies for planned widget follow-up commands", async () => {
+    const modelPlan: CommandPlan = {
+      id: "plan_add_tv_fullscreen",
+      sourceText: "打开电视并全屏",
+      normalizedText: "打开电视并全屏",
+      commands: [
+        {
+          id: "cmd_add_tv",
+          module: "board",
+          tool: "board.add_widget",
+          args: { definitionId: "wd_tv" },
+          risk: "safe",
+          confidence: 0.92,
+          source: "text",
+          requiresHarnessValidation: true
+        },
+        {
+          id: "cmd_fullscreen_tv",
+          module: "tv",
+          tool: "tv.fullscreen",
+          args: { widgetId: "planned_widget_tv" },
+          risk: "safe",
+          confidence: 0.92,
+          dependsOn: ["cmd_missing_add_tv"],
+          source: "text",
+          requiresHarnessValidation: true
+        }
+      ],
+      dependencies: [{ from: "cmd_missing_add_tv", to: "cmd_fullscreen_tv" }],
+      executionGroups: [{ id: "group_1", mode: "sequential", commandIds: ["cmd_add_tv", "cmd_fullscreen_tv"] }],
+      confidence: 0.92,
+      needsConfirmation: false,
+      createdBy: "realtime-2",
+      requiresHarnessValidation: true
+    };
+    const { harness, executed } = createHarness({
+      modelPlan,
+      getContextInput: () => ({
+        ...createContextInput(),
+        focusedWidgetId: "wi_note",
+        recentWidgetIds: ["wi_note"],
+        widgets: [
+          {
+            widgetId: "wi_note",
+            definitionId: "wd_note",
+            type: "note",
+            name: "便签",
+            order: 1,
+            state: { content: "明早九点开会" }
+          }
+        ]
+      })
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput("打开电视并全屏");
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(executed).toEqual(["board.add_widget:none", "tv.fullscreen:wi_added_tv"]);
   });
 
   it("executes simultaneous shortcut command segments with concurrent operation visibility", async () => {

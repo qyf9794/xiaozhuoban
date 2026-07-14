@@ -387,7 +387,7 @@ export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[]): Rea
         },
         targetHint: {
           type: "string",
-          description: "Short target words copied from the user's command."
+          description: "Short target words copied from the user's command. For completion commands, copy the item text, e.g. 买咖啡豆."
         },
         userCommand: {
           type: "string",
