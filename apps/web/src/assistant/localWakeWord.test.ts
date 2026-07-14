@@ -101,10 +101,14 @@ describe("local wake word", () => {
   it("does not restart after terminal browser speech recognition errors", () => {
     FakeSpeechRecognition.instances = [];
     const statuses: string[] = [];
+    const details: Array<{ error?: string } | undefined> = [];
     const engine = createBrowserSpeechWakeWordEngine({
       recognitionCtor: FakeSpeechRecognition as unknown as SpeechRecognitionConstructor,
       onWake: vi.fn(),
-      onStatusChange: (status) => statuses.push(status)
+      onStatusChange: (status, detail) => {
+        statuses.push(status);
+        details.push(detail);
+      }
     });
 
     engine.start();
@@ -114,6 +118,7 @@ describe("local wake word", () => {
     expect(FakeSpeechRecognition.instances[0]?.start).toHaveBeenCalledTimes(1);
     expect(FakeSpeechRecognition.instances[0]?.stop).toHaveBeenCalledTimes(1);
     expect(statuses).toEqual(["listening", "error"]);
+    expect(details).toEqual([undefined, { error: "not-allowed" }]);
   });
 
   it("backs off recognition restarts and stops after repeated unexpected endings", () => {

@@ -53,7 +53,7 @@ export type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 export interface BrowserSpeechWakeWordEngineOptions {
   recognitionCtor?: SpeechRecognitionConstructor | null;
   onWake: (detection: LocalWakeWordDetection) => void;
-  onStatusChange?: (status: LocalWakeWordStatus) => void;
+  onStatusChange?: (status: LocalWakeWordStatus, detail?: { error?: string }) => void;
   wakeWords?: string[];
   lang?: string;
   restartDelayMs?: number;
@@ -173,10 +173,10 @@ export function createBrowserSpeechWakeWordEngine(options: BrowserSpeechWakeWord
     restartTimer = null;
   };
 
-  const emitStatus = (status: LocalWakeWordStatus) => {
+  const emitStatus = (status: LocalWakeWordStatus, detail?: { error?: string }) => {
     if (lastStatus === status) return;
     lastStatus = status;
-    options.onStatusChange?.(status);
+    options.onStatusChange?.(status, detail);
   };
 
   const stopRecognition = (status: LocalWakeWordStatus) => {
@@ -199,8 +199,13 @@ export function createBrowserSpeechWakeWordEngine(options: BrowserSpeechWakeWord
       recognitionRunning = true;
       lastStartAt = Date.now();
       emitStatus("listening");
-    } catch {
-      stopRecognition("error");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "recognition_start_failed";
+      active = false;
+      stopRequested = true;
+      recognitionRunning = false;
+      clearRestartTimer();
+      emitStatus("error", { error: message });
     }
   };
 
@@ -228,7 +233,7 @@ export function createBrowserSpeechWakeWordEngine(options: BrowserSpeechWakeWord
     };
     next.onerror = (event) => {
       if (!active) return;
-      emitStatus("error");
+      emitStatus("error", { error: event?.error });
       if (TERMINAL_SPEECH_RECOGNITION_ERRORS.has(event?.error ?? "")) {
         stopRecognition("error");
       }

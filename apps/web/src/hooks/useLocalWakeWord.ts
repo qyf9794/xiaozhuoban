@@ -47,11 +47,16 @@ export function useLocalWakeWord({
           stopAudioMonitorRef.current();
           void onWakeRef.current(detection);
         },
-        onStatusChange: (nextStatus) => {
+        onStatusChange: (nextStatus, detail) => {
           setStatus((currentStatus) => (currentStatus === nextStatus ? currentStatus : nextStatus));
           if (lastDiagnosticStatusRef.current === nextStatus) return;
           lastDiagnosticStatusRef.current = nextStatus;
-          onDiagnosticRef.current?.({ type: "local_wake_word.status", status: nextStatus });
+          onDiagnosticRef.current?.({
+            type: "local_wake_word.status",
+            status: nextStatus,
+            errorCode: detail?.error,
+            data: detail?.error ? { error: detail.error } : undefined
+          });
         }
       }),
     []
