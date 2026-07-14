@@ -15,6 +15,7 @@ function tool(partial: Omit<AssistantToolSpec, "description" | "parameters"> & P
 const tools: AssistantToolSpec[] = [
   tool({ name: "app.sidebar.set", scope: "desktop", examples: ["隐藏侧边栏"] }),
   tool({ name: "app.wallpaper.pick", scope: "desktop", examples: ["更换壁纸"] }),
+  tool({ name: "assistant.get_desktop_state", scope: "desktop", examples: ["桌面上有多少个工具"] }),
   tool({ name: "board.add_widget", scope: "desktop", examples: ["打开音乐播放器", "打开天气"] }),
   tool({ name: "widget.focus", scope: "desktop", requiresTarget: true, examples: ["聚焦音乐"] }),
   tool({ name: "widget.remove", scope: "desktop", requiresTarget: true, risk: "safe", examples: ["关闭音乐"] }),
@@ -183,6 +184,13 @@ describe("RealtimeToolExposurePlanner", () => {
 
     expect(plan.selectedModules).toContain("tv");
     expect(plan.exposedTools.map((item) => item.name)).toEqual(expect.arrayContaining(["tv.play", "tv.select_channel", "board.add_widget"]));
+  });
+
+  it("exposes desktop state for widget count questions", () => {
+    const plan = buildRealtimeToolExposurePlan("桌面上有多少个工具", context(), tools);
+
+    expect(plan.exposedTools.map((item) => item.name)).toContain("assistant.get_desktop_state");
+    expect(plan.exposedTools.map((item) => item.name)).not.toContain("music.play");
   });
 
   it("uses the cached TV channel catalog when no TV widget is mounted", () => {

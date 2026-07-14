@@ -81,6 +81,7 @@ export function useLocalWakeWord({
     let animationFrameId: number | null = null;
     let stream: MediaStream | null = null;
     let audioContext: AudioContext | null = null;
+    let permissionStatus: PermissionStatus | null = null;
     let source: MediaStreamAudioSourceNode | null = null;
 
     const stopAudioMonitor = () => {
@@ -112,6 +113,31 @@ export function useLocalWakeWord({
       }
 
       try {
+        if (navigator.permissions?.query) {
+          try {
+            permissionStatus = await navigator.permissions.query({ name: "microphone" as PermissionName });
+            if (permissionStatus.state !== "granted") {
+              permissionStatus.onchange = () => {
+                if (!cancelled && permissionStatus?.state === "granted") {
+                  void startAudioMonitor();
+                }
+              };
+              onDiagnosticRef.current?.({
+                type: "local_wake_word.audio_monitor",
+                status: "skipped",
+                message: "MICROPHONE_PERMISSION_NOT_GRANTED"
+              });
+              return;
+            }
+          } catch {
+            onDiagnosticRef.current?.({
+              type: "local_wake_word.audio_monitor",
+              status: "skipped",
+              message: "MICROPHONE_PERMISSION_QUERY_UNAVAILABLE"
+            });
+            return;
+          }
+        }
         stream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
@@ -151,6 +177,9 @@ export function useLocalWakeWord({
     void startAudioMonitor();
     return () => {
       cancelled = true;
+      if (permissionStatus) {
+        permissionStatus.onchange = null;
+      }
       stopAudioMonitor();
       if (stopAudioMonitorRef.current === stopAudioMonitor) {
         stopAudioMonitorRef.current = () => undefined;

@@ -17,6 +17,7 @@ import { createLocalAssistantAuditAdapter, createSupabaseAssistantAuditAdapter, 
 import { assistantLearnedCommandStore } from "./assistantLearning";
 import { WidgetCapabilityBridge, createWidgetCapabilityActions } from "./widgetCapabilityBridge";
 import { createAppShellActions, type AppShellActionBridge } from "./appShellActions";
+import { createDesktopStateActions } from "./desktopStateActions";
 import { createWidgetStateActions } from "./widgetStateActions";
 import { createDailyWidgetAssistantModules } from "../widgets/modules/dailyWidgetAssistantModules";
 import { createCalculatorAssistantModule } from "../widgets/modules/calculator/assistant";
@@ -162,6 +163,7 @@ export function createLocalAssistantHarness(options?: {
   };
 
   const actions: AssistantAction[] = [
+    ...createDesktopStateActions(createContextInput),
     ...createAppShellActions(options?.appShellBridge ?? {}),
     ...registerBoardActions(registry, adapter),
     ...createWidgetStateActions(adapter),

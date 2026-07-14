@@ -3926,6 +3926,82 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(JSON.stringify(sent)).toContain("tv__dot__select_channel");
   });
 
+  it("fills TV channel arguments from parsed channel catalog before execution", () => {
+    const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall(call) {
+        calls.push(call as { name: string; arguments: Record<string, unknown> });
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "tv.select_channel",
+        description: "选择频道",
+        parameters: createStrictObjectSchema({
+          widgetId: { type: "string", required: true },
+          channelName: { type: "string" }
+        }),
+        argumentKeys: ["widgetId", "channelName"],
+        scope: "widget-detail",
+        widgetType: "tv",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: { tv: 1 },
+      widgets: [
+        {
+          widgetId: "wi_tv",
+          definitionId: "wd_tv",
+          type: "tv",
+          name: "电视",
+          order: 1,
+          summary: "channels",
+          assistantState: {
+            selectedChannelName: "BBC News",
+            channelNames: ["BBC News", "Bloomberg TV", "NHK World-Japan"]
+          }
+        }
+      ],
+      moduleStates: {
+        tv: {
+          assistantChannelNames: ["BBC News", "Bloomberg TV", "NHK World-Japan"],
+          assistantChannelCount: 3,
+          selectedChannelName: "BBC News"
+        }
+      }
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; activeScopedToolSelection: unknown }, {
+      sessionReady: true,
+      activeScopedToolSelection: {
+        selectedModule: "tv",
+        targetHint: "Bloomberg",
+        userCommand: "切到 Bloomberg",
+        candidateTools: ["tv.select_channel"],
+        selectedToolName: "tv.select_channel"
+      }
+    });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "call_tv_catalog",
+      name: "tv.select_channel",
+      arguments: {},
+      source: "realtime"
+    });
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        name: "tv.select_channel",
+        arguments: expect.objectContaining({
+          widgetId: "wi_tv",
+          channelName: "Bloomberg TV"
+        })
+      })
+    ]);
+  });
+
   it("repairs missing add-widget arguments after a scoped music selection", () => {
     const calls: unknown[] = [];
     const adapter = new OpenAIRealtimeWebRtcAdapter({

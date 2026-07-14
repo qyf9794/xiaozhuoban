@@ -355,6 +355,18 @@ function findContextTvChannelName(input: string, context: CompactAssistantContex
   );
 }
 
+function completeTvChannelArgumentsFromContext(
+  args: Record<string, unknown>,
+  context: CompactAssistantContext | null,
+  fallbackText: string
+): Record<string, unknown> {
+  if (!context || typeof args.channelUrl === "string") return args;
+  const channelName = typeof args.channelName === "string" ? args.channelName.trim() : "";
+  const matched = findContextTvChannelName([channelName, fallbackText].filter(Boolean).join(" "), context);
+  if (!matched || matched === channelName) return args;
+  return { ...args, channelName: matched };
+}
+
 function inferWidgetDefinitionTypeFromText(value: string): string {
   if (/tv|television|电视|直播|频道/i.test(value)) return "tv";
   if (/music|音乐|歌曲|播放器/i.test(value)) return "music";
@@ -1129,6 +1141,9 @@ function completeRealtimeToolArguments(
   if (call.name === "widget.move") {
     return { ...call, arguments: inferRealtimeMoveArgs(call.arguments, widget, context, fallbackText) };
   }
+  if (call.name === "tv.play" || call.name === "tv.select_channel") {
+    return { ...call, arguments: completeTvChannelArgumentsFromContext(call.arguments, context, fallbackText) };
+  }
   return call;
 }
 
@@ -1161,37 +1176,37 @@ function inferAddWidgetDefinitionForCall(
   if (followUpName === "music.search" || followUpName === "music.play") {
     nextArgs.followUp = {
       name: followUpName,
-      arguments: createFollowUpArgumentsFromText(followUpName, {}, input)
+      arguments: createFollowUpArgumentsFromText(followUpName, {}, input, context)
     };
   } else if (followUpName === "tv.play" || followUpName === "tv.select_channel") {
     nextArgs.followUp = {
       name: followUpName,
-      arguments: createFollowUpArgumentsFromText(followUpName, {}, input)
+      arguments: createFollowUpArgumentsFromText(followUpName, {}, input, context)
     };
   } else if (followUpName === "todo.add_item" || followUpName === "todo.complete_item") {
     nextArgs.followUp = {
       name: followUpName,
-      arguments: createFollowUpArgumentsFromText(followUpName, {}, input)
+      arguments: createFollowUpArgumentsFromText(followUpName, {}, input, context)
     };
   } else if (followUpName === "note.write") {
     nextArgs.followUp = {
       name: followUpName,
-      arguments: createFollowUpArgumentsFromText(followUpName, {}, input)
+      arguments: createFollowUpArgumentsFromText(followUpName, {}, input, context)
     };
   } else if (followUpName === "countdown.set") {
     nextArgs.followUp = {
       name: followUpName,
-      arguments: createFollowUpArgumentsFromText(followUpName, {}, input)
+      arguments: createFollowUpArgumentsFromText(followUpName, {}, input, context)
     };
   } else if (followUpName === "market.set_indices") {
     nextArgs.followUp = {
       name: followUpName,
-      arguments: createFollowUpArgumentsFromText(followUpName, {}, input)
+      arguments: createFollowUpArgumentsFromText(followUpName, {}, input, context)
     };
   } else if (followUpName === "converter.set") {
     nextArgs.followUp = {
       name: followUpName,
-      arguments: createFollowUpArgumentsFromText(followUpName, {}, input)
+      arguments: createFollowUpArgumentsFromText(followUpName, {}, input, context)
     };
   } else if (followUpName === "translate.set_draft") {
     nextArgs.followUp = {
@@ -1202,8 +1217,16 @@ function inferAddWidgetDefinitionForCall(
   return { ...call, arguments: nextArgs };
 }
 
-function createFollowUpArgumentsFromText(toolName: string, args: Record<string, unknown>, fallbackText: string): Record<string, unknown> {
+function createFollowUpArgumentsFromText(
+  toolName: string,
+  args: Record<string, unknown>,
+  fallbackText: string,
+  context?: CompactAssistantContext | null
+): Record<string, unknown> {
   let nextArgs = normalizeRealtimeToolArguments(toolName, args, fallbackText);
+  if (toolName === "tv.play" || toolName === "tv.select_channel") {
+    nextArgs = completeTvChannelArgumentsFromContext(nextArgs, context ?? null, fallbackText);
+  }
   if (toolName === "note.write" && (typeof nextArgs.content !== "string" || !nextArgs.content.trim())) {
     const content = extractNoteContentFromText(fallbackText) || fallbackText.trim();
     if (content) nextArgs = { ...nextArgs, content };
@@ -1234,7 +1257,7 @@ function repairBoardAddWidgetFollowUp(
         ...args,
         followUp: {
           name: "tv.play",
-          arguments: createFollowUpArgumentsFromText("tv.play", {}, fallbackText)
+          arguments: createFollowUpArgumentsFromText("tv.play", {}, fallbackText, context)
         }
       }
     };
@@ -1260,7 +1283,7 @@ function repairBoardAddWidgetFollowUp(
   delete nextArgs.followUpTool;
   nextArgs.followUp = {
     name: candidateTool.name,
-    arguments: createFollowUpArgumentsFromText(candidateTool.name, followUpArgs, fallbackText)
+    arguments: createFollowUpArgumentsFromText(candidateTool.name, followUpArgs, fallbackText, context)
   };
   return { ...call, arguments: nextArgs };
 }
@@ -2478,8 +2501,13 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.stopRemoteAudioLevelMonitor();
     const audio = this.remoteAudioElement;
     if (!audio) return;
+    const stream =
+      typeof MediaStream !== "undefined" && audio.srcObject instanceof MediaStream ? audio.srcObject : null;
+    audio.muted = true;
+    audio.volume = 0;
     audio.pause();
     audio.srcObject = null;
+    stream?.getTracks().forEach((track) => track.stop());
     audio.remove?.();
     this.remoteAudioElement = null;
   }
@@ -3857,10 +3885,16 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       ? {
           ...parsedPlan,
           commands: parsedPlan.commands.map((command) => {
-            if ((command.tool !== "tv.play" && command.tool !== "tv.select_channel") || !isRecord(command.args) || typeof command.args.channelName === "string") {
+            if ((command.tool !== "tv.play" && command.tool !== "tv.select_channel") || !isRecord(command.args)) {
               return command;
             }
-            const channelName = extractTvChannelNameFromText(active.input);
+            if (typeof command.args.channelName === "string" && command.args.channelName.trim()) {
+              return {
+                ...command,
+                args: completeTvChannelArgumentsFromContext(command.args, this.currentContext, active.input)
+              };
+            }
+            const channelName = extractTvChannelNameFromText(active.input) || findContextTvChannelName(active.input, this.currentContext);
             return channelName ? { ...command, args: { ...command.args, channelName } } : command;
           })
         }
