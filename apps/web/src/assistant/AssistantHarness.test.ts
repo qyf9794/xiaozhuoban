@@ -378,6 +378,66 @@ describe("AssistantHarness", () => {
     });
   });
 
+  it("sends per-tool execution state back to Realtime without changing the returned result", async () => {
+    const { harness, sentResults } = createHarness({
+      registryFactory: () => createRegistry({
+        "music.play": {
+          status: "success",
+          message: "已开始播放音乐",
+          data: { itemId: "song_1", title: "红豆", kind: "song" }
+        }
+      }),
+      getContextInput: () => ({
+        ...createContextInput(),
+        focusedWidgetId: "wi_music",
+        widgets: [
+          ...createContextInput().widgets,
+          {
+            widgetId: "wi_music",
+            definitionId: "wd_music",
+            type: "music",
+            name: "音乐",
+            order: 3,
+            state: { query: "王菲", title: "红豆", isPlaying: true }
+          }
+        ]
+      })
+    });
+
+    const response = await harness.handleFunctionCall({
+      id: "call_music",
+      name: "music.play",
+      arguments: { widgetId: "wi_music", query: "王菲" },
+      source: "realtime",
+      transcript: "播放王菲的红豆"
+    });
+
+    expect(response.result).toEqual({
+      status: "success",
+      message: "已开始播放音乐",
+      data: { itemId: "song_1", title: "红豆", kind: "song" }
+    });
+    expect(sentResults[0].data).toMatchObject({
+      itemId: "song_1",
+      title: "红豆",
+      executionState: {
+        toolName: "music.play",
+        status: "success",
+        target: { widgetId: "wi_music", type: "music" },
+        module: {
+          type: "music",
+          state: {
+            playbackState: "playing_or_selected",
+            query: "王菲",
+            title: "红豆",
+            itemId: "song_1",
+            kind: "song"
+          }
+        }
+      }
+    });
+  });
+
   it("keeps all active tools when entering a widget context", async () => {
     const { harness, toolUpdates } = createHarness();
 

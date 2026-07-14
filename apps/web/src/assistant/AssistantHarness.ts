@@ -212,6 +212,168 @@ function getTargetText(args: unknown) {
   return typeof value === "string" ? value : "";
 }
 
+function truncateExecutionText(value: unknown, maxLength = 160): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (!compact) return undefined;
+  return compact.length > maxLength ? `${compact.slice(0, maxLength)}...` : compact;
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function readStringList(value: unknown, limit = 12): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value
+    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    .map((item) => item.replace(/\s+/g, " ").trim())
+    .slice(0, limit);
+  return items.length ? items : undefined;
+}
+
+function compactRecord(record: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined));
+}
+
+function summarizeExecutionWidgetState(type: string, state: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!state) return undefined;
+  if (type === "note") {
+    const content = truncateExecutionText(state.content);
+    return compactRecord({ content, characters: content?.length });
+  }
+  if (type === "todo") {
+    const items = Array.isArray(state.items) ? state.items : [];
+    return compactRecord({
+      total: items.length,
+      items: items.slice(0, 8).flatMap((item) =>
+        isRecord(item) && typeof item.text === "string"
+          ? [compactRecord({ text: truncateExecutionText(item.text, 80), dueAt: truncateExecutionText(item.dueAt, 40) })]
+          : []
+      )
+    });
+  }
+  if (type === "countdown") {
+    return compactRecord({
+      running: readBoolean(state.running),
+      totalSeconds: readNumber(state.totalSeconds),
+      remainingSeconds: readNumber(state.remainingSeconds),
+      targetEndsAt: readNumber(state.targetEndsAt),
+      label: truncateExecutionText(state.label, 80)
+    });
+  }
+  if (type === "clipboard") {
+    const items = Array.isArray(state.items) ? state.items : [];
+    const latest = items.find((item) => isRecord(item) && typeof item.text === "string");
+    return compactRecord({
+      count: items.length,
+      pinnedCount: items.filter((item) => isRecord(item) && item.pinned === true).length,
+      latestText: isRecord(latest) ? truncateExecutionText(latest.text) : undefined
+    });
+  }
+  if (type === "translate") {
+    return compactRecord({
+      sourceText: truncateExecutionText(state.sourceText),
+      sourceLang: truncateExecutionText(state.sourceLang, 24),
+      targetLang: truncateExecutionText(state.targetLang, 24),
+      translatedText: truncateExecutionText(state.translatedText),
+      translating: readBoolean(state.translating),
+      error: truncateExecutionText(state.translateError)
+    });
+  }
+  if (type === "tv") {
+    return compactRecord({
+      selectedChannelName: truncateExecutionText(state.selectedChannelName, 80),
+      selectedChannelUrl: truncateExecutionText(state.selectedChannelUrl, 200),
+      assistantChannelCount: readNumber(state.assistantChannelCount),
+      assistantChannelNames: readStringList(state.assistantChannelNames, 24)
+    });
+  }
+  if (type === "music") {
+    return compactRecord({
+      query: truncateExecutionText(state.query, 120),
+      activeItemId: truncateExecutionText(state.activeItemId, 80),
+      title: truncateExecutionText(state.title, 120),
+      isPlaying: readBoolean(state.isPlaying)
+    });
+  }
+  if (type === "weather") {
+    return compactRecord({
+      cityCode: truncateExecutionText(state.cityCode, 40),
+      city: state.weatherCity ?? state.city,
+      loading: readBoolean(state.weatherLoading),
+      error: truncateExecutionText(state.weatherError)
+    });
+  }
+  if (type === "market") {
+    return compactRecord({
+      indexCode: truncateExecutionText(state.indexCode, 40),
+      indexCodes: readStringList(state.indexCodes, 8),
+      labels: isRecord(state.marketSymbolLabels) ? state.marketSymbolLabels : undefined,
+      loading: readBoolean(state.marketLoading),
+      error: truncateExecutionText(state.marketError)
+    });
+  }
+  if (type === "worldClock") {
+    return compactRecord({
+      zones: readStringList(state.zones, 12),
+      compact: readBoolean(state.compact),
+      labels: isRecord(state.worldClockZoneLabels) ? state.worldClockZoneLabels : undefined
+    });
+  }
+  if (type === "calculator") {
+    return compactRecord({ display: truncateExecutionText(state.calcDisplay ?? state.display, 80) });
+  }
+  if (type === "converter") {
+    return compactRecord({
+      category: truncateExecutionText(state.category, 40),
+      inputValue: truncateExecutionText(state.inputValue, 80),
+      fromUnit: truncateExecutionText(state.fromUnit, 40),
+      toUnit: truncateExecutionText(state.toUnit, 40)
+    });
+  }
+  if (type === "recorder") {
+    return compactRecord({
+      recording: readBoolean(state.recording),
+      recordError: truncateExecutionText(state.recordError),
+      activeRecordingId: truncateExecutionText(state.activeRecordingId, 80)
+    });
+  }
+  if (type === "headline") {
+    return compactRecord({
+      requestedAt: truncateExecutionText(state.headlineRefreshRequestedAt, 80),
+      error: truncateExecutionText(state.headlineError)
+    });
+  }
+  const entries = Object.entries(state)
+    .filter(([, value]) => typeof value === "string" || typeof value === "number" || typeof value === "boolean")
+    .slice(0, 8)
+    .map(([key, value]) => [key, typeof value === "string" ? truncateExecutionText(value) : value]);
+  return entries.length ? Object.fromEntries(entries) : undefined;
+}
+
+function collectWidgetIds(value: unknown, output = new Set<string>()): Set<string> {
+  if (!value || output.size >= 8) return output;
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectWidgetIds(item, output));
+    return output;
+  }
+  if (!isRecord(value)) return output;
+  for (const [key, item] of Object.entries(value)) {
+    if (key === "widgetId" && typeof item === "string" && item.trim()) {
+      output.add(item);
+    } else if (isRecord(item) || Array.isArray(item)) {
+      collectWidgetIds(item, output);
+    }
+    if (output.size >= 8) break;
+  }
+  return output;
+}
+
 function removeTargetText(args: unknown) {
   if (!isRecord(args)) return args;
   const next = { ...args };
@@ -681,6 +843,154 @@ export class AssistantHarness {
 
   getLastDiagnostics(): AssistantCommandDiagnostics | null {
     return this.lastDiagnostics ? JSON.parse(JSON.stringify(this.lastDiagnostics)) as AssistantCommandDiagnostics : null;
+  }
+
+  private inferWidgetTypeForExecutionState(
+    call: AssistantToolCall,
+    resultData: Record<string, unknown>,
+    widgets: ContextSummarizerInput["widgets"]
+  ): string | undefined {
+    if (typeof resultData.widgetType === "string") return resultData.widgetType;
+    const specType = this.options.registry.get(call.name)?.widgetType;
+    if (specType) return specType;
+    const widgetIds = collectWidgetIds(call.arguments);
+    collectWidgetIds(resultData, widgetIds);
+    const matchedWidget = widgets.find((widget) => widgetIds.has(widget.widgetId));
+    if (matchedWidget) return matchedWidget.type;
+    const [namespace] = call.name.split(".");
+    if (
+      [
+        "calculator",
+        "clipboard",
+        "converter",
+        "countdown",
+        "headline",
+        "market",
+        "messageBoard",
+        "music",
+        "note",
+        "recorder",
+        "todo",
+        "translate",
+        "tv",
+        "weather",
+        "worldClock"
+      ].includes(namespace)
+    ) {
+      return namespace;
+    }
+    if (call.name === "dialClock.set_night_mode") return "dialClock";
+    return undefined;
+  }
+
+  private compactWidgetForExecutionState(widget: ContextSummarizerInput["widgets"][number], focusedWidgetId?: string) {
+    return compactRecord({
+      widgetId: widget.widgetId,
+      definitionId: widget.definitionId,
+      type: widget.type,
+      name: widget.name,
+      focused: widget.widgetId === focusedWidgetId || undefined,
+      position: widget.position,
+      size: widget.size,
+      summary: truncateExecutionText(widget.summary, 120),
+      state: summarizeExecutionWidgetState(widget.type, widget.state)
+    });
+  }
+
+  private createExecutionStateSnapshot(call: AssistantToolCall, result: AssistantToolResult): Record<string, unknown> {
+    const input = this.options.getContextInput();
+    const compactContext = this.getCurrentContext();
+    const resultData = isRecord(result.data) ? result.data : {};
+    const widgetIds = collectWidgetIds(call.arguments);
+    collectWidgetIds(resultData, widgetIds);
+    const widgetType = this.inferWidgetTypeForExecutionState(call, resultData, input.widgets);
+    const affectedWidgets = input.widgets.filter((widget) => widgetIds.has(widget.widgetId));
+    const moduleWidgets = widgetType ? input.widgets.filter((widget) => widget.type === widgetType) : [];
+    const selectedWidgets = affectedWidgets.length ? affectedWidgets : moduleWidgets.slice(0, 3);
+    const widgetsByType = input.widgets.reduce<Record<string, number>>((counts, widget) => {
+      counts[widget.type] = (counts[widget.type] ?? 0) + 1;
+      return counts;
+    }, {});
+    const primaryWidget = selectedWidgets[0];
+    const moduleState = primaryWidget ? summarizeExecutionWidgetState(primaryWidget.type, primaryWidget.state) : undefined;
+    const playbackState =
+      call.name === "music.pause" || call.name === "tv.pause"
+        ? "paused"
+        : call.name === "music.search"
+          ? "searched"
+          : call.name.startsWith("music.") || call.name === "tv.play" || call.name === "tv.select_channel"
+            ? "playing_or_selected"
+            : call.name === "tv.fullscreen"
+              ? "fullscreen_requested"
+              : undefined;
+
+    return compactRecord({
+      toolName: call.name,
+      status: result.status,
+      message: result.message,
+      generatedAt: this.options.now?.() ?? new Date().toISOString(),
+      board: compactRecord({
+        boardId: input.boardId ?? compactContext.boardId,
+        boardName: input.boardName ?? compactContext.boardName,
+        widgetCount: input.widgets.length,
+        focusedWidgetId: input.focusedWidgetId,
+        widgetsByType,
+        viewport: input.viewport ?? compactContext.viewport
+      }),
+      target: primaryWidget
+        ? compactRecord({
+            widgetId: primaryWidget.widgetId,
+            type: primaryWidget.type,
+            name: primaryWidget.name
+          })
+        : undefined,
+      affectedWidgetIds: widgetIds.size ? Array.from(widgetIds) : undefined,
+      affectedWidgets: selectedWidgets.length
+        ? selectedWidgets.map((widget) => this.compactWidgetForExecutionState(widget, input.focusedWidgetId))
+        : undefined,
+      module: widgetType
+        ? compactRecord({
+            type: widgetType,
+            widgetCount: moduleWidgets.length,
+            state: compactRecord({
+              ...(moduleState ?? {}),
+              playbackState,
+              itemId: truncateExecutionText(resultData.itemId, 80),
+              title: truncateExecutionText(resultData.title, 120),
+              kind: truncateExecutionText(resultData.kind, 40),
+              playbackBlocked: readBoolean(resultData.playbackBlocked),
+              channelName: truncateExecutionText(resultData.channelName, 120),
+              channelUrl: truncateExecutionText(resultData.channelUrl, 200),
+              totalSeconds: readNumber(resultData.totalSeconds),
+              remainingSeconds: readNumber(resultData.remainingSeconds),
+              text: truncateExecutionText(resultData.text),
+              targetLang: truncateExecutionText(resultData.targetLang, 40),
+              indexCodes: readStringList(resultData.indexCodes, 8),
+              zones: readStringList(resultData.zones, 12)
+            })
+          })
+        : undefined
+    });
+  }
+
+  private createRealtimeToolResult(call: AssistantToolCall, result: AssistantToolResult): AssistantToolResult {
+    const currentData: Record<string, unknown> = isRecord(result.data)
+      ? { ...result.data }
+      : result.data === undefined
+        ? {}
+        : { value: result.data };
+    if (isRecord(currentData.executionState)) return result;
+    return {
+      ...result,
+      data: {
+        ...currentData,
+        executionState: this.createExecutionStateSnapshot(call, result)
+      }
+    };
+  }
+
+  private async sendRealtimeToolResult(call: AssistantToolCall, result: AssistantToolResult): Promise<void> {
+    await this.options.realtime.sendToolResult(call, this.createRealtimeToolResult(call, result));
   }
 
   async handleUserInput(input: string, options: AssistantHandleUserInputOptions = {}): Promise<AssistantHarnessResponse> {
@@ -1277,7 +1587,7 @@ export class AssistantHarness {
         toolName: call.name,
         message: result.message
       });
-      await this.options.realtime.sendToolResult(call, result);
+      await this.sendRealtimeToolResult(call, result);
       await this.updateRealtimeContext();
       await this.audit({ route, call, result, durationMs: Date.now() - startedAt });
       this.recordDiagnosticsToolResult(call, result);
@@ -1344,7 +1654,7 @@ export class AssistantHarness {
       source: "learned",
       transcript: input
     };
-    await this.options.realtime.sendToolResult(call, result);
+    await this.sendRealtimeToolResult(call, result);
     await this.audit({ route: "learned", call, result, durationMs: Date.now() - startedAt, learningCandidate: false });
     return { route: "learned", call, result };
   }
@@ -1391,7 +1701,7 @@ export class AssistantHarness {
         errorCode: validation.errors[0]?.code ?? "PLAN_VALIDATION_FAILED"
       };
       this.emitOperation({ id: call.id, phase: "failed", route, toolName: call.name, message: result.message });
-      await this.options.realtime.sendToolResult(call, result);
+      await this.sendRealtimeToolResult(call, result);
       await this.audit({ route, call, result, durationMs: Date.now() - startedAt });
       this.recordDiagnosticsToolResult(call, result);
       return [{ route, call, result }];
@@ -1433,7 +1743,7 @@ export class AssistantHarness {
         source: record.command.source,
         transcript: plan.sourceText
       };
-      await this.options.realtime.sendToolResult(call, record.result);
+      await this.sendRealtimeToolResult(call, record.result);
       const learningCandidate = await this.recordLearningCandidate(validation.plan, call, record.result, route);
       await this.audit({ route, call, result: record.result, durationMs: Date.now() - startedAt, learningCandidate });
       this.recordDiagnosticsToolResult(call, record.result, learningCandidate);
