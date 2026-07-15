@@ -299,6 +299,18 @@ export function useAssistantRuntimeController({
   );
 
   useEffect(() => {
+    const disconnectForPageExit = () => {
+      assistantRuntime.disconnect();
+    };
+    window.addEventListener("pagehide", disconnectForPageExit);
+    window.addEventListener("beforeunload", disconnectForPageExit);
+    return () => {
+      window.removeEventListener("pagehide", disconnectForPageExit);
+      window.removeEventListener("beforeunload", disconnectForPageExit);
+    };
+  }, [assistantRuntime]);
+
+  useEffect(() => {
     const refresh = () => {
       void getAssistantOutboxStatus().then(setAssistantOutboxStatus);
     };

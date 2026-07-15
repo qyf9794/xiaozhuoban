@@ -1706,11 +1706,6 @@ function createUserFacingRealtimeToolResult(call: AssistantToolCall, result: Ass
   };
 }
 
-function isFinalLocalSelectorResult(call: AssistantToolCall, result: AssistantToolResult): boolean {
-  if (call.name !== REALTIME_TOOL_SELECTION_TOOL_NAME || result.status !== "success" || !isRecord(result.data)) return false;
-  return result.data.execution === "local_add_widget_shortcut" || result.data.execution === "local_bulk_shortcut";
-}
-
 function isBulkWindowSelectionText(...values: Array<string | undefined>): boolean {
   const normalized = values.filter(Boolean).join(" ").replace(/\s+/g, "");
   if (!normalized || /(保留|除了|除开|只关闭|只留下|留下|确认|先问|先确认|临时)/.test(normalized)) {
@@ -3197,7 +3192,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const userFacingResult = createUserFacingRealtimeToolResult(call, result);
     const continueResponse =
       call.name === REALTIME_PLAN_SELECTION_TOOL_NAME ||
-      (call.name === REALTIME_TOOL_SELECTION_TOOL_NAME && !isFinalLocalSelectorResult(call, result));
+      call.name === REALTIME_TOOL_SELECTION_TOOL_NAME ||
+      (call.source === "realtime" && !isLegacyRealtimeCommandPlanTool(call.name));
     createRealtimeToolResultEvents(call, userFacingResult, {
       activeResponseId: this.activeResponseId,
       responseMode: this.connectMode === "audio" ? "voice" : "text",

@@ -521,18 +521,19 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(events[1]).toEqual({ type: "response.create", response: { output_modalities: ["text"], max_output_tokens: 480 } });
   });
 
-  it("does not create follow-up audio responses for voice realtime tool results", () => {
+  it("creates follow-up audio responses for voice realtime tool results", () => {
     const events = createRealtimeToolResultEvents(
       { id: "call_1", name: "widget.remove", arguments: { widgetId: "wi_worldClock" }, source: "realtime" },
       { status: "success", message: "已关闭" },
-      { responseMode: "voice" }
+      { responseMode: "voice", continueResponse: true }
     );
 
-    expect(events).toHaveLength(1);
+    expect(events).toHaveLength(2);
     expect(events[0]).toMatchObject({
       type: "conversation.item.create",
       item: { type: "function_call_output", call_id: "call_1" }
     });
+    expect(events[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio"], max_output_tokens: 480 } });
   });
 
   it("creates realtime text command events with text-only response output", () => {
@@ -754,7 +755,7 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio"], max_output_tokens: 480 } });
   });
 
-  it("does not continue voice realtime after final tool response finishes", () => {
+  it("continues voice realtime after final tool response finishes", () => {
     const adapter = new OpenAIRealtimeWebRtcAdapter();
     const sent: unknown[] = [];
     Object.assign(
@@ -787,11 +788,12 @@ describe("OpenAI realtime adapter helpers", () => {
       }
     ).handleRealtimeLifecycleEvent({ type: "response.done", response: { id: "resp_voice_final" } });
 
-    expect(sent).toHaveLength(1);
+    expect(sent).toHaveLength(2);
     expect(sent[0]).toMatchObject({
       type: "conversation.item.create",
       item: { type: "function_call_output", call_id: "call_voice_final" }
     });
+    expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio"], max_output_tokens: 480 } });
   });
 
   it("tracks active realtime responses through lifecycle events", () => {
@@ -1516,7 +1518,10 @@ describe("OpenAI realtime adapter helpers", () => {
       expect.objectContaining({ type: "realtime.tool_result.send", operationId: "call_voice_1", commandTraceId: trace }),
       expect.objectContaining({ type: "realtime.event.send", commandTraceId: trace, data: { eventType: "conversation.item.create" } })
     ]));
-    expect(sent).toEqual([expect.objectContaining({ type: "conversation.item.create" })]);
+    expect(sent).toEqual([
+      expect.objectContaining({ type: "conversation.item.create" }),
+      expect.objectContaining({ type: "response.create" })
+    ]);
   });
 
   it("records safe tool arguments from realtime function calls before handing them to Harness", () => {
@@ -3489,7 +3494,8 @@ describe("OpenAI realtime adapter helpers", () => {
       expect.objectContaining({
         type: "conversation.item.create",
         item: expect.objectContaining({ type: "function_call_output", call_id: "select_open_tv" })
-      })
+      }),
+      expect.objectContaining({ type: "response.create" })
     ]);
     expect(JSON.stringify(sent)).toContain("local_add_widget_shortcut");
     expect(sent).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: "session.update" })]));
@@ -4133,7 +4139,8 @@ describe("OpenAI realtime adapter helpers", () => {
       })
     ]);
     expect(sent).toEqual([
-      expect.objectContaining({ type: "conversation.item.create" })
+      expect.objectContaining({ type: "conversation.item.create" }),
+      expect.objectContaining({ type: "response.create" })
     ]);
     expect(JSON.stringify(sent)).toContain("local_add_widget_shortcut");
   });

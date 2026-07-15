@@ -3980,10 +3980,15 @@ export function BuiltinWidgetView({
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const hlsRef = useRef<import("hls.js").default | null>(null);
     const latestStateRef = useRef(instance.state);
+    const latestSelectedChannelUrlRef = useRef(selectedChannelUrl);
 
     useEffect(() => {
       latestStateRef.current = instance.state;
     }, [instance.state]);
+
+    useEffect(() => {
+      latestSelectedChannelUrlRef.current = selectedChannelUrl;
+    }, [selectedChannelUrl]);
 
     useEffect(() => {
       setPlaylistDraft(playlistUrl);
@@ -4147,6 +4152,9 @@ export function BuiltinWidgetView({
           if (!video) {
             return { status: "failed", message: "电视播放器还没有准备好", errorCode: "TV_PLAYER_NOT_READY" };
           }
+          if (selected.data.channelUrl !== latestSelectedChannelUrlRef.current) {
+            return { status: "success", message: "已切换电视频道，正在加载播放", data: selected.data };
+          }
           try {
             await video.play();
           } catch {
@@ -4189,6 +4197,7 @@ export function BuiltinWidgetView({
 
       const source = selectedChannelUrl;
       const nativePlay = () => {
+        if (latestSelectedChannelUrlRef.current !== source) return;
         video.src = source;
         video.load();
         void video.play().catch(() => {
@@ -4211,7 +4220,7 @@ export function BuiltinWidgetView({
         .then((mod) => {
           const Hls = mod.default;
           const media = videoRef.current;
-          if (!media) return;
+          if (!media || latestSelectedChannelUrlRef.current !== source) return;
           if (!Hls.isSupported()) {
             setPlaybackError("当前浏览器不支持该直播流格式");
             return;

@@ -27,6 +27,7 @@ export function useLocalWakeWord({
 }) {
   const [status, setStatus] = useState<LocalWakeWordStatus>("idle");
   const [audioLevel, setAudioLevel] = useState(0);
+  const [pageVisible, setPageVisible] = useState(() => (typeof document === "undefined" ? true : document.visibilityState !== "hidden"));
   const onWakeRef = useRef(onWake);
   const onDiagnosticRef = useRef(onDiagnostic);
   const lastDiagnosticStatusRef = useRef<LocalWakeWordStatus | null>(null);
@@ -62,18 +63,46 @@ export function useLocalWakeWord({
     []
   );
 
+  const effectiveEnabled = enabled && pageVisible;
+
   useEffect(() => {
-    if (!enabled || realtimeConnected) {
+    const stopForPageLifecycle = () => {
+      engine.stop();
+      stopAudioMonitorRef.current();
+      setAudioLevel(0);
+    };
+    const handleVisibilityChange = () => {
+      const visible = document.visibilityState !== "hidden";
+      setPageVisible(visible);
+      if (!visible) stopForPageLifecycle();
+    };
+    const handlePageExit = () => {
+      setPageVisible(false);
+      stopForPageLifecycle();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", handlePageExit);
+    window.addEventListener("beforeunload", handlePageExit);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", handlePageExit);
+      window.removeEventListener("beforeunload", handlePageExit);
+    };
+  }, [engine]);
+
+  useEffect(() => {
+    if (!effectiveEnabled || realtimeConnected) {
       engine.stop();
       setAudioLevel(0);
       return;
     }
     engine.start();
     return () => engine.stop();
-  }, [enabled, engine, realtimeConnected]);
+  }, [effectiveEnabled, engine, realtimeConnected]);
 
   useEffect(() => {
-    if (!enabled || realtimeConnected || !engine.isSupported()) {
+    if (!effectiveEnabled || realtimeConnected || !engine.isSupported()) {
       setAudioLevel(0);
       return;
     }
@@ -185,7 +214,7 @@ export function useLocalWakeWord({
         stopAudioMonitorRef.current = () => undefined;
       }
     };
-  }, [enabled, engine, realtimeConnected]);
+  }, [effectiveEnabled, engine, realtimeConnected]);
 
   return {
     audioLevel,
