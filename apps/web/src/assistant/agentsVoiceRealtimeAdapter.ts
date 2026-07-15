@@ -19,6 +19,7 @@ import {
 } from "./realtimeSessionConfig";
 import {
   createRealtimeToolResultEvents,
+  createRealtimeResponseCreateEvent,
   createRealtimeSessionRequestBody,
   extractRealtimeSessionErrorMessage,
   parseRealtimeFunctionCallEvent,
@@ -284,6 +285,11 @@ export class AgentsVoiceRealtimeAdapter implements AssistantRealtimeAdapter {
   private activeCommandTraceId: string | null = null;
   private activeScopedToolSelection: (RealtimeTextToolSelection & { selectedToolName?: string }) | null = null;
   private handledFunctionCallIds = new Set<string>();
+  private recentToolCallSignatures = new Map<string, number>();
+  private hasActiveResponse = false;
+  private pendingResponseCreateAfterToolResult = false;
+  private pendingToolSelectionResetAfterResponse = false;
+  private toolSelectionResetFallbackId: ReturnType<typeof setTimeout> | null = null;
   private connectPromise: Promise<void> | null = null;
 
   constructor(private readonly options: OpenAIRealtimeWebRtcAdapterOptions = {}) {}
@@ -319,6 +325,7 @@ export class AgentsVoiceRealtimeAdapter implements AssistantRealtimeAdapter {
   }
 
   sendToolResult(_call: AssistantToolCall, _result: AssistantToolResult): void {
+    const waitForActiveResponse = this.hasActiveResponse;
     this.emitDiagnostic({
       type: "agents.realtime.tool_result.send",
       status: _result.status,
@@ -327,9 +334,16 @@ export class AgentsVoiceRealtimeAdapter implements AssistantRealtimeAdapter {
       message: _result.message,
       errorCode: _result.errorCode
     });
-    createRealtimeToolResultEvents(_call, _result, { responseMode: "voice" }).forEach((event) => this.sendTransportEvent(event));
-    this.activeScopedToolSelection = null;
-    this.sendToolSelectionReset();
+    createRealtimeToolResultEvents(_call, _result, {
+      responseMode: "voice",
+      continueResponse: !waitForActiveResponse
+    }).forEach((event) => this.sendTransportEvent(event));
+    if (waitForActiveResponse) {
+      this.pendingResponseCreateAfterToolResult = true;
+    } else {
+      this.pendingToolSelectionResetAfterResponse = true;
+    }
+    this.scheduleToolSelectionResetFallback();
   }
 
   connectTextOnly(): Promise<void> {
@@ -421,6 +435,7 @@ export class AgentsVoiceRealtimeAdapter implements AssistantRealtimeAdapter {
       if (!isRecord(event) || typeof event.type !== "string") return;
       if (event.type.endsWith(".delta")) return;
       this.emitDiagnostic({ type: "agents.realtime.transport_event", status: event.type, data: { type: event.type } });
+      this.handleRealtimeLifecycleEvent(event);
       this.handleTransportFunctionCall(event);
     });
     this.emitDiagnostic({
@@ -455,6 +470,11 @@ export class AgentsVoiceRealtimeAdapter implements AssistantRealtimeAdapter {
     this.connectPromise = null;
     this.activeScopedToolSelection = null;
     this.handledFunctionCallIds.clear();
+    this.recentToolCallSignatures.clear();
+    this.hasActiveResponse = false;
+    this.pendingResponseCreateAfterToolResult = false;
+    this.pendingToolSelectionResetAfterResponse = false;
+    this.clearToolSelectionResetFallback();
     this.options.onStatusChange?.("disconnected");
     this.emitDiagnostic({ type: "agents.realtime.disconnect", status: "disconnected" });
   }
@@ -485,7 +505,49 @@ export class AgentsVoiceRealtimeAdapter implements AssistantRealtimeAdapter {
   }
 
   private sendToolSelectionReset(): void {
+    this.clearToolSelectionResetFallback();
+    this.activeScopedToolSelection = null;
     this.sendTransportEvent(this.createToolSelectionSessionUpdate(), this.activeCommandTraceId ?? undefined);
+  }
+
+  private scheduleToolSelectionResetFallback(): void {
+    this.clearToolSelectionResetFallback();
+    this.toolSelectionResetFallbackId = globalThis.setTimeout(() => {
+      if (!this.pendingResponseCreateAfterToolResult && this.pendingToolSelectionResetAfterResponse) {
+        this.pendingToolSelectionResetAfterResponse = false;
+        this.emitDiagnostic({ type: "agents.realtime.tool_selection.reset_fallback", status: "sent" });
+        this.sendToolSelectionReset();
+      }
+    }, 6000);
+  }
+
+  private clearToolSelectionResetFallback(): void {
+    if (this.toolSelectionResetFallbackId !== null) {
+      globalThis.clearTimeout(this.toolSelectionResetFallbackId);
+      this.toolSelectionResetFallbackId = null;
+    }
+  }
+
+  private handleRealtimeLifecycleEvent(event: RealtimeEvent): void {
+    if (event.type === "response.created") {
+      this.hasActiveResponse = true;
+      return;
+    }
+    if (event.type !== "response.done") return;
+    this.hasActiveResponse = false;
+    if (this.pendingResponseCreateAfterToolResult) {
+      this.pendingResponseCreateAfterToolResult = false;
+      this.pendingToolSelectionResetAfterResponse = true;
+      this.emitDiagnostic({ type: "agents.realtime.response.create_after_tool_result", status: "sent" });
+      this.sendTransportEvent(createRealtimeResponseCreateEvent("voice"), this.activeCommandTraceId ?? undefined);
+      this.scheduleToolSelectionResetFallback();
+      return;
+    }
+    if (this.pendingToolSelectionResetAfterResponse) {
+      this.pendingToolSelectionResetAfterResponse = false;
+      this.emitDiagnostic({ type: "agents.realtime.tool_selection.reset_after_response", status: "sent" });
+      this.sendToolSelectionReset();
+    }
   }
 
   private sendTransportEvent(event: RealtimeEvent, commandTraceId?: string): void {
@@ -509,6 +571,21 @@ export class AgentsVoiceRealtimeAdapter implements AssistantRealtimeAdapter {
     if (!shouldHandleRealtimeFunctionCall(call, this.handledFunctionCallIds)) return;
     if (call.name === REALTIME_TOOL_SELECTION_TOOL_NAME || call.name === REALTIME_COMMAND_EXECUTION_TOOL_NAME) return;
     if (!this.getEffectiveSessionTools().some((tool) => tool.name === call?.name)) return;
+    const signature = this.createFunctionCallSignature(call);
+    if (this.isRecentDuplicateFunctionCall(signature)) {
+      this.emitDiagnostic({
+        type: "agents.realtime.function_call.duplicate_skip",
+        status: "skipped",
+        operationId: call.id,
+        toolName: call.name
+      });
+      this.sendToolResult(call, {
+        status: "success",
+        message: "已忽略重复执行请求。",
+        data: { duplicate: true }
+      });
+      return;
+    }
     const transcript =
       this.activeScopedToolSelection?.userCommand ||
       this.activeScopedToolSelection?.targetHint ||
@@ -526,5 +603,23 @@ export class AgentsVoiceRealtimeAdapter implements AssistantRealtimeAdapter {
       data: { argumentKeys: isRecord(toolCall.arguments) ? Object.keys(toolCall.arguments) : [] }
     });
     void this.options.onFunctionCall?.(toolCall);
+  }
+
+  private createFunctionCallSignature(call: AssistantToolCall): string {
+    return JSON.stringify({
+      trace: this.activeCommandTraceId,
+      name: call.name,
+      arguments: call.arguments ?? {}
+    });
+  }
+
+  private isRecentDuplicateFunctionCall(signature: string): boolean {
+    const now = Date.now();
+    for (const [key, timestamp] of this.recentToolCallSignatures) {
+      if (now - timestamp > 6000) this.recentToolCallSignatures.delete(key);
+    }
+    const previous = this.recentToolCallSignatures.get(signature);
+    this.recentToolCallSignatures.set(signature, now);
+    return previous !== undefined && now - previous <= 6000;
   }
 }

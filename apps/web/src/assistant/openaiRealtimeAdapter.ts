@@ -1844,7 +1844,7 @@ export function createRealtimeToolResultEvents(
 
 type RealtimeResponseMode = "text" | "voice";
 
-function createRealtimeResponseCreateEvent(mode: RealtimeResponseMode = "text"): RealtimeEvent {
+export function createRealtimeResponseCreateEvent(mode: RealtimeResponseMode = "text"): RealtimeEvent {
   return {
     type: "response.create",
     response: {

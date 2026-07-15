@@ -129,6 +129,7 @@ export function useLocalWakeWord({
     stopAudioMonitorRef.current = stopAudioMonitor;
 
     const startAudioMonitor = async () => {
+      if (stream) return;
       const AudioContextCtor =
         window.AudioContext ??
         (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -161,10 +162,9 @@ export function useLocalWakeWord({
           } catch {
             onDiagnosticRef.current?.({
               type: "local_wake_word.audio_monitor",
-              status: "skipped",
+              status: "warning",
               message: "MICROPHONE_PERMISSION_QUERY_UNAVAILABLE"
             });
-            return;
           }
         }
         stream = await navigator.mediaDevices.getUserMedia({
@@ -214,7 +214,7 @@ export function useLocalWakeWord({
         stopAudioMonitorRef.current = () => undefined;
       }
     };
-  }, [effectiveEnabled, engine, realtimeConnected]);
+  }, [effectiveEnabled, engine, realtimeConnected, status]);
 
   return {
     audioLevel,
