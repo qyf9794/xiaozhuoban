@@ -1949,10 +1949,11 @@ function normalizeRealtimeCompletionValue(value: unknown): string {
 }
 
 function createRealtimeToolCompletionKey(call: AssistantToolCall): string | null {
+  if (call.name === "assistant.get_desktop_state") return "assistant.get_desktop_state";
   if (call.name.startsWith("assistant.")) return null;
   const args = isRecord(call.arguments) ? call.arguments : {};
   if (call.name === "tv.play" || call.name === "tv.select_channel") {
-    const channel = normalizeRealtimeCompletionValue(args.channelUrl ?? args.channelName);
+    const channel = normalizeRealtimeCompletionValue(args.channelName ?? args.channelUrl);
     return channel ? `tv.channel:${channel}` : null;
   }
   if (call.name === "tv.pause") return "tv.pause";
@@ -2250,7 +2251,7 @@ export function createRealtimeResponseCreateEvent(
       output_modalities: mode === "voice" ? ["audio"] : ["text"],
       max_output_tokens: REALTIME_MAX_OUTPUT_TOKENS,
       instructions: options.instructions ?? REALTIME_CONCISE_RESPONSE_INSTRUCTIONS,
-      ...(options.tools?.length ? { tools: options.tools } : {}),
+      ...(options.tools ? { tools: options.tools } : {}),
       ...(options.toolChoice ? { tool_choice: options.toolChoice } : {})
     }
   };
@@ -3868,8 +3869,13 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         : undefined;
     const nextResponseTools =
       call.name === REALTIME_TOOL_SELECTION_TOOL_NAME
-        ? createScopedToolCallResponseTools(userFacingResult, this.currentTools, this.currentContext)
-        : undefined;
+        ? (() => {
+            const scopedTools = createScopedToolCallResponseTools(userFacingResult, this.currentTools, this.currentContext);
+            return scopedTools.length ? scopedTools : undefined;
+          })()
+        : call.source === "realtime" && !isLegacyRealtimeCommandPlanTool(call.name)
+          ? []
+          : undefined;
     const nextResponseToolChoice =
       isSelectionResult
         ? createScopedToolCallResponseToolChoice(userFacingResult, nextResponseTools ?? []) ?? "required"

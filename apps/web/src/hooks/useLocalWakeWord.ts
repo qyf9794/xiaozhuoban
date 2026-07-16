@@ -146,7 +146,7 @@ export function useLocalWakeWord({
         if (navigator.permissions?.query) {
           try {
             permissionStatus = await navigator.permissions.query({ name: "microphone" as PermissionName });
-            if (permissionStatus.state !== "granted") {
+            if (permissionStatus.state === "denied") {
               permissionStatus.onchange = () => {
                 if (!cancelled && permissionStatus?.state === "granted") {
                   void startAudioMonitor();
@@ -155,7 +155,7 @@ export function useLocalWakeWord({
               onDiagnosticRef.current?.({
                 type: "local_wake_word.audio_monitor",
                 status: "skipped",
-                message: "MICROPHONE_PERMISSION_NOT_GRANTED"
+                message: "MICROPHONE_PERMISSION_DENIED"
               });
               return;
             }
@@ -214,7 +214,7 @@ export function useLocalWakeWord({
         stopAudioMonitorRef.current = () => undefined;
       }
     };
-  }, [effectiveEnabled, engine, realtimeConnected, status]);
+  }, [effectiveEnabled, engine, realtimeConnected]);
 
   return {
     audioLevel,

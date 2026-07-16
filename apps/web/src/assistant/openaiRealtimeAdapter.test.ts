@@ -1328,7 +1328,7 @@ describe("OpenAI realtime adapter helpers", () => {
     });
     expect(sent[1]).toEqual({
       type: "response.create",
-      response: { output_modalities: ["audio"], max_output_tokens: 160, instructions: expect.any(String), tool_choice: "none" }
+      response: { output_modalities: ["audio"], max_output_tokens: 160, instructions: expect.any(String), tools: [], tool_choice: "none" }
     });
   });
 
