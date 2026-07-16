@@ -232,28 +232,33 @@ function selectModules(
   registry: WidgetAssistantRegistry | undefined,
   maxModules: number
 ): string[] {
+  // Text before an explicit “translate into” directive is source content, not
+  // additional tool intent. Keep the suffix so real follow-up actions remain.
+  const selectionInput = /翻译成|译成/i.test(input)
+    ? input.replace(/^.{0,120}?(?=翻译成|译成)/i, "")
+    : input;
   const knownModules = unique([
     ...tools.map(toolModuleType),
     ...(registry?.getRealtimeCatalog().map((item) => item.type) ?? []),
     ...Object.keys(realtimeWidgetAliases)
   ]).filter((moduleType) => !["app", "board", "widget", "assistant"].includes(moduleType));
   const patternSelected = Object.entries(MODULE_INTENT_PATTERNS)
-    .filter(([moduleType, pattern]) => knownModules.includes(moduleType) && pattern.test(input))
+    .filter(([moduleType, pattern]) => knownModules.includes(moduleType) && pattern.test(selectionInput))
     .map(([moduleType]) => moduleType);
   const toolIntentSelected = tools
-    .filter((tool) => TOOL_INTENT_PATTERNS[tool.name]?.test(input))
+    .filter((tool) => TOOL_INTENT_PATTERNS[tool.name]?.test(selectionInput))
     .map(toolModuleType)
     .filter((moduleType) => knownModules.includes(moduleType));
 
   const scored = knownModules
-    .map((moduleType) => ({ moduleType, score: scoreModule(input, moduleType, context, registry) }))
+    .map((moduleType) => ({ moduleType, score: scoreModule(selectionInput, moduleType, context, registry) }))
     .filter((item) => item.score >= 30)
     .sort((left, right) => right.score - left.score || left.moduleType.localeCompare(right.moduleType));
 
-  const explicitWidgetType = findRealtimeWidgetType(input);
+  const explicitWidgetType = findRealtimeWidgetType(selectionInput);
   const selected = unique([
     ...(explicitWidgetType ? [explicitWidgetType] : []),
-    ...(knownModules.includes("tv") && isTvChannelIntent(input, context) ? ["tv"] : []),
+    ...(knownModules.includes("tv") && isTvChannelIntent(selectionInput, context) ? ["tv"] : []),
     ...patternSelected,
     ...toolIntentSelected,
     ...scored.map((item) => item.moduleType)

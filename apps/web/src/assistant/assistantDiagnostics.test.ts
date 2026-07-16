@@ -202,4 +202,21 @@ describe("assistant diagnostics", () => {
       data: { reason: "session_failed", eventCount: 2, commandCount: 0, failureCount: 1 }
     });
   });
+
+  it("starts a fallback batch when the first observed status is already connected", async () => {
+    installBrowserGlobals();
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    await recordAssistantDiagnostic(
+      { type: "voice.status", status: "connected" },
+      { accessToken: "user-token", fetchImpl }
+    );
+
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [unknown, RequestInit];
+    const events = JSON.parse(String(init.body)).events as Array<Record<string, unknown>>;
+    expect(events).toMatchObject([
+      { type: "realtime.batch.started", realtimeBatchId: "rtb_test-session" },
+      { type: "voice.status", status: "connected", realtimeBatchId: "rtb_test-session" }
+    ]);
+  });
 });

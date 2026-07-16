@@ -30,6 +30,7 @@ const tools: AssistantToolSpec[] = [
   tool({ name: "tv.select_channel", scope: "widget-detail", widgetType: "tv", requiresTarget: true, argumentKeys: ["channelName"], examples: ["切到 BBC"] }),
   tool({ name: "market.set_indices", scope: "widget-detail", widgetType: "market", requiresTarget: true, argumentKeys: ["indexCodes"], examples: ["打开纳斯达克"] }),
   tool({ name: "weather.set_city", scope: "widget-detail", widgetType: "weather", requiresTarget: true, argumentKeys: ["city"], examples: ["上海天气"] }),
+  tool({ name: "translate.set_draft", scope: "widget-detail", widgetType: "translate", requiresTarget: true, argumentKeys: ["sourceText", "targetLang"], examples: ["把你好翻译成英文"] }),
   tool({ name: "note.write", scope: "widget-detail", widgetType: "note", requiresTarget: true, argumentKeys: ["content"], examples: ["帮我记一下"] }),
   tool({ name: "clipboard.clear", scope: "widget-detail", widgetType: "clipboard", requiresTarget: true, risk: "destructive", examples: ["清空剪贴板"] }),
   tool({ name: "gomoku.play", scope: "deferred", examples: ["下棋"] })
@@ -73,6 +74,7 @@ function context(overrides: Partial<CompactAssistantContext> = {}): CompactAssis
       { definitionId: "wd_tv", type: "tv", name: "电视" },
       { definitionId: "wd_market", type: "market", name: "全球指数" },
       { definitionId: "wd_weather", type: "weather", name: "天气" },
+      { definitionId: "wd_translate", type: "translate", name: "翻译" },
       { definitionId: "wd_note", type: "note", name: "便签" },
       { definitionId: "wd_clipboard", type: "clipboard", name: "剪贴板" }
     ],
@@ -129,6 +131,15 @@ describe("RealtimeToolExposurePlanner", () => {
     expect(plan.exposedTools.map((item) => item.name)).not.toContain("note.write");
     expect(plan.exposedTools.map((item) => item.name)).not.toContain("music.play");
     expect(plan.excludedReasons["note.write"]).toBe("module_mismatch");
+  });
+
+  it("does not treat translated source text as a second module intent", () => {
+    const plan = buildRealtimeToolExposurePlan("把今天的天气不错翻译成英文", context(), tools);
+
+    expect(plan.selectedModules).toContain("translate");
+    expect(plan.selectedModules).not.toContain("weather");
+    expect(plan.exposedTools.map((item) => item.name)).toContain("translate.set_draft");
+    expect(plan.exposedTools.map((item) => item.name)).not.toContain("weather.set_city");
   });
 
   it("keeps destructive tools hidden unless destructive intent is explicit", () => {

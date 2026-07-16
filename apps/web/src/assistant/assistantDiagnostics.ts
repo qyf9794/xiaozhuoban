@@ -67,7 +67,7 @@ function createRealtimeBatchId(): string {
 }
 
 function startsRealtimeBatch(event: AssistantDiagnosticEvent): boolean {
-  return event.type === "voice.status" && event.status === "connecting";
+  return event.type === "voice.status" && (event.status === "connecting" || event.status === "connected");
 }
 
 function endsRealtimeBatch(event: AssistantDiagnosticEvent): boolean {
