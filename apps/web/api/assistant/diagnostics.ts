@@ -109,6 +109,14 @@ export default async function handler(request: IncomingMessage, response: Server
 
   const receivedAt = new Date().toISOString();
   const traceIds = [...new Set(events.map(traceIdForEvent))];
+  const realtimeBatchIds = [
+    ...new Set(
+      events
+        .map((event) => event.realtimeBatchId)
+        .filter((batchId): batchId is string => typeof batchId === "string" && Boolean(batchId.trim()))
+        .map((batchId) => batchId.trim())
+    )
+  ];
   events.forEach((event) => {
     const log = sanitize({
       marker: "xiaozhuoban.assistant.diagnostic",
@@ -120,5 +128,5 @@ export default async function handler(request: IncomingMessage, response: Server
     console.info("[assistant-diagnostic]", JSON.stringify(log));
   });
 
-  sendJson(response, 200, { ok: true, count: events.length, traceIds });
+  sendJson(response, 200, { ok: true, count: events.length, traceIds, realtimeBatchIds });
 }

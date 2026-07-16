@@ -2,6 +2,7 @@ import { useAuthStore } from "../auth/authStore";
 
 export type AssistantDiagnosticEvent = {
   type: string;
+  realtimeBatchId?: string;
   commandTraceId?: string;
   status?: string;
   source?: string;
@@ -32,6 +33,17 @@ let flushPromise: Promise<void> | null = null;
 let flushAgainAfterCurrent = false;
 let lifecycleFlushInstalled = false;
 
+type RealtimeDiagnosticBatch = {
+  id: string;
+  startedAt: string;
+  startedAtMs: number;
+  eventCount: number;
+  failureCount: number;
+  commandTraceIds: Set<string>;
+};
+
+let activeRealtimeBatch: RealtimeDiagnosticBatch | null = null;
+
 declare global {
   interface Window {
     __xiaozhuobanAssistantDiagnostics?: unknown;
@@ -45,6 +57,94 @@ function createDiagnosticSessionId(): string {
     return `diag_${crypto.randomUUID()}`;
   }
   return `diag_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function createRealtimeBatchId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `rtb_${crypto.randomUUID()}`;
+  }
+  return `rtb_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function startsRealtimeBatch(event: AssistantDiagnosticEvent): boolean {
+  return event.type === "voice.status" && event.status === "connecting";
+}
+
+function endsRealtimeBatch(event: AssistantDiagnosticEvent): boolean {
+  if (event.type === "realtime.runtime.disconnect") return true;
+  if (event.type !== "voice.status") return false;
+  return ["disconnected", "microphone_denied", "microphone_unavailable", "session_failed"].includes(event.status ?? "");
+}
+
+function isCommandEvent(event: AssistantDiagnosticEvent): boolean {
+  return [
+    "realtime.voice.user_transcript",
+    "voice.realtime_text_command.submit",
+    "voice.text_command.submit"
+  ].includes(event.type);
+}
+
+function isFailureEvent(event: AssistantDiagnosticEvent): boolean {
+  const status = event.status?.toLowerCase() ?? "";
+  return /(failed|error|timed_out|timeout|rejected|invalid|denied|unavailable)/.test(status);
+}
+
+function expandRealtimeBatchEvents(event: AssistantDiagnosticEvent): AssistantDiagnosticEvent[] {
+  const expanded: AssistantDiagnosticEvent[] = [];
+
+  if (startsRealtimeBatch(event) && !activeRealtimeBatch) {
+    const startedAtMs = Date.now();
+    const startedAt = new Date(startedAtMs).toISOString();
+    activeRealtimeBatch = {
+      id: createRealtimeBatchId(),
+      startedAt,
+      startedAtMs,
+      eventCount: 0,
+      failureCount: 0,
+      commandTraceIds: new Set<string>()
+    };
+    expanded.push({
+      type: "realtime.batch.started",
+      realtimeBatchId: activeRealtimeBatch.id,
+      status: "started",
+      data: { startedAt, trigger: `${event.type}:${event.status}` }
+    });
+  }
+
+  const batch = activeRealtimeBatch;
+  if (!batch) return [event];
+
+  const batchedEvent = { ...event, realtimeBatchId: batch.id };
+  expanded.push(batchedEvent);
+  batch.eventCount += 1;
+  if (isFailureEvent(event)) batch.failureCount += 1;
+  if (isCommandEvent(event) && event.commandTraceId) batch.commandTraceIds.add(event.commandTraceId);
+
+  if (endsRealtimeBatch(event)) {
+    const endedAtMs = Date.now();
+    const endedAt = new Date(endedAtMs).toISOString();
+    expanded.push({
+      type: "realtime.batch.ended",
+      realtimeBatchId: batch.id,
+      status: "ended",
+      data: {
+        startedAt: batch.startedAt,
+        endedAt,
+        durationMs: Math.max(0, endedAtMs - batch.startedAtMs),
+        reason: event.status ?? event.type,
+        eventCount: batch.eventCount,
+        commandCount: batch.commandTraceIds.size,
+        failureCount: batch.failureCount
+      }
+    });
+    activeRealtimeBatch = null;
+  }
+
+  return expanded;
+}
+
+export function getActiveRealtimeDiagnosticBatchId(): string | undefined {
+  return activeRealtimeBatch?.id;
 }
 
 export function getAssistantDiagnosticSessionId(): string {
@@ -264,6 +364,7 @@ export function clearLocalAssistantDiagnostics(): void {
     // Local diagnostics are best-effort only.
   }
   latestUploadOptions = null;
+  activeRealtimeBatch = null;
   window.__xiaozhuobanAssistantDiagnostics = null;
   publishLocalExports([]);
 }
@@ -331,14 +432,16 @@ export async function recordAssistantDiagnostic(
   options: { accessToken?: string; endpoint?: string; fetchImpl?: typeof fetch } = {}
 ): Promise<void> {
   if (typeof window === "undefined") return;
-  const payload = appendLocalAssistantDiagnostic(event);
+  const payloads = expandRealtimeBatchEvents(event)
+    .map((expandedEvent) => appendLocalAssistantDiagnostic(expandedEvent))
+    .filter((payload): payload is Record<string, unknown> => Boolean(payload));
   const accessToken = options.accessToken?.trim();
   if (!accessToken) return;
-  if (!payload) return;
+  if (!payloads.length) return;
 
   latestUploadOptions = { accessToken, endpoint: options.endpoint, fetchImpl: options.fetchImpl };
   installLifecycleFlush();
-  enqueuePendingUpload(payload);
+  payloads.forEach(enqueuePendingUpload);
   await flushPendingAssistantDiagnostics(latestUploadOptions);
 }
 

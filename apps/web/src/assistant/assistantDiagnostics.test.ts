@@ -142,4 +142,64 @@ describe("assistant diagnostics", () => {
     ]);
     expect(JSON.parse(localStore.get("xiaozhuoban.assistant.pendingDiagnosticUploads") || "[]")).toHaveLength(0);
   });
+
+  it("groups diagnostics from one realtime connection into a searchable batch", async () => {
+    installBrowserGlobals();
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const options = { accessToken: "user-token", fetchImpl };
+
+    await recordAssistantDiagnostic({ type: "voice.status", status: "connecting" }, options);
+    await recordAssistantDiagnostic(
+      { type: "realtime.voice.user_transcript", commandTraceId: "voice_trace_batch_1", status: "success" },
+      options
+    );
+    await recordAssistantDiagnostic(
+      { type: "realtime.function_call.tool", commandTraceId: "voice_trace_batch_1", status: "failed" },
+      options
+    );
+    await recordAssistantDiagnostic({ type: "realtime.runtime.disconnect", status: "manual" }, options);
+
+    const requests = fetchImpl.mock.calls as unknown as Array<[unknown, RequestInit]>;
+    const events = requests.flatMap(([, init]) =>
+      JSON.parse(String(init.body)).events as Array<Record<string, unknown>>
+    );
+    expect(events.map((event) => event.type)).toEqual([
+      "realtime.batch.started",
+      "voice.status",
+      "realtime.voice.user_transcript",
+      "realtime.function_call.tool",
+      "realtime.runtime.disconnect",
+      "realtime.batch.ended"
+    ]);
+    expect(new Set(events.map((event) => event.realtimeBatchId))).toEqual(new Set(["rtb_test-session"]));
+    expect(events.at(-1)).toMatchObject({
+      type: "realtime.batch.ended",
+      realtimeBatchId: "rtb_test-session",
+      data: {
+        reason: "manual",
+        eventCount: 4,
+        commandCount: 1,
+        failureCount: 1
+      }
+    });
+  });
+
+  it("closes a realtime batch when the connection fails before becoming ready", async () => {
+    installBrowserGlobals();
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const options = { accessToken: "user-token", fetchImpl };
+
+    await recordAssistantDiagnostic({ type: "voice.status", status: "connecting" }, options);
+    await recordAssistantDiagnostic({ type: "voice.status", status: "session_failed" }, options);
+
+    const requests = fetchImpl.mock.calls as unknown as Array<[unknown, RequestInit]>;
+    const events = requests.flatMap(([, init]) =>
+      JSON.parse(String(init.body)).events as Array<Record<string, unknown>>
+    );
+    expect(events.at(-1)).toMatchObject({
+      type: "realtime.batch.ended",
+      realtimeBatchId: "rtb_test-session",
+      data: { reason: "session_failed", eventCount: 2, commandCount: 0, failureCount: 1 }
+    });
+  });
 });
