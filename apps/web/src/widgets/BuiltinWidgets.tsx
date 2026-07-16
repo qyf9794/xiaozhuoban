@@ -3972,6 +3972,7 @@ export function BuiltinWidgetView({
   if (definition.type === "tv") {
     const playlistUrl = asString(instance.state.playlistUrl).trim() || DEFAULT_TV_PLAYLIST_URL;
     const selectedChannelUrl = asString(instance.state.selectedChannelUrl);
+    const selectedChannelName = asString(instance.state.selectedChannelName);
     const [playlistDraft, setPlaylistDraft] = useState(playlistUrl);
     const [channels, setChannels] = useState<TvChannel[]>([]);
     const [loading, setLoading] = useState(false);
@@ -3981,6 +3982,7 @@ export function BuiltinWidgetView({
     const hlsRef = useRef<import("hls.js").default | null>(null);
     const latestStateRef = useRef(instance.state);
     const latestSelectedChannelUrlRef = useRef(selectedChannelUrl);
+    const playbackRequestIdRef = useRef(0);
 
     useEffect(() => {
       latestStateRef.current = instance.state;
@@ -3998,6 +4000,179 @@ export function BuiltinWidgetView({
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
+      }
+    };
+
+    const waitForVideoPlaying = (video: HTMLVideoElement, timeoutMs = 2500) =>
+      new Promise<boolean>((resolve) => {
+        if (!video.paused && video.readyState >= 2) {
+          resolve(true);
+          return;
+        }
+        let settled = false;
+        const finish = (started: boolean) => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timeoutId);
+          video.removeEventListener("playing", handlePlaying);
+          video.removeEventListener("timeupdate", handlePlaying);
+          resolve(started);
+        };
+        const handlePlaying = () => finish(true);
+        const timeoutId = window.setTimeout(() => finish(!video.paused && video.readyState >= 2), timeoutMs);
+        video.addEventListener("playing", handlePlaying, { once: true });
+        video.addEventListener("timeupdate", handlePlaying, { once: true });
+      });
+
+    const startVideoPlayback = async (
+      video: HTMLVideoElement,
+      channelName: string,
+      channelUrl: string
+    ): Promise<{ status: "success"; message: string; data: Record<string, unknown> }> => {
+      try {
+        await video.play();
+      } catch {
+        return {
+          status: "success",
+          message: "已切到频道，请手动点击播放",
+          data: { channelName, channelUrl, playbackState: "blocked", playbackBlocked: true }
+        };
+      }
+      const started = await waitForVideoPlaying(video);
+      if (started) {
+        return {
+          status: "success",
+          message: "已播放电视",
+          data: { channelName, channelUrl, playbackState: "playing", playbackBlocked: false }
+        };
+      }
+      return {
+        status: "success",
+        message: "已切换电视频道，正在加载播放",
+        data: { channelName, channelUrl, playbackState: "loading", playbackBlocked: false }
+      };
+    };
+
+    const playChannelSource = async (
+      channelUrl: string,
+      channelName: string,
+      options: { resetSource?: boolean } = {}
+    ) => {
+      if (!channelUrl) {
+        return {
+          status: "success" as const,
+          message: "已选择频道，等待频道列表解析后播放",
+          data: { channelName, channelUrl, playbackState: "selected" }
+        };
+      }
+      const video = videoRef.current;
+      if (!video) {
+        return { status: "failed" as const, message: "电视播放器还没有准备好", errorCode: "TV_PLAYER_NOT_READY" };
+      }
+
+      const requestId = playbackRequestIdRef.current + 1;
+      playbackRequestIdRef.current = requestId;
+      const isCurrentRequest = () => playbackRequestIdRef.current === requestId && latestSelectedChannelUrlRef.current === channelUrl;
+      destroyHls();
+      setPlaybackError("");
+      video.pause();
+
+      const playNativeSource = async () => {
+        if (!isCurrentRequest()) {
+          return {
+            status: "success" as const,
+            message: "已切换电视频道，正在加载播放",
+            data: { channelName, channelUrl, playbackState: "loading" }
+          };
+        }
+        if (options.resetSource !== false || video.src !== channelUrl) {
+          video.src = channelUrl;
+          video.load();
+        }
+        return startVideoPlayback(video, channelName, channelUrl);
+      };
+
+      const isM3u8 = /\.m3u8($|\?)/i.test(channelUrl);
+      if (!isM3u8 || video.canPlayType("application/vnd.apple.mpegurl")) {
+        return playNativeSource();
+      }
+
+      try {
+        const mod = await import("hls.js");
+        const Hls = mod.default;
+        if (!isCurrentRequest()) {
+          return {
+            status: "success" as const,
+            message: "已切换电视频道，正在加载播放",
+            data: { channelName, channelUrl, playbackState: "loading" }
+          };
+        }
+        if (!Hls.isSupported()) {
+          setPlaybackError("当前浏览器不支持该直播流格式");
+          return {
+            status: "failed" as const,
+            message: "当前浏览器不支持该直播流格式",
+            errorCode: "TV_STREAM_UNSUPPORTED",
+            data: { channelName, channelUrl, playbackState: "failed" }
+          };
+        }
+        const hls = new Hls();
+        hlsRef.current = hls;
+        hls.loadSource(channelUrl);
+        hls.attachMedia(video);
+        return await new Promise<
+          | { status: "success"; message: string; data: Record<string, unknown> }
+          | { status: "failed"; message: string; errorCode: string; data: Record<string, unknown> }
+        >((resolve) => {
+          let settled = false;
+          const finish = (
+            result:
+              | { status: "success"; message: string; data: Record<string, unknown> }
+              | { status: "failed"; message: string; errorCode: string; data: Record<string, unknown> }
+          ) => {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timeoutId);
+            resolve(result);
+          };
+          const timeoutId = window.setTimeout(() => {
+            finish({
+              status: "success",
+              message: "已切换电视频道，正在加载播放",
+              data: { channelName, channelUrl, playbackState: "loading", playbackBlocked: false }
+            });
+          }, 5000);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            if (!isCurrentRequest()) {
+              finish({
+                status: "success",
+                message: "已切换电视频道，正在加载播放",
+                data: { channelName, channelUrl, playbackState: "loading", playbackBlocked: false }
+              });
+              return;
+            }
+            void startVideoPlayback(video, channelName, channelUrl).then(finish);
+          });
+          hls.on(Hls.Events.ERROR, (_event, data) => {
+            if (data?.fatal) {
+              setPlaybackError("直播流播放失败，请切换频道重试");
+              finish({
+                status: "failed",
+                message: "直播流播放失败，请切换频道重试",
+                errorCode: "TV_STREAM_FAILED",
+                data: { channelName, channelUrl, playbackState: "failed" }
+              });
+            }
+          });
+        });
+      } catch {
+        setPlaybackError("播放器加载失败");
+        return {
+          status: "failed" as const,
+          message: "播放器加载失败",
+          errorCode: "TV_PLAYER_LOAD_FAILED",
+          data: { channelName, channelUrl, playbackState: "failed" }
+        };
       }
     };
 
@@ -4091,7 +4266,7 @@ export function BuiltinWidgetView({
     useEffect(() => {
       if (!assistantCapabilityBridge) return undefined;
 
-      const selectChannel = (args: Record<string, unknown>) => {
+      const selectChannel = async (args: Record<string, unknown>) => {
         const channelName = typeof args.channelName === "string" ? args.channelName.trim() : "";
         const channelUrl = typeof args.channelUrl === "string" ? args.channelUrl.trim() : "";
         const assistantCatalog = readTvAssistantChannelCatalog();
@@ -4137,7 +4312,7 @@ export function BuiltinWidgetView({
           rememberTvAssistantChannelCatalog(channelsForAssistant, nextName);
         }
         setPlaybackError("");
-        onStateChange({
+        const nextState = {
           ...latestStateRef.current,
           selectedChannelUrl: nextUrl,
           selectedChannelName: nextName,
@@ -4148,36 +4323,24 @@ export function BuiltinWidgetView({
             ])
           ],
           assistantChannelCount: Math.max(channelsForAssistant.length, assistantCatalog?.channelCount ?? 0)
-        });
-        return { status: "success" as const, message: "已切换电视频道", data: { channelName: nextName, channelUrl: nextUrl } };
+        };
+        latestStateRef.current = nextState;
+        latestSelectedChannelUrlRef.current = nextUrl;
+        onStateChange(nextState);
+        return playChannelSource(nextUrl, nextName);
       };
 
       return assistantCapabilityBridge.register(instance.id, {
         async play(args) {
-          const selected = selectChannel(args);
+          const selected = await selectChannel(args);
           if (selected.status !== "success") return selected;
-          if (!selected.data.channelUrl) {
-            return { status: "success", message: "已选择频道，等待频道列表解析后播放", data: selected.data };
-          }
-          const video = videoRef.current;
-          if (!video) {
-            return { status: "failed", message: "电视播放器还没有准备好", errorCode: "TV_PLAYER_NOT_READY" };
-          }
-          if (selected.data.channelUrl !== latestSelectedChannelUrlRef.current) {
-            return { status: "success", message: "已切换电视频道，正在加载播放", data: selected.data };
-          }
-          try {
-            await video.play();
-          } catch {
-            return { status: "success", message: "已选择频道，请手动点击播放", data: selected.data };
-          }
-          return { status: "success", message: "已播放电视", data: selected.data };
+          return selected;
         },
         pause() {
           videoRef.current?.pause();
           return { status: "success", message: "已暂停电视" };
         },
-        selectChannel(args) {
+        async selectChannel(args) {
           return selectChannel(args);
         },
         async fullscreen() {
@@ -4194,65 +4357,17 @@ export function BuiltinWidgetView({
     }, [assistantCapabilityBridge, channels, instance.id, onStateChange]);
 
     useEffect(() => {
-      const video = videoRef.current;
-      if (!video) return;
-      destroyHls();
-      setPlaybackError("");
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
-
       if (!selectedChannelUrl) {
+        const video = videoRef.current;
+        destroyHls();
+        setPlaybackError("");
+        video?.pause();
+        video?.removeAttribute("src");
+        video?.load();
         return;
       }
-
-      const source = selectedChannelUrl;
-      const nativePlay = () => {
-        if (latestSelectedChannelUrlRef.current !== source) return;
-        video.src = source;
-        video.load();
-        void video.play().catch(() => {
-          // Autoplay may be blocked; keep controls available for manual play.
-        });
-      };
-
-      const isM3u8 = /\.m3u8($|\?)/i.test(source);
-      if (!isM3u8) {
-        nativePlay();
-        return;
-      }
-
-      if (video.canPlayType("application/vnd.apple.mpegurl")) {
-        nativePlay();
-        return;
-      }
-
-      void import("hls.js")
-        .then((mod) => {
-          const Hls = mod.default;
-          const media = videoRef.current;
-          if (!media || latestSelectedChannelUrlRef.current !== source) return;
-          if (!Hls.isSupported()) {
-            setPlaybackError("当前浏览器不支持该直播流格式");
-            return;
-          }
-          const hls = new Hls();
-          hlsRef.current = hls;
-          hls.loadSource(source);
-          hls.attachMedia(media);
-          hls.on(Hls.Events.ERROR, (_event, data) => {
-            if (data?.fatal) {
-              setPlaybackError("直播流播放失败，请切换频道重试");
-            }
-          });
-          void media.play().catch(() => {
-            // Autoplay may be blocked; keep controls available for manual play.
-          });
-        })
-        .catch(() => {
-          setPlaybackError("播放器加载失败");
-        });
-    }, [selectedChannelUrl]);
+      void playChannelSource(selectedChannelUrl, selectedChannelName || "当前频道");
+    }, [selectedChannelName, selectedChannelUrl]);
 
     const contentHeight = Math.max(240, Number(instance.size.h) - 74);
 

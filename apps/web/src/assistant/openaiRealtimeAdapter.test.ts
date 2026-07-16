@@ -2411,6 +2411,253 @@ describe("OpenAI realtime adapter helpers", () => {
     ]));
   });
 
+  it("deduplicates repeated realtime tool calls across response traces within one voice turn", () => {
+    const diagnostics: Array<{ type: string; status?: string; operationId?: string; toolName?: string; commandTraceId?: string; data?: unknown }> = [];
+    const calls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
+    const sent: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      },
+      onFunctionCall(call) {
+        calls.push({ id: call.id, name: call.name, arguments: call.arguments as Record<string, unknown> });
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "assistant.select_tool",
+        description: "选择候选工具",
+        parameters: createStrictObjectSchema({
+          name: { type: "string", required: true },
+          candidateTools: { type: "array" },
+          selectedModule: { type: "string" },
+          targetHint: { type: "string" },
+          userCommand: { type: "string" },
+          confidence: { type: "number" }
+        }),
+        scope: "widget-selection"
+      },
+      {
+        name: "tv.select_channel",
+        description: "切换电视频道",
+        parameters: createStrictObjectSchema({
+          widgetId: { type: "string", required: true },
+          channelName: { type: "string", required: true }
+        }),
+        scope: "widget-detail",
+        widgetType: "tv",
+        requiresTarget: true
+      },
+      {
+        name: "music.play",
+        description: "播放音乐",
+        parameters: createStrictObjectSchema({
+          widgetId: { type: "string", required: true },
+          query: { type: "string" }
+        }),
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: { tv: 1, music: 1 },
+      widgets: [
+        { widgetId: "wi_tv", definitionId: "wd_tv", type: "tv", name: "电视", order: 1, summary: "" },
+        { widgetId: "wi_music", definitionId: "wd_music", type: "music", name: "音乐", order: 2, summary: "" }
+      ]
+    });
+    Object.assign(
+      adapter as unknown as {
+        sessionReady: boolean;
+        connectMode: string;
+        dataChannel: { readyState: string; send: (payload: string) => void };
+        activeUserCommandTraceId: string;
+        realtimeTraceUserTranscripts: Map<string, { input: string }>;
+      },
+      {
+        sessionReady: true,
+        connectMode: "audio",
+        activeUserCommandTraceId: "voice_turn_bbc",
+        dataChannel: {
+          readyState: "open",
+          send(payload: string) {
+            sent.push(JSON.parse(payload) as unknown);
+          }
+        }
+      }
+    );
+    (adapter as unknown as { realtimeTraceUserTranscripts: Map<string, { input: string }> }).realtimeTraceUserTranscripts.set(
+      "voice_turn_bbc",
+      { input: "换到 BBC" }
+    );
+
+    (
+      adapter as unknown as {
+        handleFunctionCall: (call: unknown, commandTraceId?: string) => void;
+      }
+    ).handleFunctionCall(
+      {
+        id: "select_bbc",
+        name: "assistant.select_tool",
+        arguments: {
+          name: "tv.select_channel",
+          candidateTools: ["tv.select_channel", "tv.play"],
+          selectedModule: "tv",
+          targetHint: "BBC",
+          userCommand: "换到 BBC",
+          confidence: 0.95
+        },
+        source: "realtime"
+      },
+      "voice_turn_bbc"
+    );
+    (adapter as unknown as { handleRealtimeEventData: (event: unknown) => void }).handleRealtimeEventData({ type: "session.updated" });
+    (
+      adapter as unknown as {
+        handleFunctionCall: (call: unknown, commandTraceId?: string) => void;
+      }
+    ).handleFunctionCall(
+      { id: "call_bbc_1", name: "tv.select_channel", arguments: { widgetId: "wi_tv", channelName: "BBC News" }, source: "realtime" },
+      "voice_turn_bbc"
+    );
+    adapter.sendToolResult(
+      { id: "call_bbc_1", name: "tv.select_channel", arguments: { widgetId: "wi_tv", channelName: "BBC" }, source: "realtime" },
+      { status: "success", message: "已切换电视频道", data: { channelName: "BBC" } }
+    );
+    (
+      adapter as unknown as {
+        handleFunctionCall: (call: unknown, commandTraceId?: string) => void;
+      }
+    ).handleFunctionCall(
+      { id: "call_bbc_2", name: "tv.select_channel", arguments: { widgetId: "wi_tv", channelName: "BBC News" }, source: "realtime" },
+      "voice_turn_bbc"
+    );
+    (
+      adapter as unknown as {
+        handleFunctionCall: (call: unknown, commandTraceId?: string) => void;
+      }
+    ).handleFunctionCall(
+      { id: "call_cnn_stale", name: "tv.play", arguments: { widgetId: "wi_tv", channelName: "CNN" }, source: "realtime" },
+      "voice_turn_bbc"
+    );
+    (
+      adapter as unknown as {
+        handleFunctionCall: (call: unknown, commandTraceId?: string) => void;
+      }
+    ).handleFunctionCall(
+      { id: "call_music_stale", name: "music.play", arguments: { widgetId: "wi_music", query: "轻音乐" }, source: "realtime" },
+      "voice_turn_bbc"
+    );
+
+    expect(calls).toEqual([{ id: "call_bbc_1", name: "tv.select_channel", arguments: { widgetId: "wi_tv", channelName: "BBC" } }]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.function_call.duplicate_completed",
+        status: "skipped",
+        operationId: "call_bbc_2",
+        commandTraceId: "voice_turn_bbc"
+      }),
+      expect.objectContaining({
+        type: "realtime.function_call.duplicate_completed",
+        status: "skipped",
+        operationId: "call_cnn_stale",
+        commandTraceId: "voice_turn_bbc"
+      }),
+      expect.objectContaining({
+        type: "realtime.function_call.media_conflict",
+        status: "skipped",
+        operationId: "call_music_stale",
+        commandTraceId: "voice_turn_bbc"
+      })
+    ]));
+    expect(sent).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "conversation.item.create" })
+    ]));
+  });
+
+  it("blocks voice realtime real tools before the scoped second stage", () => {
+    const diagnostics: Array<{ type: string; status?: string; operationId?: string; toolName?: string; commandTraceId?: string }> = [];
+    const calls: unknown[] = [];
+    const sent: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      },
+      onFunctionCall(call) {
+        calls.push(call);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "tv.play",
+        description: "播放电视",
+        parameters: createStrictObjectSchema({
+          widgetId: { type: "string", required: true },
+          channelName: { type: "string" }
+        }),
+        scope: "widget-detail",
+        widgetType: "tv",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: { tv: 1 },
+      widgets: [{ widgetId: "wi_tv", definitionId: "wd_tv", type: "tv", name: "电视", order: 1, summary: "" }]
+    });
+    Object.assign(
+      adapter as unknown as {
+        sessionReady: boolean;
+        connectMode: string;
+        activeUserCommandTraceId: string;
+        dataChannel: { readyState: string; send: (payload: string) => void };
+      },
+      {
+        sessionReady: true,
+        connectMode: "audio",
+        activeUserCommandTraceId: "voice_unscoped_tv",
+        dataChannel: {
+          readyState: "open",
+          send(payload: string) {
+            sent.push(JSON.parse(payload) as unknown);
+          }
+        }
+      }
+    );
+
+    (
+      adapter as unknown as {
+        handleFunctionCall: (call: unknown, commandTraceId?: string) => void;
+      }
+    ).handleFunctionCall(
+      { id: "call_unscoped_tv", name: "tv.play", arguments: { widgetId: "wi_tv", channelName: "BBC" }, source: "realtime" },
+      "voice_unscoped_tv"
+    );
+
+    expect(calls).toEqual([]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.function_call.unscoped_voice_tool",
+        status: "skipped",
+        operationId: "call_unscoped_tv",
+        commandTraceId: "voice_unscoped_tv"
+      }),
+      expect.objectContaining({
+        type: "realtime.voice.selector_reset",
+        status: "sent",
+        commandTraceId: "voice_unscoped_tv"
+      })
+    ]));
+    expect(sent).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "conversation.item.create" }),
+      expect.objectContaining({ type: "session.update" })
+    ]));
+  });
+
   it("normalizes realtime music artist and song aliases before Harness validation", () => {
     const diagnostics: Array<{ type: string; operationId?: string; toolName?: string; data?: unknown }> = [];
     const calls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
@@ -6094,10 +6341,7 @@ describe("OpenAI realtime adapter helpers", () => {
         description: "添加小工具",
         parameters: createStrictObjectSchema({
           definitionId: { type: "string", required: true },
-          followUp: {
-            type: "object",
-            additionalProperties: true
-          }
+          followUp: { type: "object" }
         }),
         scope: "desktop"
       },
