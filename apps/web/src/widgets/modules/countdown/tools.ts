@@ -51,6 +51,13 @@ const examplesByTool: Record<string, string[]> = {
   "countdown.reset": ["重置定时", "重置倒计时", "重新开始计时"]
 };
 
+const descriptionByTool: Record<string, string> = {
+  "countdown.set": "Set a pure countdown/timer such as 倒计时十分钟 or 定时30秒. Do not use for reminders with a task like 三十分钟后提醒我喝水; those are todo.add_item with dueAt.",
+  "countdown.pause": "Pause the current countdown timer.",
+  "countdown.resume": "Resume the current countdown timer.",
+  "countdown.reset": "Reset the current countdown timer."
+};
+
 function isCountdownTool(action: AssistantAction): boolean {
   return action.spec.widgetType === COUNTDOWN_MODULE_TYPE || countdownWindowTools.has(action.spec.name);
 }
@@ -72,6 +79,7 @@ export function createCountdownTools(actions: AssistantAction[]): AssistantActio
       ...action,
       spec: {
         ...action.spec,
+        description: descriptionByTool[action.spec.name] ?? action.spec.description,
         parameters: schema,
         argumentKeys: schema.argumentKeys,
         resultSchema: countdownResultSchema,
@@ -89,7 +97,7 @@ export function createCountdownActionSpecs(actions: AssistantAction[]): WidgetMo
     return {
       name: action.spec.name,
       intent: action.spec.name,
-      description: action.spec.description,
+      description: descriptionByTool[action.spec.name] ?? action.spec.description,
       argsSchema: schema.jsonSchema,
       resultSchema: countdownResultSchema,
       risk: action.spec.risk ?? "safe",

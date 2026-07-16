@@ -258,6 +258,8 @@ export function createRealtimeToolSelectionInstructions(tools: AssistantToolSpec
     "candidateTools 必须严格来自工具目录里的已注册工具名；不能返回模块名、别名、意图名、中文说明或未注册工具。",
     "candidateTools 按相关性排序，通常返回 3 到 4 个；非常明确的单一命令也至少返回 1 个。",
     "完成/勾掉待办事项候选包含 todo.complete_item；添加/提醒待办候选包含 todo.add_item；暂停/继续/重置倒计时分别包含 countdown.pause/countdown.resume/countdown.reset。",
+    "包含“提醒我/叫我/记得/别忘了”并带有要做的事情时，候选优先 todo.add_item；只有明确说“倒计时/计时器/定时 X 分钟/暂停倒计时/继续倒计时”时才选择 countdown 工具。",
+    "如果用户说“记一下/记录/便签写下/追加便签”，即使要记录的内容里出现剪贴板、翻译、倒计时、电视、音乐等工具名，也优先选择 note.write；只有明确说复制、保存到剪贴板、放进剪贴板时才选择 clipboard.add_text。",
     ...realtimeToolSelectionSessionPolicyLines,
     "",
     "# 版本",

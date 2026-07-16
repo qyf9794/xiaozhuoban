@@ -16,6 +16,9 @@ import {
   scoreCandidates,
   segmentCommandText,
   normalizeText,
+  inferTodoAdd,
+  inferTodoCompleteText,
+  parseCountdownDurationSeconds,
   type LearnedCommandStore,
   type LearningCandidate,
   type AssistantActionContext,
@@ -492,7 +495,9 @@ function normalizeHarnessToolArguments(toolName: string, args: unknown, transcri
     const totalSeconds =
       typeof next.totalSeconds === "number"
         ? next.totalSeconds
-        : minuteSeconds ?? normalizeDurationSeconds(next.duration ?? next.durationSeconds ?? next.durationMs ?? next.time ?? next.value);
+        : minuteSeconds ??
+          normalizeDurationSeconds(next.duration ?? next.durationSeconds ?? next.durationMs ?? next.time ?? next.value) ??
+          parseCountdownDurationSeconds(transcript);
     if (totalSeconds) next.totalSeconds = totalSeconds;
     if (next.autoStart !== undefined && next.start === undefined) next.start = next.autoStart === true;
     delete next.duration;
@@ -537,6 +542,47 @@ function normalizeHarnessToolArguments(toolName: string, args: unknown, transcri
     delete next.targetHint;
   }
 
+  if (toolName === "todo.add_item") {
+    const inferred = transcript ? inferTodoAdd(transcript, new Date()) : undefined;
+    const text = next.text ?? next.itemRef ?? next.item ?? next.task ?? next.title ?? next.content ?? next.query ?? transcript;
+    if (typeof text === "string" && text.trim()) next.text = text.trim();
+    if (typeof next.dueAt !== "string" && inferred?.dueAt) next.dueAt = inferred.dueAt;
+    if (
+      inferred?.text &&
+      typeof next.text === "string" &&
+      (/([今明后]天|今晚|明早|明晚|下周|星期|礼拜|\d{1,2}[:：]\d{2}|[零〇一二两三四五六七八九十\d]+点|提醒我|提醒|叫我|记得|别忘了)/.test(next.text) ||
+        next.text.length > inferred.text.length + 4)
+    ) {
+      next.text = inferred.text;
+    }
+    delete next.itemRef;
+    delete next.item;
+    delete next.task;
+    delete next.title;
+    delete next.content;
+    delete next.query;
+  }
+
+  if (toolName === "todo.complete_item") {
+    const inferred = transcript ? inferTodoCompleteText(transcript) : "";
+    const text = inferred || next.text || next.itemRef || next.item || next.task || next.title || next.content || next.query || transcript;
+    if (typeof text === "string" && text.trim()) {
+      next.text = text
+        .trim()
+        .replace(/^(把|将)?/, "")
+        .replace(/(?:这个|这项|该)(待办|任务|事项|清单)$/, "")
+        .replace(/(标记为完成|标记完成|完成|勾掉|做完)$/, "")
+        .replace(/^完成/, "")
+        .trim();
+    }
+    delete next.itemRef;
+    delete next.item;
+    delete next.task;
+    delete next.title;
+    delete next.content;
+    delete next.query;
+  }
+
   if (toolName === "translate.set_draft") {
     const sourceText = next.sourceText ?? next.text ?? next.content ?? next.query ?? transcript;
     if (typeof sourceText === "string" && sourceText.trim()) next.sourceText = sourceText.trim();
@@ -556,6 +602,7 @@ function normalizeHarnessToolArguments(toolName: string, args: unknown, transcri
   if (toolName === "clipboard.add_text") {
     const text = next.text ?? next.content ?? next.value ?? next.clipText ?? next.clipboardText ?? next.query ?? transcript;
     if (typeof text === "string" && text.trim()) next.text = text.trim();
+    if (typeof next.pinned !== "boolean" && /(固定|置顶|置頂|钉住|釘住|\bpin(?:ned)?\b)/i.test(transcript)) next.pinned = true;
     delete next.content;
     delete next.value;
     delete next.clipText;

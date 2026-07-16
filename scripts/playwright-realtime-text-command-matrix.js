@@ -335,7 +335,318 @@ const commandCases = [
   },
   { id: "088", command: "暂停音乐", expect: ["music.pause", "music"], requiredTools: ["music.pause"] },
   { id: "089", command: "接着放刚才的音乐", expect: ["music.resume", "music"], requiredTools: ["music.resume"] },
-  { id: "090", command: "音乐切到下一首", expect: ["music.next", "music"], requiredTools: ["music.next"] }
+  { id: "090", command: "音乐切到下一首", expect: ["music.next", "music"], requiredTools: ["music.next"] },
+  {
+    id: "091",
+    command: "给我放一首 Cesaria Evora 的 Sodade",
+    expect: ["music.play", "music"],
+    expectArgs: [{ tool: "music.play", keys: ["query"], match: "Cesaria Evora.*Sodade|Sodade.*Cesaria Evora" }]
+  },
+  {
+    id: "092",
+    command: "搜索 Mulatu Astatke 的 Yegelle Tezeta 但先别播",
+    expect: ["music.search", "music"],
+    expectArgs: [{ tool: "music.search", keys: ["query"], match: "Mulatu Astatke.*Yegelle|Yegelle.*Mulatu Astatke" }]
+  },
+  {
+    id: "093",
+    command: "来点巴西 bossa nova，先只找歌单",
+    expect: ["music.search", "music"],
+    expectArgs: [{ tool: "music.search", keys: ["query"], match: "巴西|bossa nova|歌单|playlist" }]
+  },
+  {
+    id: "094",
+    command: "播放 Sigur Ros 的 Svefn-g-englar",
+    expect: ["music.play", "music"],
+    expectArgs: [{ tool: "music.play", keys: ["query"], match: "Sigur Ros.*Svefn|Svefn.*Sigur Ros" }]
+  },
+  { id: "095", command: "音乐切到上一首", expect: ["music.previous", "music"], requiredTools: ["music.previous"] },
+  {
+    id: "096",
+    command: "查看英伟达股票和走势图",
+    expect: ["market.set_indices", "market"],
+    requiredTools: ["market.set_indices"],
+    expectArgs: [{ tool: "market.set_indices", keys: ["query", "symbol", "symbols"], match: "英伟达|NVIDIA|NVDA" }]
+  },
+  {
+    id: "097",
+    command: "打开台积电 TSM 的股价",
+    expect: ["market.set_indices", "market"],
+    requiredTools: ["market.set_indices"],
+    expectArgs: [{ tool: "market.set_indices", keys: ["query", "symbol", "symbols"], match: "台积电|TSM|Taiwan" }]
+  },
+  {
+    id: "098",
+    command: "看微软 MSFT 今日行情",
+    expect: ["market.set_indices", "market"],
+    requiredTools: ["market.set_indices"],
+    expectArgs: [{ tool: "market.set_indices", keys: ["query", "symbol", "symbols"], match: "微软|MSFT|Microsoft" }]
+  },
+  {
+    id: "099",
+    command: "查腾讯控股 0700 港股",
+    expect: ["market.set_indices", "market"],
+    requiredTools: ["market.set_indices"],
+    expectArgs: [{ tool: "market.set_indices", keys: ["query", "symbol", "symbols"], match: "腾讯|0700|Tencent" }]
+  },
+  {
+    id: "100",
+    command: "搜索比亚迪股票价格",
+    expect: ["market.set_indices", "market"],
+    requiredTools: ["market.set_indices"],
+    expectArgs: [{ tool: "market.set_indices", keys: ["query", "symbol", "symbols"], match: "比亚迪|BYD|002594|1211" }]
+  },
+  {
+    id: "101",
+    command: "看伦敦和纽约现在几点",
+    expect: ["worldClock.set_zones", "worldClock"],
+    requiredTools: ["worldClock.set_zones"],
+    expectArgs: [{ tool: "worldClock.set_zones", keys: ["zones"], match: "伦敦|London|纽约|New York|NYC" }]
+  },
+  {
+    id: "102",
+    command: "世界时钟显示首尔、新加坡、悉尼",
+    expect: ["worldClock.set_zones", "worldClock"],
+    requiredTools: ["worldClock.set_zones"],
+    expectArgs: [{ tool: "worldClock.set_zones", keys: ["zones"], match: "首尔|Seoul|新加坡|Singapore|悉尼|Sydney" }]
+  },
+  {
+    id: "103",
+    command: "添加迪拜和洛杉矶时间",
+    expect: ["worldClock.set_zones", "worldClock"],
+    requiredTools: ["worldClock.set_zones"],
+    expectArgs: [{ tool: "worldClock.set_zones", keys: ["zones"], match: "迪拜|Dubai|洛杉矶|Los Angeles|LA" }]
+  },
+  {
+    id: "104",
+    command: "我想比较北京、柏林、东京时间",
+    expect: ["worldClock.set_zones", "worldClock"],
+    requiredTools: ["worldClock.set_zones"],
+    expectArgs: [{ tool: "worldClock.set_zones", keys: ["zones"], match: "北京|Beijing|柏林|Berlin|东京|Tokyo" }]
+  },
+  {
+    id: "105",
+    command: "查巴黎当地时间",
+    expect: ["worldClock.set_zones", "worldClock"],
+    requiredTools: ["worldClock.set_zones"],
+    expectArgs: [{ tool: "worldClock.set_zones", keys: ["zones"], match: "巴黎|Paris" }]
+  },
+  {
+    id: "106",
+    command: "在便签写下今天复测股票和世界时钟",
+    expect: ["note.write", "note"],
+    requiredTools: ["note.write"],
+    expectArgs: [{ tool: "note.write", keys: ["content"], match: "股票.*世界时钟|世界时钟.*股票" }]
+  },
+  {
+    id: "107",
+    command: "记一下：剪贴板要测试固定文本",
+    expect: ["note.write", "note"],
+    requiredTools: ["note.write"],
+    expectArgs: [{ tool: "note.write", keys: ["content"], match: "剪贴板.*固定文本|固定文本.*剪贴板" }]
+  },
+  {
+    id: "108",
+    command: "追加便签：翻译命令需要检查目标语言",
+    expect: ["note.write", "note"],
+    requiredTools: ["note.write"],
+    expectArgs: [{ tool: "note.write", keys: ["content"], match: "翻译命令.*目标语言|目标语言.*翻译命令" }]
+  },
+  {
+    id: "109",
+    command: "便签里记录倒计时暂停后要能继续",
+    expect: ["note.write", "note"],
+    requiredTools: ["note.write"],
+    expectArgs: [{ tool: "note.write", keys: ["content"], match: "倒计时.*继续|暂停.*继续" }]
+  },
+  { id: "110", command: "清空便签", expect: ["note.clear", "note"], requiredTools: ["note.clear"] },
+  {
+    id: "111",
+    command: "把验证码 482913 保存到剪贴板",
+    expect: ["clipboard.add_text", "clipboard"],
+    requiredTools: ["clipboard.add_text"],
+    expectArgs: [{ tool: "clipboard.add_text", keys: ["text"], match: "482913" }]
+  },
+  {
+    id: "112",
+    command: "固定保存到剪贴板：API_BASE=https://example.test",
+    expect: ["clipboard.add_text", "clipboard"],
+    requiredTools: ["clipboard.add_text"],
+    expectArgs: [
+      { tool: "clipboard.add_text", keys: ["text"], match: "API_BASE|example\\.test" },
+      { tool: "clipboard.add_text", keys: ["pinned"], match: "true" }
+    ]
+  },
+  {
+    id: "113",
+    command: "复制会议链接 https://meet.example/alpha 到剪贴板",
+    expect: ["clipboard.add_text", "clipboard"],
+    requiredTools: ["clipboard.add_text"],
+    expectArgs: [{ tool: "clipboard.add_text", keys: ["text"], match: "meet\\.example|alpha" }]
+  },
+  {
+    id: "114",
+    command: "把临时口令 orange-77 放进剪贴板并固定",
+    expect: ["clipboard.add_text", "clipboard"],
+    requiredTools: ["clipboard.add_text"],
+    expectArgs: [
+      { tool: "clipboard.add_text", keys: ["text"], match: "orange-77" },
+      { tool: "clipboard.add_text", keys: ["pinned"], match: "true" }
+    ]
+  },
+  { id: "115", command: "清空剪贴板但保留固定项", expect: ["clipboard.clear", "clipboard"], requiredTools: ["clipboard.clear"] },
+  {
+    id: "116",
+    command: "把 The quick brown fox 翻译成中文",
+    expect: ["translate.set_draft", "translate"],
+    requiredTools: ["translate.set_draft"],
+    expectArgs: [
+      { tool: "translate.set_draft", keys: ["sourceText"], match: "quick brown fox" },
+      { tool: "translate.set_draft", keys: ["targetLang"], match: "zh|中文|Chinese" }
+    ]
+  },
+  {
+    id: "117",
+    command: "把明天上午开会翻译成英文",
+    expect: ["translate.set_draft", "translate"],
+    requiredTools: ["translate.set_draft"],
+    expectArgs: [
+      { tool: "translate.set_draft", keys: ["sourceText"], match: "明天上午开会" },
+      { tool: "translate.set_draft", keys: ["targetLang"], match: "en|英文|English" }
+    ]
+  },
+  {
+    id: "118",
+    command: "翻译成日文：谢谢你的帮助",
+    expect: ["translate.set_draft", "translate"],
+    requiredTools: ["translate.set_draft"],
+    expectArgs: [
+      { tool: "translate.set_draft", keys: ["sourceText"], match: "谢谢你的帮助" },
+      { tool: "translate.set_draft", keys: ["targetLang"], match: "ja|日文|Japanese|日本" }
+    ]
+  },
+  {
+    id: "119",
+    command: "bonjour 是什么意思，翻译成中文",
+    expect: ["translate.set_draft", "translate"],
+    requiredTools: ["translate.set_draft"],
+    expectArgs: [{ tool: "translate.set_draft", keys: ["sourceText"], match: "bonjour" }]
+  },
+  {
+    id: "120",
+    command: "把部署完成翻译成西班牙语",
+    expect: ["translate.set_draft", "translate"],
+    requiredTools: ["translate.set_draft"],
+    expectArgs: [
+      { tool: "translate.set_draft", keys: ["sourceText"], match: "部署完成" },
+      { tool: "translate.set_draft", keys: ["targetLang"], match: "es|西班牙|Spanish" }
+    ]
+  },
+  {
+    id: "121",
+    command: "倒计时一分半钟",
+    expect: ["countdown.set", "countdown"],
+    requiredTools: ["countdown.set"],
+    expectArgs: [{ tool: "countdown.set", keys: ["totalSeconds", "durationSeconds", "durationMs", "durationText"], match: "90|90000|一分半" }]
+  },
+  {
+    id: "122",
+    command: "设置倒计时二十五分钟，标题写休息提醒",
+    expect: ["countdown.set", "countdown"],
+    requiredTools: ["countdown.set"],
+    expectArgs: [
+      { tool: "countdown.set", keys: ["minutes", "durationMinutes", "durationInMinutes", "totalSeconds", "durationText"], match: "25|1500|二十五" },
+      { tool: "countdown.set", keys: ["label"], match: "休息提醒" }
+    ]
+  },
+  { id: "123", command: "暂停倒计时", expect: ["countdown.pause", "countdown"], requiredTools: ["countdown.pause"] },
+  { id: "124", command: "继续刚才的倒计时", expect: ["countdown.resume", "countdown"], requiredTools: ["countdown.resume"] },
+  { id: "125", command: "重置倒计时", expect: ["countdown.reset", "countdown"], requiredTools: ["countdown.reset"] },
+  {
+    id: "126",
+    command: "添加待办：明天上午九点提交周报",
+    expect: ["todo.add_item", "todo"],
+    requiredTools: ["todo.add_item"],
+    expectArgs: [
+      { tool: "todo.add_item", keys: ["text"], match: "提交周报" },
+      { tool: "todo.add_item", keys: ["dueAt"], match: "." }
+    ]
+  },
+  {
+    id: "127",
+    command: "今晚八点提醒我检查 API 日志",
+    expect: ["todo.add_item", "todo"],
+    requiredTools: ["todo.add_item"],
+    expectArgs: [
+      { tool: "todo.add_item", keys: ["text"], match: "检查 API 日志|API 日志" },
+      { tool: "todo.add_item", keys: ["dueAt"], match: "." }
+    ]
+  },
+  {
+    id: "128",
+    command: "下周一早上十点待办：预约体检",
+    expect: ["todo.add_item", "todo"],
+    requiredTools: ["todo.add_item"],
+    expectArgs: [
+      { tool: "todo.add_item", keys: ["text"], match: "预约体检" },
+      { tool: "todo.add_item", keys: ["dueAt"], match: "." }
+    ]
+  },
+  {
+    id: "129",
+    command: "三十分钟后提醒我喝水",
+    expect: ["todo.add_item", "todo"],
+    requiredTools: ["todo.add_item"],
+    expectArgs: [
+      { tool: "todo.add_item", keys: ["text"], match: "喝水" },
+      { tool: "todo.add_item", keys: ["dueAt"], match: "." }
+    ]
+  },
+  {
+    id: "130",
+    command: "今天下午三点半添加待办给供应商回邮件",
+    expect: ["todo.add_item", "todo"],
+    requiredTools: ["todo.add_item"],
+    expectArgs: [
+      { tool: "todo.add_item", keys: ["text"], match: "供应商.*回邮件|回邮件.*供应商" },
+      { tool: "todo.add_item", keys: ["dueAt"], match: "." }
+    ]
+  },
+  {
+    id: "131",
+    command: "7月20日上午8点提醒我续费服务器",
+    expect: ["todo.add_item", "todo"],
+    requiredTools: ["todo.add_item"],
+    expectArgs: [
+      { tool: "todo.add_item", keys: ["text"], match: "续费服务器" },
+      { tool: "todo.add_item", keys: ["dueAt"], match: "." }
+    ]
+  },
+  {
+    id: "132",
+    command: "添加待办后天下午两点复查电视频道",
+    expect: ["todo.add_item", "todo"],
+    requiredTools: ["todo.add_item"],
+    expectArgs: [
+      { tool: "todo.add_item", keys: ["text"], match: "复查电视频道" },
+      { tool: "todo.add_item", keys: ["dueAt"], match: "." }
+    ]
+  },
+  {
+    id: "133",
+    command: "把提交周报这个待办标记完成",
+    expect: ["todo.complete_item", "todo"],
+    requiredTools: ["todo.complete_item"],
+    expectArgs: [{ tool: "todo.complete_item", keys: ["text"], match: "提交周报" }]
+  },
+  {
+    id: "134",
+    command: "完成预约体检这个任务",
+    expect: ["todo.complete_item", "todo"],
+    requiredTools: ["todo.complete_item"],
+    expectArgs: [{ tool: "todo.complete_item", keys: ["text"], match: "预约体检" }]
+  },
+  { id: "135", command: "清理已完成待办事项", expect: ["todo.clear_completed", "todo"], requiredTools: ["todo.clear_completed"] }
 ];
 
 function ensureDir(dir) {
@@ -458,6 +769,7 @@ function summarizeRealtimeToolCalls(events) {
     .filter((event) =>
       event.type === "realtime.tool_selection.local_add_widget_shortcut" ||
       event.type === "realtime.function_call.missing_widget_wrapped" ||
+      event.type === "realtime.function_call.add_widget_follow_up" ||
       event.type === "realtime.function_call.add_widget_follow_up_repaired"
     )
     .map((event) => {

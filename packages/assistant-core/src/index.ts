@@ -1117,7 +1117,7 @@ function stripTodoDueText(text: string) {
     .trim();
 }
 
-function parseCountdownDurationSeconds(input: string) {
+export function parseCountdownDurationSeconds(input: string) {
   const compact = input.replace(/\s+/g, "").replace(/以后/g, "后");
   let totalSeconds = 0;
   const unitPattern = /([零〇一二两三四五六七八九十\d]+|半)(?:个)?(小时|钟头|分钟|分|秒)/g;
@@ -1216,7 +1216,7 @@ function inferTodoText(raw: string) {
   return "";
 }
 
-function inferTodoAdd(raw: string, now: Date) {
+export function inferTodoAdd(raw: string, now: Date) {
   let inferredText = inferTodoText(raw);
   const rawDueAt = inferTodoDueAt(raw, now);
   if (rawDueAt && /^(我|俺)$/.test(inferredText) && /(提醒我|叫我|到点叫我)/.test(raw)) {
@@ -1229,7 +1229,7 @@ function inferTodoAdd(raw: string, now: Date) {
   return { text: cleanCommandContent(cleaned) || cleanCommandContent(fallbackReminderText) || cleanCommandContent(text), dueAt };
 }
 
-function inferTodoCompleteText(raw: string) {
+export function inferTodoCompleteText(raw: string) {
   const patterns = [
     /(?:完成|做完|办完|勾掉|勾选|删除|移除|去掉)(?:一个|一条)?(?:待办|任务|清单)[：:\s]*(.+)/,
     /(?:待办|任务|清单).*(?:完成|做完|办完|勾掉|勾选|删除|移除|去掉)(?:一个|一条)?[：:\s]*(.+)/,

@@ -41,6 +41,11 @@ const examplesByTool: Record<string, string[]> = {
   "todo.clear_completed": ["清理已完成待办", "清空做完的任务", "删除已完成事项前先确认"]
 };
 
+const descriptionByTool: Record<string, string> = {
+  "todo.add_item": "Add a todo or reminder. If the user gives a time such as 明天上午九点、今晚八点、三十分钟后、7月20日上午8点, put the task text in text and the parsed ISO time in dueAt.",
+  "todo.complete_item": "Complete an existing todo. Put only the todo title or matching keywords in text; remove words like 完成、标记完成、这个待办、这个任务."
+};
+
 function isTodoTool(action: AssistantAction): boolean {
   return action.spec.widgetType === "todo" || todoWindowTools.has(action.spec.name);
 }
@@ -60,6 +65,7 @@ export function createTodoTools(actions: AssistantAction[]): AssistantAction[] {
       ...action,
       spec: {
         ...action.spec,
+        description: descriptionByTool[action.spec.name] ?? action.spec.description,
         parameters: schema,
         argumentKeys: schema.argumentKeys,
         resultSchema: todoResultSchema,
@@ -77,7 +83,7 @@ export function createTodoActionSpecs(actions: AssistantAction[]): WidgetModuleA
     return {
       name: action.spec.name,
       intent: action.spec.name,
-      description: action.spec.description,
+      description: descriptionByTool[action.spec.name] ?? action.spec.description,
       argsSchema: schema.jsonSchema,
       resultSchema: todoResultSchema,
       risk: action.spec.risk ?? "safe",

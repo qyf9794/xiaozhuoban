@@ -39,6 +39,11 @@ const examplesByTool: Record<string, string[]> = {
   "clipboard.clear": ["清空剪贴板", "清一下剪贴板", "清掉复制板"]
 };
 
+const descriptionByTool: Record<string, string> = {
+  "clipboard.add_text": "Add text to clipboard history. Set pinned=true when the user says 固定、置顶、钉住、pin, or asks to keep the record fixed.",
+  "clipboard.clear": "Clear clipboard history. Omit includePinned or set false to preserve pinned records; set includePinned=true only when the user explicitly asks to clear fixed/pinned records too."
+};
+
 function isClipboardTool(action: AssistantAction): boolean {
   return action.spec.widgetType === "clipboard" || clipboardWindowTools.has(action.spec.name);
 }
@@ -59,6 +64,7 @@ export function createClipboardTools(actions: AssistantAction[]): AssistantActio
       ...action,
       spec: {
         ...action.spec,
+        description: descriptionByTool[action.spec.name] ?? action.spec.description,
         parameters: schema,
         argumentKeys: schema.argumentKeys,
         resultSchema: clipboardResultSchema,
@@ -76,7 +82,7 @@ export function createClipboardActionSpecs(actions: AssistantAction[]): WidgetMo
     return {
       name: action.spec.name,
       intent: action.spec.name,
-      description: action.spec.description,
+      description: descriptionByTool[action.spec.name] ?? action.spec.description,
       argsSchema: schema.jsonSchema,
       resultSchema: clipboardResultSchema,
       risk: action.spec.risk ?? "safe",

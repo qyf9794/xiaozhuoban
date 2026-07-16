@@ -1011,7 +1011,7 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
           items: [...pinned, ...unpinned],
           clipboardError: ""
         }, context);
-        return success("已加入剪贴板历史", { widgetId: target.widget.id, text: nextRecord.text });
+        return success("已加入剪贴板历史", { widgetId: target.widget.id, text: nextRecord.text, pinned: nextRecord.pinned === true });
       }
     }),
     defineAction<ClipboardClearArgs>({

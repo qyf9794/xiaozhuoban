@@ -7,7 +7,10 @@ import {
   type CommandPlan,
   type CompactAssistantContext,
   type RealtimeModuleCatalogItem,
-  type RealtimeScopedModuleContext
+  type RealtimeScopedModuleContext,
+  inferTodoAdd,
+  inferTodoCompleteText,
+  parseCountdownDurationSeconds
 } from "@xiaozhuoban/assistant-core";
 import type { AssistantRealtimeAdapter } from "./AssistantHarness";
 import type { AssistantDiagnosticEvent } from "./assistantDiagnostics";
@@ -19,7 +22,8 @@ import {
   XIAOZHUOBAN_REALTIME_HIGH_ACCURACY_MODEL,
   XIAOZHUOBAN_REALTIME_MODEL,
   XIAOZHUOBAN_REALTIME_INSTRUCTIONS,
-  decodeRealtimeToolName
+  decodeRealtimeToolName,
+  encodeRealtimeToolName
 } from "./realtimeSessionConfig";
 import { REALTIME_ADD_WIDGET_TOOL_NAME, findRealtimeWidgetType, realtimeWidgetAliases } from "./realtimeRoutingPolicy";
 import {
@@ -127,6 +131,9 @@ type PendingTextCommandAfterSelectorUpdate = {
   events: RealtimeEvent[];
   commandTraceId: string;
   inputLength: number;
+  selectorInstructions: string;
+  selectorTools: unknown[];
+  selectorToolChoice: RealtimeResponseToolChoice;
 };
 type PendingResponseCreateConflictRetry = {
   commandTraceId: string;
@@ -140,6 +147,13 @@ type PendingScopedToolResponseRetry = {
   responseMode: RealtimeResponseMode;
   instructions: string;
   tools: unknown[];
+  toolChoice?: RealtimeResponseToolChoice;
+  retryCount: number;
+};
+type PendingSelectorToolResponseRetry = {
+  instructions: string;
+  tools: unknown[];
+  toolChoice: RealtimeResponseToolChoice;
   retryCount: number;
 };
 type RealtimeTargetHint = Pick<RealtimeTextToolSelection, "selectedModule" | "targetHint" | "candidateTools"> & {
@@ -209,8 +223,11 @@ const INTENT_TOOL_PRIORITIES: Record<string, string[]> = {
 const REALTIME_MAX_OUTPUT_TOKENS = 160;
 const REALTIME_CONCISE_RESPONSE_INSTRUCTIONS =
   "只回复一句中文，8到14个字，必须直接说明执行结果，例如“已搜索音乐”“已开始播放音乐”。不要说“好的”“我来”“简单说”“概括”，不要解释过程，不要重复调用工具。";
+const REALTIME_CONFIRMATION_RESPONSE_INSTRUCTIONS =
+  "只回复一句中文：请确认执行。不要说无法、不能、失败、没有成功；这是等待用户确认，不是执行失败。不要解释过程，不要重复调用工具。";
 const REALTIME_RESPONSE_CREATE_CONFLICT_RETRY_MS = 180;
 const REALTIME_RESPONSE_CREATE_CONFLICT_MAX_RETRIES = 3;
+const REALTIME_SCOPED_TOOL_RESPONSE_MAX_RETRIES = 2;
 export const DEFAULT_REALTIME_SESSION_UPDATE_TIMEOUT_MS = 12_000;
 
 type InitialRealtimeToolHint = {
@@ -335,6 +352,10 @@ function isMusicNoPlayRequest(input: string): boolean {
 
 function isMusicSearchRequest(input: string): boolean {
   return /(搜|搜索|查找|找一下|找一点|找些|找首|找歌|找音乐|找)/.test(input);
+}
+
+function isMusicSearchOnlyRequest(input: string): boolean {
+  return isMusicNoPlayRequest(input) || /(先只找|只找|只搜索|只搜|先找|先搜索|先搜|找歌单|只找歌单|playlist)/i.test(input);
 }
 
 function isMusicExplicitPlayRequest(input: string): boolean {
@@ -486,7 +507,10 @@ function extractMarketQueryFromText(text: string): string {
 
 function normalizeCountdownToolArguments(args: Record<string, unknown>, fallbackText = ""): Record<string, unknown> {
   const nextArgs = { ...args };
-  if (typeof nextArgs.totalSeconds !== "number") {
+  const fallbackSeconds = fallbackText ? parseCountdownSecondsFromText(fallbackText) : undefined;
+  if (typeof fallbackSeconds === "number" && Number.isFinite(fallbackSeconds) && fallbackSeconds > 0) {
+    nextArgs.totalSeconds = fallbackSeconds;
+  } else if (typeof nextArgs.totalSeconds !== "number") {
     if (typeof nextArgs.durationMs === "number") {
       nextArgs.totalSeconds = Math.max(0, Math.round(nextArgs.durationMs / 1000));
     } else if (typeof nextArgs.durationSeconds === "number") {
@@ -508,6 +532,10 @@ function normalizeCountdownToolArguments(args: Record<string, unknown>, fallback
   if (typeof nextArgs.start !== "boolean" && typeof nextArgs.autoStart === "boolean") {
     nextArgs.start = nextArgs.autoStart;
   }
+  if (typeof nextArgs.label !== "string" && fallbackText) {
+    const label = extractCountdownLabelFromText(fallbackText);
+    if (label) nextArgs.label = label;
+  }
   delete nextArgs.durationMs;
   delete nextArgs.durationSeconds;
   delete nextArgs.durationInMinutes;
@@ -517,6 +545,11 @@ function normalizeCountdownToolArguments(args: Record<string, unknown>, fallback
   delete nextArgs.time;
   delete nextArgs.autoStart;
   return nextArgs;
+}
+
+function extractCountdownLabelFromText(text: string): string {
+  const match = text.match(/(?:标题|名称|名字|标记|备注)(?:写|叫|设为|设置为|是|为)?[：:\s]*([^，。,.!?！？;；]+)/);
+  return match?.[1]?.trim() ?? "";
 }
 
 function parseConverterArgsFromText(text: string): Record<string, unknown> {
@@ -577,10 +610,15 @@ function extractTranslateArgsFromText(text: string): Record<string, unknown> {
     ? "en"
     : /(中文|汉语|Chinese|into Chinese|to Chinese)/i.test(text)
       ? "zh-CN"
+      : /(日文|日语|日本語|Japanese|into Japanese|to Japanese)/i.test(text)
+        ? "ja"
+        : /(西班牙语|西班牙文|Spanish|into Spanish|to Spanish)/i.test(text)
+          ? "es"
       : undefined;
   const sourceText = text
     .replace(/^把/, "")
-    .replace(/翻译成(?:中文|英文|英语|汉语)/gi, "")
+    .replace(/翻译成(?:中文|英文|英语|汉语|日文|日语|日本語|西班牙语|西班牙文)/gi, "")
+    .replace(/翻译(?:为|到)(?:中文|英文|英语|汉语|日文|日语|日本語|西班牙语|西班牙文)/gi, "")
     .replace(/(?:翻译一下|翻译|是什么意思|什么意思)/gi, "")
     .replace(/[，。！？、,.!?;；:："'“”‘’]/g, " ")
     .replace(/\s+/g, " ")
@@ -593,6 +631,8 @@ function extractTranslateArgsFromText(text: string): Record<string, unknown> {
 
 function parseCountdownSecondsFromText(text: string): number | undefined {
   const compact = text.replace(/\s+/g, "");
+  const parsed = parseCountdownDurationSeconds(compact);
+  if (parsed && Number.isFinite(parsed) && parsed > 0) return parsed;
   if (/一(?:小时|小時)/.test(compact) || /1(?:小时|小時)/.test(compact)) return 3600;
   if (/五(?:分钟|分鐘|分)/.test(compact) || /5(?:分钟|分鐘|分)/.test(compact)) return 300;
   if (/十(?:分钟|分鐘|分)/.test(compact) || /10(?:分钟|分鐘|分)/.test(compact)) return 600;
@@ -669,6 +709,7 @@ function normalizeNoteToolArguments(args: Record<string, unknown>): Record<strin
 
 function normalizeTodoToolArguments(toolName: string, args: Record<string, unknown>, fallbackText = ""): Record<string, unknown> {
   const nextArgs = { ...args };
+  const now = new Date();
   if (typeof nextArgs.text !== "string") {
     const text =
       nextArgs.itemRef ??
@@ -683,12 +724,22 @@ function normalizeTodoToolArguments(toolName: string, args: Record<string, unkno
     }
   }
   if (toolName === "todo.add_item" && typeof nextArgs.text === "string") {
+    const inferred = fallbackText ? inferTodoAdd(fallbackText, now) : undefined;
+    if (typeof nextArgs.dueAt !== "string" && inferred?.dueAt) {
+      nextArgs.dueAt = inferred.dueAt;
+    }
     nextArgs.text = nextArgs.text
       .replace(/^(给?待办(?:里|中)?(?:加|添加)?一条|在?待办(?:里|中)?(?:加|添加)?一条|添加待办|加一条待办|待办[:：]?)/, "")
       .trim() || nextArgs.text;
+    if (inferred?.text && (/([今明后]天|今晚|明早|明晚|下周|星期|礼拜|\d{1,2}[:：]\d{2}|[零〇一二两三四五六七八九十\d]+点|提醒我|提醒|叫我|记得|别忘了)/.test(nextArgs.text) || nextArgs.text.length > inferred.text.length + 4)) {
+      nextArgs.text = inferred.text;
+    }
   }
   if (toolName === "todo.complete_item" && typeof nextArgs.text === "string") {
+    const inferred = fallbackText ? inferTodoCompleteText(fallbackText) : "";
+    if (inferred) nextArgs.text = inferred;
     nextArgs.text = nextArgs.text.replace(/^(把|将)?/, "").replace(/(标记为完成|标记完成|完成|勾掉|做完)$/, "").trim() || nextArgs.text;
+    nextArgs.text = nextArgs.text.replace(/(?:这个|这项|该)(待办|任务|事项|清单)$/, "").replace(/^完成/, "").trim() || nextArgs.text;
   }
   delete nextArgs.itemRef;
   delete nextArgs.item;
@@ -719,6 +770,65 @@ function normalizeMarketToolArguments(args: Record<string, unknown>, fallbackTex
   delete nextArgs.indexCodeHints;
   delete nextArgs.ticker;
   return nextArgs;
+}
+
+function extractWorldClockZonesFromText(input: string): string[] {
+  const text = input.replace(/\s+/g, " ").trim();
+  if (!text) return [];
+  const stripped = text
+    .replace(/(世界时钟|世界时间|本地时间|当地时间|现在几点|几点|时间|时区|显示|添加|查一下|查询|查|看一下|看|我想|比较|当地|现在)/g, " ")
+    .replace(/\b(current|local|time|times|timezone|time zone|show|add|compare|check|what time|now|in)\b/gi, " ")
+    .replace(/([\u4e00-\u9fff])\s+([\u4e00-\u9fff])/g, "$1,$2")
+    .replace(/[?？。.!！]/g, " ");
+  const zones = stripped
+    .split(/[、,，/|;；]+|(?:\s*(?:和|与|以及|还有|and|with)\s*)|\s{2,}/i)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0 && !/^(的|了|一下|please)$/i.test(item));
+  return [...new Set(zones)].slice(0, 6);
+}
+
+function normalizeWorldClockToolArguments(args: Record<string, unknown>, fallbackText = ""): Record<string, unknown> {
+  const zones = args.zones ?? args.cities ?? args.city ?? args.timezones ?? args.timezone ?? args.locations ?? args.target ?? args.targetHint;
+  const nextArgs = { ...args };
+  if (typeof zones === "string" && zones.trim()) nextArgs.zones = [zones.trim()];
+  if (Array.isArray(zones)) nextArgs.zones = zones.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  if ((!Array.isArray(nextArgs.zones) || nextArgs.zones.length === 0) && fallbackText) {
+    const fallbackZones = extractWorldClockZonesFromText(fallbackText);
+    if (fallbackZones.length > 0) nextArgs.zones = fallbackZones;
+  }
+  delete nextArgs.cities;
+  delete nextArgs.city;
+  delete nextArgs.timezones;
+  delete nextArgs.timezone;
+  delete nextArgs.locations;
+  delete nextArgs.target;
+  delete nextArgs.targetHint;
+  return nextArgs;
+}
+
+function shouldPinClipboardTextFromCommand(input: string): boolean {
+  return /(固定|置顶|置頂|钉住|釘住|\bpin(?:ned)?\b)/i.test(input);
+}
+
+function isReminderTodoCommand(input: string): boolean {
+  const normalized = input.replace(/\s+/g, "");
+  if (!/(提醒我|提醒|叫我|记得|别忘了)/.test(normalized)) return false;
+  if (/^(倒计时|倒計時|计时器|計時器|定时器|定時器|定时|定時)/.test(normalized)) return false;
+  return /提醒我.+|叫我.+|记得.+|别忘了.+/.test(normalized);
+}
+
+function isExplicitNoteWriteCommand(input: string): boolean {
+  const normalized = input.trim();
+  if (!normalized) return false;
+  if (/^(?:在?便签(?:里|中)?|追加到?便签|便签里|便签中|笔记里|笔记中).*(?:写|记|记录|追加|添加)/.test(normalized)) {
+    return true;
+  }
+  return /^(?:记一下|记下|记录一下|写下|写上|帮我记一下|帮我记下|帮我记录一下)[：:\s，,]/.test(normalized);
+}
+
+function isClipboardClearCommand(input: string): boolean {
+  const normalized = input.replace(/\s+/g, "");
+  return /(剪贴板|剪貼板|复制板|clipboard)/i.test(normalized) && /(清空|清理|清一下|清掉|清除|删除历史|清历史)/.test(normalized);
 }
 
 function looksLikeTvDefinitionId(value: unknown): boolean {
@@ -795,26 +905,28 @@ function normalizeRealtimeToolArguments(toolName: string, args: Record<string, u
     nextArgs = normalizeBoardAddWidgetArguments(nextArgs, fallbackText);
   }
   if (toolName === "worldClock.set_zones") {
-    const zones = nextArgs.zones ?? nextArgs.cities ?? nextArgs.city ?? nextArgs.timezones ?? nextArgs.timezone ?? nextArgs.locations ?? nextArgs.target ?? nextArgs.targetHint;
-    nextArgs = { ...nextArgs };
-    if (typeof zones === "string" && zones.trim()) nextArgs.zones = [zones.trim()];
-    if (Array.isArray(zones)) nextArgs.zones = zones.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
-    delete nextArgs.cities;
-    delete nextArgs.city;
-    delete nextArgs.timezones;
-    delete nextArgs.timezone;
-    delete nextArgs.locations;
-    delete nextArgs.target;
-    delete nextArgs.targetHint;
+    nextArgs = normalizeWorldClockToolArguments(nextArgs, fallbackText);
   }
   if (toolName === "translate.set_draft") {
     nextArgs = { ...nextArgs };
+    const parsed = fallbackText ? extractTranslateArgsFromText(fallbackText) : {};
     const sourceText = nextArgs.sourceText ?? nextArgs.text ?? nextArgs.content ?? nextArgs.query ?? fallbackText;
     if (typeof sourceText === "string" && sourceText.trim()) nextArgs.sourceText = sourceText.trim();
+    if (
+      typeof parsed.sourceText === "string" &&
+      parsed.sourceText.trim() &&
+      (typeof nextArgs.sourceText !== "string" ||
+        !nextArgs.sourceText.trim() ||
+        nextArgs.sourceText.trim() === fallbackText.trim() ||
+        /翻译|翻譯|是什么意思|什么意思/.test(nextArgs.sourceText))
+    ) {
+      nextArgs.sourceText = parsed.sourceText.trim();
+    }
     if (typeof nextArgs.sourceLanguage === "string" && typeof nextArgs.sourceLang !== "string") nextArgs.sourceLang = nextArgs.sourceLanguage;
     if (typeof nextArgs.targetLanguage === "string" && typeof nextArgs.targetLang !== "string") nextArgs.targetLang = nextArgs.targetLanguage;
     if (typeof nextArgs.srcLang === "string" && typeof nextArgs.sourceLang !== "string") nextArgs.sourceLang = nextArgs.srcLang;
     if (typeof nextArgs.tgtLang === "string" && typeof nextArgs.targetLang !== "string") nextArgs.targetLang = nextArgs.tgtLang;
+    if (typeof nextArgs.targetLang !== "string" && typeof parsed.targetLang === "string") nextArgs.targetLang = parsed.targetLang;
     delete nextArgs.text;
     delete nextArgs.content;
     delete nextArgs.query;
@@ -827,6 +939,7 @@ function normalizeRealtimeToolArguments(toolName: string, args: Record<string, u
     nextArgs = { ...nextArgs };
     const text = nextArgs.text ?? nextArgs.content ?? nextArgs.value ?? nextArgs.clipText ?? nextArgs.clipboardText ?? nextArgs.query ?? fallbackText;
     if (typeof text === "string" && text.trim()) nextArgs.text = text.trim();
+    if (typeof nextArgs.pinned !== "boolean" && shouldPinClipboardTextFromCommand(fallbackText)) nextArgs.pinned = true;
     delete nextArgs.content;
     delete nextArgs.value;
     delete nextArgs.clipText;
@@ -926,6 +1039,16 @@ function normalizeBoardAddWidgetArguments(args: Record<string, unknown>, fallbac
           ...followUp,
           name: followUpName,
           arguments: normalizeMarketToolArguments(followUpArgs, fallbackText)
+        }
+      };
+    }
+    if (followUpName === "worldClock.set_zones") {
+      nextArgs = {
+        ...nextArgs,
+        followUp: {
+          ...followUp,
+          name: followUpName,
+          arguments: normalizeWorldClockToolArguments(followUpArgs, fallbackText)
         }
       };
     }
@@ -1271,45 +1394,10 @@ function inferAddWidgetDefinitionForCall(
   const nextArgs: Record<string, unknown> = { ...call.arguments, definitionId: definition.definitionId };
   const followUpName = selectedTool?.scope === "widget-detail" ? selectedTool.name : "";
   const input = Array.from(new Set([fallbackText, hint?.userCommand, hint?.targetHint].filter(Boolean))).join(" ");
-  if (followUpName === "music.search" || followUpName === "music.play") {
+  if (followUpName) {
     nextArgs.followUp = {
       name: followUpName,
       arguments: createFollowUpArgumentsFromText(followUpName, {}, input, context)
-    };
-  } else if (followUpName === "tv.play" || followUpName === "tv.select_channel") {
-    nextArgs.followUp = {
-      name: followUpName,
-      arguments: createFollowUpArgumentsFromText(followUpName, {}, input, context)
-    };
-  } else if (followUpName === "todo.add_item" || followUpName === "todo.complete_item") {
-    nextArgs.followUp = {
-      name: followUpName,
-      arguments: createFollowUpArgumentsFromText(followUpName, {}, input, context)
-    };
-  } else if (followUpName === "note.write") {
-    nextArgs.followUp = {
-      name: followUpName,
-      arguments: createFollowUpArgumentsFromText(followUpName, {}, input, context)
-    };
-  } else if (followUpName === "countdown.set") {
-    nextArgs.followUp = {
-      name: followUpName,
-      arguments: createFollowUpArgumentsFromText(followUpName, {}, input, context)
-    };
-  } else if (followUpName === "market.set_indices") {
-    nextArgs.followUp = {
-      name: followUpName,
-      arguments: createFollowUpArgumentsFromText(followUpName, {}, input, context)
-    };
-  } else if (followUpName === "converter.set") {
-    nextArgs.followUp = {
-      name: followUpName,
-      arguments: createFollowUpArgumentsFromText(followUpName, {}, input, context)
-    };
-  } else if (followUpName === "translate.set_draft") {
-    nextArgs.followUp = {
-      name: followUpName,
-      arguments: extractTranslateArgsFromText(input)
     };
   }
   return { ...call, arguments: nextArgs };
@@ -1360,7 +1448,23 @@ function repairBoardAddWidgetFollowUp(
       }
     };
   }
-  if (followUpName && tools.some((tool) => tool.name === followUpName)) return call;
+  const followUpArgs = isRecord(followUp.arguments)
+    ? followUp.arguments
+    : isRecord(followUp.args)
+      ? followUp.args
+      : {};
+  if (followUpName && tools.some((tool) => tool.name === followUpName)) {
+    return {
+      ...call,
+      arguments: {
+        ...args,
+        followUp: {
+          name: followUpName,
+          arguments: createFollowUpArgumentsFromText(followUpName, followUpArgs, fallbackText, context)
+        }
+      }
+    };
+  }
 
   const definitionId = typeof args.definitionId === "string" ? args.definitionId : "";
   const definitionType = definitionId ? context.availableDefinitions?.find((definition) => definition.definitionId === definitionId)?.type : undefined;
@@ -1371,11 +1475,6 @@ function repairBoardAddWidgetFollowUp(
     );
   if (!candidateTool) return call;
 
-  const followUpArgs = isRecord(followUp.arguments)
-    ? followUp.arguments
-    : isRecord(followUp.args)
-      ? followUp.args
-      : {};
   const nextArgs = { ...args };
   delete nextArgs.followUpName;
   delete nextArgs.followUpTool;
@@ -1733,6 +1832,13 @@ const SAFE_REALTIME_DIAGNOSTIC_ARG_KEYS = new Set([
   "sourceText",
   "content",
   "text",
+  "dueAt",
+  "pinned",
+  "label",
+  "minutes",
+  "durationMinutes",
+  "durationInMinutes",
+  "durationMs",
   "totalSeconds",
   "start",
   "durationSeconds"
@@ -1756,11 +1862,17 @@ function createSafeRealtimeToolCallDiagnosticData(call: AssistantToolCall): Reco
     const followUpName = typeof args.followUp.name === "string" ? args.followUp.name : "";
     const followUpArgs = isRecord(args.followUp.arguments) ? args.followUp.arguments : {};
     if (followUpName) data.followUpName = followUpName;
-    if (typeof followUpArgs.channelName === "string") data.channelName = followUpArgs.channelName;
-    if (typeof followUpArgs.query === "string") data.query = followUpArgs.query;
-    if (typeof followUpArgs.text === "string") data.text = followUpArgs.text;
-    if (typeof followUpArgs.content === "string") data.content = followUpArgs.content;
-    if (typeof followUpArgs.sourceText === "string") data.sourceText = followUpArgs.sourceText;
+    for (const key of SAFE_REALTIME_DIAGNOSTIC_ARG_KEYS) {
+      const value = followUpArgs[key];
+      if (
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean" ||
+        (Array.isArray(value) && value.every((item) => typeof item === "string" || typeof item === "number"))
+      ) {
+        data[key] = value;
+      }
+    }
   }
   return Object.keys(data).length ? data : undefined;
 }
@@ -2032,10 +2144,72 @@ function createScopedToolCallResponseTools(
     : [];
   if (!scopedToolNames.length) return [];
   const toolsByName = new Map(tools.map((tool) => [tool.name, tool]));
+  const selectedToolName = typeof data.selectedTool === "string" && data.selectedTool.trim() ? data.selectedTool.trim() : "";
+  if (selectedToolName && scopedToolNames.includes(selectedToolName)) {
+    const selectedTool = toolsByName.get(selectedToolName);
+    return selectedTool ? [serializeScopedAssistantToolForRealtime(selectedTool, context)] : [];
+  }
   return scopedToolNames
     .map((name) => toolsByName.get(name))
     .filter((tool): tool is AssistantToolSpec => Boolean(tool))
     .map((tool) => serializeScopedAssistantToolForRealtime(tool, context));
+}
+
+function getRealtimeToolSpecName(tool: unknown): string | undefined {
+  if (!isRecord(tool) || typeof tool.name !== "string" || !tool.name.trim()) return undefined;
+  return tool.name.trim();
+}
+
+function createScopedToolCallResponseToolChoice(
+  result: AssistantToolResult,
+  responseTools: unknown[]
+): RealtimeResponseToolChoice | undefined {
+  const data = isRecord(result.data) ? result.data : {};
+  const responseToolNames = new Set(responseTools.map(getRealtimeToolSpecName).filter((name): name is string => Boolean(name)));
+  const scopedTools = Array.isArray(data.scopedTools)
+    ? data.scopedTools.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+    : [];
+  const selectedTool = typeof data.selectedTool === "string" && data.selectedTool.trim() ? data.selectedTool.trim() : "";
+  const preferredTool = selectedTool && scopedTools.includes(selectedTool) ? selectedTool : "";
+  if (!preferredTool) {
+    const [onlyToolName] = Array.from(responseToolNames);
+    return responseToolNames.size === 1 && onlyToolName ? { type: "function", name: onlyToolName } : undefined;
+  }
+  const encodedName = encodeRealtimeToolName(preferredTool);
+  if (!responseToolNames.has(encodedName)) {
+    const [onlyToolName] = Array.from(responseToolNames);
+    return responseToolNames.size === 1 && onlyToolName ? { type: "function", name: onlyToolName } : undefined;
+  }
+  return { type: "function", name: encodedName };
+}
+
+function shouldForceSelectedToolChoiceForScopedSelection(
+  selectedTool: AssistantToolSpec,
+  selectedModule: string | undefined,
+  context: CompactAssistantContext | null,
+  scopedTools: AssistantToolSpec[]
+): boolean {
+  if (!selectedModule || !context || selectedTool.scope !== "widget-detail") return true;
+  const hasMountedModule = context.widgets.some((widget) => widget.type === selectedModule);
+  const canAddMissingModule = scopedTools.some((tool) => tool.name === REALTIME_ADD_WIDGET_TOOL_NAME);
+  return hasMountedModule || !canAddMissingModule;
+}
+
+function resolveScopedToolChoiceName(
+  selectedTool: AssistantToolSpec,
+  selectedModule: string | undefined,
+  context: CompactAssistantContext | null,
+  scopedTools: AssistantToolSpec[]
+): string | undefined {
+  if (!selectedModule || !context || selectedTool.scope !== "widget-detail") return selectedTool.name;
+  const hasMountedModule = context.widgets.some((widget) => widget.type === selectedModule);
+  const canAddMissingModule = scopedTools.some((tool) => tool.name === REALTIME_ADD_WIDGET_TOOL_NAME);
+  if (!hasMountedModule && canAddMissingModule) return REALTIME_ADD_WIDGET_TOOL_NAME;
+  return shouldForceSelectedToolChoiceForScopedSelection(selectedTool, selectedModule, context, scopedTools) ? selectedTool.name : undefined;
+}
+
+function createRealtimeToolSelectionToolChoice(): RealtimeResponseToolChoice {
+  return { type: "function", name: encodeRealtimeToolName(REALTIME_TOOL_SELECTION_TOOL_NAME) };
 }
 
 export function createRealtimeResponseCreateEvent(
@@ -2389,6 +2563,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private pendingToolSelectionResetAfterActiveResponse: { commandTraceId: string } | null = null;
   private activeScopedToolSelection: RealtimeTargetHint | null = null;
   private scopedToolSelectionResponseInstructions = new Map<string, string>();
+  private pendingSelectorToolResponses = new Map<string, PendingSelectorToolResponseRetry>();
   private pendingScopedToolResponses = new Map<string, PendingScopedToolResponseRetry>();
   private activeRealtimePlanSelection: ActiveRealtimePlanSelection | null = null;
   private activeUserCommandTraceId: string | null = null;
@@ -2473,6 +2648,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.pendingResponseCreateAfterActiveToolResultInstructions = undefined;
     this.pendingResponseCreateAfterActiveToolResultTools = undefined;
     this.pendingResponseCreateAfterActiveToolResultCommandTraceId = undefined;
+    this.pendingSelectorToolResponses.clear();
     this.pendingScopedToolResponses.clear();
     this.initialToolSelectionUpdateSent = false;
     this.clearInitialToolSelectionUpdateTimeout();
@@ -2673,6 +2849,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.pendingResponseCreateAfterActiveToolResultInstructions = undefined;
     this.pendingResponseCreateAfterActiveToolResultTools = undefined;
     this.pendingResponseCreateAfterActiveToolResultCommandTraceId = undefined;
+    this.pendingSelectorToolResponses.clear();
     this.pendingScopedToolResponses.clear();
     this.initialToolSelectionUpdateSent = false;
     this.clearInitialToolSelectionUpdateTimeout();
@@ -2715,6 +2892,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.pendingResponseCreateAfterActiveToolResultInstructions = undefined;
     this.pendingResponseCreateAfterActiveToolResultTools = undefined;
     this.pendingResponseCreateAfterActiveToolResultCommandTraceId = undefined;
+    this.pendingSelectorToolResponses.clear();
     this.pendingScopedToolResponses.clear();
     this.initialToolSelectionUpdateSent = false;
     this.clearInitialToolSelectionUpdateTimeout();
@@ -2857,6 +3035,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.pendingResponseCreateAfterActiveToolResultInstructions = undefined;
     this.pendingResponseCreateAfterActiveToolResultTools = undefined;
     this.pendingResponseCreateAfterActiveToolResultCommandTraceId = undefined;
+    this.pendingSelectorToolResponses.clear();
     this.pendingScopedToolResponses.clear();
     this.pendingScopedToolSelectionResult = null;
     this.pendingPlanSelectionResult = null;
@@ -3067,7 +3246,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         instructions: createRealtimeToolSelectionInstructions(tools, capabilityCatalog),
         audio: createRealtimeSessionAudioConfig(),
         tools: [createRealtimeToolSelectionTool(tools, capabilityCatalog)],
-        tool_choice: "required",
+        tool_choice: createRealtimeToolSelectionToolChoice(),
         parallel_tool_calls: false
       }
     };
@@ -3254,6 +3433,111 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (!input) {
       return { ok: false, input, exposedTools: [], excludedReasons: {} };
     }
+    if (
+      isReminderTodoCommand(input) &&
+      (selection.name === "countdown.set" || selection.selectedModule === "countdown" || selection.candidateTools?.includes("countdown.set")) &&
+      tools.some((tool) => tool.name === "todo.add_item")
+    ) {
+      this.emitDiagnostic({
+        type: "realtime.tool_selection.semantic_boundary_rewrite",
+        status: "success",
+        commandTraceId,
+        toolName: "todo.add_item",
+        data: {
+          fromTool: selection.name,
+          fromModule: selection.selectedModule,
+          reason: "reminder_todo_not_countdown"
+        }
+      });
+      selection = {
+        ...selection,
+        name: "todo.add_item",
+        candidateTools: ["todo.add_item"],
+        selectedModule: "todo",
+        intent: selection.intent ?? "add",
+        targetHint: selection.targetHint || input
+      };
+    }
+    if (
+      isExplicitNoteWriteCommand(input) &&
+      selection.name !== "note.write" &&
+      tools.some((tool) => tool.name === "note.write")
+    ) {
+      this.emitDiagnostic({
+        type: "realtime.tool_selection.semantic_boundary_rewrite",
+        status: "success",
+        commandTraceId,
+        toolName: "note.write",
+        data: {
+          fromTool: selection.name,
+          fromModule: selection.selectedModule,
+          reason: "explicit_note_write_prefix"
+        }
+      });
+      selection = {
+        ...selection,
+        name: "note.write",
+        candidateTools: ["note.write"],
+        selectedModule: "note",
+        intent: selection.intent ?? "note_write",
+        targetHint: selection.targetHint || input,
+        userCommand: selection.userCommand || input
+      };
+    }
+    if (
+      isClipboardClearCommand(input) &&
+      selection.name !== "clipboard.clear" &&
+      tools.some((tool) => tool.name === "clipboard.clear")
+    ) {
+      this.emitDiagnostic({
+        type: "realtime.tool_selection.semantic_boundary_rewrite",
+        status: "success",
+        commandTraceId,
+        toolName: "clipboard.clear",
+        data: {
+          fromTool: selection.name,
+          fromModule: selection.selectedModule,
+          reason: "explicit_clipboard_clear"
+        }
+      });
+      selection = {
+        ...selection,
+        name: "clipboard.clear",
+        candidateTools: ["clipboard.clear"],
+        selectedModule: "clipboard",
+        intent: selection.intent ?? "clear",
+        targetHint: selection.targetHint || input,
+        userCommand: selection.userCommand || input
+      };
+    }
+    if (
+      selection.selectedModule === "music" &&
+      selection.name === "music.search" &&
+      isMusicExplicitPlayRequest(input) &&
+      !isMusicSearchOnlyRequest(input) &&
+      tools.some((tool) => tool.name === "music.play")
+    ) {
+      this.emitDiagnostic({
+        type: "realtime.tool_selection.semantic_boundary_rewrite",
+        status: "success",
+        commandTraceId,
+        toolName: "music.play",
+        data: {
+          fromTool: selection.name,
+          fromModule: selection.selectedModule,
+          reason: "explicit_music_play_not_search"
+        }
+      });
+      selection = {
+        ...selection,
+        name: "music.play",
+        candidateTools: ["music.play"],
+        selectedModule: "music",
+        intent: selection.intent ?? "play",
+        targetHint: selection.targetHint || input,
+        userCommand: selection.userCommand || input
+      };
+    }
     const candidateToolSpecs = this.resolveCandidateToolSpecs(selection, tools);
     const candidateMode = Boolean(selection.candidateTools?.length);
     const legacySelectedTool = selection.name
@@ -3282,6 +3566,13 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
           (tool) => tool.scope === "widget-detail" && this.isToolForSelectionModule(tool, selectedModule)
         )
     );
+    const hasMountedSelectedModule = selectedModule ? context.widgets.some((widget) => widget.type === selectedModule) : false;
+    const canOpenMissingSelectedModule = Boolean(
+      selectedModule &&
+        !hasMountedSelectedModule &&
+        legacySelectedTool &&
+        canOpenMissingWidgetForSelectedTool(input, selectedModule, legacySelectedTool.name, selection.intent)
+    );
     const baseTools = candidateMode && candidateToolSpecs.length
       ? candidateToolSpecs.filter((tool) => tool.name !== REALTIME_ADD_WIDGET_TOOL_NAME || pureOpenWidget || !hasContentCandidateForSelectedModule)
       : exposurePlan.exposedTools.length
@@ -3299,10 +3590,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
           addWidgetTool &&
           context.availableDefinitions?.some((definition) => definition.type === selectedModule) &&
           (pureOpenWidget ||
+            canOpenMissingSelectedModule ||
             (!hasContentCandidateForSelectedModule &&
-              (MODULE_OPEN_INTENTS.has(selection.intent ?? "") || !context.widgets.some((widget) => widget.type === selectedModule))))
+              (MODULE_OPEN_INTENTS.has(selection.intent ?? "") || !hasMountedSelectedModule)))
       );
-    const hasMountedSelectedModule = selectedModule ? context.widgets.some((widget) => widget.type === selectedModule) : false;
     const scopedCandidates = this.uniqueTools([
       ...baseTools,
       ...(shouldIncludeAddWidget && addWidgetTool ? [addWidgetTool] : []),
@@ -3325,8 +3616,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       selectedModule &&
       addWidgetTool &&
       sortedCandidates.some((tool) => tool.name === REALTIME_ADD_WIDGET_TOOL_NAME) &&
-      (selection.intent === "open" || canUseLocalAddWidgetFollowUp) &&
-      (isPureOpenWidgetText(input) || canUseLocalAddWidgetFollowUp)
+      (selection.intent === "open" || isPureOpenWidgetText(input)) &&
+      isPureOpenWidgetText(input)
         ? addWidgetTool
         : undefined;
     const legacyCandidate = !candidateMode && selection.name ? sortedCandidates.find((tool) => tool.name === selection.name) : undefined;
@@ -3465,16 +3756,22 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       (call.source === "realtime" && !isLegacyRealtimeCommandPlanTool(call.name));
     const isSelectionResult =
       call.name === REALTIME_PLAN_SELECTION_TOOL_NAME || call.name === REALTIME_TOOL_SELECTION_TOOL_NAME;
-    const nextResponseToolChoice =
-      isSelectionResult ? "required" : call.source === "realtime" && !isLegacyRealtimeCommandPlanTool(call.name) ? "none" : undefined;
     const nextResponseInstructions =
       call.name === REALTIME_TOOL_SELECTION_TOOL_NAME
         ? this.scopedToolSelectionResponseInstructions.get(call.id) ?? createScopedToolCallResponseInstructions(userFacingResult)
+        : result.status === "needs_confirmation"
+          ? REALTIME_CONFIRMATION_RESPONSE_INSTRUCTIONS
         : undefined;
     const nextResponseTools =
       call.name === REALTIME_TOOL_SELECTION_TOOL_NAME
         ? createScopedToolCallResponseTools(userFacingResult, this.currentTools, this.currentContext)
         : undefined;
+    const nextResponseToolChoice =
+      isSelectionResult
+        ? createScopedToolCallResponseToolChoice(userFacingResult, nextResponseTools ?? []) ?? "required"
+        : call.source === "realtime" && !isLegacyRealtimeCommandPlanTool(call.name)
+          ? "none"
+          : undefined;
     const responseMode = this.connectMode === "audio" ? "voice" : "text";
     createRealtimeToolResultEvents(call, userFacingResult, {
       activeResponseId: this.activeResponseId,
@@ -3497,14 +3794,15 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       this.registerPendingScopedToolResponse(commandTraceId, {
         responseMode,
         instructions: nextResponseInstructions,
-        tools: nextResponseTools
+        tools: nextResponseTools,
+        toolChoice: nextResponseToolChoice
       });
     }
   }
 
   private registerPendingScopedToolResponse(
     commandTraceId: string,
-    pending: Pick<PendingScopedToolResponseRetry, "responseMode" | "instructions" | "tools">
+    pending: Pick<PendingScopedToolResponseRetry, "responseMode" | "instructions" | "tools" | "toolChoice">
   ): void {
     if (!pending.tools.length) return;
     this.pendingScopedToolResponses.set(commandTraceId, {
@@ -3515,7 +3813,15 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       type: "realtime.scoped_tool_response.await_function_call",
       status: "started",
       commandTraceId,
-      data: { toolCount: pending.tools.length }
+      data: {
+        toolCount: pending.tools.length,
+        toolChoice:
+          typeof pending.toolChoice === "string"
+            ? pending.toolChoice
+            : isRecord(pending.toolChoice)
+              ? pending.toolChoice.name
+              : undefined
+      }
     });
   }
 
@@ -3524,11 +3830,11 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.pendingScopedToolResponses.delete(commandTraceId);
   }
 
-  private retryPendingScopedToolResponseIfNeeded(commandTraceId?: string): void {
-    if (!commandTraceId || this.activeResponseId) return;
+  private retryPendingScopedToolResponseIfNeeded(commandTraceId?: string): boolean {
+    if (!commandTraceId || this.activeResponseId) return false;
     const pending = this.pendingScopedToolResponses.get(commandTraceId);
-    if (!pending) return;
-    if (pending.retryCount >= 1) {
+    if (!pending) return false;
+    if (pending.retryCount >= REALTIME_SCOPED_TOOL_RESPONSE_MAX_RETRIES) {
       this.pendingScopedToolResponses.delete(commandTraceId);
       this.emitDiagnostic({
         type: "realtime.scoped_tool_response.retry",
@@ -3537,7 +3843,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         errorCode: "REALTIME_SCOPED_TOOL_RESPONSE_NO_FUNCTION_CALL",
         data: { retryCount: pending.retryCount }
       });
-      return;
+      return false;
     }
     const retry: PendingScopedToolResponseRetry = {
       ...pending,
@@ -3552,12 +3858,75 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     });
     this.sendEvent(
       createRealtimeResponseCreateEvent(retry.responseMode, {
-        toolChoice: "required",
+        toolChoice: retry.toolChoice ?? "required",
+        instructions: [
+          "必须立即调用当前候选工具中的一个 function_call。不要回复文字，不要空响应，不要再次调用 assistant.select_tool。",
+          retry.instructions
+        ].join("\n"),
+        tools: retry.tools
+      }),
+      { queueWhenClosed: false, commandTraceId }
+    );
+    return true;
+  }
+
+  private registerPendingSelectorToolResponse(
+    commandTraceId: string,
+    pending: Pick<PendingSelectorToolResponseRetry, "instructions" | "tools" | "toolChoice">
+  ): void {
+    if (!pending.tools.length) return;
+    this.pendingSelectorToolResponses.set(commandTraceId, {
+      ...pending,
+      retryCount: 0
+    });
+    this.emitDiagnostic({
+      type: "realtime.selector_tool_response.await_function_call",
+      status: "started",
+      commandTraceId,
+      data: { toolCount: pending.tools.length }
+    });
+  }
+
+  private clearPendingSelectorToolResponse(commandTraceId?: string): void {
+    if (!commandTraceId) return;
+    this.pendingSelectorToolResponses.delete(commandTraceId);
+  }
+
+  private retryPendingSelectorToolResponseIfNeeded(commandTraceId?: string): boolean {
+    if (!commandTraceId || this.activeResponseId || this.realtimeTraceCommandToolCalls.has(commandTraceId)) return false;
+    const pending = this.pendingSelectorToolResponses.get(commandTraceId);
+    if (!pending) return false;
+    if (pending.retryCount >= 1) {
+      this.pendingSelectorToolResponses.delete(commandTraceId);
+      this.emitDiagnostic({
+        type: "realtime.selector_tool_response.retry",
+        status: "failed",
+        commandTraceId,
+        errorCode: "REALTIME_SELECTOR_TOOL_RESPONSE_NO_FUNCTION_CALL",
+        data: { retryCount: pending.retryCount }
+      });
+      return false;
+    }
+    const retry: PendingSelectorToolResponseRetry = {
+      ...pending,
+      retryCount: pending.retryCount + 1
+    };
+    this.pendingSelectorToolResponses.set(commandTraceId, retry);
+    this.emitDiagnostic({
+      type: "realtime.selector_tool_response.retry",
+      status: "sent",
+      commandTraceId,
+      data: { retryCount: retry.retryCount, toolCount: retry.tools.length }
+    });
+    this.sendEvent(
+      createRealtimeResponseCreateEvent("text", {
+        toolChoice: retry.toolChoice,
         instructions: retry.instructions,
         tools: retry.tools
       }),
       { queueWhenClosed: false, commandTraceId }
     );
+    return true;
   }
 
   private sendTextCommandSelectorUpdate(pendingTextCommand: PendingTextCommandAfterSelectorUpdate): void {
@@ -3702,14 +4071,19 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       text,
       "必须基于 Current User Command 调用 assistant.select_tool。即使不确定最终工具，也要给出 selectedModule、targetHint，并从工具目录选择最相关的候选工具。"
     ].join("\n");
+    const selectorRealtimeTools = [createRealtimeToolSelectionTool(selectorTools, selectorCatalog)];
+    const selectorToolChoice = createRealtimeToolSelectionToolChoice();
     const pendingTextCommand: PendingTextCommandAfterSelectorUpdate = {
       events: createRealtimeTextCommandEvents(text, {
-        toolChoice: "required",
-        tools: [createRealtimeToolSelectionTool(selectorTools, selectorCatalog)],
+        toolChoice: selectorToolChoice,
+        tools: selectorRealtimeTools,
         instructions: selectorInstructions
       }),
       commandTraceId,
-      inputLength: text.length
+      inputLength: text.length,
+      selectorInstructions,
+      selectorTools: selectorRealtimeTools,
+      selectorToolChoice
     };
     this.clearResponseCreateConflictRetry();
     if (this.connectMode === "audio") {
@@ -3734,6 +4108,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.pendingResponseCreateAfterActiveToolResultInstructions = undefined;
     this.pendingResponseCreateAfterActiveToolResultTools = undefined;
     this.pendingResponseCreateAfterActiveToolResultCommandTraceId = undefined;
+    this.pendingSelectorToolResponses.clear();
     this.pendingScopedToolResponses.clear();
     this.pendingScopedToolSelectionResult = null;
     this.pendingPlanSelectionResult = null;
@@ -3991,6 +4366,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (call.name === REALTIME_TOOL_SELECTION_TOOL_NAME) {
       if (commandTraceId) {
         this.realtimeTraceCommandToolCalls.add(commandTraceId);
+        this.clearPendingSelectorToolResponse(commandTraceId);
       }
       this.emitDiagnostic({
         type: "realtime.function_call.selection",
@@ -4003,6 +4379,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       return;
     }
     this.clearPendingScopedToolResponse(commandTraceId);
+    this.clearPendingSelectorToolResponse(commandTraceId);
     const fallbackText =
       (commandTraceId ? this.realtimeTraceUserTranscripts.get(commandTraceId)?.input ?? "" : "") ||
       this.activeScopedToolSelection?.userCommand ||
@@ -4115,14 +4492,30 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       ).forEach((event) => this.sendEvent(event, { queueWhenClosed: false, commandTraceId }));
       return;
     }
+    const safeToolCallDiagnosticData = createSafeRealtimeToolCallDiagnosticData(toolCall);
     this.emitDiagnostic({
       type: "realtime.function_call.tool",
       status: "received",
       operationId: toolCall.id,
       toolName: toolCall.name,
       commandTraceId,
-      data: createSafeRealtimeToolCallDiagnosticData(toolCall)
+      data: safeToolCallDiagnosticData
     });
+    if (
+      toolCall.name === REALTIME_ADD_WIDGET_TOOL_NAME &&
+      safeToolCallDiagnosticData &&
+      typeof safeToolCallDiagnosticData.followUpName === "string" &&
+      safeToolCallDiagnosticData.followUpName
+    ) {
+      this.emitDiagnostic({
+        type: "realtime.function_call.add_widget_follow_up",
+        status: "received",
+        operationId: toolCall.id,
+        toolName: safeToolCallDiagnosticData.followUpName,
+        commandTraceId,
+        data: safeToolCallDiagnosticData
+      });
+    }
     if (commandTraceId) {
       this.realtimeTraceCommandToolCalls.add(commandTraceId);
     }
@@ -4696,12 +5089,18 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       }
     }
 
+    const scopedToolChoiceName = resolveScopedToolChoiceName(
+      selectedTool,
+      selectedModule,
+      this.currentContext,
+      resolvedSelection.scopedTools
+    );
     this.activeScopedToolSelection = {
       selectedModule,
       targetHint: resolvedConcreteSelection.targetHint,
       userCommand: resolvedSelection.input,
       candidateTools: resolvedConcreteSelection.candidateTools,
-      selectedToolName: resolvedSelection.candidateMode ? undefined : selectedTool.name
+      selectedToolName: scopedToolChoiceName
     };
     const update = createScopedRealtimeToolUpdate(
       {
@@ -4741,7 +5140,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         status: "success",
         message: "已选择工具，正在读取所需上下文。",
         data: {
-          selectedTool: selectedTool.name,
+          selectedTool: scopedToolChoiceName,
           candidateTools: resolvedConcreteSelection.candidateTools,
           targetHint: resolvedConcreteSelection.targetHint,
           selectedModule,
@@ -4870,7 +5269,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         selection.requestedToolName === "music.search" || selection.requestedToolName === "music.play"
           ? selection.requestedToolName
           : selection.candidateTools?.find((toolName) => toolName === "music.search" || toolName === "music.play") ?? "";
-      const wantsSearchOnly = isMusicNoPlayRequest(input) || (isMusicSearchRequest(input) && !isMusicExplicitPlayRequest(input));
+      const wantsSearchOnly = isMusicSearchOnlyRequest(input) || (isMusicSearchRequest(input) && !isMusicExplicitPlayRequest(input));
       argumentsWithOptionalFollowUp.followUp = {
         name: realtimeMusicTool || (wantsSearchOnly ? "music.search" : "music.play"),
         arguments: { query: musicQuery }
@@ -4995,6 +5394,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const previousActiveResponseId = this.activeResponseId;
     this.activeResponseId = reduceRealtimeActiveResponseId(this.activeResponseId, event);
     let sentScopedResponseAfterToolResult = false;
+    let sentSelectorRetry = false;
     if (previousActiveResponseId && !this.activeResponseId && this.pendingToolSelectionResetAfterActiveResponse) {
       const pending = this.pendingToolSelectionResetAfterActiveResponse;
       this.pendingToolSelectionResetAfterActiveResponse = null;
@@ -5024,17 +5424,19 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         queueWhenClosed: false,
         commandTraceId: pendingCommandTraceId
       });
-      if (pendingCommandTraceId && instructions && tools?.length && toolChoice === "required") {
+      if (pendingCommandTraceId && instructions && tools?.length && toolChoice && toolChoice !== "none") {
         this.registerPendingScopedToolResponse(pendingCommandTraceId, {
           responseMode,
           instructions,
-          tools
+          tools,
+          toolChoice
         });
         sentScopedResponseAfterToolResult = true;
       }
     }
     if (event.type === "response.done" && !sentScopedResponseAfterToolResult) {
       this.retryPendingScopedToolResponseIfNeeded(commandTraceId);
+      sentSelectorRetry = this.retryPendingSelectorToolResponseIfNeeded(commandTraceId);
     }
     if (event.type === "session.created") {
       this.clearSessionUpdateTimeout();
@@ -5091,6 +5493,11 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         for (const pendingEvent of pendingTextCommand.events) {
           this.sendEvent(pendingEvent, { queueWhenClosed: false, commandTraceId: pendingTextCommand.commandTraceId });
         }
+        this.registerPendingSelectorToolResponse(pendingTextCommand.commandTraceId, {
+          instructions: pendingTextCommand.selectorInstructions,
+          tools: pendingTextCommand.selectorTools,
+          toolChoice: pendingTextCommand.selectorToolChoice
+        });
       }
       return;
     }
@@ -5131,7 +5538,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
           });
         }
       }
-      this.handleUnhandledRealtimeUserTranscript(commandTraceId);
+      if (!sentSelectorRetry) {
+        this.handleUnhandledRealtimeUserTranscript(commandTraceId);
+      }
     }
     this.clearFinishedRealtimeEventTrace(event);
   }
