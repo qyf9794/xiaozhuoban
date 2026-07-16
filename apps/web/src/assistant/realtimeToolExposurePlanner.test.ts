@@ -14,6 +14,7 @@ function tool(partial: Omit<AssistantToolSpec, "description" | "parameters"> & P
 
 const tools: AssistantToolSpec[] = [
   tool({ name: "app.sidebar.set", scope: "desktop", examples: ["隐藏侧边栏"] }),
+  tool({ name: "app.ai_dialog.open", scope: "desktop", examples: ["新建 AI 小工具"] }),
   tool({ name: "app.wallpaper.pick", scope: "desktop", examples: ["更换壁纸"] }),
   tool({ name: "assistant.get_desktop_state", scope: "desktop", examples: ["桌面上有多少个工具"] }),
   tool({ name: "board.add_widget", scope: "desktop", examples: ["打开音乐播放器", "打开天气"] }),
@@ -84,6 +85,16 @@ function context(overrides: Partial<CompactAssistantContext> = {}): CompactAssis
 }
 
 describe("RealtimeToolExposurePlanner", () => {
+  it("only exposes the AI dialog for explicit AI creation intent", () => {
+    const sidebarPlan = buildRealtimeToolExposurePlan("显示侧边栏", context(), tools);
+    const aiPlan = buildRealtimeToolExposurePlan("帮我新建一个 AI 小工具", context(), tools);
+
+    expect(sidebarPlan.exposedTools.map((item) => item.name)).toContain("app.sidebar.set");
+    expect(sidebarPlan.exposedTools.map((item) => item.name)).not.toContain("app.ai_dialog.open");
+    expect(aiPlan.exposedTools.map((item) => item.name)).toContain("app.ai_dialog.open");
+    expect(aiPlan.exposedTools.map((item) => item.name)).not.toContain("app.sidebar.set");
+  });
+
   it("exposes the focused music tools and related window tools for a music request", () => {
     const plan = buildRealtimeToolExposurePlan("我想听王菲的歌", context(), tools);
 

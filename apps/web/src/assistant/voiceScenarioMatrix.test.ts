@@ -204,7 +204,8 @@ function createScenarioHarness(scenario: Scenario) {
     },
     openAiDialog: () => {
       shell.aiDialogOpened += 1;
-    }
+    },
+    openWallpaperPicker: () => {}
   })) {
     registry.register(action);
   }
@@ -376,6 +377,7 @@ function generatedScenarios(): Scenario[] {
     simpleScenario("app-settings-005", "打开小桌板设置", "app.settings.open"),
     simpleScenario("app-palette-006", "打开搜索命令面板", "app.command_palette.open"),
     simpleScenario("app-ai-dialog-007", "我要新建一个 AI 小工具", "app.ai_dialog.open"),
+    simpleScenario("app-wallpaper-007b", "更换桌面壁纸", "app.wallpaper.pick"),
     simpleScenario("board-align-008", "整理一下桌面所有小工具", "board.auto_align", {}, { autoConfirm: true, expectedStatus: "success" }),
     simpleScenario("board-create-009", "新开一个学习桌板", "board.create", { name: "学习桌板" }),
     simpleScenario("board-rename-010", "把当前桌板改名叫夜间工作", "board.rename", { boardId: "board_1", name: "夜间工作" }),

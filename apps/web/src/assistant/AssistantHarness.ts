@@ -1810,7 +1810,15 @@ export class AssistantHarness {
 
     const responses: AssistantHarnessResponse[] = [];
     const executor = new CommandExecutor({
-      execute: (call, command) => this.executeCall(call, command.risk),
+      execute: (call, command) =>
+        this.executeCall(
+          {
+            ...call,
+            transcript: validation.plan.sourceText || this.lastDiagnostics?.rawInput || call.transcript,
+            commandTraceId: call.commandTraceId ?? this.lastDiagnostics?.commandTraceId
+          },
+          command.risk
+        ),
       getConcurrencyKey: (command) => this.options.registry.get(command.tool)?.concurrencyKey,
       transformCommand: (command, completed) => this.rewriteCommandFromCompletedAdds(command, completed),
       onEvent: (event) => {
@@ -2447,6 +2455,9 @@ export class AssistantHarness {
     const context: Partial<AssistantActionContext> = {
       now: this.options.now,
       operationId: call.id,
+      commandTraceId: call.commandTraceId ?? this.lastDiagnostics?.commandTraceId,
+      source: call.source,
+      transcript: call.transcript ?? this.lastDiagnostics?.rawInput,
       target,
       signal: controller.signal
     };

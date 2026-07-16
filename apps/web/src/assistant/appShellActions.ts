@@ -10,6 +10,13 @@ type CommandPaletteOpenArgs = { query?: string };
 type AiDialogOpenArgs = { prompt?: string };
 type EmptyArgs = Record<string, never>;
 
+export type AiDialogOpenMetadata = {
+  source: "tool";
+  commandTraceId: string;
+  operationId?: string;
+  userCommand?: string;
+};
+
 export interface AppShellActionBridge {
   setSidebarOpen?: (open: boolean) => Promise<void> | void;
   getSidebarOpen?: () => boolean;
@@ -17,7 +24,7 @@ export interface AppShellActionBridge {
   getFullscreen?: () => boolean;
   openSettings?: () => Promise<void> | void;
   openCommandPalette?: (query?: string) => Promise<void> | void;
-  openAiDialog?: (prompt?: string) => Promise<void> | void;
+  openAiDialog?: (prompt?: string, metadata?: AiDialogOpenMetadata) => Promise<void> | void;
   openWallpaperPicker?: () => Promise<void> | void;
 }
 
@@ -53,6 +60,10 @@ function success(message: string, data?: unknown): AssistantToolResult {
 
 function failed(message: string, errorCode: string): AssistantToolResult {
   return { status: "failed", message, errorCode };
+}
+
+export function hasExplicitAiDialogIntent(input: string): boolean {
+  return /(?:AI\s*(?:小工具|组件|工具|生成)|(?:新建|创建|生成|做|制作|添加|打开).{0,8}(?:AI\s*)?(?:小工具|组件|新工具)|(?:小工具|组件|新工具).{0,8}(?:新建|创建|生成|做|制作))/i.test(input);
 }
 
 function defineAction<TArgs>(action: AssistantAction<TArgs>): AssistantAction<TArgs> {
@@ -157,10 +168,21 @@ export function createAppShellActions(bridge: AppShellActionBridge): Array<Assis
         concurrencyKey: "app.shell",
         examples: ["打开 AI 生成", "新建 AI 小工具"]
       },
-      async execute(args) {
+      async execute(args, context) {
         if (!bridge.openAiDialog) return failed("当前环境还不能打开 AI 生成", "APP_AI_DIALOG_UNAVAILABLE");
         const prompt = args.prompt?.trim() || undefined;
-        await bridge.openAiDialog(prompt);
+        const userCommand = context.transcript?.trim() || "";
+        const hasTrustedLocalIntent = context.source === "shortcut";
+        if (!hasTrustedLocalIntent && !hasExplicitAiDialogIntent(userCommand || prompt || "")) {
+          return failed("只有明确要求创建 AI 小工具时才能打开 AI 生成", "APP_AI_DIALOG_EXPLICIT_INTENT_REQUIRED");
+        }
+        const commandTraceId = context.commandTraceId ?? context.operationId ?? `tool_ai_dialog_${Date.now()}`;
+        await bridge.openAiDialog(prompt, {
+          source: "tool",
+          commandTraceId,
+          operationId: context.operationId,
+          userCommand: userCommand || undefined
+        });
         return success("已打开 AI 生成", prompt ? { prompt } : undefined);
       }
     }),

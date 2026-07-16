@@ -61,6 +61,7 @@ export interface AssistantToolCall<TArgs = unknown> {
   arguments: TArgs;
   source: AssistantToolSource;
   transcript?: string;
+  commandTraceId?: string;
 }
 
 export interface ResolvedWidgetTarget {
@@ -101,6 +102,9 @@ export interface AssistantToolResult<TData = unknown> {
 export interface AssistantActionContext {
   now: () => string;
   operationId?: string;
+  commandTraceId?: string;
+  source?: AssistantToolSource;
+  transcript?: string;
   target?: ResolvedWidgetTarget;
   signal?: AbortSignal;
 }
@@ -355,6 +359,9 @@ export class ActionRegistry {
       return (await action.execute(parsed.data, {
         now: context.now ?? defaultNow,
         operationId: context.operationId,
+        commandTraceId: context.commandTraceId ?? call.commandTraceId,
+        source: context.source ?? call.source,
+        transcript: context.transcript ?? call.transcript,
         target: context.target,
         signal: context.signal
       })) as AssistantToolResult<TData>;

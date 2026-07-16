@@ -19,6 +19,13 @@ import { useWallpaperUpload } from "./hooks/useWallpaperUpload";
 
 const E2E_AUTH_BYPASS = import.meta.env.VITE_XIAOZHUOBAN_E2E_AUTH_BYPASS === "true";
 
+function createUiCommandTraceId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `ui_ai_dialog_${crypto.randomUUID()}`;
+  }
+  return `ui_ai_dialog_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function App() {
   const {
     ready,
@@ -243,6 +250,13 @@ export function App() {
               onImportBackup={openBackupImporter}
               onAddWidget={(definitionId) => void addWidgetInstance(definitionId, { mobileMode: isMobileMode })}
               onOpenAiDialog={() => {
+                recordDiagnostic({
+                  type: "ai_dialog.open",
+                  status: "success",
+                  source: "user_click",
+                  commandTraceId: createUiCommandTraceId(),
+                  data: { trigger: "toolbar" }
+                });
                 setAiDialogInitialPrompt("");
                 setAiDialogOpen(true);
               }}

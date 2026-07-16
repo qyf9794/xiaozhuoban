@@ -4601,11 +4601,16 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         data: createSafeRealtimeToolCallDiagnosticData(missingWidgetBoundCall)
       });
     }
-    const toolCall = completeRealtimeToolArguments(
+    const completedToolCall = completeRealtimeToolArguments(
       bindWindowToolTargetForCall(missingWidgetBoundCall, this.currentContext, this.currentTools, realtimeTargetHint),
       this.currentContext,
       fallbackText
     );
+    const toolCall: AssistantToolCall = {
+      ...completedToolCall,
+      transcript: completedToolCall.transcript || fallbackText || undefined,
+      commandTraceId: executionTraceId
+    };
     this.activeScopedToolSelection = null;
     if (sanitized.removedKeys.length) {
       this.emitDiagnostic({

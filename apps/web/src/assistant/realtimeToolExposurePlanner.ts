@@ -360,7 +360,6 @@ function scoreTool(
   }
 
   const globallyRelevant =
-    (moduleType === "app" && /(侧边栏|左边栏|侧栏|全屏|设置|搜索|命令面板|小桌板|AI 小工具|新工具)/.test(input)) ||
     (moduleType === "assistant" && /(告诉我|回复|解释|记录|诊断|错误|失败|trace|不要忘记|不要重复回复|桌面|桌板|小工具|当前工具|状态|有多少|几个工具|打开了哪些|频道目录|当前电视)/.test(input)) ||
     (moduleType === "board" && /(桌面|桌板|整理|排列|对齐|新桌板|切换桌板|工作台|重命名|改名|删除桌板)/.test(input));
   if (globallyRelevant) {

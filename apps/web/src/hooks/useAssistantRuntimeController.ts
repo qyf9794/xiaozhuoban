@@ -19,6 +19,7 @@ import {
 } from "../assistant/assistantOperationStatus";
 import { getAssistantOutboxStatus, retryAssistantOutbox } from "../assistant/assistantOutbox";
 import type { RealtimeConnectionStatus } from "../assistant/openaiRealtimeAdapter";
+import type { AiDialogOpenMetadata } from "../assistant/appShellActions";
 import { WidgetCapabilityBridge } from "../assistant/widgetCapabilityBridge";
 import { useAuthStore } from "../auth/authStore";
 import type { VoiceAssistantOperationStatus } from "../components/VoiceAssistantDock";
@@ -66,7 +67,7 @@ function readRealtimeHighAccuracyMode(): boolean {
 
 interface UseAssistantRuntimeControllerOptions {
   fullscreen: boolean;
-  onOpenAiDialog: (prompt?: string) => void;
+  onOpenAiDialog: (prompt?: string, metadata?: AiDialogOpenMetadata) => void;
   onOpenCommandPalette: (query?: string) => void;
   onOpenSettings: () => void;
   onOpenWallpaperPicker: () => void;
@@ -185,7 +186,18 @@ export function useAssistantRuntimeController({
           },
           openSettings: onOpenSettings,
           openCommandPalette: onOpenCommandPalette,
-          openAiDialog: onOpenAiDialog,
+          openAiDialog: (prompt, metadata) => {
+            const commandTraceId = metadata?.commandTraceId ?? `tool_ai_dialog_${Date.now()}`;
+            recordDiagnostic({
+              type: "ai_dialog.open",
+              status: "success",
+              source: metadata?.source ?? "tool",
+              commandTraceId,
+              operationId: metadata?.operationId,
+              data: { trigger: "assistant_tool", userCommand: metadata?.userCommand }
+            });
+            onOpenAiDialog(prompt, metadata);
+          },
           openWallpaperPicker: onOpenWallpaperPicker
         },
         adapterOptions: {
