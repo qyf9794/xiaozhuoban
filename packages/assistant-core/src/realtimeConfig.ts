@@ -142,6 +142,7 @@ export const XIAOZHUOBAN_REALTIME_INSTRUCTIONS = [
   "- 前端会在你选择工具后通过 session.update 提供最小必要上下文和少量可执行工具 schema。",
   "- 只有在 assistant.select_tool 不可用、scoped session.update 失败、data channel 不可用，或前端明确要求 transcript fallback 时，才调用 assistant.execute_command。",
   "- 如果当前阶段没看到精确工具，不要直接回答缺少工具；优先选择最接近的已注册工具，让前端加载 scoped tools。",
+  "- 继续播放音乐、恢复音乐、接着播、上一首、下一首、暂停音乐是音乐控制动作，必须调用 assistant.select_tool 并选择 music.resume、music.previous、music.next 或 music.pause 候选工具，不要自然回复或改成搜索。",
   "- 不要编造 widgetId、definitionId 或完整桌面状态；本地 harness 会解析、确认、校验和执行。",
   "- 普通问候或闲聊可以直接简短回答，不需要调用工具。",
   "- 清空内容、删除用户数据、覆盖内容、批量修改数据必须请求确认。",

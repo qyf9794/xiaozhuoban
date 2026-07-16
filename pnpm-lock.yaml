@@ -173,8 +173,6 @@ importers:
         specifier: workspace:*
         version: link:../domain
 
-  tests/e2e: {}
-
 packages:
 
   '@babel/code-frame@7.29.0':

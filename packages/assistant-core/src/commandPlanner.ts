@@ -60,6 +60,64 @@ function formatSchemaError(error: unknown): string {
   return typeof error.message === "string" ? error.message : "参数校验失败";
 }
 
+function readStringValues(value: unknown): string[] {
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim());
+  return [];
+}
+
+function mergeStringAlias(args: Record<string, unknown>, allowedKeys: string[], targetKey: string, aliases: string[]): Record<string, unknown> {
+  if (!allowedKeys.includes(targetKey)) return args;
+  const values = [args[targetKey], ...aliases.map((key) => args[key])].flatMap(readStringValues);
+  const uniqueValues = Array.from(new Set(values));
+  if (!uniqueValues.length) return args;
+  const next = { ...args, [targetKey]: uniqueValues.join(" ") };
+  for (const alias of aliases) {
+    if (!allowedKeys.includes(alias)) delete next[alias];
+  }
+  return next;
+}
+
+function mergeNumberAlias(args: Record<string, unknown>, allowedKeys: string[], targetKey: string, aliases: string[]): Record<string, unknown> {
+  if (!allowedKeys.includes(targetKey) || typeof args[targetKey] === "number") return args;
+  const alias = aliases.find((key) => typeof args[key] === "number" && Number.isFinite(args[key]));
+  if (!alias) return args;
+  const next = { ...args, [targetKey]: args[alias] };
+  if (!allowedKeys.includes(alias)) delete next[alias];
+  return next;
+}
+
+function normalizePlanCommandArgs(args: Record<string, unknown>, allowedKeys?: string[]): Record<string, unknown> {
+  if (!allowedKeys?.length) return args;
+  let next = args;
+  next = mergeStringAlias(next, allowedKeys, "query", [
+    "q",
+    "keyword",
+    "keywords",
+    "term",
+    "search",
+    "artist",
+    "artistName",
+    "singer",
+    "song",
+    "songName",
+    "songHint",
+    "title",
+    "track",
+    "trackName",
+    "musicHint",
+    "targetHint",
+    "text",
+    "content"
+  ]);
+  next = mergeStringAlias(next, allowedKeys, "channelName", ["channel", "channelTitle", "station", "stationName", "channelHint", "targetHint", "name"]);
+  next = mergeStringAlias(next, allowedKeys, "city", ["location", "cityName", "place", "targetHint", "query"]);
+  next = mergeStringAlias(next, allowedKeys, "text", ["content", "title", "task", "todo", "item", "targetHint", "query"]);
+  next = mergeStringAlias(next, allowedKeys, "content", ["text", "note", "body", "targetHint", "query"]);
+  next = mergeNumberAlias(next, allowedKeys, "resultIndex", ["index", "position", "trackIndex"]);
+  return next;
+}
+
 export function normalizeText(input: string): string {
   return input
     .toLowerCase()
@@ -233,8 +291,9 @@ export class PlanValidator {
       }
 
       const allowedKeys = this.options.allowedArgumentKeysByTool?.[command.tool] ?? spec.argumentKeys;
+      const normalizedArgs = normalizePlanCommandArgs(command.args, allowedKeys);
       if (allowedKeys) {
-        const extraKeys = Object.keys(command.args).filter((key) => !allowedKeys.includes(key));
+        const extraKeys = Object.keys(normalizedArgs).filter((key) => !allowedKeys.includes(key));
         if (extraKeys.length > 0) {
           errors.push({
             commandId: command.id,
@@ -244,7 +303,7 @@ export class PlanValidator {
         }
       }
 
-      const parsed = spec.parameters.safeParse(command.args);
+      const parsed = spec.parameters.safeParse(normalizedArgs);
       if (!parsed.success) {
         errors.push({ commandId: command.id, code: "INVALID_ARGUMENTS", message: formatSchemaError(parsed.error) });
         return command;

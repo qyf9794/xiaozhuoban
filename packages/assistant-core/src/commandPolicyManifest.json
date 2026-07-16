@@ -10,6 +10,7 @@
       "确认、保留 pinned、先确认、确认后执行等是本地 Harness 的执行约束，仍返回对应动作工具。",
       "调整窗口、位置、大小、遮挡、置顶、全屏焦点等界面请求使用 widget.move、widget.resize、widget.bring_to_front、widget.fullscreen_focus 或对应 app 工具。",
       "播放具体歌曲、歌手、专辑使用 music.play；搜索、重新搜索、不要复用上一首、风格探索或不一定播放使用 music.search。",
+      "继续播放音乐、恢复音乐、接着播、上一首、下一首、暂停音乐是音乐控制动作，必须使用 music.resume、music.previous、music.next 或 music.pause，不要自然回复或改成搜索。",
       "音乐登录、授权、试听、完整播放异常使用 music.auth_status；不要把它误判为普通搜索。",
       "保存文本、口令、链接、检查步骤到剪贴板使用 clipboard.add_text；检查音乐登录或试听状态才用 music.auth_status。",
       "关闭电视、音乐或小工具窗口使用 widget.remove；暂停电视直播或暂停歌曲才使用 pause 工具。",

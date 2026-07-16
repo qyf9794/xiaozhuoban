@@ -398,7 +398,8 @@ describe("Realtime text tool call fallback", () => {
     expect(update?.type).toBe("session.update");
     expect(serialized).toContain("definitionId");
     expect(serialized).toContain("wd_music");
-    expect(serialized).toContain("不要回答缺少打开小工具的方式");
+    expect(serialized).toContain("如果用户只是打开、添加、显示某个小工具");
+    expect(serialized).toContain("优先调用对应内容工具");
     expect(serialized).toContain("默认打开 dialClock");
   });
 

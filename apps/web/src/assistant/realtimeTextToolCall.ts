@@ -711,6 +711,35 @@ function getExecutableToolsForCandidates(
   return shouldAddWidget ? [...candidateTools, addWidgetTool] : candidateTools;
 }
 
+function relaxMissingWidgetTargetParameters(parameters: Record<string, unknown>): Record<string, unknown> {
+  const required = Array.isArray(parameters.required)
+    ? parameters.required.filter((item) => item !== "widgetId")
+    : undefined;
+  return {
+    ...parameters,
+    required: required ?? []
+  };
+}
+
+export function serializeScopedAssistantToolForRealtime(
+  tool: AssistantToolSpec,
+  context: CompactAssistantContext
+): RealtimeFunctionTool {
+  const serialized = serializeAssistantToolForRealtime(tool);
+  const shouldRelaxWidgetId = Boolean(
+    tool.requiresTarget &&
+      tool.widgetType &&
+      tool.scope === "widget-detail" &&
+      !context.widgets.some((widget) => widget.type === tool.widgetType)
+  );
+  if (!shouldRelaxWidgetId) return serialized;
+  return {
+    ...serialized,
+    description: `${serialized.description} If no widgetId is available for this widget type, omit widgetId; the local Harness will bind or create the missing widget.`,
+    parameters: relaxMissingWidgetTargetParameters(serialized.parameters)
+  };
+}
+
 export function createScopedToolCallPayload(
   request: RealtimeTextToolCallRequest,
   selection: RealtimeTextToolSelection,
@@ -783,7 +812,7 @@ export function createScopedToolCallPayload(
           .join("\n")
       }
     ],
-    tools: executableTools.map((candidate) => serializeAssistantToolForRealtime(candidate)),
+    tools: executableTools.map((candidate) => serializeScopedAssistantToolForRealtime(candidate, scopedContext)),
     tool_choice: executableTools.length ? "auto" : "none",
     parallel_tool_calls: true,
     max_output_tokens: 120
@@ -821,13 +850,16 @@ export function createScopedRealtimeToolInstructions(
     "复杂命令可以调用多个已提供工具。需要顺序时按原始命令顺序依次调用；互不依赖时可以并发调用。",
     "只调用候选工具列表中实际提供的工具；不要调用未提供的工具，不要访问未提供的桌面上下文。",
     candidateNames.some((name) => name.startsWith("music."))
-      ? "音乐工具选择规则：用户说播放、来一首、来个、想听具体歌手/歌曲时选择 music.play；用户说搜索、找、搜且明确不播放时选择 music.search；恢复、继续、接着播选择 music.resume；上一首选择 music.previous；下一首选择 music.next。"
+      ? "音乐工具选择规则：用户说播放、放一首、来一首、来个、想听、听点，且命令里有具体歌手、乐队、歌曲名、专辑名或英文曲名时，必须选择 music.play，并把原始歌手/歌曲写入 query；即使需要先搜索试听源，也不要改成 music.search。只有用户明确说搜索、找、搜、推荐，或明确说不一定播放、暂时不播放、先不播放、先不要播放、别播放时，才选择 music.search，绝不要再调用 music.play。恢复、继续、接着播、继续刚才的音乐选择 music.resume；上一首选择 music.previous；下一首选择 music.next。"
       : "",
     candidateNames.some((name) => name.startsWith("tv."))
       ? "电视工具选择规则：用户说播放、看、想看、打开电视播放、只说播放电视时调用 tv.play；用户明确说切到、换到、切换到某频道且不是播放请求时才调用 tv.select_channel；原始命令同时包含“全屏”且工具列表提供 tv.fullscreen 时，必须在播放/切台后继续调用 tv.fullscreen。"
       : "",
     candidateNames.includes("board.add_widget")
-      ? "如果已选工具是 board.add_widget，必须从 availableDefinitions 选择与用户命令最匹配的小工具，并用对应 definitionId 调用 board.add_widget；不要回答缺少打开小工具的方式。"
+      ? "如果用户只是打开、添加、显示某个小工具，才调用 board.add_widget，并从 availableDefinitions 选择匹配 definitionId。"
+      : "",
+    candidateNames.includes("board.add_widget")
+      ? "如果原始命令包含播放、搜索、写入、设置、切换、查询等内容动作，优先调用对应内容工具；即使当前缺少小工具实例，也不要把最终工具改成 board.add_widget，Harness 会负责绑定或创建缺失实例。"
       : "",
     candidateNames.includes("board.add_widget")
       ? "用户只说“时钟”时默认打开 dialClock/表盘时钟；只有明确说“世界时钟、世界时间、时区、东京时间、纽约时间”等才打开 worldClock。"
@@ -864,7 +896,7 @@ export function createScopedRealtimeToolUpdate(
       type: "realtime",
       instructions: createScopedRealtimeToolInstructions(scopedContext, selection, request.input, request.moduleContext),
       audio: createRealtimeSessionAudioConfig(),
-      tools: executableTools.map((candidate) => serializeAssistantToolForRealtime(candidate)),
+      tools: executableTools.map((candidate) => serializeScopedAssistantToolForRealtime(candidate, scopedContext)),
       tool_choice: executableTools.length ? "required" : "none",
       parallel_tool_calls: true
     }

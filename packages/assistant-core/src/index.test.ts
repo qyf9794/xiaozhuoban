@@ -433,10 +433,22 @@ describe("WidgetAssistantRegistry and Command Planner", () => {
   it("validates command plans before execution", () => {
     const registry = new WidgetAssistantRegistry();
     registry.register(createWeatherModule());
+    const musicPlaySpec = {
+      name: "music.play",
+      description: "Play music",
+      parameters: createStrictObjectSchema({
+        widgetId: { type: "string", required: true },
+        query: { type: "string" }
+      }),
+      argumentKeys: ["widgetId", "query"],
+      scope: "widget-detail" as const,
+      widgetType: "music",
+      requiresTarget: true
+    };
     const validator = new PlanValidator({
-      tools: [weatherAction.spec],
+      tools: [weatherAction.spec, musicPlaySpec],
       moduleRegistry: registry,
-      allowedArgumentKeysByTool: { "weather.set_city": ["widgetId", "city"] }
+      allowedArgumentKeysByTool: { "weather.set_city": ["widgetId", "city"], "music.play": ["widgetId", "query"] }
     });
 
     const valid = createCommandPlanFromToolCalls("北京天气", [
@@ -455,6 +467,32 @@ describe("WidgetAssistantRegistry and Command Planner", () => {
     ]);
     extra.commands[0]!.module = "weather";
     expect(validator.validate(extra).errors[0]).toMatchObject({ code: "EXTRA_ARGUMENTS" });
+
+    const aliasedMusic = createCommandPlanFromToolCalls("听点 Nick Drake 的 Pink Moon", [
+      {
+        id: "call_music",
+        name: "music.play",
+        arguments: { widgetId: "wi_music", artist: "Nick Drake", songHint: "Pink Moon" },
+        source: "text"
+      }
+    ]);
+    aliasedMusic.commands[0]!.module = "music";
+    const normalizedMusic = validator.validate(aliasedMusic);
+    expect(normalizedMusic.ok).toBe(true);
+    expect(normalizedMusic.plan.commands[0]?.args).toEqual({ widgetId: "wi_music", query: "Nick Drake Pink Moon" });
+
+    const textAliasedMusic = createCommandPlanFromToolCalls("搜索 Nick Drake", [
+      {
+        id: "call_music_search",
+        name: "music.play",
+        arguments: { widgetId: "wi_music", text: "Nick Drake Pink Moon" },
+        source: "text"
+      }
+    ]);
+    textAliasedMusic.commands[0]!.module = "music";
+    const normalizedTextMusic = validator.validate(textAliasedMusic);
+    expect(normalizedTextMusic.ok).toBe(true);
+    expect(normalizedTextMusic.plan.commands[0]?.args).toEqual({ widgetId: "wi_music", query: "Nick Drake Pink Moon" });
 
     const unknown = createCommandPlanFromToolCalls("未知", [
       { id: "call_3", name: "weather.delete_everything", arguments: {}, source: "text" }

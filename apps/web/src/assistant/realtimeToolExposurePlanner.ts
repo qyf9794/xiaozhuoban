@@ -50,6 +50,12 @@ const MARKET_WORDS = /(行情|股票|股价|个股|指数|纳指|纳斯达克|NA
 const MARKET_TICKER_QUERY_PATTERN = /(?:(?:查|查询|搜索|搜).{0,8}\b[A-Z]{1,6}\b|(?:看|打开).{0,8}\b[A-Z]{1,6}\b.{0,8}(?:股票|股价|行情))/i;
 const TV_CHANNEL_CODE_PATTERN = /\b(?:BBC|CNN|CNA|HBO|CCTV|CGTN|NHK|TVB|Bloomberg)\b/i;
 const TV_CHANNEL_QUERY_PATTERN = /(?:看|打开|播放|切到|换到|想看|我要看|我想看).{0,12}\b(?:BBC|CNN|CNA|HBO|CCTV|CGTN|NHK|TVB|Bloomberg)\b/i;
+const MUSIC_NO_PLAY_WORDS = /不一定播放|暂时不播放|先不播放|先不要播放|不要播放|别播放|不用播放|先别播|先不要播|先不播|不要马上播放/;
+const MUSIC_PLAY_WORDS = /播放(?!器)|放一下|放一首|来一首|来个|来点|我想听|想听|我要听|给我一首|听一下|听一首|听点/i;
+const MUSIC_SEARCH_WORDS = /搜|搜索|查找|找一点|找一下|找些|找首|找歌|找音乐|推荐|看看有没有|不一定播放|暂时不播放|先不播放|先不要播放|轻松|放松|经典|白噪音|自然声|睡前|巴洛克|羽管键琴|爵士|电子|古典|民谣|原声|OST|ambient|soundtrack|playlist/i;
+const MUSIC_NEXT_WORDS = /下一首|下首|换下一首|切下一首|跳到下一首|下一首歌|下一个|换一首/;
+const MUSIC_PREVIOUS_WORDS = /上一首|前一首|切回上一首|回到上一首|上一首歌|上一个/;
+const MUSIC_MEDIA_WORDS = /音乐|歌曲|歌|播放器|歌手|曲子|曲目|歌单|专辑|试听|Apple Music|MusicKit|钢琴|爵士|电子|古典|民谣|摇滚|原声|OST|ambient|soundtrack|playlist|track|album|artist|band|DJ/i;
 
 const MODULE_INTENT_PATTERNS: Record<string, RegExp> = {
   calculator: /(计算器|算一下|计算.*多少|[一二三四五六七八九十百千万\d]+\s*(加|减|乘|除)|十二乘十二)/,
@@ -60,7 +66,7 @@ const MODULE_INTENT_PATTERNS: Record<string, RegExp> = {
   headline: /(新闻|头条|刚刚有什么)/,
   market: /(行情|股票|股价|个股|指数|纳指|纳斯达克|NASDAQ|NDX|恒生|上证|美股|A股|港股|(?:(?:查|查询|搜索|搜).{0,8}\b[A-Z]{1,6}\b|(?:看|打开).{0,8}\b[A-Z]{1,6}\b.{0,8}(?:股票|股价|行情)))/i,
   messageBoard: /(留言板|留言|回复收到|发一句)/,
-  music: /(音乐|歌曲|歌|播放器|王菲|陈奕迅|周杰伦|红豆|十年|轻松|放松|睡前|白噪音|自然声|钢琴|歌单|试听|Apple Music|token|登录)/,
+  music: /(音乐|歌曲|歌|播放器|歌手|曲子|曲目|歌单|专辑|试听|Apple Music|MusicKit|播放(?!器).{0,40}|(?:想听|我要听|我想听|来一首|来个|来点|放一首|听点).{0,40}|搜.{0,30}(?:音乐|歌|歌曲|歌手|曲目|专辑|playlist|track|album)|找.{0,30}(?:音乐|歌|歌曲|歌手|曲目|专辑|playlist|track|album)|轻松|放松|睡前|白噪音|自然声|钢琴|巴洛克|羽管键琴|爵士|电子|古典|民谣|摇滚|原声|OST|ambient|soundtrack|playlist|track|album|artist|band|DJ|token|登录)/i,
   note: /(便签|笔记|记下|会议纪要|记一下|写下|写上|追加|备忘)/,
   recorder: /(录音|录一段|刚才录音|回放)/,
   todo: /(待办|任务|清单|提醒|叫我|复盘|买牛奶|买咖啡豆|订酒店|提交报告|勾掉|完成)/,
@@ -105,12 +111,12 @@ const TOOL_INTENT_PATTERNS: Record<string, RegExp> = {
   "messageBoard.clear_draft": /(清空留言|清理留言|留言输入)/,
   "messageBoard.send": /(留言板|留言|回复收到|发一句|发送消息|发送测试|我在测试)/,
   "music.auth_status": /(token|登录|已登录|账号|入口|试听|试听版|MusicKit|Apple Music|可用)/i,
-  "music.next": /(下一首)/,
+  "music.next": MUSIC_NEXT_WORDS,
   "music.pause": /(暂停.*(音乐|歌)|音乐先暂停)/,
-  "music.play": /(播放|来一首|来个|我想听|给我一首|王菲|陈奕迅|周杰伦|孙燕姿|Beyond|李宗盛|Taylor Swift|Adele|Coldplay|王力宏|梁静茹|钢琴|英文歌|红豆|十年|遇见|海阔天空|山丘|Lover|Hello|Yellow|勇气)/i,
-  "music.previous": /(上一首)/,
-  "music.resume": /(继续.*(歌|音乐|播放)|继续刚才的歌)/,
-  "music.search": /(搜|搜索|找|轻松|放松|经典|白噪音|自然声|睡前)/,
+  "music.play": new RegExp(`(?!(?:.*${MUSIC_NO_PLAY_WORDS.source}))${MUSIC_PLAY_WORDS.source}`, "i"),
+  "music.previous": MUSIC_PREVIOUS_WORDS,
+  "music.resume": /(继续.*(歌|音乐|播放)|恢复.*(歌|音乐|播放)|接着.*(歌|音乐|播放)|继续刚才的歌|继续刚才的音乐|恢复刚才的音乐)/,
+  "music.search": MUSIC_SEARCH_WORDS,
   "note.clear": /(清空便签|清除便签)/,
   "note.write": /(便签|记下|会议纪要|记一下|备忘|写下|写上|追加|记录)/,
   "recorder.pause": /(暂停录音|暂停.*回放)/,

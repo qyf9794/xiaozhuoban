@@ -21,5 +21,22 @@
     "typescript": "^5.7.2",
     "vitest": "^2.1.8",
     "ws": "^8.21.0"
-  }
+  },
+  "description": "一站式桌面小工具（云端主数据版）",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qyf9794/xiaozhuoban.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/qyf9794/xiaozhuoban/issues"
+  },
+  "homepage": "https://github.com/qyf9794/xiaozhuoban#readme"
 }

@@ -22,6 +22,9 @@ const tools: AssistantToolSpec[] = [
   tool({ name: "music.play", scope: "widget-detail", widgetType: "music", requiresTarget: true, argumentKeys: ["query"], examples: ["播放王菲的红豆"] }),
   tool({ name: "music.search", scope: "widget-detail", widgetType: "music", requiresTarget: true, argumentKeys: ["query"], examples: ["搜一点轻松的音乐"] }),
   tool({ name: "music.pause", scope: "widget-detail", widgetType: "music", requiresTarget: true, examples: ["暂停音乐"] }),
+  tool({ name: "music.resume", scope: "widget-detail", widgetType: "music", requiresTarget: true, examples: ["继续刚才的音乐"] }),
+  tool({ name: "music.next", scope: "widget-detail", widgetType: "music", requiresTarget: true, examples: ["下一首"] }),
+  tool({ name: "music.previous", scope: "widget-detail", widgetType: "music", requiresTarget: true, examples: ["上一首"] }),
   tool({ name: "countdown.set", scope: "widget-detail", widgetType: "countdown", requiresTarget: true, argumentKeys: ["totalSeconds"], examples: ["倒计时 5 分钟"] }),
   tool({ name: "tv.play", scope: "widget-detail", widgetType: "tv", requiresTarget: true, argumentKeys: ["channelName"], examples: ["我想看 BBC"] }),
   tool({ name: "tv.select_channel", scope: "widget-detail", widgetType: "tv", requiresTarget: true, argumentKeys: ["channelName"], examples: ["切到 BBC"] }),
@@ -177,6 +180,55 @@ describe("RealtimeToolExposurePlanner", () => {
 
     expect(plan.selectedModules).toContain("music");
     expect(plan.exposedTools.map((item) => item.name)).toEqual(expect.arrayContaining(["music.play", "music.search"]));
+  });
+
+  it("exposes music play for uncommon artist and track playback commands", () => {
+    const plan = buildRealtimeToolExposurePlan("播放 Nils Frahm 的 Says", context(), tools);
+
+    expect(plan.selectedModules).toContain("music");
+    expect(plan.exposedTools.map((item) => item.name)).toEqual(expect.arrayContaining(["music.play", "music.search"]));
+  });
+
+  it("exposes music play for arbitrary artist and track names instead of relying on a fixed singer list", () => {
+    const commands = ["播放 Tinariwen 的 Sastanaqqam", "来一首 Ryuichi Sakamoto 的 Merry Christmas Mr Lawrence", "听点 Anouar Brahem 的 Astrakan Cafe"];
+
+    for (const command of commands) {
+      const plan = buildRealtimeToolExposurePlan(command, context(), tools);
+      expect(plan.selectedModules, command).toContain("music");
+      expect(plan.exposedTools.map((item) => item.name), command).toContain("music.play");
+    }
+  });
+
+  it("exposes music search for explicit no-play discovery commands", () => {
+    const plan = buildRealtimeToolExposurePlan("找一点巴洛克羽管键琴，暂时不播放", context(), tools);
+
+    expect(plan.selectedModules).toContain("music");
+    expect(plan.exposedTools.map((item) => item.name)).toContain("music.search");
+  });
+
+  it("exposes music search for genre discovery commands without fixed artist names", () => {
+    const plan = buildRealtimeToolExposurePlan("找一点北欧爵士，先不要播放", context(), tools);
+
+    expect(plan.selectedModules).toContain("music");
+    expect(plan.exposedTools.map((item) => item.name)).toContain("music.search");
+    expect(plan.exposedTools.map((item) => item.name)).toContain("music.play");
+  });
+
+  it("exposes music resume for continue-current-music commands", () => {
+    const plan = buildRealtimeToolExposurePlan("继续刚才的音乐", context(), tools);
+
+    expect(plan.selectedModules).toContain("music");
+    expect(plan.exposedTools.map((item) => item.name)).toContain("music.resume");
+  });
+
+  it("exposes music transport tools before generic focus for next and previous commands", () => {
+    const nextPlan = buildRealtimeToolExposurePlan("音乐切到下一首", context(), tools);
+    const previousPlan = buildRealtimeToolExposurePlan("回到上一首音乐", context(), tools);
+
+    expect(nextPlan.selectedModules).toContain("music");
+    expect(nextPlan.exposedTools.map((item) => item.name)).toContain("music.next");
+    expect(previousPlan.selectedModules).toContain("music");
+    expect(previousPlan.exposedTools.map((item) => item.name)).toContain("music.previous");
   });
 
   it("exposes TV channel tools for BBC viewing commands", () => {

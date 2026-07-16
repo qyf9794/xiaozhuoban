@@ -290,7 +290,52 @@ const commandCases = [
     id: "080",
     command: "把电视、音乐、待办和便签都打开",
     expect: ["board.add_widget"]
-  }
+  },
+  {
+    id: "081",
+    command: "播放 Tinariwen 的 Sastanaqqam",
+    expect: ["music.play", "music"],
+    expectArgs: [{ tool: "music.play", keys: ["query"], match: "Tinariwen.*Sastanaqqam|Sastanaqqam.*Tinariwen" }]
+  },
+  {
+    id: "082",
+    command: "找一点北欧爵士，先不要播放",
+    expect: ["music.search", "music"],
+    expectArgs: [{ tool: "music.search", keys: ["query"], match: "北欧|爵士|Nordic|jazz|Scandinavian" }]
+  },
+  {
+    id: "083",
+    command: "我想听 Buena Vista Social Club 的 Chan Chan",
+    expect: ["music.play", "music"],
+    expectArgs: [{ tool: "music.play", keys: ["query"], match: "Buena Vista.*Chan Chan|Chan Chan.*Buena Vista" }]
+  },
+  {
+    id: "084",
+    command: "搜索 Aphex Twin 的 Avril 14th，暂时别播放",
+    expect: ["music.search", "music"],
+    expectArgs: [{ tool: "music.search", keys: ["query"], match: "Aphex Twin.*Avril|Avril.*Aphex Twin" }]
+  },
+  {
+    id: "085",
+    command: "来一首 Ryuichi Sakamoto 的 Merry Christmas Mr Lawrence",
+    expect: ["music.play", "music"],
+    expectArgs: [{ tool: "music.play", keys: ["query"], match: "Ryuichi Sakamoto.*Merry Christmas|Merry Christmas.*Ryuichi Sakamoto" }]
+  },
+  {
+    id: "086",
+    command: "播放 Kraftwerk 的 The Model",
+    expect: ["music.play", "music"],
+    expectArgs: [{ tool: "music.play", keys: ["query"], match: "Kraftwerk.*The Model|The Model.*Kraftwerk" }]
+  },
+  {
+    id: "087",
+    command: "听点 Nick Drake 的 Pink Moon",
+    expect: ["music.play", "music"],
+    expectArgs: [{ tool: "music.play", keys: ["query"], match: "Nick Drake.*Pink Moon|Pink Moon.*Nick Drake" }]
+  },
+  { id: "088", command: "暂停音乐", expect: ["music.pause", "music"], requiredTools: ["music.pause"] },
+  { id: "089", command: "接着放刚才的音乐", expect: ["music.resume", "music"], requiredTools: ["music.resume"] },
+  { id: "090", command: "音乐切到下一首", expect: ["music.next", "music"], requiredTools: ["music.next"] }
 ];
 
 function ensureDir(dir) {
@@ -452,19 +497,7 @@ function summarizeRealtimeToolCalls(events) {
         })
         .filter(Boolean);
     });
-  const operationCalls = events
-    .filter((event) => event.type === "assistant.operation" && event.status === "success")
-    .map((event) => {
-      const toolName = eventToolName(event);
-      const operationId = typeof event.operationId === "string" ? event.operationId : "";
-      const args = {};
-      if (/cna/i.test(operationId)) args.channelName = "CNA";
-      if (/bloomberg/i.test(operationId)) args.channelName = "Bloomberg";
-      if (/nhk/i.test(operationId)) args.channelName = "NHK World-Japan";
-      return toolName ? { toolName, args } : null;
-    })
-    .filter(Boolean);
-  return [...directCalls, ...localFollowUps, ...planCalls, ...operationCalls];
+  return [...directCalls, ...localFollowUps, ...planCalls];
 }
 
 function expectedArgsMatched(expectArgs = [], realtimeToolCalls = []) {
@@ -639,6 +672,28 @@ async function main() {
         status: 200,
         contentType: "application/vnd.apple.mpegurl",
         body: seededTvPlaylistM3u
+      });
+    });
+    await page.route("https://itunes.apple.com/search**", async (route) => {
+      const url = new URL(route.request().url());
+      const term = url.searchParams.get("term") || "music";
+      const title = term.replace(/\s+/g, " ").trim() || "Preview Track";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          resultCount: 3,
+          results: [0, 1, 2].map((index) => ({
+            wrapperType: "track",
+            kind: "song",
+            trackId: 910000 + index,
+            trackName: index === 0 ? title : `${title} ${index + 1}`,
+            artistName: title.split(" 的 ")[0] || "Test Artist",
+            collectionName: "Realtime Music Test",
+            previewUrl: `https://example.com/audio/${encodeURIComponent(title)}-${index}.m4a`,
+            artworkUrl100: "https://example.com/artwork.jpg"
+          }))
+        })
       });
     });
 

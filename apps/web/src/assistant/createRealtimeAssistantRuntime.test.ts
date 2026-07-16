@@ -319,6 +319,8 @@ describe("createRealtimeAssistantRuntime", () => {
   it("treats short music listen and open-player transcripts as command-like fallbacks", () => {
     expect(shouldFallbackUnhandledVoiceTranscriptToHarness("我想听王菲的歌")).toBe(true);
     expect(shouldFallbackUnhandledVoiceTranscriptToHarness("我想听王菲")).toBe(true);
+    expect(shouldFallbackUnhandledVoiceTranscriptToHarness("来一首 Ryuichi Sakamoto 的 Merry Christmas Mr Lawrence")).toBe(true);
+    expect(shouldFallbackUnhandledVoiceTranscriptToHarness("找一点北欧爵士，先不要播放")).toBe(true);
     expect(shouldFallbackUnhandledVoiceTranscriptToHarness("打开音乐播放器")).toBe(true);
     expect(shouldFallbackUnhandledVoiceTranscriptToHarness("看苹果股票")).toBe(true);
     expect(shouldFallbackUnhandledVoiceTranscriptToHarness("查腾讯股价")).toBe(true);
