@@ -2212,6 +2212,13 @@ function createScopedToolCallResponseToolChoice(
   return { type: "function", name: encodedName };
 }
 
+function hasMountedWidgetType(context: CompactAssistantContext, widgetType: string): boolean {
+  return (
+    context.widgets.some((widget) => widget.type === widgetType) ||
+    (context.widgetCountsByType?.[widgetType] ?? 0) > 0
+  );
+}
+
 function shouldForceSelectedToolChoiceForScopedSelection(
   selectedTool: AssistantToolSpec,
   selectedModule: string | undefined,
@@ -2219,7 +2226,7 @@ function shouldForceSelectedToolChoiceForScopedSelection(
   scopedTools: AssistantToolSpec[]
 ): boolean {
   if (!selectedModule || !context || selectedTool.scope !== "widget-detail") return true;
-  const hasMountedModule = context.widgets.some((widget) => widget.type === selectedModule);
+  const hasMountedModule = hasMountedWidgetType(context, selectedModule);
   const canAddMissingModule = scopedTools.some((tool) => tool.name === REALTIME_ADD_WIDGET_TOOL_NAME);
   return hasMountedModule || !canAddMissingModule;
 }
@@ -2231,7 +2238,7 @@ function resolveScopedToolChoiceName(
   scopedTools: AssistantToolSpec[]
 ): string | undefined {
   if (!selectedModule || !context || selectedTool.scope !== "widget-detail") return selectedTool.name;
-  const hasMountedModule = context.widgets.some((widget) => widget.type === selectedModule);
+  const hasMountedModule = hasMountedWidgetType(context, selectedModule);
   const canAddMissingModule = scopedTools.some((tool) => tool.name === REALTIME_ADD_WIDGET_TOOL_NAME);
   if (!hasMountedModule && canAddMissingModule) return REALTIME_ADD_WIDGET_TOOL_NAME;
   return shouldForceSelectedToolChoiceForScopedSelection(selectedTool, selectedModule, context, scopedTools) ? selectedTool.name : undefined;
@@ -3407,6 +3414,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         contextVersion: context.contextVersion,
         toolCatalogVersion: context.toolCatalogVersion,
         widgetCount: context.widgets.length,
+        widgetTypes: context.widgets.map((widget) => widget.type),
+        widgetCountsByType: context.widgetCountsByType,
         boardId: context.boardId
       }
     });
@@ -3622,7 +3631,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     }
     if (
       selection.selectedModule === "music" &&
-      selection.name === "music.search" &&
+      (selection.name === "music.search" || selection.candidateTools?.includes("music.search")) &&
       isMusicExplicitPlayRequest(input) &&
       !isMusicSearchOnlyRequest(input) &&
       tools.some((tool) => tool.name === "music.play")
@@ -3676,7 +3685,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
           (tool) => tool.scope === "widget-detail" && this.isToolForSelectionModule(tool, selectedModule)
         )
     );
-    const hasMountedSelectedModule = selectedModule ? context.widgets.some((widget) => widget.type === selectedModule) : false;
+    const hasMountedSelectedModule = selectedModule ? hasMountedWidgetType(context, selectedModule) : false;
     const canOpenMissingSelectedModule = Boolean(
       selectedModule &&
         !hasMountedSelectedModule &&
@@ -3684,7 +3693,11 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         canOpenMissingWidgetForSelectedTool(input, selectedModule, legacySelectedTool.name, selection.intent)
     );
     const baseTools = candidateMode && candidateToolSpecs.length
-      ? candidateToolSpecs.filter((tool) => tool.name !== REALTIME_ADD_WIDGET_TOOL_NAME || pureOpenWidget || !hasContentCandidateForSelectedModule)
+      ? candidateToolSpecs.filter(
+          (tool) =>
+            tool.name !== REALTIME_ADD_WIDGET_TOOL_NAME ||
+            (!hasMountedSelectedModule && (pureOpenWidget || !hasContentCandidateForSelectedModule))
+        )
       : exposurePlan.exposedTools.length
         ? this.uniqueTools([
             ...exposurePlan.exposedTools.filter((tool) => !selectedModule || this.isToolForSelectionModule(tool, selectedModule)),
@@ -3698,6 +3711,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         selectedModule &&
           !GENERIC_SELECTION_MODULES.has(selectedModule) &&
           addWidgetTool &&
+          !hasMountedSelectedModule &&
           context.availableDefinitions?.some((definition) => definition.type === selectedModule) &&
           (pureOpenWidget ||
             canOpenMissingSelectedModule ||
@@ -3722,16 +3736,26 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         (isPureOpenWidgetText(input) ||
           canOpenMissingWidgetForSelectedTool(input, selectedModule, legacySelectedTool?.name, selection.intent))
     );
+    const pureOpenFocusWidget =
+      pureOpenWidget && selectedModule && hasMountedSelectedModule && focusWidgetTool
+        ? focusWidgetTool
+        : undefined;
     const pureOpenAddWidget =
       selectedModule &&
       addWidgetTool &&
+      !hasMountedSelectedModule &&
       sortedCandidates.some((tool) => tool.name === REALTIME_ADD_WIDGET_TOOL_NAME) &&
       (selection.intent === "open" || isPureOpenWidgetText(input)) &&
       isPureOpenWidgetText(input)
         ? addWidgetTool
         : undefined;
     const legacyCandidate = !candidateMode && selection.name ? sortedCandidates.find((tool) => tool.name === selection.name) : undefined;
-    const selectedTool = pureOpenAddWidget ?? legacyCandidate ?? sortedCandidates.find((tool) => tool.name !== REALTIME_ADD_WIDGET_TOOL_NAME) ?? sortedCandidates[0];
+    const selectedTool =
+      pureOpenFocusWidget ??
+      pureOpenAddWidget ??
+      legacyCandidate ??
+      sortedCandidates.find((tool) => tool.name !== REALTIME_ADD_WIDGET_TOOL_NAME) ??
+      sortedCandidates[0];
     if (!selectedTool) {
       return {
         ok: false,
@@ -3741,11 +3765,15 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       };
     }
 
-    const scopedTools = this.uniqueTools([
-      selectedTool,
-      ...sortedCandidates,
-      ...(shouldIncludeAddWidget && addWidgetTool ? [addWidgetTool] : [])
-    ]).slice(0, MAX_SCOPED_SELECTION_TOOLS);
+    const scopedTools = (
+      pureOpenFocusWidget
+        ? [pureOpenFocusWidget]
+        : this.uniqueTools([
+            selectedTool,
+            ...sortedCandidates,
+            ...(shouldIncludeAddWidget && addWidgetTool ? [addWidgetTool] : [])
+          ])
+    ).slice(0, MAX_SCOPED_SELECTION_TOOLS);
 
     return {
       ok: true,

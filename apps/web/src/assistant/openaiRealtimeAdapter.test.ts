@@ -3447,7 +3447,7 @@ describe("OpenAI realtime adapter helpers", () => {
         toolName: "music.play",
         data: expect.objectContaining({
           candidateMode: true,
-          candidateTools: ["music.play", "music.search"],
+          candidateTools: ["music.play", "board.add_widget"],
           selectedModule: "music",
           targetHint: "陈奕迅"
         })
@@ -5613,7 +5613,7 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(JSON.stringify(sent)).not.toContain("local_add_widget_shortcut");
   });
 
-  it("keeps candidate-mode missing-widget music routing in realtime instead of local follow-up execution", async () => {
+  it("keeps candidate-mode missing-widget music playback in realtime instead of local follow-up execution", async () => {
     const calls: unknown[] = [];
     const sent: unknown[] = [];
     const adapter = new OpenAIRealtimeWebRtcAdapter({
@@ -5679,7 +5679,7 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(calls).toEqual([]);
     expect(sent).toEqual([expect.objectContaining({ type: "session.update" })]);
     expect(JSON.stringify(sent)).toContain("music__dot__play");
-    expect(JSON.stringify(sent)).toContain("music__dot__search");
+    expect(JSON.stringify(sent)).not.toContain("music__dot__search");
     expect(JSON.stringify(sent)).not.toContain("local_add_widget_shortcut");
   });
 
@@ -5735,6 +5735,180 @@ describe("OpenAI realtime adapter helpers", () => {
 
     expect(JSON.stringify(sent)).toContain("music__dot__play");
     expect(JSON.stringify(sent)).not.toContain("music__dot__search");
+  });
+
+  it("prioritizes music.play for explicit playback when candidate selection omits intent", () => {
+    const diagnostics: Array<{ type: string; toolName?: string; data?: unknown }> = [];
+    const sent: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "board.add_widget",
+        description: "添加小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop"
+      },
+      {
+        name: "music.search",
+        description: "搜索音乐",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      },
+      {
+        name: "music.play",
+        description: "播放音乐",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: {},
+      availableDefinitions: [{ definitionId: "wd_music", type: "music", name: "音乐播放器" }],
+      widgets: []
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
+      }
+    });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_music_without_intent",
+      name: "assistant.select_tool",
+      arguments: {
+        name: "board.add_widget",
+        candidateTools: ["music.search", "music.play", "board.add_widget"],
+        selectedModule: "music",
+        targetHint: "张学友",
+        userCommand: "我想听张学友的歌",
+        confidence: 0.9
+      },
+      source: "realtime"
+    });
+
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.tool_selection.semantic_boundary_rewrite",
+        toolName: "music.play"
+      }),
+      expect.objectContaining({
+        type: "realtime.tool_selection.success",
+        toolName: "music.play",
+        data: expect.objectContaining({ candidateTools: expect.arrayContaining(["music.play"]) })
+      })
+    ]));
+    expect(JSON.stringify(sent)).toContain("music__dot__play");
+  });
+
+  it("focuses an existing music widget for a pure open command instead of adding a duplicate", () => {
+    const diagnostics: Array<{ type: string; toolName?: string; data?: unknown }> = [];
+    const sent: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "board.add_widget",
+        description: "添加小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop"
+      },
+      {
+        name: "widget.focus",
+        description: "聚焦小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop",
+        requiresTarget: true
+      },
+      {
+        name: "widget.remove",
+        description: "删除小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop",
+        requiresTarget: true
+      },
+      {
+        name: "music.pause",
+        description: "暂停音乐",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      },
+      {
+        name: "music.resume",
+        description: "恢复音乐",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: { music: 1 },
+      availableDefinitions: [{ definitionId: "wd_music", type: "music", name: "音乐播放器" }],
+      widgets: [{ widgetId: "wi_music", definitionId: "wd_music", type: "music", name: "音乐播放器", order: 1, summary: "idle" }]
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
+      }
+    });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_open_existing_music",
+      name: "assistant.select_tool",
+      arguments: {
+        name: "board.add_widget",
+        candidateTools: ["board.add_widget", "music.pause", "widget.remove", "music.resume"],
+        selectedModule: "music",
+        targetHint: "音乐播放器暂停",
+        userCommand: "打开音乐播放器",
+        confidence: 0.9
+      },
+      source: "realtime"
+    });
+    (adapter as unknown as { handleRealtimeEventData: (event: unknown) => void }).handleRealtimeEventData({ type: "session.updated" });
+
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.tool_selection.success",
+        toolName: "widget.focus",
+        data: expect.objectContaining({ candidateTools: ["widget.focus"], scopedTools: ["widget.focus"] })
+      })
+    ]));
+    expect(sent).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "response.create",
+        response: expect.objectContaining({
+          tool_choice: { type: "function", name: "widget__dot__focus" },
+          tools: [expect.objectContaining({ name: "widget__dot__focus" })]
+        })
+      })
+    ]));
+    expect(JSON.stringify(sent)).not.toContain("board__dot__add_widget");
   });
 
   it("keeps explicit search-only music commands on music.search", () => {
