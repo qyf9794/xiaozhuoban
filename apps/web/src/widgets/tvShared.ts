@@ -19,7 +19,7 @@ export const FALLBACK_TV_CHANNELS: TvChannel[] = [
   {
     id: "tv_fallback_cctv13",
     name: "CCTV-13 新闻",
-    url: "https://ldncctvcpudkshw.v.kcdnvip.com/ldncctvcpud/udrmldcctv13_1/index.m3u8?contentid=2820180516001&b=200-2100"
+    url: "https://cd-live-stream.news.cctvplus.com/live/smil:CHANNEL1.smil/playlist.m3u8"
   },
   {
     id: "tv_fallback_cctv6",
@@ -40,6 +40,11 @@ export const FALLBACK_TV_CHANNELS: TvChannel[] = [
     id: "tv_fallback_nhk_world",
     name: "NHK World-Japan",
     url: "https://media-tyo.hls.nhkworld.jp/hls/w/live/master.m3u8"
+  },
+  {
+    id: "tv_fallback_bloomberg_tv",
+    name: "Bloomberg TV",
+    url: "https://liveprodusphoenixeast.global.ssl.fastly.net/USPhx-HD/Channel-TX-USPhx-AWS-virginia-1/Source-USPhx-16k-1-s6lk2-BP-07-02-81ykIWnsMsg_live.m3u8"
   }
 ];
 

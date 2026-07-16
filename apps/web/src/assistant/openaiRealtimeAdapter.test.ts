@@ -518,7 +518,7 @@ describe("OpenAI realtime adapter helpers", () => {
       type: "conversation.item.create",
       item: { type: "function_call_output", call_id: "call_1" }
     });
-    expect(events[1]).toEqual({ type: "response.create", response: { output_modalities: ["text"], max_output_tokens: 480 } });
+    expect(events[1]).toEqual({ type: "response.create", response: { output_modalities: ["text"], max_output_tokens: 160, instructions: expect.any(String) } });
   });
 
   it("creates follow-up audio responses for voice realtime tool results", () => {
@@ -533,7 +533,7 @@ describe("OpenAI realtime adapter helpers", () => {
       type: "conversation.item.create",
       item: { type: "function_call_output", call_id: "call_1" }
     });
-    expect(events[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio"], max_output_tokens: 480 } });
+    expect(events[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio"], max_output_tokens: 160, instructions: expect.any(String) } });
   });
 
   it("creates realtime text command events with text-only response output", () => {
@@ -548,7 +548,7 @@ describe("OpenAI realtime adapter helpers", () => {
       },
       {
         type: "response.create",
-        response: { output_modalities: ["text"], max_output_tokens: 480 }
+        response: { output_modalities: ["text"], max_output_tokens: 160, instructions: expect.any(String) }
       }
     ]);
   });
@@ -621,7 +621,7 @@ describe("OpenAI realtime adapter helpers", () => {
       },
       {
         type: "response.create",
-        response: { output_modalities: ["text"], max_output_tokens: 480 }
+        response: { output_modalities: ["text"], max_output_tokens: 160, instructions: expect.any(String) }
       }
     ]);
     expect((adapter as unknown as { activeResponseId: string | null }).activeResponseId).toBeNull();
@@ -633,6 +633,7 @@ describe("OpenAI realtime adapter helpers", () => {
         commandTraceId: "trace_text_2"
       }),
       expect.objectContaining({ type: "realtime.event.send", commandTraceId: "trace_text_2", data: { eventType: "response.cancel" } }),
+      expect.objectContaining({ type: "realtime.text_command.send", status: "interrupted_active_response", commandTraceId: "trace_text_2" }),
       expect.objectContaining({
         type: "realtime.text_command.reset_selector_tool",
         status: "sent",
@@ -642,6 +643,50 @@ describe("OpenAI realtime adapter helpers", () => {
       expect.objectContaining({ type: "realtime.event.send", commandTraceId: "trace_text_2", data: { eventType: "session.update" } }),
       expect.objectContaining({ type: "realtime.text_command.send", status: "pending_session_update", commandTraceId: "trace_text_2" }),
       expect.objectContaining({ type: "realtime.text_command.send", status: "started", commandTraceId: "trace_text_2" })
+    ]));
+  });
+
+  it("clears the live audio buffer before sending a realtime text command in audio mode", () => {
+    const diagnostics: Array<{ type: string; status?: string; commandTraceId?: string; data?: { eventType?: string } }> = [];
+    const sent: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    Object.assign(
+      adapter as unknown as {
+        sessionReady: boolean;
+        connectMode: string;
+        dataChannel: { readyState: string; send: (payload: string) => void };
+      },
+      {
+        sessionReady: true,
+        connectMode: "audio",
+        dataChannel: {
+          readyState: "open",
+          send(payload: string) {
+            sent.push(JSON.parse(payload) as unknown);
+          }
+        }
+      }
+    );
+
+    adapter.sendTextCommand("打开电视看 BBC", { commandTraceId: "trace_text_audio" });
+
+    expect(sent[0]).toEqual({ type: "input_audio_buffer.clear" });
+    expect(sent[1]).toEqual({ type: "response.cancel" });
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.text_command.clear_audio_buffer",
+        status: "sent",
+        commandTraceId: "trace_text_audio"
+      }),
+      expect.objectContaining({
+        type: "realtime.event.send",
+        commandTraceId: "trace_text_audio",
+        data: { eventType: "input_audio_buffer.clear" }
+      })
     ]));
   });
 
@@ -715,7 +760,7 @@ describe("OpenAI realtime adapter helpers", () => {
     ).handleRealtimeLifecycleEvent({ type: "response.done", response: { id: "resp_1" } });
 
     expect(sent).toHaveLength(2);
-    expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["text"], max_output_tokens: 480 } });
+    expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["text"], max_output_tokens: 160, instructions: expect.any(String) } });
   });
 
   it("continues voice realtime after active selector response finishes", () => {
@@ -752,7 +797,7 @@ describe("OpenAI realtime adapter helpers", () => {
     ).handleRealtimeLifecycleEvent({ type: "response.done", response: { id: "resp_voice_1" } });
 
     expect(sent).toHaveLength(2);
-    expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio"], max_output_tokens: 480 } });
+    expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio"], max_output_tokens: 160, instructions: expect.any(String) } });
   });
 
   it("continues voice realtime after final tool response finishes", () => {
@@ -793,7 +838,7 @@ describe("OpenAI realtime adapter helpers", () => {
       type: "conversation.item.create",
       item: { type: "function_call_output", call_id: "call_voice_final" }
     });
-    expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio"], max_output_tokens: 480 } });
+    expect(sent[1]).toEqual({ type: "response.create", response: { output_modalities: ["audio"], max_output_tokens: 160, instructions: expect.any(String) } });
   });
 
   it("tracks active realtime responses through lifecycle events", () => {
@@ -1193,7 +1238,7 @@ describe("OpenAI realtime adapter helpers", () => {
       },
       {
         type: "response.create",
-        response: { output_modalities: ["text"], max_output_tokens: 480 }
+        response: { output_modalities: ["text"], max_output_tokens: 160, instructions: expect.any(String) }
       }
     ]);
     expect(diagnostics).toEqual(expect.arrayContaining([
@@ -1412,6 +1457,75 @@ describe("OpenAI realtime adapter helpers", () => {
         message: expect.stringContaining("response_cancel_not_active")
       })
     ]));
+  });
+
+  it("retries response.create active-response conflicts without failing the session", () => {
+    vi.useFakeTimers();
+    const diagnostics: Array<{ type: string; status?: string; message?: string; commandTraceId?: string; data?: unknown }> = [];
+    const statuses: string[] = [];
+    const sent: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      },
+      onStatusChange(status) {
+        statuses.push(status);
+      }
+    });
+    Object.assign(
+      adapter as unknown as {
+        sessionReady: boolean;
+        activeRealtimeResponseTraceId: string;
+        dataChannel: { readyState: string; send: (payload: string) => void };
+      },
+      {
+        sessionReady: true,
+        activeRealtimeResponseTraceId: "trace_conflict_1",
+        dataChannel: {
+          readyState: "open",
+          send(payload: string) {
+            sent.push(JSON.parse(payload) as unknown);
+          }
+        }
+      }
+    );
+
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({
+      type: "error",
+      event_id: "evt_active_conflict",
+      error: {
+        code: "conversation_already_has_active_response",
+        message: "Conversation already has an active response"
+      }
+    });
+
+    expect(statuses).toEqual([]);
+    expect(sent).toEqual([{ type: "response.cancel" }]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.event.error",
+        status: "retryable",
+        commandTraceId: "trace_conflict_1",
+        message: expect.stringContaining("conversation_already_has_active_response")
+      }),
+      expect.objectContaining({
+        type: "realtime.response.create_conflict_retry",
+        status: "scheduled",
+        commandTraceId: "trace_conflict_1"
+      })
+    ]));
+
+    vi.advanceTimersByTime(180);
+
+    expect(sent).toEqual([
+      { type: "response.cancel" },
+      { type: "response.create", response: { output_modalities: ["text"], max_output_tokens: 160, instructions: expect.any(String) } }
+    ]);
+    vi.useRealTimers();
   });
 
   it("queues session tool updates before the data channel opens", () => {
@@ -2225,7 +2339,13 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(newTrace).toMatch(/^voice_/);
     expect(sent).toEqual([
       { type: "response.cancel" },
-      { type: "output_audio_buffer.clear" }
+      { type: "output_audio_buffer.clear" },
+      expect.objectContaining({
+        type: "session.update",
+        session: expect.objectContaining({
+          tools: [expect.objectContaining({ name: "assistant__dot__select_tool" })]
+        })
+      })
     ]);
     expect(diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -2241,7 +2361,7 @@ describe("OpenAI realtime adapter helpers", () => {
       }),
       expect.objectContaining({
         type: "realtime.voice.selector_reset",
-        status: "deferred_active_response",
+        status: "sent_after_interrupt",
         commandTraceId: newTrace
       }),
       expect.objectContaining({
@@ -2271,7 +2391,7 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({
         type: "realtime.voice.selector_reset",
-        status: "sent",
+        status: "sent_after_interrupt",
         commandTraceId: newTrace
       })
     ]));
@@ -3556,6 +3676,70 @@ describe("OpenAI realtime adapter helpers", () => {
     ]);
   });
 
+  it("does not open a missing TV widget locally for pause-only control commands", async () => {
+    const calls: unknown[] = [];
+    const diagnostics: Array<{ type: string; status?: string; operationId?: string; toolName?: string; data?: Record<string, unknown> }> = [];
+    const sent: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall(call) {
+        calls.push(call);
+      },
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "board.add_widget",
+        description: "添加小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop"
+      },
+      {
+        name: "tv.pause",
+        description: "暂停电视",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "widget-detail",
+        widgetType: "tv",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: {},
+      availableDefinitions: [{ definitionId: "wd_tv", type: "tv", name: "电视" }],
+      widgets: []
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; dataChannel: { readyState: string; send: (payload: string) => void } }, {
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
+      }
+    });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_pause_tv_missing_widget",
+      name: "assistant.select_tool",
+      arguments: { name: "tv.pause", selectedModule: "tv", targetHint: "电视", userCommand: "暂停电视直播", confidence: 0.95 },
+      source: "realtime"
+    });
+    await Promise.resolve();
+
+    expect(calls).toEqual([]);
+    expect(diagnostics).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "realtime.tool_selection.local_add_widget_shortcut" })
+    ]));
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "realtime.tool_selection.success", status: "success", toolName: "tv.pause" })
+    ]));
+    expect(sent).toEqual(expect.arrayContaining([expect.objectContaining({ type: "session.update" })]));
+    expect(JSON.stringify(sent)).toContain("tv__dot__pause");
+  });
+
   it("adds market widgets locally with an index follow-up", async () => {
     const calls: unknown[] = [];
     const adapter = new OpenAIRealtimeWebRtcAdapter({
@@ -4008,6 +4192,82 @@ describe("OpenAI realtime adapter helpers", () => {
     ]);
   });
 
+  it("resolves generic movie TV requests from the parsed channel catalog", () => {
+    const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall(call) {
+        calls.push(call as { name: string; arguments: Record<string, unknown> });
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "tv.select_channel",
+        description: "选择频道",
+        parameters: createStrictObjectSchema({
+          widgetId: { type: "string", required: true },
+          channelName: { type: "string" }
+        }),
+        argumentKeys: ["widgetId", "channelName"],
+        scope: "widget-detail",
+        widgetType: "tv",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: { tv: 1 },
+      widgets: [
+        {
+          widgetId: "wi_tv",
+          definitionId: "wd_tv",
+          type: "tv",
+          name: "电视",
+          order: 1,
+          summary: "channels",
+          assistantState: {
+            selectedChannelName: "BBC News",
+            channelNames: ["BBC News", "HBO", "MovieSphere", "Universal Movies"]
+          }
+        }
+      ],
+      moduleStates: {
+        tv: {
+          assistantChannelNames: ["BBC News", "HBO", "MovieSphere", "Universal Movies"],
+          assistantChannelCount: 4,
+          selectedChannelName: "BBC News"
+        }
+      }
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean; activeScopedToolSelection: unknown }, {
+      sessionReady: true,
+      activeScopedToolSelection: {
+        selectedModule: "tv",
+        targetHint: "电影频道",
+        userCommand: "切到一个电影频道",
+        candidateTools: ["tv.select_channel"],
+        selectedToolName: "tv.select_channel"
+      }
+    });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "call_tv_movie_catalog",
+      name: "tv.select_channel",
+      arguments: { channelName: "CCTV-13 新闻" },
+      source: "realtime"
+    });
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        name: "tv.select_channel",
+        arguments: expect.objectContaining({
+          widgetId: "wi_tv",
+          channelName: "MovieSphere"
+        })
+      })
+    ]);
+  });
+
   it("repairs missing add-widget arguments after a scoped music selection", () => {
     const calls: unknown[] = [];
     const adapter = new OpenAIRealtimeWebRtcAdapter({
@@ -4452,7 +4712,7 @@ describe("OpenAI realtime adapter helpers", () => {
         type: "conversation.item.create",
         item: expect.objectContaining({ type: "function_call_output", call_id: "select_music" })
       }),
-      { type: "response.create", response: { output_modalities: ["text"], max_output_tokens: 480 } }
+      { type: "response.create", response: { output_modalities: ["text"], max_output_tokens: 160, instructions: expect.any(String) } }
     ]);
     expect(diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({

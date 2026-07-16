@@ -137,6 +137,7 @@ export interface IntentShortcutContext {
     name: string;
   }>;
   focusedWidget?: CompactWidgetSummary;
+  moduleStates?: Record<string, Record<string, unknown>>;
 }
 
 export interface AssistantToolScope {
@@ -831,6 +832,78 @@ function inferTvChannelName(input: string) {
   const channelNumber = cctvCn?.[1] ? parseChineseInteger(cctvCn[1]) : null;
   if (channelNumber) return `CCTV${channelNumber}`;
   return "";
+}
+
+function normalizeTvChannelCandidate(input: string): string {
+  return input
+    .toUpperCase()
+    .replace(/BLOOMBERG\s*(?:TELEVISION|TV)?/g, "BLOOMBERG")
+    .replace(/FRANCE\s*24/g, "FRANCE24")
+    .replace(/NHK\s*WORLD\s*(?:JAPAN)?/g, "NHKWORLD")
+    .replace(/高清|标清|频道|电视台|综合|新闻|财经|体育|电影|电视剧|少儿/g, "")
+    .replace(/\b(?:CHANNEL|TELEVISION|TV|NEWS|LIVE|HD|WORLD|JAPAN)\b/g, "")
+    .replace(/[\s_-]+/g, "")
+    .trim();
+}
+
+function readContextTvChannelNames(context: IntentShortcutContext): string[] {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  const append = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item !== "string") continue;
+      const name = item.replace(/\s+/g, " ").trim();
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      names.push(name);
+    }
+  };
+  append(context.moduleStates?.tv?.assistantChannelNames);
+  append(context.moduleStates?.tv?.channelNames);
+  for (const widget of context.availableWidgets ?? []) {
+    if (widget.type !== "tv") continue;
+    append(widget.assistantState?.assistantChannelNames);
+    append(widget.assistantState?.channelNames);
+  }
+  if (context.focusedWidget?.type === "tv") {
+    append(context.focusedWidget.assistantState?.assistantChannelNames);
+    append(context.focusedWidget.assistantState?.channelNames);
+  }
+  return names;
+}
+
+function findContextTvChannelByHint(channelNames: string[], hint: string): string {
+  const normalizedHint = normalizeTvChannelCandidate(hint);
+  if (!normalizedHint) return "";
+  return (
+    channelNames.find((name) => {
+      const normalizedName = normalizeTvChannelCandidate(name);
+      return (
+        normalizedName.length >= 3 &&
+        (normalizedName === normalizedHint || normalizedName.includes(normalizedHint) || normalizedHint.includes(normalizedName))
+      );
+    }) ?? ""
+  );
+}
+
+function findContextTvChannelName(input: string, context: IntentShortcutContext): string {
+  const channelNames = readContextTvChannelNames(context);
+  if (channelNames.length === 0) return "";
+
+  if (/电影/.test(input) && !/(央视|中央|CCTV)/i.test(input)) {
+    const movieCandidates = channelNames.filter((name) => /电影|MOVIE|CINEMA|FILM/i.test(name));
+    const movie =
+      movieCandidates.find((name) => /MovieSphere|Universal Movies|Top Movies|Action Movies|Comedy Movies|Drama Movies/i.test(name)) ??
+      movieCandidates[0];
+    if (movie) return movie;
+  }
+
+  const direct = findContextTvChannelByHint(channelNames, input);
+  if (direct) return direct;
+
+  const alias = inferTvChannelName(input);
+  return alias ? findContextTvChannelByHint(channelNames, alias) : "";
 }
 
 const KNOWN_MUSIC_ARTISTS = ["陈奕迅", "王菲", "周杰伦", "林俊杰", "五月天", "孙燕姿", "张学友", "刘德华"];
@@ -2028,6 +2101,13 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
     {
       name: "tv_channel_control",
       match(normalized, raw, context) {
+        if (
+          /(当前|现在).{0,12}(电视|直播|频道).{0,16}(播放|播|看|哪个|什么)|(?:电视|直播).{0,12}(正在播放|当前播放|当前是|现在是|哪个频道|什么频道)|有哪些频道|频道目录|频道列表/.test(
+            normalized
+          )
+        ) {
+          return shortcutMatch("assistant.get_desktop_state", {}, 0.95, context.source ?? "shortcut", raw);
+        }
         const wantsTvPlaybackFullscreen =
           /(电视|直播|电视频道).*(全屏|放大)/.test(normalized) ||
           /(全屏|放大).*(播放|播).*(电视|直播|电视频道)/.test(normalized) ||
@@ -2036,8 +2116,8 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
           return { matched: false, reason: "tv_window_layout_deferred" };
         }
         if (/(暂停|停一下|停止|停掉)/.test(normalized)) return { matched: false, reason: "tv_pause_deferred" };
-        const channelName = inferTvChannelName(raw);
-        if (!channelName && wantsTvPlaybackFullscreen) {
+        const hasExplicitChannel = Boolean(findContextTvChannelName(raw, context) || inferTvChannelName(raw));
+        if (!hasExplicitChannel && wantsTvPlaybackFullscreen) {
           return (
             routeWidgetDetailOrAdd(context, raw, "tv", "tv.fullscreen", {}, 0.93) ?? {
               matched: false,
@@ -2045,37 +2125,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
             }
           );
         }
-        if (!channelName) return { matched: false, reason: "tv_channel_missing" };
-        const hasTvIntent =
-          /(电视|直播|频道|换台|切台|台|央视|中央)/.test(normalized) ||
-          /CCTV/i.test(raw) ||
-          /(新闻频道|体育频道|财经频道|电影频道|电视剧频道|少儿频道)/.test(raw);
-        const hasControlIntent = /(播放|放|看|打开|换台|切台|换到|切到|切换到|转到|调到|选|全屏|放大)/.test(normalized);
-        if (!hasTvIntent || !hasControlIntent) return { matched: false, reason: "not_tv_channel_control" };
-        const wantsFullscreen = /(全屏|放大)/.test(normalized);
-        const wantsPlayback = /(播放|放|看|打开|全屏|放大)/.test(normalized);
-        const toolName = wantsPlayback ? "tv.play" : "tv.select_channel";
-        const confidence = /(央视|中央|CCTV)/i.test(raw) ? 0.93 : 0.88;
-        return (
-          routeWidgetDetailOrAdd(
-            context,
-            raw,
-            "tv",
-            toolName,
-            {
-              channelName,
-              ...(wantsFullscreen
-                ? {
-                    followUp: {
-                      name: "tv.fullscreen",
-                      arguments: {}
-                    }
-                  }
-                : {})
-            },
-            confidence
-          ) ?? { matched: false, reason: "tv_target_missing" }
-        );
+        return { matched: false, reason: "tv_channel_selection_deferred_to_realtime" };
       }
     },
     {
@@ -2086,6 +2136,14 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
             normalized
           );
         if (!openIntent) return { matched: false, reason: "not_open_widget" };
+        if (
+          (/(播放|放|看|换台|切台|换到|切到|切换到|转到|调到|频道|电影|新闻频道|体育频道|财经频道|少儿频道)/.test(normalized) ||
+            /(BBC|CNN|CCTV|CGTN|Bloomberg|彭博|NHK|France\s*24|HBO|TVB|\bCNA\b)/i.test(raw)) &&
+          (/(电视|直播|频道|台|央视|中央)/.test(normalized) ||
+            /(BBC|CNN|CCTV|CGTN|Bloomberg|彭博|NHK|France\s*24|HBO|TVB|\bCNA\b)/i.test(raw))
+        ) {
+          return { matched: false, reason: "tv_channel_selection_deferred_to_realtime" };
+        }
         const aliasInput = `${raw}${compactShortcutInput(normalized)}`.toLowerCase();
         const knownTypes: Array<{ type: string; aliases: string[] }> = [
           { type: "note", aliases: ["便签", "笔记", "备忘录"] },
@@ -2107,6 +2165,13 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         ];
         const matchedType = knownTypes.find((entry) => entry.aliases.some((alias) => aliasInput.includes(alias.toLowerCase())))?.type;
         if (!matchedType) return { matched: false, reason: "widget_type_missing" };
+        if (
+          matchedType === "tv" &&
+          (/(播放|放|看|换台|切台|换到|切到|切换到|转到|调到|频道|电影|新闻|体育|财经|少儿)/.test(normalized) ||
+            /(BBC|CNN|CCTV|CGTN|Bloomberg|彭博|NHK|France\s*24|HBO|TVB|\bCNA\b)/i.test(raw))
+        ) {
+          return { matched: false, reason: "tv_channel_selection_deferred_to_realtime" };
+        }
         const widget = findWidgetByType(context, matchedType);
         if (widget) {
           return shortcutMatch("widget.focus", { widgetId: widget.widgetId }, 0.92, context.source ?? "shortcut", raw);
@@ -2175,7 +2240,7 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         const isNext = /(下一首|下首|切歌|换一首|跳过)/.test(normalized);
         const isPrevious = /(上一首|上首|前一首|返回上一首|倒回上一首)/.test(normalized);
         if (!isPlay && !isPause && !isNext && !isPrevious) return { matched: false, reason: "not_media_control" };
-        const channelName = inferTvChannelName(raw);
+        const channelName = isPause ? findContextTvChannelName(raw, context) || inferTvChannelName(raw) : "";
         let targetType =
           raw.includes("录音") || raw.includes("录音机")
             ? "recorder"
@@ -2283,6 +2348,13 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
       name: "fullscreen",
       match(normalized, raw, context) {
         if (!/(全屏|放大)/.test(normalized)) return { matched: false, reason: "not_fullscreen" };
+        if (
+          (inferTvChannelName(raw) || findContextTvChannelName(raw, context)) &&
+          (/(电视|直播|频道|台|央视|中央|播放|放|看)/.test(normalized) ||
+            /(BBC|CNN|CCTV|CGTN|Bloomberg|彭博|NHK|France\s*24|HBO|TVB|\bCNA\b)/i.test(raw))
+        ) {
+          return { matched: false, reason: "tv_channel_fullscreen_deferred_to_realtime" };
+        }
         const widget = context.focusedWidget ?? context.availableWidgets?.find((item) => item.recent);
         if (!widget) return { matched: false, reason: "fullscreen_target_missing" };
         return shortcutMatch("widget.fullscreen_focus", { widgetId: widget.widgetId }, 0.84, context.source ?? "shortcut", raw);

@@ -66,6 +66,7 @@ describe("findTvChannel", () => {
     expect(findFallbackTvChannel("体育频道")?.name).toBe("CCTV-5 体育");
     expect(findFallbackTvChannel("CCTV5")?.name).toBe("CCTV-5 体育");
     expect(findFallbackTvChannel("BBC")?.name).toBe("BBC News");
+    expect(findFallbackTvChannel("Bloomberg")?.name).toBe("Bloomberg TV");
   });
 });
 

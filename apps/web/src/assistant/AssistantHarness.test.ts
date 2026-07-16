@@ -146,6 +146,14 @@ function createTools(): AssistantToolSpec[] {
     { name: "tv.play", description: "播放电视", parameters: schema, scope: "widget-detail", widgetType: "tv", requiresTarget: true },
     { name: "tv.pause", description: "暂停电视", parameters: schema, scope: "widget-detail", widgetType: "tv", requiresTarget: true },
     {
+      name: "tv.select_channel",
+      description: "切换电视频道",
+      parameters: schema,
+      scope: "widget-detail",
+      widgetType: "tv",
+      requiresTarget: true
+    },
+    {
       name: "tv.fullscreen",
       description: "电视全屏",
       parameters: schema,
@@ -213,6 +221,7 @@ function createRegistry(resultsByTool: Record<string, AssistantToolResult> = {})
   register("worldClock.set_zones");
   register("tv.play");
   register("tv.pause");
+  register("tv.select_channel");
   register("tv.fullscreen");
 
   return { registry, executed };
@@ -576,6 +585,27 @@ describe("AssistantHarness", () => {
     expect(executed).toEqual(["board.add_widget:none", "music.play:wi_added_music"]);
     expect(harness.getLastDiagnostics()).toMatchObject({
       commandTraceId: "voice_wangfei",
+      route: "model"
+    });
+  });
+
+  it("defers TV channel selection to realtime plan before harness execution", async () => {
+    const input = "把电视切到 Bloomberg";
+    const { harness, executed } = createHarness({
+      modelPlan: createRealtimePlanWithCalls(input, [
+        { name: "tv.select_channel", arguments: { widgetId: "wi_tv", channelName: "Bloomberg TV" } }
+      ])
+    });
+    await harness.initialize();
+
+    const response = await harness.handleRealtimeUserInput(input, { commandTraceId: "voice_tv_bloomberg" });
+
+    expect(response.route).toBe("model");
+    expect(response.result.status).toBe("success");
+    expect(response.result.message).toBe("tv.select_channel done");
+    expect(executed).toEqual(["tv.select_channel:wi_tv"]);
+    expect(harness.getLastDiagnostics()).toMatchObject({
+      commandTraceId: "voice_tv_bloomberg",
       route: "model"
     });
   });
@@ -1487,24 +1517,42 @@ describe("AssistantHarness", () => {
   });
 
   it("executes safe widget follow-up actions on the same target", async () => {
-    const { harness, executed } = createHarness();
+    const input = "播放 CCTV1，并全屏";
+    const { harness, executed } = createHarness({
+      modelPlan: createRealtimePlanWithCalls(input, [
+        {
+          name: "tv.play",
+          arguments: {
+            widgetId: "wi_tv",
+            channelName: "CCTV1",
+            followUp: { name: "tv.fullscreen", arguments: {} }
+          }
+        }
+      ])
+    });
     await harness.initialize();
 
-    const response = await harness.handleUserInput("播放 CCTV1，并全屏");
+    const response = await harness.handleUserInput(input);
 
-    expect(response.route).toBe("shortcut");
+    expect(response.route).toBe("model");
     expect(response.result.status).toBe("success");
     expect(response.result.message).toBe("tv.play done，tv.fullscreen done");
     expect(executed).toEqual(["tv.play:wi_tv", "tv.fullscreen:wi_tv"]);
   });
 
   it("executes sequential shortcut command segments in order", async () => {
-    const { harness, executed } = createHarness();
+    const input = "播放 CCTV1 然后暂停电视";
+    const { harness, executed } = createHarness({
+      modelPlan: createRealtimePlanWithCalls(input, [
+        { name: "tv.play", arguments: { widgetId: "wi_tv", channelName: "CCTV1" } },
+        { name: "tv.pause", arguments: { widgetId: "wi_tv" } }
+      ])
+    });
     await harness.initialize();
 
-    const response = await harness.handleUserInput("播放 CCTV1 然后暂停电视");
+    const response = await harness.handleUserInput(input);
 
-    expect(response.route).toBe("shortcut");
+    expect(response.route).toBe("model");
     expect(response.result.status).toBe("success");
     expect(response.result.message).toBe("tv.play done；tv.pause done");
     expect(executed).toEqual(["tv.play:wi_tv", "tv.pause:wi_tv"]);
@@ -2418,18 +2466,24 @@ describe("AssistantHarness", () => {
   });
 
   it("executes simultaneous shortcut command segments with concurrent operation visibility", async () => {
-    const { harness, executed, operationEvents } = createHarness();
+    const input = "打开电视同时播放 CCTV1";
+    const { harness, executed, operationEvents } = createHarness({
+      modelPlan: createRealtimePlanWithCalls(input, [
+        { name: "widget.focus", arguments: { widgetId: "wi_tv" } },
+        { name: "tv.play", arguments: { widgetId: "wi_tv", channelName: "CCTV1" } }
+      ])
+    });
     await harness.initialize();
 
-    const response = await harness.handleUserInput("打开电视同时播放 CCTV1");
+    const response = await harness.handleUserInput(input);
 
-    expect(response.route).toBe("shortcut");
+    expect(response.route).toBe("model");
     expect(response.result.status).toBe("success");
     expect(response.result.message).toBe("widget.focus done；tv.play done");
     expect(executed).toEqual(["widget.focus:wi_tv", "tv.play:wi_tv"]);
-    expect(operationEvents.slice(0, 2)).toMatchObject([
-      { phase: "running", route: "shortcut", toolName: "widget.focus" },
-      { phase: "running", route: "shortcut", toolName: "tv.play" }
+    expect(operationEvents.filter((event) => event.phase === "running")).toMatchObject([
+      { phase: "running", route: "model", toolName: "widget.focus" },
+      { phase: "running", route: "model", toolName: "tv.play" }
     ]);
   });
 

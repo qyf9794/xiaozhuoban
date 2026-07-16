@@ -1977,15 +1977,11 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
-  it("routes BBC TV requests to channel selection instead of generic focus", () => {
+  it("defers BBC TV channel requests to Realtime instead of generic focus", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("打开电视看BBC", context);
 
-    expect(result.matched).toBe(true);
-    if (result.matched) {
-      expect(result.toolCall.name).toBe("tv.play");
-      expect(result.toolCall.arguments).toEqual({ widgetId: "wi_tv", channelName: "BBC" });
-    }
+    expect(result).toEqual({ matched: false, reason: "no_shortcut_match" });
   });
 
   it("routes unknown world clock cities as online-resolved zone queries", () => {
@@ -2021,83 +2017,77 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
-  it("routes TV channel playback with fullscreen follow-up", () => {
+  it("defers TV channel playback with fullscreen follow-up to Realtime", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("播放 CCTV1，并全屏", context);
 
-    expect(result.matched).toBe(true);
-    if (result.matched) {
-      expect(result.toolCall.name).toBe("tv.play");
-      expect(result.toolCall.arguments).toEqual({
-        widgetId: "wi_tv",
-        channelName: "CCTV1",
-        followUp: {
-          name: "tv.fullscreen",
-          arguments: {}
-        }
-      });
-    }
+    expect(result).toEqual({ matched: false, reason: "no_shortcut_match" });
   });
 
-  it("routes TV channel switch commands", () => {
+  it("defers TV channel switch commands to Realtime", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("切到 CCTV13 新闻频道", context);
 
-    expect(result.matched).toBe(true);
-    if (result.matched) {
-      expect(result.toolCall.name).toBe("tv.select_channel");
-      expect(result.toolCall.arguments).toEqual({
-        widgetId: "wi_tv",
-        channelName: "CCTV13"
-      });
-    }
+    expect(result).toEqual({ matched: false, reason: "no_shortcut_match" });
   });
 
-  it("routes natural TV channel aliases to playback", () => {
+  it("defers natural TV channel aliases to Realtime", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("看央视新闻", context);
 
-    expect(result.matched).toBe(true);
-    if (result.matched) {
-      expect(result.toolCall.name).toBe("tv.play");
-      expect(result.toolCall.arguments).toEqual({
-        widgetId: "wi_tv",
-        channelName: "CCTV13"
-      });
+    expect(result).toEqual({ matched: false, reason: "no_shortcut_match" });
+  });
+
+  it("defers parsed channel catalog TV requests to Realtime", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const tvCatalogContext: IntentShortcutContext = {
+      ...context,
+      moduleStates: {
+        tv: {
+          assistantChannelNames: ["BBC News", "Bloomberg TV", "NHK World-Japan", "France24", "Lifetime Movie Network", "MovieSphere"]
+        }
+      }
+    };
+
+    const nhk = router.route("我想看 NHK World", tvCatalogContext);
+    const france = router.route("切到 France 24", tvCatalogContext);
+    const movie = router.route("切到一个电影频道", tvCatalogContext);
+
+    expect(nhk).toEqual({ matched: false, reason: "no_shortcut_match" });
+    expect(france).toEqual({ matched: false, reason: "no_shortcut_match" });
+    expect(movie).toEqual({ matched: false, reason: "no_shortcut_match" });
+  });
+
+  it("routes TV status and catalog questions to desktop state instead of playback", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const current = router.route("当前电视正在播放哪个频道？", context);
+    const list = router.route("电视有哪些频道可以看？", context);
+
+    expect(current.matched).toBe(true);
+    if (current.matched) {
+      expect(current.toolCall.name).toBe("assistant.get_desktop_state");
+      expect(current.toolCall.arguments).toEqual({});
+    }
+
+    expect(list.matched).toBe(true);
+    if (list.matched) {
+      expect(list.toolCall.name).toBe("assistant.get_desktop_state");
+      expect(list.toolCall.arguments).toEqual({});
     }
   });
 
-  it("keeps generic TV channel aliases below the local shortcut threshold", () => {
+  it("defers generic TV channel aliases to Realtime", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("电影频道打开", context);
 
-    expect(result.matched).toBe(true);
-    if (result.matched) {
-      expect(result.toolCall.name).toBe("tv.play");
-      expect(result.toolCall.arguments).toEqual({
-        widgetId: "wi_tv",
-        channelName: "CCTV6"
-      });
-      expect(result.confidence).toBeLessThan(0.9);
-    }
+    expect(result).toEqual({ matched: false, reason: "no_shortcut_match" });
   });
 
-  it("routes Chinese-number TV channel aliases with fullscreen follow-up", () => {
+  it("defers Chinese-number TV channel aliases with fullscreen follow-up to Realtime", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("央视五套全屏播放", context);
 
-    expect(result.matched).toBe(true);
-    if (result.matched) {
-      expect(result.toolCall.name).toBe("tv.play");
-      expect(result.toolCall.arguments).toEqual({
-        widgetId: "wi_tv",
-        channelName: "CCTV5",
-        followUp: {
-          name: "tv.fullscreen",
-          arguments: {}
-        }
-      });
-    }
+    expect(result).toEqual({ matched: false, reason: "no_shortcut_match" });
   });
 
   it("routes TV fullscreen without a channel to the TV playback fullscreen capability", () => {

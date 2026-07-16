@@ -36,10 +36,10 @@ const examplesByTool: Record<string, string[]> = {
   "widget.focus": ["聚焦电视", "切到电视", "打开电视"],
   "widget.fullscreen_focus": ["全屏电视", "放大电视", "专注看电视"],
   "widget.remove": ["关闭电视", "关掉电视机", "把电视收起来"],
-  "tv.play": ["播放 CCTV1", "我想看 BBC", "看央视新闻", "央视五套全屏播放"],
+  "tv.play": ["播放电视", "播放 CCTV1", "我想看 BBC", "看央视新闻", "央视五套全屏播放"],
   "tv.pause": ["暂停 CCTV1", "暂停电视", "先别播电视"],
   "tv.fullscreen": ["电视全屏", "央视五套全屏播放", "全屏播放电视"],
-  "tv.select_channel": ["看央视新闻", "我想看 BBC", "切到 BBC", "切到 CCTV13", "播放 CCTV1"]
+  "tv.select_channel": ["切到 BBC", "换到 CCTV13", "把电视切到电影频道", "切换到 Bloomberg"]
 };
 
 function isTvTool(action: AssistantAction): boolean {

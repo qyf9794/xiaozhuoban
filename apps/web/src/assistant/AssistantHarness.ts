@@ -2172,6 +2172,7 @@ export class AssistantHarness {
         name: widget.name,
         order: widget.order,
         summary: context.widgets.find((item) => item.widgetId === widget.widgetId)?.summary ?? "",
+        assistantState: context.widgets.find((item) => item.widgetId === widget.widgetId)?.assistantState,
         recent: input.recentWidgetIds?.includes(widget.widgetId),
         focused: widget.widgetId === input.focusedWidgetId
       })) ?? context.widgets;
@@ -2188,6 +2189,7 @@ export class AssistantHarness {
         type: widget.type,
         name: widget.name
       })),
+      moduleStates: context.moduleStates,
       focusedWidget: fullWidgets.find((widget) => widget.widgetId === input.focusedWidgetId) ?? context.focusedWidget
     };
   }

@@ -34,6 +34,8 @@ type WidgetCapabilityArgs = {
   };
 };
 
+type WidgetStatePatch = Record<string, unknown> | ((result: AssistantToolResult) => Record<string, unknown> | undefined);
+
 const CAPABILITY_WIDGET_TYPES = ["music", "tv", "recorder", "dialClock", "messageBoard"] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -114,7 +116,8 @@ function isToolResult(value: { widget: WidgetInstance; definition: WidgetDefinit
 
 async function patchWidgetState(store: WidgetCapabilityStore, widget: WidgetInstance, patch: Record<string, unknown>) {
   if (!store.updateWidgetState) return;
-  await store.updateWidgetState(widget.id, { ...widget.state, ...patch });
+  const latest = store.getWidgetInstances().find((item) => item.id === widget.id) ?? widget;
+  await store.updateWidgetState(widget.id, { ...latest.state, ...patch });
 }
 
 export class WidgetCapabilityBridge {
@@ -160,18 +163,40 @@ async function invokeCapability(
   capabilityName: string,
   args: WidgetCapabilityArgs,
   message: string,
-  statePatch?: Record<string, unknown>
+  statePatch?: WidgetStatePatch
 ): Promise<AssistantToolResult> {
   const target = getTarget(store, context, expectedType);
   if (isToolResult(target)) return target;
   const result = await bridge.invoke(target.widget.id, capabilityName, args as Record<string, unknown>, context);
-  if (isSuccess(result) && statePatch) {
-    await patchWidgetState(store, target.widget, statePatch);
+  const patch = typeof statePatch === "function" ? statePatch(result) : statePatch;
+  if (isSuccess(result) && patch) {
+    await patchWidgetState(store, target.widget, patch);
   }
   if (result.message === "已执行小工具操作") {
     return success(message, { widgetId: target.widget.id, capabilityName });
   }
   return result;
+}
+
+function tvChannelPatchFromResult(result: AssistantToolResult): Record<string, unknown> | undefined {
+  if (!isRecord(result.data)) return undefined;
+  const channelName = typeof result.data.channelName === "string" ? result.data.channelName.trim() : "";
+  const channelUrl = typeof result.data.channelUrl === "string" ? result.data.channelUrl.trim() : "";
+  return tvChannelPatch(channelName, channelUrl);
+}
+
+function tvChannelPatchFromArgs(args: WidgetCapabilityArgs): Record<string, unknown> | undefined {
+  const channelName = args.channelName?.trim() ?? "";
+  const channelUrl = args.channelUrl?.trim() ?? "";
+  return tvChannelPatch(channelName, channelUrl);
+}
+
+function tvChannelPatch(channelName: string, channelUrl: string): Record<string, unknown> | undefined {
+  if (!channelName && !channelUrl) return undefined;
+  return {
+    ...(channelName ? { selectedChannelName: channelName } : {}),
+    ...(channelUrl ? { selectedChannelUrl: channelUrl } : {})
+  };
 }
 
 function createMusicActions(store: WidgetCapabilityStore, bridge: WidgetCapabilityBridge): Array<AssistantAction<WidgetCapabilityArgs>> {
@@ -278,10 +303,16 @@ function createTvActions(store: WidgetCapabilityStore, bridge: WidgetCapabilityB
         requiresTarget: true
       },
       execute(args, context) {
-        const patch = args.channelName?.trim()
-          ? { selectedChannelName: args.channelName.trim(), ...(args.channelUrl?.trim() ? { selectedChannelUrl: args.channelUrl.trim() } : {}) }
-          : undefined;
-        return invokeCapability(store, bridge, context, "tv", "play", args, "已播放电视", patch);
+        return invokeCapability(
+          store,
+          bridge,
+          context,
+          "tv",
+          "play",
+          args,
+          "已播放电视",
+          (result) => tvChannelPatchFromResult(result) ?? tvChannelPatchFromArgs(args)
+        );
       }
     }),
     defineAction<WidgetCapabilityArgs>({
@@ -341,11 +372,16 @@ function createTvActions(store: WidgetCapabilityStore, bridge: WidgetCapabilityB
         requiresTarget: true
       },
       execute(args, context) {
-        const patch = {
-          ...(args.channelName?.trim() ? { selectedChannelName: args.channelName.trim() } : {}),
-          ...(args.channelUrl?.trim() ? { selectedChannelUrl: args.channelUrl.trim() } : {})
-        };
-        return invokeCapability(store, bridge, context, "tv", "selectChannel", args, "已切换电视频道", patch);
+        return invokeCapability(
+          store,
+          bridge,
+          context,
+          "tv",
+          "selectChannel",
+          args,
+          "已切换电视频道",
+          (result) => tvChannelPatchFromResult(result) ?? tvChannelPatchFromArgs(args)
+        );
       }
     })
   ];

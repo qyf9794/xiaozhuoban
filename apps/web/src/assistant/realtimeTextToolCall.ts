@@ -824,7 +824,7 @@ export function createScopedRealtimeToolInstructions(
       ? "音乐工具选择规则：用户说播放、来一首、来个、想听具体歌手/歌曲时选择 music.play；用户说搜索、找、搜且明确不播放时选择 music.search；恢复、继续、接着播选择 music.resume；上一首选择 music.previous；下一首选择 music.next。"
       : "",
     candidateNames.some((name) => name.startsWith("tv."))
-      ? "电视工具选择规则：用户说播放、看、切到、换到具体频道时调用 tv.play 或 tv.select_channel；原始命令同时包含“全屏”且工具列表提供 tv.fullscreen 时，必须在播放/切台后继续调用 tv.fullscreen。"
+      ? "电视工具选择规则：用户说播放、看、想看、打开电视播放、只说播放电视时调用 tv.play；用户明确说切到、换到、切换到某频道且不是播放请求时才调用 tv.select_channel；原始命令同时包含“全屏”且工具列表提供 tv.fullscreen 时，必须在播放/切台后继续调用 tv.fullscreen。"
       : "",
     candidateNames.includes("board.add_widget")
       ? "如果已选工具是 board.add_widget，必须从 availableDefinitions 选择与用户命令最匹配的小工具，并用对应 definitionId 调用 board.add_widget；不要回答缺少打开小工具的方式。"

@@ -4095,30 +4095,41 @@ export function BuiltinWidgetView({
         const channelName = typeof args.channelName === "string" ? args.channelName.trim() : "";
         const channelUrl = typeof args.channelUrl === "string" ? args.channelUrl.trim() : "";
         const assistantCatalog = readTvAssistantChannelCatalog();
-        const catalogMatch = channelName
-          ? findTvChannel(
-              (assistantCatalog?.channelNames ?? []).map((name, index) => ({
-                id: `assistant_catalog_${index}`,
-                name,
-                url: ""
-              })),
-              channelName
-            )
-          : undefined;
+        const catalogChannels = assistantCatalog?.channels ?? [];
+        const catalogNameOnlyMatch =
+          channelName && catalogChannels.length === 0
+            ? findTvChannel(
+                (assistantCatalog?.channelNames ?? []).map((name, index) => ({
+                  id: `assistant_catalog_${index}`,
+                  name,
+                  url: ""
+                })),
+                channelName
+              )
+            : undefined;
         const selected =
           (channelUrl ? channels.find((channel) => channel.url === channelUrl) : null) ??
           (channelName ? findTvChannel(channels, channelName) ?? findFallbackTvChannel(channelName) : null) ??
-          (channelUrl || channelName ? null : channels[0]);
-        const pendingCatalogChannelName = !selected && !channelUrl ? catalogMatch?.name : undefined;
+          (channelName ? findTvChannel(catalogChannels, channelName) : null) ??
+          (channelUrl || channelName ? null : channels[0] ?? catalogChannels[0]);
+        const pendingCatalogChannelName = !selected && !channelUrl ? catalogNameOnlyMatch?.name : undefined;
 
         if (!selected && !channelUrl && !pendingCatalogChannelName) {
           return { status: "failed" as const, message: "没有找到这个电视频道", errorCode: "TV_CHANNEL_NOT_FOUND" };
         }
+        if (pendingCatalogChannelName && !channelUrl) {
+          return {
+            status: "needs_clarification" as const,
+            message: "找到了频道名，但本地还没有这个频道的播放地址，请先刷新或重新解析电视订阅。",
+            errorCode: "TV_CHANNEL_URL_MISSING",
+            data: { channelName: pendingCatalogChannelName }
+          };
+        }
 
         const nextUrl = selected?.url ?? channelUrl;
-        const nextName = selected?.name ?? pendingCatalogChannelName ?? channelName;
+        const nextName = selected?.name ?? channelName;
         const channelsForAssistant =
-          selected && !channels.some((channel) => channel.url === selected.url) ? [selected, ...channels] : channels;
+          selected && selected.url && !channels.some((channel) => channel.url === selected.url) ? [selected, ...channels] : channels;
         if (selected && channelsForAssistant !== channels) {
           setChannels((current) => (current.some((channel) => channel.url === selected.url) ? current : [selected, ...current]));
         }
