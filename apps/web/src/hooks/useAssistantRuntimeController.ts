@@ -65,6 +65,10 @@ function readRealtimeHighAccuracyMode(): boolean {
   return window.localStorage.getItem(REALTIME_HIGH_ACCURACY_STORAGE_KEY) === "true";
 }
 
+export function shouldClearRealtimeTurnState(status: RealtimeConnectionStatus): boolean {
+  return status === "connecting" || status === "disconnected";
+}
+
 interface UseAssistantRuntimeControllerOptions {
   fullscreen: boolean;
   onOpenAiDialog: (prompt?: string, metadata?: AiDialogOpenMetadata) => void;
@@ -208,6 +212,16 @@ export function useAssistantRuntimeController({
         },
         useAgentsVoiceAdapter: () => agentsVoiceAdapterEnabledRef.current,
         onStatusChange: (status) => {
+          if (shouldClearRealtimeTurnState(status)) {
+            setAssistantSpeech(null);
+            setUserSpeech(null);
+            lastCommandLikeUserSpeechRef.current = "";
+            recordDiagnostic({
+              type: "realtime.turn_state.cleared",
+              status: "cleared",
+              data: { trigger: `voice.status:${status}` }
+            });
+          }
           setRealtimeStatus(status);
           recordDiagnostic({ type: "voice.status", status });
         },
