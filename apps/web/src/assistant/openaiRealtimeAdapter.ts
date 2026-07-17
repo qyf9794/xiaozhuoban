@@ -615,9 +615,13 @@ function extractTranslateArgsFromText(text: string): Record<string, unknown> {
       : /(日文|日语|日本語|Japanese|into Japanese|to Japanese)/i.test(text)
         ? "ja"
         : /(西班牙语|西班牙文|Spanish|into Spanish|to Spanish)/i.test(text)
-          ? "es"
+        ? "es"
       : undefined;
-  const sourceText = text
+  const commandText = text.replace(
+    /[，,；;。]\s*(?:(?:不要|别|請勿|请勿|不需要)(?:真的)?(?:执行|執行|操作|调用|調用|播放|暂停|暫停|打开|打開)(?:这|這)?(?:句|句话|句話|个命令|個命令)?).*/i,
+    ""
+  );
+  const sourceText = commandText
     .replace(/^把/, "")
     .replace(/翻译成(?:中文|英文|英语|汉语|日文|日语|日本語|西班牙语|西班牙文)/gi, "")
     .replace(/翻译(?:为|到)(?:中文|英文|英语|汉语|日文|日语|日本語|西班牙语|西班牙文)/gi, "")
@@ -3911,6 +3915,11 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
           ? "none"
           : undefined;
     const responseMode = this.connectMode === "audio" ? "voice" : "text";
+    const shouldResetSelectorAfterToolResult =
+      call.source === "realtime" &&
+      result.status === "success" &&
+      !isSelectionResult &&
+      !isLegacyRealtimeCommandPlanTool(call.name);
     createRealtimeToolResultEvents(call, userFacingResult, {
       activeResponseId: this.activeResponseId,
       responseMode,
@@ -3921,6 +3930,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     }).forEach((event) => this.sendEvent(event, { queueWhenClosed: false, commandTraceId }));
     if (call.name === REALTIME_TOOL_SELECTION_TOOL_NAME) {
       this.scopedToolSelectionResponseInstructions.delete(call.id);
+    }
+    if (shouldResetSelectorAfterToolResult && commandTraceId) {
+      this.pendingToolSelectionResetAfterActiveResponse = { commandTraceId };
     }
     if (hadActiveResponse && continueResponse) {
       this.pendingResponseCreateAfterActiveToolResult = true;
@@ -5115,6 +5127,12 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const selectedTool = resolvedSelection.selectedTool;
     const resolvedConcreteSelection = resolvedSelection.selection;
     const selectedModule = resolvedSelection.selectedModule ?? this.resolveSelectedModuleForToolSelection(selectedTool, resolvedConcreteSelection);
+    const scopedToolChoiceName = resolveScopedToolChoiceName(
+      selectedTool,
+      selectedModule,
+      this.currentContext,
+      resolvedSelection.scopedTools
+    );
 
     if (
       selectedTool.name === "widget.remove" &&
@@ -5155,7 +5173,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     }
 
     const shouldTryLocalAddWidgetShortcut =
-      selectedTool.name === "board.add_widget" && !resolvedSelection.candidateMode;
+      (selectedTool.name === "board.add_widget" && !resolvedSelection.candidateMode) ||
+      (selectedModule === "translate" && scopedToolChoiceName === REALTIME_ADD_WIDGET_TOOL_NAME);
     if (shouldTryLocalAddWidgetShortcut) {
       const addWidgetSelection = {
         ...resolvedConcreteSelection,
@@ -5281,12 +5300,6 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       }
     }
 
-    const scopedToolChoiceName = resolveScopedToolChoiceName(
-      selectedTool,
-      selectedModule,
-      this.currentContext,
-      resolvedSelection.scopedTools
-    );
     this.activeScopedToolSelection = {
       selectedModule,
       targetHint: resolvedConcreteSelection.targetHint,

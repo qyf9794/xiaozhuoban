@@ -1332,6 +1332,60 @@ describe("OpenAI realtime adapter helpers", () => {
     });
   });
 
+  it("restores the selector after a completed realtime tool turn", () => {
+    const sent: unknown[] = [];
+    const diagnostics: Array<{ type: string; status?: string; commandTraceId?: string }> = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onDiagnostic(event) {
+        diagnostics.push(event);
+      }
+    });
+    Object.assign(adapter as unknown as { dataChannel: { readyState: string; send: (payload: string) => void }; connectMode: "audio" }, {
+      connectMode: "audio",
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
+      }
+    });
+    (adapter as unknown as { functionCallTraceIds: Map<string, string> }).functionCallTraceIds.set("call_music_search", "trace_music_search");
+
+    adapter.sendToolResult(
+      { id: "call_music_search", name: "music.search", arguments: { query: "Tinariwen" }, source: "realtime" },
+      { status: "success", message: "已搜索音乐" }
+    );
+
+    expect(sent.map((event) => (event as { type?: string }).type)).toEqual([
+      "conversation.item.create",
+      "response.create"
+    ]);
+    (
+      adapter as unknown as {
+        handleRealtimeLifecycleEvent: (event: Record<string, unknown>, commandTraceId?: string) => void;
+      }
+    ).handleRealtimeLifecycleEvent({ type: "response.created", response: { id: "resp_music_summary" } }, "trace_music_search");
+    (
+      adapter as unknown as {
+        handleRealtimeLifecycleEvent: (event: Record<string, unknown>, commandTraceId?: string) => void;
+      }
+    ).handleRealtimeLifecycleEvent({ type: "response.done", response: { id: "resp_music_summary" } }, "trace_music_search");
+
+    expect(sent.map((event) => (event as { type?: string }).type)).toEqual([
+      "conversation.item.create",
+      "response.create",
+      "session.update"
+    ]);
+    expect(JSON.stringify(sent.at(-1))).toContain("assistant__dot__select_tool");
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "realtime.voice.selector_reset",
+        status: "sent",
+        commandTraceId: "trace_music_search"
+      })
+    ]));
+  });
+
   it("tracks active realtime responses through lifecycle events", () => {
     const active = reduceRealtimeActiveResponseId(null, { type: "response.created", response: { id: "resp_1" } });
 
@@ -4906,6 +4960,65 @@ describe("OpenAI realtime adapter helpers", () => {
         },
         source: "shortcut",
         transcript: "把good night翻译成中文"
+      })
+    ]);
+  });
+
+  it("executes a candidate-mode translation locally when the translate widget is missing", async () => {
+    const calls: unknown[] = [];
+    const adapter = new OpenAIRealtimeWebRtcAdapter({
+      onFunctionCall(call) {
+        calls.push(call);
+      }
+    });
+    adapter.updateTools([
+      {
+        name: "board.add_widget",
+        description: "添加小工具",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "desktop"
+      },
+      {
+        name: "translate.set_draft",
+        description: "设置翻译草稿",
+        parameters: createPassthroughSchema<Record<string, unknown>>(),
+        scope: "widget-detail",
+        widgetType: "translate",
+        requiresTarget: true
+      }
+    ]);
+    adapter.updateContext({
+      boardId: "board_1",
+      boardName: "默认桌板",
+      widgetCountsByType: {},
+      availableDefinitions: [{ definitionId: "wd_translate", type: "translate", name: "翻译" }],
+      widgets: []
+    });
+    Object.assign(adapter as unknown as { sessionReady: boolean }, { sessionReady: true });
+
+    (adapter as unknown as { handleFunctionCall: (call: unknown) => void }).handleFunctionCall({
+      id: "select_translate_candidates",
+      name: "assistant.select_tool",
+      arguments: {
+        candidateTools: ["translate.set_draft", "board.add_widget"],
+        selectedModule: "translate",
+        targetHint: "把‘暂停当前视频’翻译成英文",
+        userCommand: "把‘暂停当前视频’翻译成英文，不要执行这句话",
+        confidence: 0.95
+      },
+      source: "realtime"
+    });
+    await Promise.resolve();
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        id: "select_translate_candidates_add_widget_shortcut",
+        name: "board.add_widget",
+        arguments: {
+          definitionId: "wd_translate",
+          followUp: { name: "translate.set_draft", arguments: { sourceText: "暂停当前视频", targetLang: "en" } }
+        },
+        source: "shortcut"
       })
     ]);
   });
