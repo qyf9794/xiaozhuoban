@@ -16,6 +16,7 @@ import {
   configureMusicKit,
   createMusicKitQueueDescriptor,
   getMusicKitDeveloperToken,
+  getMusicKitPlaybackSequencer,
   inferAppleMusicStorefront,
   isMusicKitAuthorized,
   normalizeITunesTracks,
@@ -24,7 +25,6 @@ import {
   requestMusicKitAuthorizationFromUserGesture,
   searchAppleMusicCatalogApi,
   searchAppleMusicCatalog,
-  startMusicKitPlaybackFromUserGesture,
   type ITunesTrack,
   type MusicKitInstanceLike,
   type MusicSearchItem
@@ -3209,6 +3209,7 @@ export function BuiltinWidgetView({
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const musicKitRef = useRef<MusicKitInstanceLike | null>(null);
     const searchSeqRef = useRef(0);
+    const skipNextQuerySearchRef = useRef<string | null>(null);
     const playbackRequestIdRef = useRef(0);
     const appleQueuePreparationSeqRef = useRef(0);
     const composingRef = useRef(false);
@@ -3216,6 +3217,7 @@ export function BuiltinWidgetView({
     const resultsRef = useRef<MusicSearchItem[]>([]);
     const activeItemIdRef = useRef<string | null>(null);
     const preparedAppleItemIdRef = useRef<string | null>(null);
+    const isPlayingRef = useRef(false);
     const musicPlaybackRecoveryButtonRef = useRef<HTMLButtonElement | null>(null);
     const latestMusicStateRef = useRef(instance.state);
     const setActiveTrackId = useCallback((itemId: string | null) => {
@@ -3275,6 +3277,10 @@ export function BuiltinWidgetView({
     useEffect(() => {
       activeItemIdRef.current = activeItemId;
     }, [activeItemId]);
+
+    useEffect(() => {
+      isPlayingRef.current = isPlaying;
+    }, [isPlaying]);
 
     useEffect(() => {
       if (!playbackNeedsGestureItemId) return;
@@ -3381,7 +3387,7 @@ export function BuiltinWidgetView({
       let musicKitPaused = true;
       if (currentItem?.source === "apple" && musicKitRef.current) {
         try {
-          await musicKitRef.current.pause();
+          await getMusicKitPlaybackSequencer(musicKitRef.current).pause(musicKitRef.current);
         } catch {
           musicKitPaused = false;
         }
@@ -3397,16 +3403,52 @@ export function BuiltinWidgetView({
       return musicKitPaused && (currentItem?.source === "apple" || !audio || audio.paused);
     }, []);
 
-    const ensureMusicKit = async () => {
+    const ensureMusicKit = useCallback(async () => {
       if (!musicKitAvailable) {
         throw new Error("请先配置 VITE_APPLE_MUSIC_DEVELOPER_TOKEN");
       }
       if (musicKitRef.current) return musicKitRef.current;
       const music = await configureMusicKit(musicKitDeveloperToken);
       musicKitRef.current = music;
-      setMusicKitStatus(isMusicKitAuthorized(music) ? "Apple Music 已登录" : "Apple Music 待登录");
+      setMusicKitStatus((current) =>
+        isMusicKitAuthorized(music)
+          ? "Apple Music 已登录"
+          : current.includes("已登录") || current.includes("播放中")
+            ? current
+            : "Apple Music 待登录"
+      );
       return music;
-    };
+    }, [musicKitAvailable, musicKitDeveloperToken]);
+
+    useEffect(() => {
+      if (!musicKitAvailable) return;
+
+      let active = true;
+      setMusicKitStatus("Apple Music 正在准备");
+      void ensureMusicKit()
+        .then(() => {
+          if (!active) return;
+          setMusicKitStatus((current) =>
+            current.includes("已登录") || current.includes("播放中") ? current : "Apple Music 待登录"
+          );
+          setPlaybackStatus((current) =>
+            current === "播放器正在准备，请稍后再次点击登录"
+              ? "播放器已准备好，请点击登录 Apple Music"
+              : current
+          );
+        })
+        .catch((setupError) => {
+          if (!active) return;
+          const message = setupError instanceof Error ? setupError.message : "MusicKit SDK 加载失败";
+          setMusicKitStatus("Apple Music 准备失败，可点击重试");
+          setError(message);
+          logMusicDiagnostic("music.setup.result", "failed", { errorCode: "MUSIC_KIT_NOT_READY", message });
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [ensureMusicKit, musicKitAvailable]);
 
     const searchAppleMusic = async (keyword: string): Promise<MusicSearchItem[]> => {
       const fallbackStorefront = typeof navigator === "undefined" ? "us" : inferAppleMusicStorefront(navigator.language);
@@ -3452,7 +3494,11 @@ export function BuiltinWidgetView({
       });
       try {
         const music = options.music ?? (await ensureMusicKit());
-        await music.setQueue(createMusicKitQueueDescriptor(item));
+        await getMusicKitPlaybackSequencer(music).prepareQueue(
+          music,
+          item.id,
+          createMusicKitQueueDescriptor(item)
+        );
         if (appleQueuePreparationSeqRef.current !== preparationId) return null;
         setPreparedAppleTrackId(item.id);
         setActiveTrackId(item.id);
@@ -3566,7 +3612,7 @@ export function BuiltinWidgetView({
         const firstItem = items[0];
         if (firstItem) {
           setActiveTrackId(firstItem.id);
-          if (firstItem.source === "apple") {
+          if (firstItem.source === "apple" && !isPlayingRef.current) {
             void prepareAppleMusicItem(firstItem, { surfaceFailure: false });
           }
         }
@@ -3615,6 +3661,10 @@ export function BuiltinWidgetView({
         setResults([]);
         setError("");
         setLoading(false);
+        return;
+      }
+      if (skipNextQuerySearchRef.current === keyword) {
+        skipNextQuerySearchRef.current = null;
         return;
       }
       const timer = window.setTimeout(() => {
@@ -3680,7 +3730,7 @@ export function BuiltinWidgetView({
         if (!isCurrentRequest()) return cancelledResult();
         if (!playback.verified) {
           try {
-            await music.pause();
+            await getMusicKitPlaybackSequencer(music).pause(music);
           } catch {
             // The failed playback result is authoritative even if cleanup is rejected.
           }
@@ -3805,14 +3855,11 @@ export function BuiltinWidgetView({
         trigger,
         queuePrepared: preparedAppleItemIdRef.current === item.id
       });
-      let playPromise: Promise<unknown>;
-      try {
-        // Keep this SDK call synchronous. On mobile, awaiting queue or auth
-        // before this line consumes the transient user activation.
-        playPromise = startMusicKitPlaybackFromUserGesture(music);
-      } catch (playError) {
-        playPromise = Promise.reject(playError);
-      }
+      // The user-gesture path calls MusicKit synchronously; assistant commands
+      // enter the same sequencer but may safely wait behind an in-flight action.
+      const playPromise = trigger === "user_gesture"
+        ? getMusicKitPlaybackSequencer(music).playFromUserGesture(music)
+        : getMusicKitPlaybackSequencer(music).play(music);
       return verifyAppleMusicPlayback(item, music, playPromise, requestId, trigger);
     };
 
@@ -4112,6 +4159,41 @@ export function BuiltinWidgetView({
       if (!assistantCapabilityBridge) return undefined;
 
       return assistantCapabilityBridge.register(instance.id, {
+        async authStatus() {
+          let music = musicKitRef.current;
+          let ready = Boolean(music);
+          if (musicKitAvailable && !music) {
+            try {
+              music = await ensureMusicKit();
+              ready = true;
+            } catch {
+              ready = false;
+            }
+          }
+          const authorized = isMusicKitAuthorized(music);
+          const message = !musicKitAvailable
+            ? "Apple Music 尚未配置"
+            : !ready
+              ? "Apple Music 播放器尚未准备好"
+              : authorized
+                ? "Apple Music 已登录，可以播放完整歌曲"
+                : "Apple Music 尚未登录，请点击播放器中的登录按钮";
+          logMusicDiagnostic("music.tool.auth_status.result", "success", {
+            configured: musicKitAvailable,
+            ready,
+            authorized
+          });
+          return {
+            status: "success" as const,
+            message,
+            data: {
+              configured: musicKitAvailable,
+              ready,
+              authorized,
+              loginRequired: musicKitAvailable && ready && !authorized
+            }
+          };
+        },
         async search(args) {
           const nextQuery = typeof args.query === "string" ? args.query.trim() : "";
           if (!nextQuery) {
@@ -4120,6 +4202,7 @@ export function BuiltinWidgetView({
           }
           setQueryDraft(nextQuery);
           const items = await runSearch(nextQuery);
+          skipNextQuerySearchRef.current = nextQuery;
           onStateChange({ ...latestMusicStateRef.current, query: nextQuery });
           if (!items.length) {
             logMusicDiagnostic("music.tool.search.result", "failed", { query: nextQuery, errorCode: "MUSIC_TRACK_NOT_FOUND" });
@@ -4137,6 +4220,7 @@ export function BuiltinWidgetView({
           if (nextQuery) {
             setQueryDraft(nextQuery);
             const items = await runSearch(nextQuery);
+            skipNextQuerySearchRef.current = nextQuery;
             onStateChange({ ...latestMusicStateRef.current, query: nextQuery });
             return playItem(selectMusicResult(items, args), args, { requestId });
           }
@@ -4179,12 +4263,14 @@ export function BuiltinWidgetView({
           return playPrevious();
         }
       });
-    }, [assistantCapabilityBridge, instance.id, onStateChange, runSearch, playItem, playNext, playPrevious, pausePlayback]);
+    }, [assistantCapabilityBridge, ensureMusicKit, instance.id, musicKitAvailable, onStateChange, runSearch, playItem, playNext, playPrevious, pausePlayback]);
 
     const activeItem = results.find((item) => item.id === activeItemId) ?? results[0];
     const kindLabel: Record<string, string> = { song: "歌曲", album: "专辑", playlist: "歌单" };
     const sourceLabel = playbackStatus || (musicKitAvailable ? musicKitStatus : "iTunes 试听模式");
-    const musicKitLoggedIn = musicKitStatus.includes("已登录") || musicKitStatus.includes("播放中");
+    const musicKitLoggedIn = isMusicKitAuthorized(musicKitRef.current) || [musicKitStatus, playbackStatus].some(
+      (status) => status.includes("Apple Music 已登录") || status.includes("Apple Music 播放中")
+    );
     const showMusicLogin = musicKitAvailable && !musicKitLoggedIn;
     const visibleProgress = activeItem ? clampPercent(progress) : 0;
     const gesturePlaybackItem = playbackNeedsGestureItemId

@@ -146,7 +146,11 @@ describe("realtime session config", () => {
       create_response: true,
       interrupt_response: true
     });
-    expect(payload.session.audio.input.transcription).toEqual({ model: "gpt-4o-mini-transcribe" });
+    expect(payload.session.audio.input.transcription).toMatchObject({
+      model: "gpt-4o-mini-transcribe",
+      language: "zh",
+      prompt: expect.stringContaining("准确保留")
+    });
     expect(payload.session.tool_choice).toBe("auto");
     expect(payload.session.parallel_tool_calls).toBe(true);
     expect(payload.session.tools.map((tool) => tool.name)).toEqual(["assistant__dot__select_tool", "assistant__dot__execute_command"]);
@@ -173,7 +177,11 @@ describe("realtime session config", () => {
   });
 
   it("enables low-cost input audio transcription for user speech diagnostics", () => {
-    expect(createRealtimeInputTranscription()).toEqual({ model: "gpt-4o-mini-transcribe" });
+    expect(createRealtimeInputTranscription()).toMatchObject({
+      model: "gpt-4o-mini-transcribe",
+      language: "zh",
+      prompt: expect.stringContaining("搜索结果第一首")
+    });
   });
 
   it("reuses audio config for session updates without dropping voice turn detection", () => {
@@ -185,7 +193,11 @@ describe("realtime session config", () => {
           create_response: true,
           interrupt_response: true
         },
-        transcription: { model: "gpt-4o-mini-transcribe" }
+        transcription: {
+          model: "gpt-4o-mini-transcribe",
+          language: "zh",
+          prompt: expect.stringContaining("准确保留")
+        }
       },
       output: { voice: "marin" }
     });

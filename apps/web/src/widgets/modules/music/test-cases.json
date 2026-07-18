@@ -5,10 +5,16 @@
     "expected": { "module": "music", "tool": "widget.remove", "risk": "safe", "needsRealtime": false, "needsConfirmation": false },
     "coverage": {
       "categories": ["singleTool", "windowControl", "scopedContextRedaction", "auditRedaction"],
-      "actions": ["board.add_widget", "widget.focus", "widget.fullscreen_focus", "widget.remove", "music.search", "music.play", "music.pause", "music.resume"],
+      "actions": ["board.add_widget", "widget.focus", "widget.fullscreen_focus", "widget.remove", "music.auth_status", "music.search", "music.play", "music.pause", "music.resume"],
       "risks": ["safe"],
       "contextFields": ["moduleType", "tools", "toolSchemas", "instances", "stateSummary", "shortcutExamples", "executionPolicy", "riskPolicy"]
     }
+  },
+  {
+    "id": "music-auth-status-001",
+    "input": "Apple Music 现在登录了吗",
+    "expected": { "module": "music", "tool": "music.auth_status", "risk": "safe", "needsRealtime": true, "needsConfirmation": false },
+    "coverage": { "categories": ["singleTool", "mountedCapability", "permissionOrAuth"] }
   },
   {
     "id": "music-pause-playback-001",

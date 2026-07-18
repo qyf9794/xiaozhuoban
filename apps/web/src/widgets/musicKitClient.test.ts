@@ -3,6 +3,7 @@ import {
   configureMusicKit,
   createMusicKitQueueDescriptor,
   formatMusicArtworkUrl,
+  getMusicKitPlaybackSequencer,
   inferAppleMusicStorefront,
   isMusicKitAuthorized,
   readMusicKitPlaybackTime,
@@ -11,7 +12,8 @@ import {
   normalizeMusicKitSearchResults,
   searchAppleMusicCatalogApi,
   searchAppleMusicCatalog,
-  startMusicKitPlaybackFromUserGesture
+  startMusicKitPlaybackFromUserGesture,
+  MusicKitPlaybackSequencer
 } from "./musicKitClient";
 
 describe("musicKitClient", () => {
@@ -157,6 +159,123 @@ describe("musicKitClient", () => {
     } as unknown as Window;
 
     await expect(configureMusicKit("developer-token", fakeWindow)).resolves.toBe(instance);
+  });
+
+  it("shares one MusicKit configuration across concurrent widget instances", async () => {
+    let configureCalls = 0;
+    const instance = {
+      authorize: async () => "user-token",
+      setQueue: async () => undefined,
+      play: async () => undefined,
+      pause: () => undefined,
+      isAuthorized: false
+    };
+    const fakeWindow = {
+      MusicKit: {
+        configure: () => {
+          configureCalls += 1;
+          return instance;
+        },
+        getInstance: () => undefined
+      }
+    } as unknown as Window;
+
+    const [first, second] = await Promise.all([
+      configureMusicKit("developer-token", fakeWindow),
+      configureMusicKit("developer-token", fakeWindow)
+    ]);
+
+    expect(first).toBe(instance);
+    expect(second).toBe(instance);
+    expect(configureCalls).toBe(1);
+  });
+
+  it("allows MusicKit configuration to retry after a setup failure", async () => {
+    let configureCalls = 0;
+    const instance = {
+      authorize: async () => "user-token",
+      setQueue: async () => undefined,
+      play: async () => undefined,
+      pause: () => undefined,
+      isAuthorized: false
+    };
+    const fakeWindow = {
+      MusicKit: {
+        configure: () => {
+          configureCalls += 1;
+          if (configureCalls === 1) throw new Error("temporary setup failure");
+          return instance;
+        },
+        getInstance: () => undefined
+      }
+    } as unknown as Window;
+
+    await expect(configureMusicKit("developer-token", fakeWindow)).rejects.toThrow("temporary setup failure");
+    await expect(configureMusicKit("developer-token", fakeWindow)).resolves.toBe(instance);
+    expect(configureCalls).toBe(2);
+  });
+
+  it("serializes queue switches behind pause and deduplicates repeated resume", async () => {
+    const calls: string[] = [];
+    const music = {
+      authorize: async () => "user-token",
+      setQueue: async (descriptor: Record<string, string>) => {
+        calls.push(`queue:${descriptor.song}`);
+      },
+      play: async () => {
+        calls.push("play");
+      },
+      pause: async () => {
+        calls.push("pause");
+      },
+      isAuthorized: true
+    };
+    const sequencer = new MusicKitPlaybackSequencer();
+
+    await sequencer.prepareQueue(music, "song_1", { song: "song_1" });
+    await Promise.all([sequencer.play(music), sequencer.play(music)]);
+    await Promise.all([
+      sequencer.prepareQueue(music, "song_2", { song: "song_2" }),
+      sequencer.play(music)
+    ]);
+
+    expect(calls).toEqual(["pause", "queue:song_1", "play", "pause", "queue:song_2", "play"]);
+  });
+
+  it("deduplicates repeated synchronous user-gesture play calls", async () => {
+    let resolvePlay: (() => void) | undefined;
+    let playCalls = 0;
+    const music = {
+      authorize: async () => "user-token",
+      setQueue: async () => undefined,
+      play: () => {
+        playCalls += 1;
+        return new Promise<void>((resolve) => {
+          resolvePlay = resolve;
+        });
+      },
+      pause: async () => undefined,
+      isAuthorized: true
+    };
+    const sequencer = new MusicKitPlaybackSequencer();
+    await sequencer.prepareQueue(music, "song_1", { song: "song_1" });
+
+    const first = sequencer.playFromUserGesture(music);
+    const second = sequencer.playFromUserGesture(music);
+    expect(playCalls).toBe(1);
+    resolvePlay?.();
+    await Promise.all([first, second]);
+  });
+
+  it("shares one playback sequencer for the singleton MusicKit instance", () => {
+    const music = {
+      authorize: async () => "user-token",
+      setQueue: async () => undefined,
+      play: async () => undefined,
+      pause: async () => undefined
+    };
+
+    expect(getMusicKitPlaybackSequencer(music)).toBe(getMusicKitPlaybackSequencer(music));
   });
 
   it("reports a clear error when MusicKit does not return an instance", async () => {

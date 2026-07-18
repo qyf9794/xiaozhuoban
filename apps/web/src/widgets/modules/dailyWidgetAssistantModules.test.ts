@@ -98,6 +98,7 @@ const moduleActions: AssistantAction[] = [
   action("widget.focus"),
   action("widget.fullscreen_focus"),
   action("widget.remove"),
+  action("music.auth_status", "music"),
   action("music.search", "music"),
   action("music.play", "music"),
   action("music.pause", "music"),

@@ -280,7 +280,7 @@ export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[], modu
   return {
     type: "function",
     name: SELECT_TOOL_NAME.replace(/\./g, "__dot__"),
-    description: "Select 1 to 4 candidate Xiaozhuoban tools before desktop context is provided. Do not choose the final execution tool in this stage.",
+    description: "Select 1 to 4 candidate Xiaozhuoban tool IDs from the current catalog before full schemas and desktop context are provided.",
     parameters: {
       type: "object",
       properties: {
@@ -292,7 +292,7 @@ export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[], modu
             type: "string",
             enum: toolNames
           },
-          description: "Candidate registered tool names, ordered by relevance. This is not the final tool choice."
+          description: "Candidate registered tool IDs from the current catalog, ordered by relevance. This is not the final tool choice."
         },
         name: {
           type: "string",
@@ -847,8 +847,8 @@ export function createScopedRealtimeToolInstructions(
       : "",
     "",
     "# Candidate Tool Stage",
-    "现在根据原始用户命令、候选工具完整上下文和当前桌面上下文，选择最终工具并返回可执行 function_call。",
-    "原始用户命令是最高优先级；不要只根据候选工具名称猜意图。",
+    "现在根据同一 conversation 中的原始客户语音、候选工具完整 schema 和当前桌面上下文，选择最终工具并返回可执行 function_call。",
+    "原始客户语音是最高优先级；下面的用户命令文字只是第一阶段生成的语义提示，不是另一次转写路由，也不能替代原始语音。",
     "如果可以执行，直接调用工具；不要先说话，不要输出“我来处理”“稍等”等语音或文字。",
     "复杂命令可以调用多个已提供工具。需要顺序时按原始命令顺序依次调用；互不依赖时可以并发调用。",
     "只调用候选工具列表中实际提供的工具；不要调用未提供的工具，不要访问未提供的桌面上下文。",

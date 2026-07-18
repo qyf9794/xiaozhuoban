@@ -225,7 +225,10 @@ export function createRealtimeTurnDetection(options: RealtimeSessionOptions = {}
 
 export function createRealtimeInputTranscription() {
   return {
-    model: XIAOZHUOBAN_REALTIME_INPUT_TRANSCRIPTION_MODEL
+    model: XIAOZHUOBAN_REALTIME_INPUT_TRANSCRIPTION_MODEL,
+    language: "zh",
+    prompt:
+      "中文小桌板语音控制。准确保留应用、小工具、歌手、歌曲、频道和操作名称；常见音乐操作包括搜索、播放、暂停、继续、上一首、下一首、搜索结果第一首。"
   };
 }
 

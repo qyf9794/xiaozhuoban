@@ -124,6 +124,7 @@ describe("WidgetCapabilityBridge", () => {
     const manager = new ToolScopeManager(actions.map((action) => action.spec));
 
     expect(names).toEqual([
+      "music.auth_status",
       "music.search",
       "music.play",
       "music.pause",
@@ -260,6 +261,14 @@ describe("WidgetCapabilityBridge", () => {
     const bridge = new WidgetCapabilityBridge();
     const calls: string[] = [];
     bridge.register("wi_music", {
+      authStatus() {
+        calls.push("auth-status");
+        return {
+          status: "success",
+          message: "Apple Music 已登录，可以播放完整歌曲",
+          data: { configured: true, ready: true, authorized: true }
+        };
+      },
       search(args) {
         calls.push(`search:${String(args.query ?? "")}:${String(args.kind ?? "")}`);
       },
@@ -281,6 +290,10 @@ describe("WidgetCapabilityBridge", () => {
     });
     const registry = createRegistry(store, bridge);
 
+    const authResult = await registry.execute(
+      { id: "call_0", name: "music.auth_status", arguments: {}, source: "test" },
+      { target: targetFor("music"), now: () => NOW }
+    );
     await registry.execute(
       { id: "call_1", name: "music.search", arguments: { query: "Miles Davis", kind: "album" }, source: "test" },
       { target: targetFor("music"), now: () => NOW }
@@ -306,7 +319,11 @@ describe("WidgetCapabilityBridge", () => {
       { target: targetFor("music"), now: () => NOW }
     );
 
-    expect(calls).toEqual(["search:Miles Davis:album", "play:Miles Davis", "pause", "resume", "next", "previous"]);
+    expect(authResult).toMatchObject({
+      status: "success",
+      data: { configured: true, ready: true, authorized: true }
+    });
+    expect(calls).toEqual(["auth-status", "search:Miles Davis:album", "play:Miles Davis", "pause", "resume", "next", "previous"]);
     expect(getWidget("music")?.state.query).toBe("Miles Davis");
   });
 

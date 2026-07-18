@@ -463,8 +463,17 @@ function normalizeHarnessToolArguments(toolName: string, args: unknown, transcri
   }
 
   if (toolName === "music.search" || toolName === "music.play") {
-    const query = next.query ?? next.keyword ?? next.searchTerm ?? next.title ?? next.song ?? transcript;
+    const hasRelativeResultIndex =
+      toolName === "music.play" && typeof next.resultIndex === "number" && Number.isFinite(next.resultIndex);
+    const query =
+      next.query ??
+      next.keyword ??
+      next.searchTerm ??
+      next.title ??
+      next.song ??
+      (hasRelativeResultIndex ? undefined : transcript);
     if (typeof query === "string" && query.trim()) next.query = query.trim();
+    if (hasRelativeResultIndex) delete next.query;
     delete next.keyword;
     delete next.searchTerm;
     delete next.title;

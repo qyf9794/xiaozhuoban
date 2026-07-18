@@ -560,12 +560,20 @@ function createStatefulHarness(testCase: CatalogCase, options: { commandPlan?: C
   for (const action of [...createWidgetStateActions(store), ...createWidgetCapabilityActions(store, capabilityBridge)]) {
     if (!registry.get(action.spec.name)) registry.register(action);
   }
-  for (const name of ["assistant.reply", "assistant.runtime_diagnostics", "music.auth_status"]) {
+  for (const name of ["assistant.reply", "assistant.runtime_diagnostics"]) {
     if (!registry.get(name)) registry.register(createNoopAction(name));
   }
 
   for (const item of widgets) {
     capabilityBridge.register(item.id, {
+      authStatus: () => {
+        mutations.push(`capability:${item.id}:authStatus`);
+        return {
+          status: "success",
+          message: "Apple Music 已登录，可以播放完整歌曲",
+          data: { configured: true, ready: true, authorized: true }
+        };
+      },
       search: (args) => {
         mutations.push(`capability:${item.id}:search`);
         return { status: "success", message: "已搜索音乐", data: { args } };

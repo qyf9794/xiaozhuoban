@@ -203,6 +203,20 @@ function createMusicActions(store: WidgetCapabilityStore, bridge: WidgetCapabili
   return [
     defineAction<WidgetCapabilityArgs>({
       spec: {
+        name: "music.auth_status",
+        description: "Report whether Apple Music is configured, ready, and currently authorized. Never use music.search to answer login or availability questions.",
+        parameters: genericCapabilitySchema,
+        risk: "safe",
+        scope: "widget-detail",
+        widgetType: "music",
+        requiresTarget: true
+      },
+      execute(args, context) {
+        return invokeCapability(store, bridge, context, "music", "authStatus", args, "已查询 Apple Music 登录状态");
+      }
+    }),
+    defineAction<WidgetCapabilityArgs>({
+      spec: {
         name: "music.search",
         description: "Return music search results only, without starting playback. Use only when the requested final state is discovery/results; never use as a preparation step for playback.",
         parameters: genericCapabilitySchema,

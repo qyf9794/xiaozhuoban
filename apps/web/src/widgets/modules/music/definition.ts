@@ -5,7 +5,7 @@ export const MUSIC_MODULE_TYPE = "music";
 
 export const musicAliases = ["音乐", "歌曲", "歌", "播放器", "音乐播放器"];
 
-export const musicCapabilities = ["打开音乐", "搜索音乐", "播放", "暂停", "继续", "上一首", "下一首", "关闭窗口"];
+export const musicCapabilities = ["打开音乐", "查询 Apple Music 登录状态", "搜索音乐", "播放", "暂停", "继续", "上一首", "下一首", "关闭窗口"];
 
 export const musicShortcutExamples = [
   "打开音乐",

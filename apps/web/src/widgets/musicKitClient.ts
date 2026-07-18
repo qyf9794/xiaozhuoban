@@ -71,6 +71,7 @@ declare global {
   interface Window {
     MusicKit?: MusicKitGlobal;
     __xiaozhuobanMusicKitScriptPromise?: Promise<MusicKitGlobal>;
+    __xiaozhuobanMusicKitConfigurePromise?: Promise<MusicKitInstanceLike>;
   }
 }
 
@@ -156,6 +157,133 @@ export function requestMusicKitAuthorizationFromUserGesture(music: MusicKitInsta
 
 export function startMusicKitPlaybackFromUserGesture(music: MusicKitInstanceLike): Promise<unknown> {
   return music.play();
+}
+
+type MusicKitPlaybackCommandState = "unknown" | "prepared" | "starting" | "playing" | "paused";
+
+/**
+ * MusicKit rejects overlapping player mutations (especially a second play
+ * while the previous play is still active). Keep every SDK mutation on one
+ * ordered lane and make repeated play/resume requests idempotent.
+ *
+ * The explicit user-gesture entry point stays synchronous so mobile browsers
+ * can consume the click activation without crossing an async boundary.
+ */
+export class MusicKitPlaybackSequencer {
+  private tail: Promise<void> = Promise.resolve();
+  private pendingCommands = 0;
+  private state: MusicKitPlaybackCommandState = "unknown";
+  private preparedItemId: string | null = null;
+  private activePlayPromise: Promise<unknown> | null = null;
+
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    this.pendingCommands += 1;
+    const result = this.tail.then(operation, operation);
+    this.tail = result.then(
+      () => undefined,
+      () => undefined
+    );
+    return result.finally(() => {
+      this.pendingCommands = Math.max(0, this.pendingCommands - 1);
+    });
+  }
+
+  isPrepared(itemId: string): boolean {
+    return this.preparedItemId === itemId;
+  }
+
+  isPlaying(): boolean {
+    return this.state === "playing" || this.state === "starting";
+  }
+
+  prepareQueue(
+    music: MusicKitInstanceLike,
+    itemId: string,
+    descriptor: Record<string, string>
+  ): Promise<void> {
+    return this.enqueue(async () => {
+      if (this.preparedItemId === itemId) return;
+
+      // Pause before replacing the queue. This is safe for an idle player and
+      // is required when search/switch arrives while another item is playing.
+      await music.pause();
+      this.state = "paused";
+      await music.setQueue(descriptor);
+      this.preparedItemId = itemId;
+      this.state = "prepared";
+    });
+  }
+
+  play(music: MusicKitInstanceLike): Promise<unknown> {
+    return this.enqueue(async () => {
+      if (this.state === "playing") return;
+      if (this.state === "starting" && this.activePlayPromise) {
+        return this.activePlayPromise;
+      }
+
+      this.state = "starting";
+      const playPromise = music.play();
+      this.activePlayPromise = playPromise;
+      try {
+        const result = await playPromise;
+        this.state = "playing";
+        return result;
+      } catch (error) {
+        this.state = this.preparedItemId ? "prepared" : "paused";
+        throw error;
+      } finally {
+        if (this.activePlayPromise === playPromise) this.activePlayPromise = null;
+      }
+    });
+  }
+
+  playFromUserGesture(music: MusicKitInstanceLike): Promise<unknown> {
+    if (this.state === "playing") return Promise.resolve();
+    if (this.state === "starting" && this.activePlayPromise) return this.activePlayPromise;
+    if (this.pendingCommands > 0) {
+      return Promise.reject(new Error("MusicKit 播放器正在完成上一条指令，请稍后再次点击播放"));
+    }
+
+    this.state = "starting";
+    let playPromise: Promise<unknown>;
+    try {
+      // Do not insert an await before this SDK call: it must run in the click.
+      playPromise = music.play();
+    } catch (error) {
+      this.state = this.preparedItemId ? "prepared" : "paused";
+      return Promise.reject(error);
+    }
+    this.activePlayPromise = playPromise;
+    void playPromise.then(
+      () => {
+        this.state = "playing";
+      },
+      () => {
+        this.state = this.preparedItemId ? "prepared" : "paused";
+      }
+    ).finally(() => {
+      if (this.activePlayPromise === playPromise) this.activePlayPromise = null;
+    });
+    return playPromise;
+  }
+
+  pause(music: MusicKitInstanceLike): Promise<void> {
+    return this.enqueue(async () => {
+      await music.pause();
+      this.state = "paused";
+    });
+  }
+}
+
+const musicKitPlaybackSequencers = new WeakMap<object, MusicKitPlaybackSequencer>();
+
+export function getMusicKitPlaybackSequencer(music: MusicKitInstanceLike): MusicKitPlaybackSequencer {
+  const key = music as object;
+  const existing = musicKitPlaybackSequencers.get(key);
+  if (existing) return existing;
+  const sequencer = new MusicKitPlaybackSequencer();
+  musicKitPlaybackSequencers.set(key, sequencer);
+  return sequencer;
 }
 
 /**
@@ -263,16 +391,38 @@ export async function configureMusicKit(developerToken: string, windowLike: Wind
   if (!token) {
     throw new Error("未配置 Apple Music Developer Token");
   }
-  const musicKit = await loadMusicKitScript(windowLike);
-  const configured = musicKit.configure({
-    developerToken: token,
-    app: { name: "小桌板", build: "xiaozhuoban-web" },
-    suppressErrorDialog: true,
-    features: ["player-accurate-timing"]
-  });
-  const instance = musicKit.getInstance?.() ?? configured;
-  if (!instance) {
-    throw new Error("MusicKit SDK 未返回播放器实例");
+
+  const existing = windowLike.MusicKit?.getInstance?.();
+  if (existing) return existing;
+
+  if (windowLike.__xiaozhuobanMusicKitConfigurePromise) {
+    return windowLike.__xiaozhuobanMusicKitConfigurePromise;
   }
-  return instance;
+
+  const configuration = loadMusicKitScript(windowLike).then((musicKit) => {
+    const current = musicKit.getInstance?.();
+    if (current) return current;
+
+    const configured = musicKit.configure({
+      developerToken: token,
+      app: { name: "小桌板", build: "xiaozhuoban-web" },
+      suppressErrorDialog: true,
+      features: ["player-accurate-timing"]
+    });
+    const instance = musicKit.getInstance?.() ?? configured;
+    if (!instance) {
+      throw new Error("MusicKit SDK 未返回播放器实例");
+    }
+    return instance;
+  });
+  windowLike.__xiaozhuobanMusicKitConfigurePromise = configuration;
+
+  try {
+    return await configuration;
+  } catch (error) {
+    if (windowLike.__xiaozhuobanMusicKitConfigurePromise === configuration) {
+      delete windowLike.__xiaozhuobanMusicKitConfigurePromise;
+    }
+    throw error;
+  }
 }

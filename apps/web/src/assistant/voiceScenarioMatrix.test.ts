@@ -218,6 +218,14 @@ function createScenarioHarness(scenario: Scenario) {
     const type = definitions.find((entry) => entry.id === item.definitionId)?.type;
     if (!type) continue;
     capabilityBridge.register(item.id, {
+      authStatus: (args) => {
+        capabilityCalls.push({ widgetId: item.id, capabilityName: "authStatus", args });
+        return {
+          status: "success",
+          message: "Apple Music 已登录，可以播放完整歌曲",
+          data: { configured: true, ready: true, authorized: true }
+        };
+      },
       search: (args) => {
         capabilityCalls.push({ widgetId: item.id, capabilityName: "search", args });
         return { status: "success", message: "已搜索音乐" };
@@ -463,6 +471,7 @@ function generatedScenarios(): Scenario[] {
   });
 
   const media = [
+    ["music", "music.auth_status", "Apple Music 现在登录了吗", {}],
     ["music", "music.search", "搜一点轻松的音乐", { query: "轻松", kind: "song" }],
     ["music", "music.play", "播放王菲的红豆", { query: "王菲 红豆", kind: "song" }],
     ["music", "music.play", "来一首陈奕迅十年", { query: "陈奕迅 十年", kind: "song" }],

@@ -132,7 +132,11 @@ describe("realtime session API", () => {
       create_response: true,
       interrupt_response: true
     });
-    expect(payload.session.audio.input.transcription).toEqual({ model: "gpt-4o-mini-transcribe" });
+    expect(payload.session.audio.input.transcription).toMatchObject({
+      model: "gpt-4o-mini-transcribe",
+      language: "zh",
+      prompt: expect.stringContaining("准确保留")
+    });
     expect(payload.session.tools.every((tool: { name: string }) => /^[a-zA-Z0-9_-]+$/.test(tool.name))).toBe(true);
     expect(payload.session.tools.map((tool: { name: string }) => tool.name)).toEqual([
       "assistant__dot__select_tool",

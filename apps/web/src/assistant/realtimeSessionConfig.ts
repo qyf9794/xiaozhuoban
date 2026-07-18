@@ -373,7 +373,7 @@ export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[]): Rea
   return {
     type: "function",
     name: encodeRealtimeToolName(REALTIME_TOOL_SELECTION_TOOL_NAME),
-    description: "Select 1 to 4 candidate Xiaozhuoban tools before desktop context is provided. Do not choose the final execution tool in this stage.",
+    description: "Select 1 to 4 candidate Xiaozhuoban tool IDs from the current catalog before full schemas and desktop context are provided.",
     parameters: objectSchema(
       {
         candidateTools: {
@@ -384,7 +384,7 @@ export function createRealtimeToolSelectionTool(tools: AssistantToolSpec[]): Rea
             type: "string",
             enum: toolNames
           },
-          description: "Candidate registered tool names, ordered by relevance. This is not the final tool choice."
+          description: "Candidate registered tool IDs from the current catalog, ordered by relevance. This is not the final tool choice."
         },
         name: {
           type: "string",
