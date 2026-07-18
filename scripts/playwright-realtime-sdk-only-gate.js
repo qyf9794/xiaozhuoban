@@ -4,7 +4,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const repoRoot = path.resolve(__dirname, "..");
-const site = process.env.XIAOZHUOBAN_PARITY_SITE || "http://127.0.0.1:5177/app";
+const site = process.env.XIAOZHUOBAN_SDK_ONLY_SITE || "http://127.0.0.1:5177/app";
 
 function requirePlaywright() {
   for (const candidate of ["playwright", "/tmp/xz-playwright-runner/node_modules/playwright"]) {
@@ -57,35 +57,25 @@ async function main() {
   try {
     const { chromium } = requirePlaywright();
     browser = await chromium.launch({ channel: "chrome", headless: true });
-    const context = await browser.newContext({ permissions: ["microphone"] });
+    const context = await browser.newContext({ permissions: [] });
     const page = await context.newPage();
     await page.goto(site, { waitUntil: "domcontentloaded", timeout: 20_000 });
 
     const result = await page.evaluate(async () => {
+      const transportModule = await import("/src/assistant/realtimeTransport.ts");
+      const adapterModule = await import("/src/assistant/openaiRealtimeAdapter.ts");
+      const runtimeModule = await import("/src/assistant/createRealtimeAssistantRuntime.ts");
       const diagnostics = [];
-      const statuses = [];
-      let getUserMediaCount = 0;
-      const mediaDevices = navigator.mediaDevices;
-      const originalGetUserMedia = mediaDevices.getUserMedia.bind(mediaDevices);
-      Object.defineProperty(mediaDevices, "getUserMedia", {
-        configurable: true,
-        value: (...args) => {
-          getUserMediaCount += 1;
-          return originalGetUserMedia(...args);
-        }
+      const adapter = {
+        connect: async () => undefined,
+        disconnect: () => undefined,
+        updateTools: () => undefined,
+        sendToolResult: () => undefined
+      };
+      const runtime = runtimeModule.createRealtimeAssistantRuntime({
+        adapterFactory: () => adapter,
+        adapterOptions: { onDiagnostic: (event) => diagnostics.push(event) }
       });
-
-      const { OpenAIRealtimeWebRtcAdapter } = await import("/src/assistant/openaiRealtimeAdapter.ts");
-      const adapter = new OpenAIRealtimeWebRtcAdapter({
-        webrtcTransport: "agents_sdk",
-        onDiagnostic: (event) => diagnostics.push(event),
-        onStatusChange: (status) => statuses.push(status)
-      });
-
-      await adapter.connectTextOnly();
-      adapter.disconnect();
-      await adapter.connectTextOnly();
-      adapter.disconnect();
 
       const originalPermissionQuery = navigator.permissions.query.bind(navigator.permissions);
       Object.defineProperty(navigator.permissions, "query", {
@@ -94,10 +84,11 @@ async function main() {
           descriptor && descriptor.name === "microphone" ? { state: "denied" } : originalPermissionQuery(descriptor)
       });
       let deniedError = "";
-      const deniedDiagnostics = [];
-      const deniedAdapter = new OpenAIRealtimeWebRtcAdapter({
-        webrtcTransport: "agents_sdk",
-        onDiagnostic: (event) => deniedDiagnostics.push(event)
+      let sessionRequestCount = 0;
+      const deniedAdapter = new adapterModule.OpenAIRealtimeWebRtcAdapter({
+        onDiagnostic: (event) => {
+          if (event.type === "realtime.session.request") sessionRequestCount += 1;
+        }
       });
       try {
         await deniedAdapter.connect();
@@ -106,21 +97,25 @@ async function main() {
       }
 
       return {
-        getUserMediaCount,
-        statuses,
-        textReadyCount: diagnostics.filter((event) => event.type === "realtime.session.created_ready").length,
-        textClassicTransportCount: diagnostics.filter(
-          (event) => event.type === "realtime.transport.selected" && event.status === "classic" && event.data?.mode === "text"
+        hasClassicTransportExport:
+          "ClassicRealtimeTransport" in transportModule || "createClassicRealtimeTransport" in transportModule,
+        hasTextOnlyAdapterConnect: typeof adapterModule.OpenAIRealtimeWebRtcAdapter.prototype.connectTextOnly === "function",
+        hasTextOnlyRuntimeConnect: typeof runtime.connectTextOnly === "function",
+        hasRealtimeTextSender: typeof runtime.sendRealtimeTextCommand === "function",
+        selectedSdkCount: diagnostics.filter(
+          (event) => event.type === "realtime.runtime.adapter_selected" && event.status === "sdk_webrtc_transport"
         ).length,
         deniedError,
-        deniedSessionRequestCount: deniedDiagnostics.filter((event) => event.type === "realtime.session.request").length
+        deniedSessionRequestCount: sessionRequestCount
       };
     });
 
     const passed =
-      result.getUserMediaCount === 0 &&
-      result.textReadyCount === 2 &&
-      result.textClassicTransportCount === 2 &&
+      !result.hasClassicTransportExport &&
+      !result.hasTextOnlyAdapterConnect &&
+      !result.hasTextOnlyRuntimeConnect &&
+      !result.hasRealtimeTextSender &&
+      result.selectedSdkCount === 1 &&
       result.deniedError === "MICROPHONE_DENIED" &&
       result.deniedSessionRequestCount === 0;
     console.log(JSON.stringify({ passed, ...result }, null, 2));

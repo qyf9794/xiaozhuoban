@@ -70,7 +70,6 @@ import {
 } from "./realtimeEventLifecycle";
 import {
   createAgentsSdkRealtimeTransport,
-  createClassicRealtimeTransport,
   type RealtimeTransport
 } from "./realtimeTransport";
 
@@ -117,7 +116,6 @@ export interface OpenAIRealtimeWebRtcAdapterOptions {
   fetchImpl?: typeof fetch;
   sessionUpdateTimeoutMs?: number;
   connectTimeoutMs?: number;
-  webrtcTransport?: "classic" | "agents_sdk";
   transportFactory?: (mode: RealtimeConnectMode) => RealtimeTransport;
 }
 
@@ -2757,7 +2755,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     }
 
     const attemptId = this.nextConnectionAttempt();
-    const connectPromise = this.connectInternal(attemptId, "audio").finally(() => {
+    const connectPromise = this.connectInternal(attemptId).finally(() => {
       if (this.connectPromise === connectPromise) {
         this.connectPromise = null;
       }
@@ -2766,27 +2764,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     return connectPromise;
   }
 
-  connectTextOnly(): Promise<void> {
-    if (shouldReuseRealtimeConnect(Boolean(this.connectPromise), this.getTransportReadyState())) {
-      return this.connectPromise ?? Promise.resolve();
-    }
-    if (this.hasConnectionResources()) {
-      this.closeResources();
-    }
-
-    const attemptId = this.nextConnectionAttempt();
-    const connectPromise = this.connectInternal(attemptId, "text").finally(() => {
-      if (this.connectPromise === connectPromise) {
-        this.connectPromise = null;
-      }
-    });
-    this.connectPromise = connectPromise;
-    return connectPromise;
-  }
-
-  private async connectInternal(attemptId: number, mode: RealtimeConnectMode): Promise<void> {
+  private async connectInternal(attemptId: number): Promise<void> {
     const fetchImpl = this.options.fetchImpl ?? fetch;
-    this.connectMode = mode;
+    const mode: RealtimeConnectMode = "audio";
+    this.connectMode = "audio";
     this.options.onStatusChange?.("connecting");
     this.emitDiagnostic({ type: "realtime.connect.start", status: "connecting", data: { mode } });
     this.handledFunctionCallIds.clear();
@@ -2811,47 +2792,43 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.activeScopedToolSelection = null;
     this.activeRealtimePlanSelection = null;
 
-    let stream: MediaStream | null = null;
-    if (mode === "audio") {
-      const permissionState = await getMicrophonePermissionState(navigator);
-      this.emitDiagnostic({ type: "realtime.microphone.permission", status: permissionState });
-      if (permissionState === "denied") {
-        if (!this.isCurrentAttempt(attemptId)) {
-          return;
-        }
-        this.options.onStatusChange?.("microphone_denied");
-        this.emitDiagnostic({ type: "realtime.connect.failed", status: "microphone_denied", errorCode: "MICROPHONE_DENIED" });
-        throw new Error("MICROPHONE_DENIED");
-      }
-      if (!navigator.mediaDevices?.getUserMedia) {
-        if (!this.isCurrentAttempt(attemptId)) {
-          return;
-        }
-        this.options.onStatusChange?.("microphone_unavailable");
-        this.emitDiagnostic({ type: "realtime.connect.failed", status: "microphone_unavailable", errorCode: "MICROPHONE_UNAVAILABLE" });
-        throw new Error("MICROPHONE_UNAVAILABLE");
-      }
-      try {
-        stream = await navigator.mediaDevices.getUserMedia(createRealtimeMicrophoneConstraints());
-        this.emitDiagnostic({ type: "realtime.microphone.stream", status: "success", data: { audioTracks: stream.getAudioTracks().length } });
-      } catch (error) {
-        if (!this.isCurrentAttempt(attemptId)) {
-          return;
-        }
-        const errorCode = resolveMicrophoneAccessErrorCode(error);
-        this.options.onStatusChange?.(errorCode === "MICROPHONE_UNAVAILABLE" ? "microphone_unavailable" : "microphone_denied");
-        this.emitDiagnostic({ type: "realtime.connect.failed", status: "microphone_error", errorCode });
-        throw new Error(errorCode);
-      }
+    const permissionState = await getMicrophonePermissionState(navigator);
+    this.emitDiagnostic({ type: "realtime.microphone.permission", status: permissionState });
+    if (permissionState === "denied") {
       if (!this.isCurrentAttempt(attemptId)) {
-        stream.getTracks().forEach((track) => track.stop());
         return;
       }
-      this.mediaStream = stream;
-      this.startMicrophoneLevelMonitor(stream);
-    } else {
-      this.emitDiagnostic({ type: "realtime.microphone.permission", status: "skipped", data: { mode } });
+      this.options.onStatusChange?.("microphone_denied");
+      this.emitDiagnostic({ type: "realtime.connect.failed", status: "microphone_denied", errorCode: "MICROPHONE_DENIED" });
+      throw new Error("MICROPHONE_DENIED");
     }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      if (!this.isCurrentAttempt(attemptId)) {
+        return;
+      }
+      this.options.onStatusChange?.("microphone_unavailable");
+      this.emitDiagnostic({ type: "realtime.connect.failed", status: "microphone_unavailable", errorCode: "MICROPHONE_UNAVAILABLE" });
+      throw new Error("MICROPHONE_UNAVAILABLE");
+    }
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(createRealtimeMicrophoneConstraints());
+      this.emitDiagnostic({ type: "realtime.microphone.stream", status: "success", data: { audioTracks: stream.getAudioTracks().length } });
+    } catch (error) {
+      if (!this.isCurrentAttempt(attemptId)) {
+        return;
+      }
+      const errorCode = resolveMicrophoneAccessErrorCode(error);
+      this.options.onStatusChange?.(errorCode === "MICROPHONE_UNAVAILABLE" ? "microphone_unavailable" : "microphone_denied");
+      this.emitDiagnostic({ type: "realtime.connect.failed", status: "microphone_error", errorCode });
+      throw new Error(errorCode);
+    }
+    if (!this.isCurrentAttempt(attemptId)) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    this.mediaStream = stream;
+    this.startMicrophoneLevelMonitor(stream);
 
     try {
       const accessToken = await this.options.getAccessToken?.();
@@ -2901,12 +2878,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       }
 
       const sessionReadyPromise = this.createSessionReadyPromise();
-      const transportKind = mode === "audio" ? this.options.webrtcTransport ?? "classic" : "classic";
-      const transport =
-        this.options.transportFactory?.(mode) ??
-        (transportKind === "agents_sdk" ? createAgentsSdkRealtimeTransport() : createClassicRealtimeTransport());
+      const transport = this.options.transportFactory?.(mode) ?? createAgentsSdkRealtimeTransport();
       this.transport = transport;
-      this.emitDiagnostic({ type: "realtime.transport.selected", status: transportKind, data: { mode } });
+      this.emitDiagnostic({ type: "realtime.transport.selected", status: "agents_sdk", data: { mode } });
       const transportAudioElement = transport.handlesAudioPlayback ? this.createRemoteAudioElement() : undefined;
       const handlePeerStateChange = (state: string) => {
         const status = resolveRealtimePeerStatus(state);
@@ -2921,8 +2895,6 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         clientSecret: secret,
         model: realtimeModel,
         mediaStream: stream,
-        mode,
-        fetchImpl,
         timeoutMs: connectTimeoutMs,
         audioElement: transportAudioElement,
         shouldContinue: () => this.isCurrentAttempt(attemptId),
@@ -2950,9 +2922,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
           }
         },
         onDiagnostic: (event) => {
-          if (event.type === "audio_transceiver_added") {
-            this.emitDiagnostic({ type: "realtime.audio_transceiver.added", status: "recvonly", data: { mode: event.mode } });
-          } else if (event.type === "sdp_timeout") {
+          if (event.type === "sdp_timeout") {
             this.emitDiagnostic({ type: "realtime.sdp.timeout", status: "failed", errorCode: "REALTIME_CONNECT_TIMEOUT" });
           } else {
             this.emitDiagnostic({

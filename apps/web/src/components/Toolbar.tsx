@@ -81,9 +81,7 @@ export function Toolbar({
   realtimeHighAccuracyMode = false,
   onToggleRealtimeHighAccuracyMode,
   localWakeWordEnabled = false,
-  onToggleLocalWakeWord,
-  agentsVoiceAdapterEnabled = false,
-  onToggleAgentsVoiceAdapter
+  onToggleLocalWakeWord
 }: {
   board: Board;
   definitions: WidgetDefinition[];
@@ -108,8 +106,6 @@ export function Toolbar({
   onToggleRealtimeHighAccuracyMode?: () => void;
   localWakeWordEnabled?: boolean;
   onToggleLocalWakeWord?: () => void;
-  agentsVoiceAdapterEnabled?: boolean;
-  onToggleAgentsVoiceAdapter?: () => void;
 }) {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -402,22 +398,6 @@ export function Toolbar({
               >
                 <span>语音监听唤醒</span>
                 <TinySwitch checked={localWakeWordEnabled} />
-              </button>
-              <button
-                onClick={() => {
-                  onToggleAgentsVoiceAdapter?.();
-                }}
-                className="glass-dropdown-item"
-                aria-pressed={agentsVoiceAdapterEnabled}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 10
-                }}
-              >
-                <span>SDK WebRTC transport</span>
-                <TinySwitch checked={agentsVoiceAdapterEnabled} />
               </button>
               <button
                 onClick={() => {

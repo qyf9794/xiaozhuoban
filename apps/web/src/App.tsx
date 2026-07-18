@@ -97,7 +97,6 @@ export function App() {
     assistantOperation,
     assistantRuntime,
     assistantSpeech,
-    agentsVoiceAdapterEnabled,
     localWakeWordEnabled,
     localWakeWordAudioLevel,
     localWakeWordStatus,
@@ -108,7 +107,6 @@ export function App() {
     recordDiagnostic,
     retrySync,
     runtimeStatusText,
-    setAgentsVoiceAdapterEnabled,
     setLocalWakeWordEnabled,
     setRealtimeHighAccuracyMode,
     syncLastError,
@@ -225,8 +223,6 @@ export function App() {
               onToggleRealtimeHighAccuracyMode={() => setRealtimeHighAccuracyMode((value) => !value)}
               localWakeWordEnabled={localWakeWordEnabled}
               onToggleLocalWakeWord={() => setLocalWakeWordEnabled((value) => !value)}
-              agentsVoiceAdapterEnabled={agentsVoiceAdapterEnabled}
-              onToggleAgentsVoiceAdapter={() => setAgentsVoiceAdapterEnabled((value) => !value)}
               fullscreen={fullscreen}
               onToggleFullscreen={() => {
                 if (document.fullscreenElement) {
@@ -374,7 +370,6 @@ export function App() {
           voiceStatus={realtimeStatus}
           voiceAudioLevel={realtimeAudioLevel}
           onConnectVoice={assistantRuntime.connect}
-          onConnectTextOnly={assistantRuntime.connectTextOnly}
           onDisconnectVoice={assistantRuntime.disconnect}
           isMobileMode={isMobileMode}
           desktopBottomInset={desktopViewportBottomInset}
@@ -389,7 +384,6 @@ export function App() {
           syncPendingCount={syncPendingCount}
           syncLastError={syncLastError}
           onCommandRoute={assistantRuntime.recordCommandRoute}
-          onSendRealtimeTextCommand={assistantRuntime.sendRealtimeTextCommand}
           onDiagnostic={recordDiagnostic}
           onRetrySync={async () => {
             await retrySync(repository);

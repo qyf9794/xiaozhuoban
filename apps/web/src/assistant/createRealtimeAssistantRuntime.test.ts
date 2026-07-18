@@ -3,7 +3,6 @@ import type { CommandPlan } from "@xiaozhuoban/assistant-core";
 import type { OpenAIRealtimeWebRtcAdapterOptions, RealtimeConnectionStatus } from "./openaiRealtimeAdapter";
 import {
   createRealtimeAssistantRuntime,
-  readAgentsVoiceAdapterEnabled,
   shouldFallbackUnhandledVoiceTranscriptToHarness
 } from "./createRealtimeAssistantRuntime";
 
@@ -22,13 +21,9 @@ function createRuntimeWithFakeAdapter(options: {
     connect: vi.fn(async () => {
       adapterOptions?.onStatusChange?.("connected");
     }),
-    connectTextOnly: vi.fn(async () => {
-      adapterOptions?.onStatusChange?.("connected");
-    }),
     disconnect: vi.fn(() => {
       adapterOptions?.onStatusChange?.("disconnected");
     }),
-    sendTextCommand: vi.fn(),
     updateTools: vi.fn(),
     updateContext: vi.fn(),
     updateModules: vi.fn(),
@@ -67,22 +62,27 @@ afterEach(() => {
 });
 
 describe("createRealtimeAssistantRuntime", () => {
-  it("defaults to the SDK WebRTC transport when no persisted preference exists", () => {
-    expect(readAgentsVoiceAdapterEnabled()).toBe(true);
-    let selectedTransport: OpenAIRealtimeWebRtcAdapterOptions["webrtcTransport"];
+  it("always selects the SDK WebRTC adapter", () => {
+    const diagnostics: Array<{ type: string; status?: string }> = [];
     createRealtimeAssistantRuntime({
-      adapterFactory: (options) => {
-        selectedTransport = options.webrtcTransport;
+      adapterOptions: {
+        onDiagnostic(event) {
+          diagnostics.push(event);
+        }
+      },
+      adapterFactory: () => {
         return {
           connect: vi.fn(async () => undefined),
-          connectTextOnly: vi.fn(async () => undefined),
           disconnect: vi.fn(),
           updateTools: vi.fn(),
           sendToolResult: vi.fn()
         };
       }
     });
-    expect(selectedTransport).toBe("agents_sdk");
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      type: "realtime.runtime.adapter_selected",
+      status: "sdk_webrtc_transport"
+    }));
   });
 
   it("can stay in local standby for 24 hours without creating a realtime session", () => {
@@ -159,45 +159,12 @@ describe("createRealtimeAssistantRuntime", () => {
     expect(runtime.runtimeController.mode).toBe("realtime_dialogue_window");
   });
 
-  it("can connect a text-only realtime session without calling the audio connect path", async () => {
-    const { runtime, adapter, statuses } = createRuntimeWithFakeAdapter();
-
-    await runtime.connectTextOnly();
-
-    expect(adapter.connectTextOnly).toHaveBeenCalledTimes(1);
-    expect(adapter.connect).not.toHaveBeenCalled();
-    expect(runtime.runtimeController.mode).toBe("realtime_dialogue_window");
-    expect(statuses).toEqual(["connected"]);
-  });
-
-  it("opens text-only realtime before sending a text command", async () => {
-    const { runtime, adapter } = createRuntimeWithFakeAdapter();
-
-    await runtime.sendRealtimeTextCommand("打开表盘时钟", { commandTraceId: "trace_text_1" });
-
-    expect(adapter.connectTextOnly).toHaveBeenCalledTimes(1);
-    expect(adapter.connect).not.toHaveBeenCalled();
-    expect(adapter.sendTextCommand).toHaveBeenCalledWith("打开表盘时钟", { commandTraceId: "trace_text_1" });
-  });
-
-  it("falls back to the classic WebRTC adapter when the Agents voice adapter fails to connect", async () => {
+  it("propagates SDK connection failures without creating a fallback adapter", async () => {
     const diagnostics: Array<{ type: string; status?: string; message?: string }> = [];
-    const failingAgentsAdapter = {
+    const sdkAdapter = {
       connect: vi.fn(async () => {
         throw new Error("SDK_CONNECT_FAILED");
       }),
-      connectTextOnly: vi.fn(async () => {
-        throw new Error("REALTIME_TEXT_ONLY_UNAVAILABLE");
-      }),
-      disconnect: vi.fn(),
-      updateTools: vi.fn(),
-      updateContext: vi.fn(),
-      updateModules: vi.fn(),
-      sendToolResult: vi.fn()
-    };
-    const classicAdapter = {
-      connect: vi.fn(async () => undefined),
-      connectTextOnly: vi.fn(async () => undefined),
       disconnect: vi.fn(),
       updateTools: vi.fn(),
       updateContext: vi.fn(),
@@ -205,33 +172,23 @@ describe("createRealtimeAssistantRuntime", () => {
       sendToolResult: vi.fn()
     };
     let factoryCalls = 0;
-    const selectedTransports: Array<OpenAIRealtimeWebRtcAdapterOptions["webrtcTransport"]> = [];
     const runtime = createRealtimeAssistantRuntime({
-      useAgentsVoiceAdapter: true,
       adapterOptions: {
         onDiagnostic(event) {
           diagnostics.push(event);
         }
       },
-      adapterFactory: (adapterOptions) => {
+      adapterFactory: () => {
         factoryCalls += 1;
-        selectedTransports.push(adapterOptions.webrtcTransport);
-        return factoryCalls === 1 ? failingAgentsAdapter : classicAdapter;
+        return sdkAdapter;
       }
     });
 
-    await runtime.connect();
+    await expect(runtime.connect()).rejects.toThrow("SDK_CONNECT_FAILED");
 
-    expect(failingAgentsAdapter.connect).toHaveBeenCalledTimes(1);
-    expect(classicAdapter.connect).toHaveBeenCalledTimes(1);
-    expect(selectedTransports).toEqual(["agents_sdk", "classic"]);
-    expect(diagnostics).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        type: "realtime.runtime.adapter_fallback",
-        status: "classic_webrtc",
-        message: "SDK_CONNECT_FAILED"
-      })
-    ]));
+    expect(sdkAdapter.connect).toHaveBeenCalledTimes(1);
+    expect(factoryCalls).toBe(1);
+    expect(diagnostics.some((event) => event.type === "realtime.runtime.adapter_fallback")).toBe(false);
   });
 
   it("records local hits and model fallbacks without adding realtime cost", () => {

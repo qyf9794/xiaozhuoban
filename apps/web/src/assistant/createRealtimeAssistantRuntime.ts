@@ -17,25 +17,10 @@ import {
 import type { WidgetCapabilityBridge } from "./widgetCapabilityBridge";
 import type { AssistantRoute, AssistantRealtimeAdapter } from "./AssistantHarness";
 
-export const AGENTS_VOICE_ADAPTER_STORAGE_KEY = "xiaozhuoban.realtime.agentsVoiceAdapter.enabled";
-export const SDK_WEBRTC_TRANSPORT_STORAGE_KEY = "xiaozhuoban.realtime.sdkWebRtcTransport.enabled";
-
-export function readAgentsVoiceAdapterEnabled(): boolean {
-  if (typeof window === "undefined") return true;
-  const stored =
-    window.localStorage.getItem(SDK_WEBRTC_TRANSPORT_STORAGE_KEY) ??
-    window.localStorage.getItem(AGENTS_VOICE_ADAPTER_STORAGE_KEY);
-  return stored === null ? true : stored !== "false";
-}
-
 type RuntimeRealtimeAdapter = AssistantRealtimeAdapter & {
   connect: () => Promise<void>;
-  connectTextOnly?: () => Promise<void>;
   disconnect: () => void;
-  sendTextCommand?: (input: string, options?: { commandTraceId?: string }) => void;
 };
-
-type RuntimeRealtimeAdapterKind = "sdk_webrtc_transport" | "classic_webrtc";
 
 export function shouldFallbackUnhandledVoiceTranscriptToHarness(input: string): boolean {
   const normalized = input.trim();
@@ -51,9 +36,7 @@ export interface RealtimeAssistantRuntime {
   adapter: RuntimeRealtimeAdapter;
   runtimeController: RealtimeRuntimeController;
   connect: () => Promise<void>;
-  connectTextOnly: () => Promise<void>;
   connectForWake: () => Promise<void>;
-  sendRealtimeTextCommand: (input: string, options?: { commandTraceId?: string }) => Promise<void>;
   disconnect: () => void;
   detectLocalWake: () => void;
   noteRealtimeActivity: (source: string) => void;
@@ -70,7 +53,6 @@ export function createRealtimeAssistantRuntime(options: {
   appShellBridge?: AppShellActionBridge;
   adapterOptions?: Omit<OpenAIRealtimeWebRtcAdapterOptions, "onFunctionCall" | "onStatusChange">;
   adapterFactory?: (options: OpenAIRealtimeWebRtcAdapterOptions) => RuntimeRealtimeAdapter;
-  useAgentsVoiceAdapter?: boolean | (() => boolean);
   runtimeBudgetConfig?: RealtimeBudgetConfig;
   now?: () => number;
 } = {}): RealtimeAssistantRuntime {
@@ -265,27 +247,16 @@ export function createRealtimeAssistantRuntime(options: {
       });
     }
   };
-  const shouldUseAgentsVoiceAdapter = () =>
-    typeof options.useAgentsVoiceAdapter === "function"
-      ? options.useAgentsVoiceAdapter()
-      : options.useAgentsVoiceAdapter ?? true;
   let activeAdapter: RuntimeRealtimeAdapter | null = null;
-  let activeAdapterKind: RuntimeRealtimeAdapterKind | null = null;
   let cachedTools: AssistantToolSpec[] = [];
   let cachedContext: Parameters<NonNullable<AssistantRealtimeAdapter["updateContext"]>>[0] | null = null;
   let cachedModules: Parameters<NonNullable<AssistantRealtimeAdapter["updateModules"]>>[0] | null = null;
   let cachedCommandTraceId: string | null = null;
-  const createRuntimeAdapter = (forcedKind?: RuntimeRealtimeAdapterKind) => {
-    const adapterKind = forcedKind ?? (shouldUseAgentsVoiceAdapter() ? "sdk_webrtc_transport" : "classic_webrtc");
-    const selectedAdapterOptions: OpenAIRealtimeWebRtcAdapterOptions = {
-      ...adapterOptions,
-      webrtcTransport: adapterKind === "sdk_webrtc_transport" ? "agents_sdk" : "classic"
-    };
+  const createRuntimeAdapter = () => {
     const nextAdapter = options.adapterFactory
-      ? options.adapterFactory(selectedAdapterOptions)
-      : new OpenAIRealtimeWebRtcAdapter(selectedAdapterOptions);
-    activeAdapterKind = adapterKind;
-    emitDiagnostic?.({ type: "realtime.runtime.adapter_selected", status: adapterKind });
+      ? options.adapterFactory(adapterOptions)
+      : new OpenAIRealtimeWebRtcAdapter(adapterOptions);
+    emitDiagnostic?.({ type: "realtime.runtime.adapter_selected", status: "sdk_webrtc_transport" });
     if (cachedTools.length) {
       void nextAdapter.updateTools(cachedTools);
     }
@@ -304,22 +275,9 @@ export function createRealtimeAssistantRuntime(options: {
     activeAdapter ??= createRuntimeAdapter();
     return activeAdapter;
   };
-  const switchAdapter = (kind: RuntimeRealtimeAdapterKind) => {
-    activeAdapter?.disconnect();
-    activeAdapter = createRuntimeAdapter(kind);
-    return activeAdapter;
-  };
   const adapter: RuntimeRealtimeAdapter = {
     connect: () => getAdapter().connect(),
-    connectTextOnly: () => getAdapter().connectTextOnly?.() ?? Promise.reject(new Error("REALTIME_TEXT_ONLY_UNAVAILABLE")),
     disconnect: () => activeAdapter?.disconnect(),
-    sendTextCommand: (input, commandOptions) => {
-      const selectedAdapter = getAdapter();
-      if (!selectedAdapter.sendTextCommand) {
-        throw new Error("REALTIME_TEXT_COMMAND_UNAVAILABLE");
-      }
-      selectedAdapter.sendTextCommand(input, commandOptions);
-    },
     updateTools: (tools) => {
       cachedTools = tools;
       return activeAdapter?.updateTools(tools);
@@ -356,46 +314,7 @@ export function createRealtimeAssistantRuntime(options: {
     if (!gate.allowed) {
       throw new Error(gate.reason);
     }
-    try {
-      await adapter.connect();
-    } catch (error) {
-      if (activeAdapterKind !== "sdk_webrtc_transport") {
-        throw error;
-      }
-      emitDiagnostic?.({
-        type: "realtime.runtime.adapter_fallback",
-        status: "classic_webrtc",
-        message: error instanceof Error ? error.message : "agents voice adapter connect failed"
-      });
-      await switchAdapter("classic_webrtc").connect();
-    }
-  };
-  const connectTextOnlyWithReason = async (reason: "manual" | "wake") => {
-    const gate = runtimeController.requestRealtime(reason);
-    notifyRuntime();
-    if (!gate.allowed) {
-      throw new Error(gate.reason);
-    }
-    if (!adapter.connectTextOnly) {
-      throw new Error("REALTIME_TEXT_ONLY_UNAVAILABLE");
-    }
-    try {
-      await adapter.connectTextOnly();
-    } catch (error) {
-      if (activeAdapterKind !== "sdk_webrtc_transport") {
-        throw error;
-      }
-      emitDiagnostic?.({
-        type: "realtime.runtime.adapter_fallback",
-        status: "classic_webrtc",
-        message: error instanceof Error ? error.message : "agents voice adapter text-only connect failed"
-      });
-      const fallbackAdapter = switchAdapter("classic_webrtc");
-      if (!fallbackAdapter.connectTextOnly) {
-        throw new Error("REALTIME_TEXT_ONLY_UNAVAILABLE");
-      }
-      await fallbackAdapter.connectTextOnly();
-    }
+    await adapter.connect();
   };
   const disconnectRealtime = (reason: "manual" | "idle_timeout" | "max_session_timeout" = "manual") => {
     clearIdleTimer();
@@ -423,21 +342,8 @@ export function createRealtimeAssistantRuntime(options: {
     async connect() {
       await connectWithReason("manual");
     },
-    async connectTextOnly() {
-      await connectTextOnlyWithReason("manual");
-    },
     async connectForWake() {
       await connectWithReason("wake");
-    },
-    async sendRealtimeTextCommand(input, options) {
-      if (!adapter.sendTextCommand) {
-        throw new Error("REALTIME_TEXT_COMMAND_UNAVAILABLE");
-      }
-      if (!runtimeController.mode.startsWith("realtime_")) {
-        await connectTextOnlyWithReason("manual");
-      }
-      noteRealtimeActivity("text_command");
-      adapter.sendTextCommand(input, options);
     },
     disconnect: disconnectRealtime,
     detectLocalWake() {

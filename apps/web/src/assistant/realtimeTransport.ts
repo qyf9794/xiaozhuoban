@@ -9,16 +9,13 @@ export type RealtimeTransportFunctionCall = {
 };
 
 export type RealtimeTransportDiagnostic =
-  | { type: "audio_transceiver_added"; mode: "audio" | "text" }
   | { type: "sdp_timeout" }
   | { type: "sdp_failed"; status: number; message: string };
 
 export interface RealtimeTransportConnectOptions {
   clientSecret: string;
   model: string;
-  mediaStream: MediaStream | null;
-  mode: "audio" | "text";
-  fetchImpl: typeof fetch;
+  mediaStream: MediaStream;
   timeoutMs: number;
   audioElement?: HTMLAudioElement;
   shouldContinue?: () => boolean;
@@ -67,127 +64,6 @@ async function withTransportTimeout<T>(
   }
 }
 
-/**
- * Transport-only wrapper for the existing hand-written WebRTC implementation.
- * It deliberately contains no session configuration, tool, transcript, or
- * response lifecycle behavior so the SDK transport can replace it independently.
- */
-export class ClassicRealtimeTransport implements RealtimeTransport {
-  readonly handlesAudioPlayback = false;
-  readonly handlesInterrupt = false;
-  readonly handlesFunctionCallOutput = false;
-  readonly handlesMessageSend = false;
-  readonly handlesResponseSequencing = false;
-  private channel: RTCDataChannel | null = null;
-  private peer: RTCPeerConnection | null = null;
-
-  get readyState(): string {
-    return this.channel?.readyState ?? "closed";
-  }
-
-  get dataChannel(): RTCDataChannel | null {
-    return this.channel;
-  }
-
-  get peerConnection(): RTCPeerConnection | null {
-    return this.peer;
-  }
-
-  async connect(options: RealtimeTransportConnectOptions): Promise<void> {
-    this.close();
-
-    const peerConnection = new RTCPeerConnection();
-    const dataChannel = peerConnection.createDataChannel("openai-realtime-data");
-    this.peer = peerConnection;
-    this.channel = dataChannel;
-
-    options.mediaStream
-      ?.getAudioTracks()
-      .forEach((track) => peerConnection.addTrack(track, options.mediaStream as MediaStream));
-    if (!options.mediaStream && typeof peerConnection.addTransceiver === "function") {
-      peerConnection.addTransceiver("audio", { direction: "recvonly" });
-      options.onDiagnostic?.({ type: "audio_transceiver_added", mode: options.mode });
-    }
-
-    peerConnection.onconnectionstatechange = () => options.onPeerStateChange(peerConnection.connectionState);
-    peerConnection.oniceconnectionstatechange = () => options.onPeerStateChange(peerConnection.iceConnectionState);
-    peerConnection.ontrack = options.onTrack;
-    dataChannel.onopen = options.onOpen;
-    dataChannel.onmessage = (event) => options.onMessage(event.data);
-    dataChannel.onclose = options.onClose;
-
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-    const fetchImpl = options.fetchImpl;
-    const sdpResponse = await withTransportTimeout(
-      fetchImpl("https://api.openai.com/v1/realtime/calls", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${options.clientSecret}`,
-          "content-type": "application/sdp"
-        },
-        body: offer.sdp ?? ""
-      }),
-      options.timeoutMs,
-      () => options.onDiagnostic?.({ type: "sdp_timeout" })
-    );
-    const sdpText = await sdpResponse.text();
-    if (!sdpResponse.ok) {
-      options.onDiagnostic?.({
-        type: "sdp_failed",
-        status: sdpResponse.status,
-        message: sdpText.slice(0, 240)
-      });
-      throw new Error("REALTIME_SDP_FAILED");
-    }
-    if (options.shouldContinue && !options.shouldContinue()) {
-      this.close();
-      return;
-    }
-    await peerConnection.setRemoteDescription({ type: "answer", sdp: sdpText });
-  }
-
-  sendEvent(event: RealtimeTransportEvent): void {
-    if (this.channel?.readyState !== "open") return;
-    this.channel.send(JSON.stringify(event));
-  }
-
-  requestResponse(response?: Record<string, unknown>): void {
-    this.sendEvent({ type: "response.create", ...(response ? { response } : {}) });
-  }
-
-  sendMessage(message: string, otherEventData: Record<string, unknown> = {}): void {
-    this.sendEvent({
-      type: "conversation.item.create",
-      item: { type: "message", role: "user", content: [{ type: "input_text", text: message }] },
-      ...otherEventData
-    });
-  }
-
-  sendFunctionCallOutput(call: RealtimeTransportFunctionCall, output: string, startResponse: boolean): void {
-    this.sendEvent({
-      type: "conversation.item.create",
-      item: { type: "function_call_output", call_id: call.callId, output }
-    });
-    if (startResponse) this.requestResponse();
-  }
-
-  interrupt(): void {
-    // Classic interruption remains explicit response.cancel + audio clear
-    // events in the adapter until the Classic transport is removed.
-  }
-
-  close(): void {
-    if (this.channel) {
-      this.channel.onclose = null;
-      this.channel.close();
-    }
-    this.peer?.close();
-    this.channel = null;
-    this.peer = null;
-  }
-}
-
 type AgentsSdkWebRtcTransport = import("@openai/agents/realtime").OpenAIRealtimeWebRTC;
 
 /**
@@ -217,9 +93,6 @@ export class AgentsSdkRealtimeTransport implements RealtimeTransport {
   }
 
   async connect(options: RealtimeTransportConnectOptions): Promise<void> {
-    if (options.mode !== "audio") {
-      throw new Error("REALTIME_SDK_TEXT_MODE_UNSUPPORTED");
-    }
     this.close();
     this.closeRequested = false;
 
@@ -232,7 +105,7 @@ export class AgentsSdkRealtimeTransport implements RealtimeTransport {
     };
     const sdkTransport = new sdk.OpenAIRealtimeWebRTC({
       model: options.model,
-      mediaStream: options.mediaStream ?? undefined,
+      mediaStream: options.mediaStream,
       audioElement: options.audioElement,
       changePeerConnection: (peerConnection) => {
         const sdkTrackHandler = peerConnection.ontrack;
@@ -304,10 +177,6 @@ export class AgentsSdkRealtimeTransport implements RealtimeTransport {
     this.sdkTransport?.close();
     this.sdkTransport = null;
   }
-}
-
-export function createClassicRealtimeTransport(): RealtimeTransport {
-  return new ClassicRealtimeTransport();
 }
 
 export function createAgentsSdkRealtimeTransport(): RealtimeTransport {

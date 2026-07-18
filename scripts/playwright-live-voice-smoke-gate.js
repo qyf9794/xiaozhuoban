@@ -243,13 +243,9 @@ async function seedTvAssistantChannelCatalog(page, testCaseOrCases) {
 }
 
 async function clearAllAppState(page) {
-  const sdkTransportOverride = process.env.XIAOZHUOBAN_E2E_AGENTS_VOICE_ADAPTER;
-  await page.evaluate(async (transportOverride) => {
+  await page.evaluate(async () => {
     localStorage.clear();
     sessionStorage.clear();
-    if (transportOverride === "true" || transportOverride === "false") {
-      localStorage.setItem("xiaozhuoban.realtime.sdkWebRtcTransport.enabled", transportOverride);
-    }
     const databases = await indexedDB.databases?.();
     await Promise.all(
       (databases ?? [])
@@ -263,7 +259,7 @@ async function clearAllAppState(page) {
             })
         )
     );
-  }, sdkTransportOverride);
+  });
 }
 
 async function clearCaseEvidence(page) {

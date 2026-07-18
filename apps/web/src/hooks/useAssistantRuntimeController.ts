@@ -3,8 +3,6 @@ import type { AppRepository } from "@xiaozhuoban/data";
 import type { AssistantRuntimeMode, RealtimeBudgetMetrics } from "@xiaozhuoban/assistant-core";
 import {
   createRealtimeAssistantRuntime,
-  readAgentsVoiceAdapterEnabled,
-  SDK_WEBRTC_TRANSPORT_STORAGE_KEY,
   shouldFallbackUnhandledVoiceTranscriptToHarness
 } from "../assistant/createRealtimeAssistantRuntime";
 import {
@@ -91,7 +89,6 @@ export function useAssistantRuntimeController({
   sidebarOpen
 }: UseAssistantRuntimeControllerOptions) {
   const [realtimeHighAccuracyMode, setRealtimeHighAccuracyMode] = useState(readRealtimeHighAccuracyMode);
-  const [agentsVoiceAdapterEnabled, setAgentsVoiceAdapterEnabled] = useState(readAgentsVoiceAdapterEnabled);
   const [localWakeWordEnabled, setLocalWakeWordEnabled] = useState(readLocalWakeWordEnabled);
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeConnectionStatus>("disconnected");
   const [realtimeAudioLevel, setRealtimeAudioLevel] = useState(0);
@@ -116,7 +113,6 @@ export function useAssistantRuntimeController({
   const userSpeechEventIdRef = useRef(0);
   const lastCommandLikeUserSpeechRef = useRef("");
   const realtimeHighAccuracyModeRef = useRef(realtimeHighAccuracyMode);
-  const agentsVoiceAdapterEnabledRef = useRef(agentsVoiceAdapterEnabled);
   const assistantCapabilityBridgeRef = useRef(new WidgetCapabilityBridge());
   const sidebarOpenRef = useRef(sidebarOpen);
   const fullscreenRef = useRef(fullscreen);
@@ -124,7 +120,6 @@ export function useAssistantRuntimeController({
   sidebarOpenRef.current = sidebarOpen;
   fullscreenRef.current = fullscreen;
   realtimeHighAccuracyModeRef.current = realtimeHighAccuracyMode;
-  agentsVoiceAdapterEnabledRef.current = agentsVoiceAdapterEnabled;
 
   const recordDiagnostic = (event: AssistantDiagnosticEvent) => {
     if (
@@ -207,12 +202,9 @@ export function useAssistantRuntimeController({
         adapterOptions: {
           getAccessToken: () => useAuthStore.getState().session?.access_token,
           getHighAccuracyMode: () => realtimeHighAccuracyModeRef.current,
-          webrtcTransport:
-            import.meta.env.VITE_XIAOZHUOBAN_REALTIME_SDK_TRANSPORT === "true" ? "agents_sdk" : "classic",
           onMicrophoneLevel: setRealtimeAudioLevel,
           onDiagnostic: recordDiagnostic
         },
-        useAgentsVoiceAdapter: () => agentsVoiceAdapterEnabledRef.current,
         onStatusChange: (status) => {
           if (shouldClearRealtimeTurnState(status)) {
             setAssistantSpeech(null);
@@ -309,10 +301,6 @@ export function useAssistantRuntimeController({
   }, [realtimeHighAccuracyMode]);
 
   useEffect(() => {
-    window.localStorage.setItem(SDK_WEBRTC_TRANSPORT_STORAGE_KEY, agentsVoiceAdapterEnabled ? "true" : "false");
-  }, [agentsVoiceAdapterEnabled]);
-
-  useEffect(() => {
     window.localStorage.setItem(LOCAL_WAKE_WORD_STORAGE_KEY, localWakeWordEnabled ? "true" : "false");
   }, [localWakeWordEnabled]);
 
@@ -356,7 +344,6 @@ export function useAssistantRuntimeController({
     assistantCapabilityBridge: assistantCapabilityBridgeRef.current,
     assistantOperation,
     assistantRuntime,
-    agentsVoiceAdapterEnabled,
     assistantSpeech,
     localWakeWordEnabled,
     localWakeWordAudioLevel,
@@ -368,7 +355,6 @@ export function useAssistantRuntimeController({
     recordDiagnostic,
     retrySync,
     runtimeStatusText: getAssistantRuntimeText(assistantRuntimeBudget),
-    setAgentsVoiceAdapterEnabled,
     setLocalWakeWordEnabled,
     setRealtimeHighAccuracyMode,
     syncLastError: assistantOutboxStatus.lastError,

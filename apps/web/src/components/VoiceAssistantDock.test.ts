@@ -22,7 +22,6 @@ import {
   shouldSuppressVoiceAssistantOrbClickAfterPress,
   shouldDisableVoiceAssistantSend,
   shouldCancelVoiceAssistantConnectClick,
-  shouldUseRealtimeTextCommand,
   shouldSubmitVoiceAssistantOnKeyDown,
   type VoiceAssistantDockState
 } from "./VoiceAssistantDock";
@@ -157,16 +156,6 @@ describe("VoiceAssistantDock", () => {
     expect(shouldCancelVoiceAssistantConnectClick("disconnected", "connecting", false)).toBe(true);
     expect(shouldCancelVoiceAssistantConnectClick("disconnected", "disconnected", true)).toBe(true);
     expect(shouldCancelVoiceAssistantConnectClick("disconnected", "disconnected", false)).toBe(false);
-  });
-
-  it("uses realtime text submission after realtime is ready unless the input answers a local confirmation", () => {
-    expect(shouldUseRealtimeTextCommand("connected", true, false)).toBe(true);
-    expect(shouldUseRealtimeTextCommand("connecting", true, false)).toBe(false);
-    expect(shouldUseRealtimeTextCommand("connected", false, false)).toBe(false);
-    expect(shouldUseRealtimeTextCommand("connected", true, true)).toBe(false);
-    expect(shouldUseRealtimeTextCommand("connected", true, true, "确认")).toBe(false);
-    expect(shouldUseRealtimeTextCommand("connected", true, true, "取消")).toBe(false);
-    expect(shouldUseRealtimeTextCommand("connected", true, true, "来个周杰伦经典")).toBe(true);
   });
 
   it("uses external tool operation when Harness reports active tool work", () => {

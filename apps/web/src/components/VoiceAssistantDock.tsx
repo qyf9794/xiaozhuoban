@@ -226,19 +226,6 @@ export function shouldSuppressVoiceAssistantOrbClickAfterPress(longPressTriggere
   return longPressTriggered || moved;
 }
 
-export function shouldUseRealtimeTextCommand(
-  voiceStatus: RealtimeConnectionStatus,
-  hasRealtimeTextSender: boolean,
-  hasPendingConfirmation: boolean,
-  input?: string
-): boolean {
-  if (voiceStatus !== "connected" || !hasRealtimeTextSender) return false;
-  if (!hasPendingConfirmation) return true;
-  const normalized = input?.trim();
-  if (!normalized) return false;
-  return !/^(确认|确定|可以|同意|执行|取消|不用|不要|拒绝|算了)$/.test(normalized);
-}
-
 export function getVisibleVoiceAssistantOperation(
   internalOperation: VoiceAssistantOperationStatus,
   externalOperation?: VoiceAssistantOperationStatus | null
@@ -314,7 +301,6 @@ export function VoiceAssistantDock({
   voiceStatus = "disconnected",
   voiceAudioLevel = 0,
   onConnectVoice,
-  onConnectTextOnly,
   onDisconnectVoice,
   isMobileMode = false,
   desktopBottomInset = 14,
@@ -324,7 +310,6 @@ export function VoiceAssistantDock({
   syncLastError,
   onRetrySync,
   onCommandRoute,
-  onSendRealtimeTextCommand,
   assistantSpeech,
   userSpeech,
   wakeWordEnabled = false,
@@ -337,7 +322,6 @@ export function VoiceAssistantDock({
   voiceStatus?: RealtimeConnectionStatus;
   voiceAudioLevel?: number;
   onConnectVoice?: () => Promise<void>;
-  onConnectTextOnly?: () => Promise<void>;
   onDisconnectVoice?: () => void;
   isMobileMode?: boolean;
   desktopBottomInset?: number;
@@ -347,7 +331,6 @@ export function VoiceAssistantDock({
   syncLastError?: string;
   onRetrySync?: () => Promise<void> | void;
   onCommandRoute?: (route: AssistantRoute) => void;
-  onSendRealtimeTextCommand?: (input: string, options?: { commandTraceId?: string }) => Promise<void>;
   assistantSpeech?: { id: number; text: string } | null;
   userSpeech?: { id: number; text: string } | null;
   wakeWordEnabled?: boolean;
@@ -390,7 +373,7 @@ export function VoiceAssistantDock({
   const [dismissedPanelContentKey, setDismissedPanelContentKey] = useState("");
   const [assistantSpeechLevel, setAssistantSpeechLevel] = useState(0);
   const textRef = useRef("");
-  const voiceEnabled = Boolean(onConnectVoice || onConnectTextOnly);
+  const voiceEnabled = Boolean(onConnectVoice);
 
   useEffect(() => {
     textRef.current = text;
@@ -604,47 +587,13 @@ export function VoiceAssistantDock({
     }
   };
 
-  const sendRealtimeCommand = async (command: string) => {
-    const input = command.trim();
-    if (!input || muted || !onSendRealtimeTextCommand) return;
-    const commandTraceId = createCommandTraceId("text_realtime");
-    onDiagnostic?.({ type: "voice.realtime_text_command.submit", commandTraceId, status: "started", data: { input } });
-    setState("thinking");
-    setOperation({ phase: "thinking", command: input });
-    try {
-      await onSendRealtimeTextCommand(input, { commandTraceId });
-      const resultText = "已交给 Realtime 解析";
-      setLastMessage(resultText);
-      setOperation({ phase: "idle" });
-      setHistory((prev) =>
-        prependVoiceAssistantHistory(prev, {
-          id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          text: input,
-          result: resultText,
-          route: "realtime"
-        })
-      );
-      onDiagnostic?.({ type: "voice.realtime_text_command.result", commandTraceId, status: "sent", data: { input } });
-    } catch (error) {
-      const message = getVoiceAssistantErrorMessage(error);
-      onDiagnostic?.({ type: "voice.realtime_text_command.result", commandTraceId, status: "failed", message, data: { input } });
-      setLastMessage(message);
-      setOperation({ phase: "error", command: input, message });
-      setState("error");
-    }
-  };
-
   const submitCurrentCommand = () => {
     const input = resolveVoiceAssistantSubmitText(text, inputRef.current?.value);
     setText("");
     if (inputRef.current) {
       inputRef.current.value = "";
     }
-    if (shouldUseRealtimeTextCommand(voiceStatus, Boolean(onSendRealtimeTextCommand), Boolean(pending), input)) {
-      void sendRealtimeCommand(input);
-    } else {
-      void runCommand(input);
-    }
+    void runCommand(input);
     scheduleMobileTextPanelCollapse();
   };
 
@@ -698,27 +647,6 @@ export function VoiceAssistantDock({
       if (connectAttemptIdRef.current === attemptId) {
         connectInFlightRef.current = false;
       }
-    }
-  };
-
-  const connectTextOnly = async () => {
-    if (!onConnectTextOnly || muted) return;
-    const commandTraceId = createCommandTraceId("text_realtime_connect");
-    onDiagnostic?.({ type: "voice.text_realtime.connect.click", commandTraceId, status: "started" });
-    setState("connecting");
-    setLastMessage("正在连接文字 Realtime。");
-    setOperation({ phase: "thinking", command: "连接文字 Realtime" });
-    try {
-      await onConnectTextOnly();
-      setLastMessage("文字 Realtime 已连接，可直接输入指令。");
-      setOperation({ phase: "success", command: "连接文字 Realtime", message: "文字 Realtime 已连接" });
-      onDiagnostic?.({ type: "voice.text_realtime.connect.result", commandTraceId, status: "success" });
-    } catch (error) {
-      const message = getVoiceAssistantErrorMessage(error);
-      onDiagnostic?.({ type: "voice.text_realtime.connect.result", commandTraceId, status: "failed", message });
-      setLastMessage(message);
-      setOperation({ phase: "error", command: "连接文字 Realtime", message });
-      setState("error");
     }
   };
 
@@ -811,10 +739,6 @@ export function VoiceAssistantDock({
     }
     if (onConnectVoice) {
       void connectVoice();
-      return;
-    }
-    if (onConnectTextOnly) {
-      void connectTextOnly();
       return;
     }
     setMuted((prev) => !prev);
