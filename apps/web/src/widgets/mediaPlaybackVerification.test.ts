@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mediaPlaybackErrorCode, waitForPlaybackProgress } from "./mediaPlaybackVerification";
+import {
+  mediaPlaybackErrorCode,
+  startMediaPlayback,
+  waitForPlaybackProgress
+} from "./mediaPlaybackVerification";
 
 describe("waitForPlaybackProgress", () => {
   afterEach(() => {
@@ -47,5 +51,65 @@ describe("mediaPlaybackErrorCode", () => {
     expect(mediaPlaybackErrorCode(new DOMException("blocked", "NotAllowedError"))).toBe("BROWSER_PLAYBACK_BLOCKED");
     expect(mediaPlaybackErrorCode(new DOMException("unsupported", "NotSupportedError"))).toBe("MUSIC_PLAY_FAILED");
     expect(mediaPlaybackErrorCode(new Error("network"))).toBe("MUSIC_PLAY_FAILED");
+  });
+});
+
+describe("startMediaPlayback", () => {
+  it("keeps audible playback when the browser accepts it", async () => {
+    const play = vi.fn().mockResolvedValue(undefined);
+    const media = { muted: false, play };
+
+    await expect(startMediaPlayback(media, { allowMutedFallback: true })).resolves.toEqual({
+      started: true,
+      muted: false,
+      usedMutedFallback: false
+    });
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries muted only for an autoplay-policy rejection", async () => {
+    const play = vi
+      .fn()
+      .mockRejectedValueOnce(new DOMException("blocked", "NotAllowedError"))
+      .mockResolvedValueOnce(undefined);
+    const media = { muted: false, play };
+
+    await expect(startMediaPlayback(media, { allowMutedFallback: true })).resolves.toEqual({
+      started: true,
+      muted: true,
+      usedMutedFallback: true
+    });
+    expect(media.muted).toBe(true);
+    expect(play).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not hide network or decode failures behind a muted retry", async () => {
+    const error = new DOMException("unsupported", "NotSupportedError");
+    const play = vi.fn().mockRejectedValue(error);
+    const media = { muted: false, play };
+
+    await expect(startMediaPlayback(media, { allowMutedFallback: true })).resolves.toEqual({
+      started: false,
+      muted: false,
+      usedMutedFallback: false,
+      error
+    });
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores the audible state if the muted retry also fails", async () => {
+    const initialError = new DOMException("blocked", "NotAllowedError");
+    const fallbackError = new Error("decoder failed");
+    const play = vi.fn().mockRejectedValueOnce(initialError).mockRejectedValueOnce(fallbackError);
+    const media = { muted: false, play };
+
+    await expect(startMediaPlayback(media, { allowMutedFallback: true })).resolves.toEqual({
+      started: false,
+      muted: false,
+      usedMutedFallback: true,
+      error: fallbackError,
+      initialError
+    });
+    expect(media.muted).toBe(false);
   });
 });

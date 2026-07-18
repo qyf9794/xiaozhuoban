@@ -34,7 +34,9 @@ function parseArgs(argv) {
     reportPath: defaultReportPath,
     casesFile: "",
     playbackAudio: defaultPlaybackAudio,
-    sessionAudio: ""
+    sessionAudio: "",
+    respectAutoplayPolicy: false,
+    simulateAutoplayBlockOnce: false
   };
   for (let index = 2; index < argv.length; index += 1) {
     const item = argv[index];
@@ -56,6 +58,8 @@ function parseArgs(argv) {
     else if (item.startsWith("--playback-audio=")) options.playbackAudio = path.resolve(item.slice("--playback-audio=".length));
     else if (item === "--session-audio") options.sessionAudio = path.resolve(argv[++index]);
     else if (item.startsWith("--session-audio=")) options.sessionAudio = path.resolve(item.slice("--session-audio=".length));
+    else if (item === "--respect-autoplay-policy") options.respectAutoplayPolicy = true;
+    else if (item === "--simulate-autoplay-block-once") options.simulateAutoplayBlockOnce = true;
   }
   return options;
 }
@@ -93,6 +97,18 @@ function requirePlaywright() {
     }
   }
   throw new Error("Playwright is not available. Install it or create /tmp/xz-playwright-runner/node_modules/playwright.");
+}
+
+function installAutoplayBlockSimulationScript() {
+  const originalPlay = HTMLMediaElement.prototype.play;
+  const blockedElements = new WeakSet();
+  HTMLMediaElement.prototype.play = function simulatedPolicyPlay() {
+    if (this instanceof HTMLVideoElement && !this.muted && !blockedElements.has(this)) {
+      blockedElements.add(this);
+      return Promise.reject(new DOMException("play() failed because the user did not interact with the document first", "NotAllowedError"));
+    }
+    return originalPlay.call(this);
+  };
 }
 
 async function waitForServer(url, timeoutMs) {
@@ -324,13 +340,15 @@ async function snapshot(page) {
           channel: activeTvChannel?.textContent?.trim() || "",
           currentTime: Number(tvVideo.currentTime || 0),
           paused: tvVideo.paused,
+          muted: tvVideo.muted,
           ended: tvVideo.ended,
           readyState: tvVideo.readyState,
           networkState: tvVideo.networkState,
           currentSrc: tvVideo.currentSrc || tvVideo.getAttribute("src") || "",
           videoWidth: tvVideo.videoWidth,
           videoHeight: tvVideo.videoHeight,
-          playbackError: tvWidget?.querySelector(".tv-video-overlay-error")?.textContent?.trim() || ""
+          playbackError: tvWidget?.querySelector(".tv-video-overlay-error")?.textContent?.trim() || "",
+          unlockVisible: Boolean(tvWidget?.querySelector('button[aria-label="开启电视声音"]'))
         }
       : null;
     return {
@@ -528,6 +546,8 @@ function analyzeDetailedChecks(testCase, before, after, events) {
         typeof data.musicKitAuthorized === "boolean" ? `authorized=${data.musicKitAuthorized}` : "",
         typeof data.hasPreview === "boolean" ? `preview=${data.hasPreview}` : "",
         typeof data.playbackVerified === "boolean" ? `verified=${data.playbackVerified}` : "",
+        typeof data.playbackMuted === "boolean" ? `muted=${data.playbackMuted}` : "",
+        typeof data.usedMutedFallback === "boolean" ? `mutedFallback=${data.usedMutedFallback}` : "",
         typeof data.advancedBy === "number" ? `advanced=${data.advancedBy.toFixed(3)}s` : "",
         typeof data.videoWidth === "number" && typeof data.videoHeight === "number"
           ? `frame=${data.videoWidth}x${data.videoHeight}`
@@ -553,6 +573,8 @@ function analyzeDetailedChecks(testCase, before, after, events) {
         typeof data.channelName === "string" ? `channel=${data.channelName}` : "",
         typeof data.selectedChannelName === "string" ? `selected=${data.selectedChannelName}` : "",
         typeof data.playbackVerified === "boolean" ? `verified=${data.playbackVerified}` : "",
+        typeof data.playbackMuted === "boolean" ? `muted=${data.playbackMuted}` : "",
+        typeof data.usedMutedFallback === "boolean" ? `mutedFallback=${data.usedMutedFallback}` : "",
         typeof data.advancedBy === "number" ? `advanced=${data.advancedBy.toFixed(3)}s` : "",
         typeof data.errorCode === "string" ? `error=${data.errorCode}` : ""
       ]
@@ -766,9 +788,12 @@ async function runCase(playwright, options, runDir, userDataDir, testCase, isFir
       "--use-fake-ui-for-media-stream",
       "--use-fake-device-for-media-stream",
       `--use-file-for-fake-audio-capture=${audioPath}%noloop`,
-      "--autoplay-policy=no-user-gesture-required"
+      ...(options.respectAutoplayPolicy ? [] : ["--autoplay-policy=no-user-gesture-required"])
     ]
   });
+  if (options.simulateAutoplayBlockOnce) {
+    await context.addInitScript(installAutoplayBlockSimulationScript);
+  }
   await context.addInitScript(() => {
     window.__xiaozhuobanLiveVoiceDiagnosticEvents = [];
     const originalSetItem = Storage.prototype.setItem;
@@ -833,14 +858,56 @@ async function runCase(playwright, options, runDir, userDataDir, testCase, isFir
   await page.waitForTimeout(1_500);
   const after = await snapshot(page);
   await page.screenshot({ path: path.join(caseDir, "after.png"), fullPage: false }).catch(() => undefined);
+  let autoplayRecovery = null;
+  let afterUnlock = null;
+  if (options.simulateAutoplayBlockOnce && testCase.requireTvPlaybackVerified) {
+    const fallbackEvent = (after.diagnostics?.events ?? []).find(
+      (event) =>
+        event.type === "tv.play.result" &&
+        event.status === "success" &&
+        event.data?.playbackMuted === true &&
+        event.data?.usedMutedFallback === true
+    );
+    const unlockButton = page.getByRole("button", { name: "开启电视声音", exact: true });
+    const fallbackVisible = after.tvState?.muted === true && after.tvState?.unlockVisible === true && Boolean(fallbackEvent);
+    if ((await unlockButton.count()) > 0) {
+      await unlockButton.click();
+      await page.waitForTimeout(500);
+      afterUnlock = await snapshot(page);
+      await page.screenshot({ path: path.join(caseDir, "after-unlock.png"), fullPage: false }).catch(() => undefined);
+    }
+    const unlockEvent = (afterUnlock?.diagnostics?.events ?? []).find(
+      (event) => event.type === "tv.audio_unlock.result" && event.status === "success"
+    );
+    autoplayRecovery = {
+      fallbackVisible,
+      unlockClicked: Boolean(afterUnlock),
+      unlockDiagnostic: Boolean(unlockEvent),
+      playbackAudible: afterUnlock?.tvState?.muted === false,
+      playbackContinues:
+        afterUnlock?.tvState?.paused === false &&
+        Number(afterUnlock?.tvState?.currentTime ?? 0) > Number(after.tvState?.currentTime ?? 0),
+      unlockHidden: afterUnlock?.tvState?.unlockVisible === false
+    };
+    autoplayRecovery.verified = Object.values(autoplayRecovery).every(Boolean);
+  }
   await waitForPersistedWidgetCount(page, after.widgets.length);
   fs.writeFileSync(
     path.join(caseDir, "trace.json"),
-    JSON.stringify({ id: testCase.id, command: testCase.command, before, after, consoleErrors }, null, 2)
+    JSON.stringify({ id: testCase.id, command: testCase.command, before, after, afterUnlock, autoplayRecovery, consoleErrors }, null, 2)
   );
-  const assertion = assertCase(testCase, before, after);
+  const baseAssertion = assertCase(testCase, before, after);
+  const assertion = autoplayRecovery && !autoplayRecovery.verified
+    ? { ...baseAssertion, passed: false, failure: baseAssertion.failure || "browser_playback_recovery_failed" }
+    : baseAssertion;
   await context.close();
-  return { ...testCase, ...assertion, consoleErrors, evidenceDir: path.relative(repoRoot, caseDir) };
+  return {
+    ...testCase,
+    ...assertion,
+    autoplayRecoveryVerified: autoplayRecovery?.verified ?? false,
+    consoleErrors,
+    evidenceDir: path.relative(repoRoot, caseDir)
+  };
 }
 
 function installDiagnosticCaptureScript() {
@@ -1074,9 +1141,12 @@ async function runContinuousSession(playwright, options, runDir, userDataDir, te
       "--use-fake-ui-for-media-stream",
       "--use-fake-device-for-media-stream",
       `--use-file-for-fake-audio-capture=${options.sessionAudio}%noloop`,
-      "--autoplay-policy=no-user-gesture-required"
+      ...(options.respectAutoplayPolicy ? [] : ["--autoplay-policy=no-user-gesture-required"])
     ]
   });
+  if (options.simulateAutoplayBlockOnce) {
+    await context.addInitScript(installAutoplayBlockSimulationScript);
+  }
   await context.addInitScript(installDiagnosticCaptureScript);
   const page = context.pages()[0] ?? (await context.newPage());
   const consoleErrors = [];
@@ -1271,6 +1341,7 @@ function writeReport(runId, results, options, sessionSummary = null) {
   const scopedSessionUpdateCount = results.filter((item) => item.scopedSessionUpdated).length;
   const localShortcutCount = results.filter((item) => item.localShortcut).length;
   const fallbackExecuteCommandCount = results.filter((item) => item.fallbackExecuteCommand).length;
+  const autoplayRecoveryCount = results.filter((item) => item.autoplayRecoveryVerified).length;
   const rows = results
     .map((item) => {
       const screenshots = `[before](${item.evidenceDir}/before.png) / [after](${item.evidenceDir}/after.png) / [trace](${item.evidenceDir}/trace.json)`;
@@ -1294,6 +1365,8 @@ function writeReport(runId, results, options, sessionSummary = null) {
 - Run: ${runId}
 - Model: gpt-realtime-2
 - Transport: Chrome fake microphone -> WebRTC Realtime session -> data channel
+- Autoplay policy: ${options.respectAutoplayPolicy ? "browser default policy enforced" : "disabled for deterministic media verification"}
+- Simulated autoplay-block recovery: ${options.simulateAutoplayBlockOnce ? `${autoplayRecoveryCount}/${results.length}` : "not requested"}
 - Total: ${results.length}
 - Passed: ${passed}
 - Failed: ${results.length - passed}

@@ -6,6 +6,22 @@ export type PlaybackProgressVerification = {
   elapsedMs: number;
 };
 
+export type MediaPlaybackStartResult =
+  | {
+      started: true;
+      muted: boolean;
+      usedMutedFallback: boolean;
+    }
+  | {
+      started: false;
+      muted: boolean;
+      usedMutedFallback: boolean;
+      error: unknown;
+      initialError?: unknown;
+    };
+
+type PlayableMediaElement = Pick<HTMLMediaElement, "muted" | "play">;
+
 type PlaybackProgressOptions = {
   timeoutMs?: number;
   pollIntervalMs?: number;
@@ -55,8 +71,52 @@ export async function waitForPlaybackProgress(
   };
 }
 
+export function isAutoplayPolicyError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "NotAllowedError";
+}
+
+/**
+ * Start media audibly when policy permits it. If the browser rejects only
+ * because no user activation is available, retry muted so the visual media
+ * can still begin and the UI can offer a direct click-to-unmute action.
+ */
+export async function startMediaPlayback(
+  media: PlayableMediaElement,
+  options: { allowMutedFallback?: boolean } = {}
+): Promise<MediaPlaybackStartResult> {
+  try {
+    await media.play();
+    return { started: true, muted: media.muted, usedMutedFallback: false };
+  } catch (initialError) {
+    if (!options.allowMutedFallback || media.muted || !isAutoplayPolicyError(initialError)) {
+      return {
+        started: false,
+        muted: media.muted,
+        usedMutedFallback: false,
+        error: initialError
+      };
+    }
+
+    const previousMuted = media.muted;
+    media.muted = true;
+    try {
+      await media.play();
+      return { started: true, muted: true, usedMutedFallback: true };
+    } catch (fallbackError) {
+      media.muted = previousMuted;
+      return {
+        started: false,
+        muted: media.muted,
+        usedMutedFallback: true,
+        error: fallbackError,
+        initialError
+      };
+    }
+  }
+}
+
 export function mediaPlaybackErrorCode(error: unknown): "BROWSER_PLAYBACK_BLOCKED" | "MUSIC_PLAY_FAILED" {
-  return error instanceof DOMException && error.name === "NotAllowedError"
+  return isAutoplayPolicyError(error)
     ? "BROWSER_PLAYBACK_BLOCKED"
     : "MUSIC_PLAY_FAILED";
 }

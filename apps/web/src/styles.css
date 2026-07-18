@@ -820,10 +820,27 @@ body {
   font-size: 12px;
   text-align: center;
   padding: 8px;
+  pointer-events: none;
 }
 
 .tv-video-overlay-error {
   background: rgba(127, 29, 29, 0.62);
+}
+
+.tv-video-unlock {
+  z-index: 2;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+  background: rgba(15, 23, 42, 0.78);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.tv-video-unlock:hover,
+.tv-video-unlock:focus-visible {
+  background: rgba(15, 23, 42, 0.92);
 }
 
 .tv-channel-list {

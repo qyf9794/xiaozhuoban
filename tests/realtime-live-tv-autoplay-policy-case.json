@@ -1,0 +1,21 @@
+[
+  {
+    "id": "TVA01",
+    "command": "打开电视，播放 B B C News",
+    "audio": "T01.wav",
+    "expected": ["board.add_widget", "tv.play", "tv.select_channel"],
+    "forbidden": ["music.play"],
+    "expectedModules": ["tv"],
+    "expectedChannelIncludes": ["BBC"],
+    "transcriptIncludes": ["BBC"],
+    "transcriptIncludesAny": [["News", "新闻"]],
+    "channelName": "BBC News",
+    "requireTvPlaybackVerified": true,
+    "effect": {
+      "kind": "tv",
+      "state": "playing",
+      "channel": "BBC News",
+      "channelChanged": true
+    }
+  }
+]

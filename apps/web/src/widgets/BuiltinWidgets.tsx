@@ -27,7 +27,12 @@ import {
   type MusicKitInstanceLike,
   type MusicSearchItem
 } from "./musicKitClient";
-import { mediaPlaybackErrorCode, waitForPlaybackProgress } from "./mediaPlaybackVerification";
+import {
+  isAutoplayPolicyError,
+  mediaPlaybackErrorCode,
+  startMediaPlayback,
+  waitForPlaybackProgress
+} from "./mediaPlaybackVerification";
 import {
   DEFAULT_TV_PLAYLIST_URL,
   findFallbackTvChannel,
@@ -4214,6 +4219,7 @@ export function BuiltinWidgetView({
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [playbackError, setPlaybackError] = useState("");
+    const [playbackNeedsGesture, setPlaybackNeedsGesture] = useState(false);
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const hlsRef = useRef<import("hls.js").default | null>(null);
     const latestStateRef = useRef(instance.state);
@@ -4260,30 +4266,39 @@ export function BuiltinWidgetView({
       | { status: "failed"; message: string; errorCode: string; data: Record<string, unknown> }
     > => {
       logTvDiagnostic("tv.play.start", "started", { channelName, channelUrl });
-      try {
-        await video.play();
-      } catch (playError) {
-        const errorCode = playError instanceof DOMException && playError.name === "NotAllowedError"
+      const playbackStart = await startMediaPlayback(video, { allowMutedFallback: true });
+      if (!playbackStart.started) {
+        const playbackBlocked = isAutoplayPolicyError(playbackStart.error);
+        const errorCode = playbackBlocked
           ? "BROWSER_PLAYBACK_BLOCKED"
           : "TV_PLAY_FAILED";
+        setPlaybackNeedsGesture(false);
         setPlaybackError(errorCode === "BROWSER_PLAYBACK_BLOCKED" ? "浏览器阻止了电视自动播放" : "电视播放失败，请切换频道重试");
         logTvDiagnostic("tv.play.result", "failed", {
           channelName,
           channelUrl,
           playbackVerified: false,
           errorCode,
-          message: playError instanceof Error ? playError.message : "电视播放失败"
+          usedMutedFallback: playbackStart.usedMutedFallback,
+          message: playbackStart.error instanceof Error ? playbackStart.error.message : "电视播放失败"
         });
         return {
           status: "failed",
           message: errorCode === "BROWSER_PLAYBACK_BLOCKED" ? "浏览器阻止了电视自动播放，请允许播放后重试" : "电视播放失败，请切换频道重试",
           errorCode,
-          data: { channelName, channelUrl, playbackState: "blocked", playbackBlocked: true, playbackVerified: false }
+          data: {
+            channelName,
+            channelUrl,
+            playbackState: playbackBlocked ? "blocked" : "not_started",
+            playbackBlocked,
+            playbackVerified: false
+          }
         };
       }
       const playback = await waitForPlaybackProgress(() => video.currentTime, { timeoutMs: 3_000 });
       if (!playback.verified) {
         video.pause();
+        setPlaybackNeedsGesture(false);
         setPlaybackError("电视已加载但没有真正开始播放");
         logTvDiagnostic("tv.play.result", "failed", {
           channelName,
@@ -4306,6 +4321,7 @@ export function BuiltinWidgetView({
       }
       if (video.videoWidth <= 0 || video.videoHeight <= 0) {
         video.pause();
+        setPlaybackNeedsGesture(false);
         setPlaybackError("电视流没有可显示的视频画面");
         logTvDiagnostic("tv.play.result", "failed", {
           channelName,
@@ -4323,6 +4339,9 @@ export function BuiltinWidgetView({
           data: { channelName, channelUrl, playbackState: "audio_only", playbackVerified: false }
         };
       }
+      const playbackMuted = playbackStart.muted || video.muted;
+      setPlaybackNeedsGesture(playbackMuted);
+      setPlaybackError("");
       logTvDiagnostic("tv.play.result", "success", {
         channelName,
         channelUrl,
@@ -4334,17 +4353,21 @@ export function BuiltinWidgetView({
         readyState: video.readyState,
         networkState: video.networkState,
         videoWidth: video.videoWidth,
-        videoHeight: video.videoHeight
+        videoHeight: video.videoHeight,
+        playbackMuted,
+        usedMutedFallback: playbackStart.usedMutedFallback
       });
       return {
         status: "success",
-        message: "已播放电视",
+        message: playbackMuted ? "电视已开始静音播放，请点击播放器开启声音" : "已播放电视",
         data: {
           channelName,
           channelUrl,
           playbackState: "playing",
           playbackBlocked: false,
           playbackVerified: true,
+          playbackMuted,
+          usedMutedFallback: playbackStart.usedMutedFallback,
           advancedBy: playback.advancedBy,
           videoWidth: video.videoWidth,
           videoHeight: video.videoHeight
@@ -4374,6 +4397,7 @@ export function BuiltinWidgetView({
       const isCurrentRequest = () => playbackRequestIdRef.current === requestId && latestSelectedChannelUrlRef.current === channelUrl;
       destroyHls();
       setPlaybackError("");
+      setPlaybackNeedsGesture(false);
       video.pause();
 
       const playNativeSource = async () => {
@@ -4499,6 +4523,39 @@ export function BuiltinWidgetView({
         if (playbackInFlightRef.current?.promise === promise) playbackInFlightRef.current = null;
       });
       return promise;
+    };
+
+    const enableTvSound = () => {
+      const video = videoRef.current;
+      if (!video) return;
+      setPlaybackError("");
+      video.muted = false;
+      video.volume = 1;
+      const playPromise = video.play();
+      void playPromise
+        .then(() => {
+          setPlaybackNeedsGesture(false);
+          logTvDiagnostic("tv.audio_unlock.result", "success", {
+            channelName: selectedChannelName || "当前频道",
+            channelUrl: selectedChannelUrl,
+            playbackMuted: video.muted,
+            currentTime: video.currentTime
+          });
+        })
+        .catch((unlockError) => {
+          // Preserve the already-running muted fallback instead of turning a
+          // failed unmute attempt into a stopped player.
+          video.muted = true;
+          setPlaybackNeedsGesture(true);
+          setPlaybackError("");
+          logTvDiagnostic("tv.audio_unlock.result", "failed", {
+            channelName: selectedChannelName || "当前频道",
+            channelUrl: selectedChannelUrl,
+            playbackMuted: true,
+            errorCode: isAutoplayPolicyError(unlockError) ? "BROWSER_PLAYBACK_BLOCKED" : "TV_AUDIO_UNLOCK_FAILED",
+            message: unlockError instanceof Error ? unlockError.message : "电视声音启用失败"
+          });
+        });
     };
 
     const loadPlaylist = (sourceUrl?: string) => {
@@ -4665,6 +4722,7 @@ export function BuiltinWidgetView({
         pause() {
           const video = videoRef.current;
           video?.pause();
+          setPlaybackNeedsGesture(false);
           const playbackPaused = !video || video.paused;
           logTvDiagnostic("tv.pause.result", playbackPaused ? "success" : "failed", {
             channelName: latestSelectedChannelUrlRef.current ? asString(latestStateRef.current.selectedChannelName) : "",
@@ -4697,6 +4755,7 @@ export function BuiltinWidgetView({
         const video = videoRef.current;
         destroyHls();
         setPlaybackError("");
+        setPlaybackNeedsGesture(false);
         video?.pause();
         video?.removeAttribute("src");
         video?.load();
@@ -4727,6 +4786,16 @@ export function BuiltinWidgetView({
             />
             {!selectedChannelUrl ? <div className="tv-video-overlay">请选择频道开始播放</div> : null}
             {playbackError ? <div className="tv-video-overlay tv-video-overlay-error">{playbackError}</div> : null}
+            {playbackNeedsGesture ? (
+              <button
+                type="button"
+                className="tv-video-overlay tv-video-unlock"
+                aria-label="开启电视声音"
+                onClick={enableTvSound}
+              >
+                电视正在静音播放，点击开启声音
+              </button>
+            ) : null}
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
@@ -4779,13 +4848,20 @@ export function BuiltinWidgetView({
                   className={`tv-channel-item${active ? " is-active" : ""}`}
                   onClick={() => {
                     setPlaybackError("");
-                    onStateChange({
+                    setPlaybackNeedsGesture(false);
+                    const nextState = {
                       ...latestStateRef.current,
                       selectedChannelUrl: channel.url,
                       selectedChannelName: channel.name,
                       assistantChannelNames: summarizeTvChannelNamesForAssistant(channels),
                       assistantChannelCount: channels.length
-                    });
+                    };
+                    latestStateRef.current = nextState;
+                    latestSelectedChannelUrlRef.current = channel.url;
+                    onStateChange(nextState);
+                    // Invoke play synchronously from the click handler so
+                    // native sources can consume the browser user gesture.
+                    void playChannelSource(channel.url, channel.name);
                   }}
                 >
                   <span>{channel.name}</span>
