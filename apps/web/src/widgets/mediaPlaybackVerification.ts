@@ -72,7 +72,19 @@ export async function waitForPlaybackProgress(
 }
 
 export function isAutoplayPolicyError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "NotAllowedError";
+  if (error instanceof DOMException && error.name === "NotAllowedError") return true;
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { name?: unknown; code?: unknown; message?: unknown };
+  const name = typeof candidate.name === "string" ? candidate.name : "";
+  const code = typeof candidate.code === "string" ? candidate.code : "";
+  const message = typeof candidate.message === "string" ? candidate.message : "";
+  return (
+    name === "NotAllowedError" ||
+    code === "NotAllowedError" ||
+    /(?:autoplay|auto-play|user (?:gesture|activation)|not allowed).*?(?:play|audio|media)|(?:play|audio|media).*?(?:autoplay|auto-play|user (?:gesture|activation)|not allowed)/i.test(
+      message
+    )
+  );
 }
 
 /**

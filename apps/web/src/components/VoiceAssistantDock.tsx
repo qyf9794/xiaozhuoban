@@ -840,7 +840,7 @@ export function VoiceAssistantDock({
       style={{
         bottom: isMobileMode ? "calc(env(safe-area-inset-bottom) + 12px)" : desktopBottomInset + 36,
         opacity: 1,
-        pointerEvents: "auto",
+        pointerEvents: "none",
         transform: dockTransform
       }}
       data-text-panel-open={textPanelVisible ? "true" : "false"}

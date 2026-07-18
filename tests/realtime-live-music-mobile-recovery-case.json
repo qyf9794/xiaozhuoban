@@ -1,0 +1,18 @@
+[
+  {
+    "id": "MM01",
+    "command": "打开音乐播放器，先播放王菲的红豆",
+    "audio": "S01.wav",
+    "expected": ["music.play"],
+    "expectedModules": ["music"],
+    "expectedQueryIncludes": ["王菲", "红豆"],
+    "transcriptIncludes": ["王菲", "红豆"],
+    "title": "红豆",
+    "requirePlaybackVerified": true,
+    "effect": {
+      "kind": "music",
+      "state": "playing",
+      "title": "红豆"
+    }
+  }
+]

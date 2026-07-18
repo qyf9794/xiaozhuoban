@@ -6,10 +6,12 @@ import {
   inferAppleMusicStorefront,
   isMusicKitAuthorized,
   readMusicKitPlaybackTime,
+  requestMusicKitAuthorizationFromUserGesture,
   normalizeITunesTracks,
   normalizeMusicKitSearchResults,
   searchAppleMusicCatalogApi,
-  searchAppleMusicCatalog
+  searchAppleMusicCatalog,
+  startMusicKitPlaybackFromUserGesture
 } from "./musicKitClient";
 
 describe("musicKitClient", () => {
@@ -172,6 +174,34 @@ describe("musicKitClient", () => {
     expect(isMusicKitAuthorized(undefined)).toBe(false);
     expect(isMusicKitAuthorized({ isAuthorized: false } as never)).toBe(false);
     expect(isMusicKitAuthorized({ isAuthorized: true } as never)).toBe(true);
+  });
+
+  it("invokes authorization synchronously for a mobile user gesture", async () => {
+    let called = false;
+    const music = {
+      authorize: () => {
+        called = true;
+        return Promise.resolve("user-token");
+      }
+    } as never;
+
+    const authorization = requestMusicKitAuthorizationFromUserGesture(music);
+    expect(called).toBe(true);
+    await expect(authorization).resolves.toBe("user-token");
+  });
+
+  it("invokes playback synchronously for a mobile user gesture", async () => {
+    let called = false;
+    const music = {
+      play: () => {
+        called = true;
+        return Promise.resolve("playing");
+      }
+    } as never;
+
+    const playback = startMusicKitPlaybackFromUserGesture(music);
+    expect(called).toBe(true);
+    await expect(playback).resolves.toBe("playing");
   });
 
   it("reads the MusicKit playback clock across SDK variants", () => {

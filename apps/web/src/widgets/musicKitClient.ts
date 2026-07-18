@@ -146,6 +146,19 @@ export function isMusicKitAuthorized(music: MusicKitInstanceLike | null | undefi
 }
 
 /**
+ * Keep authorization and playback SDK calls synchronous with the originating
+ * click. Mobile browsers can consume transient user activation at the first
+ * asynchronous boundary, so callers must not await queue/search work first.
+ */
+export function requestMusicKitAuthorizationFromUserGesture(music: MusicKitInstanceLike): Promise<string> {
+  return music.authorize();
+}
+
+export function startMusicKitPlaybackFromUserGesture(music: MusicKitInstanceLike): Promise<unknown> {
+  return music.play();
+}
+
+/**
  * Read an elapsed playback clock from MusicKit across SDK variants.
  * Some releases expose seconds directly while others expose only progress.
  */

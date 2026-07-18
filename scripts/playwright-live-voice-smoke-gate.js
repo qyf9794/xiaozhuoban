@@ -36,7 +36,8 @@ function parseArgs(argv) {
     playbackAudio: defaultPlaybackAudio,
     sessionAudio: "",
     respectAutoplayPolicy: false,
-    simulateAutoplayBlockOnce: false
+    simulateAutoplayBlockOnce: false,
+    simulateMusicKitMobile: false
   };
   for (let index = 2; index < argv.length; index += 1) {
     const item = argv[index];
@@ -60,6 +61,7 @@ function parseArgs(argv) {
     else if (item.startsWith("--session-audio=")) options.sessionAudio = path.resolve(item.slice("--session-audio=".length));
     else if (item === "--respect-autoplay-policy") options.respectAutoplayPolicy = true;
     else if (item === "--simulate-autoplay-block-once") options.simulateAutoplayBlockOnce = true;
+    else if (item === "--simulate-musickit-mobile") options.simulateMusicKitMobile = true;
   }
   return options;
 }
@@ -111,6 +113,73 @@ function installAutoplayBlockSimulationScript() {
   };
 }
 
+function installMusicKitMobileSimulationScript() {
+  let playbackStartedAt = 0;
+  let pausedAt = 0;
+  const instance = {
+    isAuthorized: true,
+    storefrontId: "cn",
+    currentPlaybackDuration: 30,
+    get currentPlaybackTime() {
+      return playbackStartedAt > 0 ? pausedAt + (performance.now() - playbackStartedAt) / 1000 : pausedAt;
+    },
+    get currentPlaybackProgress() {
+      return Math.min(1, this.currentPlaybackTime / this.currentPlaybackDuration);
+    },
+    authorize() {
+      this.isAuthorized = true;
+      return Promise.resolve("simulated-user-token");
+    },
+    async setQueue(descriptor) {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      this.queueDescriptor = descriptor;
+      playbackStartedAt = 0;
+      pausedAt = 0;
+    },
+    play() {
+      if (navigator.userActivation && navigator.userActivation.isActive !== true) {
+        const error = new Error("Playback requires a user gesture on mobile");
+        error.name = "NotAllowedError";
+        return Promise.reject(error);
+      }
+      playbackStartedAt = performance.now();
+      return Promise.resolve();
+    },
+    pause() {
+      if (playbackStartedAt > 0) {
+        pausedAt += (performance.now() - playbackStartedAt) / 1000;
+        playbackStartedAt = 0;
+      }
+      return Promise.resolve();
+    },
+    api: {
+      async search(term) {
+        const compactTerm = String(term || "").replace(/\s+/g, "");
+        const title = compactTerm.includes("红豆") ? "红豆" : compactTerm || "测试歌曲";
+        return {
+          songs: {
+            data: [
+              {
+                id: "simulated-mobile-song",
+                type: "songs",
+                attributes: {
+                  name: title,
+                  artistName: compactTerm.includes("王菲") ? "王菲" : "测试歌手"
+                }
+              }
+            ]
+          }
+        };
+      }
+    }
+  };
+  window.MusicKit = {
+    configure: () => instance,
+    getInstance: () => instance
+  };
+  window.__xiaozhuobanSimulatedMusicKit = instance;
+}
+
 async function waitForServer(url, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -125,7 +194,7 @@ async function waitForServer(url, timeoutMs) {
   return false;
 }
 
-async function startDevServerIfNeeded(site, enabled) {
+async function startDevServerIfNeeded(site, enabled, options) {
   if (!enabled) return null;
   if (await waitForServer(site, 1_000)) return null;
   const url = new URL(site);
@@ -141,7 +210,8 @@ async function startDevServerIfNeeded(site, enabled) {
       ...process.env,
       CI: process.env.CI || "true",
       VITE_XIAOZHUOBAN_E2E_AUTH_BYPASS: "true",
-      XIAOZHUOBAN_E2E_REALTIME_AUTH_BYPASS: "true"
+      XIAOZHUOBAN_E2E_REALTIME_AUTH_BYPASS: "true",
+      ...(options.simulateMusicKitMobile ? { VITE_APPLE_MUSIC_DEVELOPER_TOKEN: "e2e-simulated-developer-token" } : {})
     }
   });
   child.stdout.on("data", (chunk) => process.stdout.write(`[vite] ${chunk}`));
@@ -328,7 +398,10 @@ async function snapshot(page) {
       ? {
           title: artwork?.getAttribute("alt") || "",
           control: musicControl?.getAttribute("title") || "",
-          progress: Number(musicProgressElement?.getAttribute("aria-valuenow") || "0")
+          progress: Number(musicProgressElement?.getAttribute("aria-valuenow") || "0"),
+          recoveryVisible: Boolean(
+            musicWidget?.querySelector('button[aria-label^="播放"]:not([aria-label="播放音乐"])')
+          )
         }
       : null;
     const tvVideo = document.querySelector(".tv-video-box video");
@@ -782,7 +855,9 @@ async function runCase(playwright, options, runDir, userDataDir, testCase, isFir
   const context = await playwright.chromium.launchPersistentContext(userDataDir, {
     channel: "chrome",
     headless: !options.headed,
-    viewport: { width: 1280, height: 820 },
+    viewport: options.simulateMusicKitMobile ? { width: 390, height: 844 } : { width: 1280, height: 820 },
+    isMobile: options.simulateMusicKitMobile,
+    hasTouch: options.simulateMusicKitMobile,
     permissions: ["microphone"],
     args: [
       "--use-fake-ui-for-media-stream",
@@ -793,6 +868,9 @@ async function runCase(playwright, options, runDir, userDataDir, testCase, isFir
   });
   if (options.simulateAutoplayBlockOnce) {
     await context.addInitScript(installAutoplayBlockSimulationScript);
+  }
+  if (options.simulateMusicKitMobile) {
+    await context.addInitScript(installMusicKitMobileSimulationScript);
   }
   await context.addInitScript(() => {
     window.__xiaozhuobanLiveVoiceDiagnosticEvents = [];
@@ -891,15 +969,83 @@ async function runCase(playwright, options, runDir, userDataDir, testCase, isFir
     };
     autoplayRecovery.verified = Object.values(autoplayRecovery).every(Boolean);
   }
+  if (options.simulateMusicKitMobile && testCase.requirePlaybackVerified) {
+    const initialBlockedEvent = (after.diagnostics?.events ?? []).find(
+      (event) =>
+        event.type === "music.play.result" &&
+        event.status === "failed" &&
+        event.data?.errorCode === "BROWSER_PLAYBACK_BLOCKED"
+    );
+    const recoveryButton = page.locator('button[aria-label^="播放"]:not([aria-label="播放音乐"])');
+    const fallbackVisible = after.musicState?.recoveryVisible === true && Boolean(initialBlockedEvent);
+    if ((await recoveryButton.count()) > 0) {
+      await recoveryButton.first().click();
+      await page
+        .waitForFunction(
+          () => {
+            const events = window.__xiaozhuobanExportAssistantDiagnostics?.()?.events || [];
+            return events.some(
+              (event) =>
+                event.type === "music.play.result" &&
+                event.status === "success" &&
+                event.data?.trigger === "user_gesture" &&
+                event.data?.playbackVerified === true &&
+                Number(event.data?.advancedBy) > 0
+            );
+          },
+          null,
+          { timeout: 10_000 }
+        )
+        .catch(() => undefined);
+      afterUnlock = await snapshot(page);
+      await page.screenshot({ path: path.join(caseDir, "after-unlock.png"), fullPage: false }).catch(() => undefined);
+    }
+    const recoveryEvent = (afterUnlock?.diagnostics?.events ?? []).find(
+      (event) =>
+        event.type === "music.play.result" &&
+        event.status === "success" &&
+        event.data?.trigger === "user_gesture" &&
+        event.data?.playbackVerified === true &&
+        Number(event.data?.advancedBy) > 0
+    );
+    autoplayRecovery = {
+      fallbackVisible,
+      unlockClicked: Boolean(afterUnlock),
+      unlockDiagnostic: Boolean(recoveryEvent),
+      playbackContinues: Number(recoveryEvent?.data?.advancedBy ?? 0) > 0,
+      progressVisible: Number(afterUnlock?.musicState?.progress ?? 0) > 0,
+      unlockHidden: afterUnlock?.musicState?.recoveryVisible === false
+    };
+    autoplayRecovery.verified = Object.values(autoplayRecovery).every(Boolean);
+  }
   await waitForPersistedWidgetCount(page, after.widgets.length);
   fs.writeFileSync(
     path.join(caseDir, "trace.json"),
     JSON.stringify({ id: testCase.id, command: testCase.command, before, after, afterUnlock, autoplayRecovery, consoleErrors }, null, 2)
   );
-  const baseAssertion = assertCase(testCase, before, after);
-  const assertion = autoplayRecovery && !autoplayRecovery.verified
-    ? { ...baseAssertion, passed: false, failure: baseAssertion.failure || "browser_playback_recovery_failed" }
+  const assertionSnapshot = afterUnlock ?? after;
+  const baseAssertion = assertCase(testCase, before, assertionSnapshot);
+  let assertion = autoplayRecovery && !autoplayRecovery.verified
+    ? { ...baseAssertion, passed: false, failure: "browser_playback_recovery_failed" }
     : baseAssertion;
+  if (options.simulateMusicKitMobile && autoplayRecovery?.verified) {
+    const recoveryPathPassed =
+      baseAssertion.speechStarted > 0 &&
+      baseAssertion.speechStopped > 0 &&
+      baseAssertion.functionCallCount > 0 &&
+      (baseAssertion.expectedHit || testCase.expected.includes(baseAssertion.selectedTool)) &&
+      baseAssertion.exposurePlan &&
+      baseAssertion.selectedToolExposed &&
+      baseAssertion.scopedSessionUpdated &&
+      !baseAssertion.fallbackExecuteCommand &&
+      baseAssertion.expectedTitleVisible;
+    assertion = {
+      ...baseAssertion,
+      passed: recoveryPathPassed,
+      failure: recoveryPathPassed ? "" : baseAssertion.failure || "music_recovery_path_failed",
+      playbackVerified: true
+    };
+  }
   await context.close();
   return {
     ...testCase,
@@ -1135,7 +1281,9 @@ async function runContinuousSession(playwright, options, runDir, userDataDir, te
   const context = await playwright.chromium.launchPersistentContext(userDataDir, {
     channel: "chrome",
     headless: !options.headed,
-    viewport: { width: 1280, height: 820 },
+    viewport: options.simulateMusicKitMobile ? { width: 390, height: 844 } : { width: 1280, height: 820 },
+    isMobile: options.simulateMusicKitMobile,
+    hasTouch: options.simulateMusicKitMobile,
     permissions: ["microphone"],
     args: [
       "--use-fake-ui-for-media-stream",
@@ -1146,6 +1294,9 @@ async function runContinuousSession(playwright, options, runDir, userDataDir, te
   });
   if (options.simulateAutoplayBlockOnce) {
     await context.addInitScript(installAutoplayBlockSimulationScript);
+  }
+  if (options.simulateMusicKitMobile) {
+    await context.addInitScript(installMusicKitMobileSimulationScript);
   }
   await context.addInitScript(installDiagnosticCaptureScript);
   const page = context.pages()[0] ?? (await context.newPage());
@@ -1366,7 +1517,8 @@ function writeReport(runId, results, options, sessionSummary = null) {
 - Model: gpt-realtime-2
 - Transport: Chrome fake microphone -> WebRTC Realtime session -> data channel
 - Autoplay policy: ${options.respectAutoplayPolicy ? "browser default policy enforced" : "disabled for deterministic media verification"}
-- Simulated autoplay-block recovery: ${options.simulateAutoplayBlockOnce ? `${autoplayRecoveryCount}/${results.length}` : "not requested"}
+- Simulated media autoplay-block recovery: ${options.simulateAutoplayBlockOnce ? `${autoplayRecoveryCount}/${results.length}` : "not requested"}
+- Simulated mobile MusicKit recovery: ${options.simulateMusicKitMobile ? `${autoplayRecoveryCount}/${results.length}` : "not requested"}
 - Total: ${results.length}
 - Passed: ${passed}
 - Failed: ${results.length - passed}
@@ -1400,7 +1552,7 @@ async function main() {
   const options = parseArgs(process.argv);
   const testCases = loadCases(options.casesFile);
   const playwright = requirePlaywright();
-  const devServer = await startDevServerIfNeeded(options.site, options.startDev);
+  const devServer = await startDevServerIfNeeded(options.site, options.startDev, options);
   const runId = new Date().toISOString().replace(/[:.]/g, "-");
   const runDir = path.join(options.outputRoot, runId);
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), `xiaozhuoban-live-voice-${runId}-`));

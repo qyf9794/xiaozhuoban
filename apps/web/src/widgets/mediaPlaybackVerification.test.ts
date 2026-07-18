@@ -49,6 +49,12 @@ describe("waitForPlaybackProgress", () => {
 describe("mediaPlaybackErrorCode", () => {
   it("distinguishes autoplay policy rejection from media failures", () => {
     expect(mediaPlaybackErrorCode(new DOMException("blocked", "NotAllowedError"))).toBe("BROWSER_PLAYBACK_BLOCKED");
+    expect(mediaPlaybackErrorCode({ name: "NotAllowedError", message: "The request is not allowed" })).toBe(
+      "BROWSER_PLAYBACK_BLOCKED"
+    );
+    expect(mediaPlaybackErrorCode({ name: "MKError", message: "Playback requires a user gesture" })).toBe(
+      "BROWSER_PLAYBACK_BLOCKED"
+    );
     expect(mediaPlaybackErrorCode(new DOMException("unsupported", "NotSupportedError"))).toBe("MUSIC_PLAY_FAILED");
     expect(mediaPlaybackErrorCode(new Error("network"))).toBe("MUSIC_PLAY_FAILED");
   });
