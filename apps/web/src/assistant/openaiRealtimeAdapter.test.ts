@@ -1281,6 +1281,48 @@ describe("OpenAI realtime adapter helpers", () => {
     });
   });
 
+  it("uses SDK function output and response sequencing without starting an extra response", () => {
+    const sendFunctionCallOutput = vi.fn();
+    const requestResponse = vi.fn();
+    const adapter = new OpenAIRealtimeWebRtcAdapter();
+    Object.assign(
+      adapter as unknown as {
+        connectMode: "audio";
+        transport: {
+          readyState: string;
+          handlesFunctionCallOutput: boolean;
+          handlesResponseSequencing: boolean;
+          sendFunctionCallOutput: typeof sendFunctionCallOutput;
+          requestResponse: typeof requestResponse;
+          sendEvent: (event: unknown) => void;
+        };
+      },
+      {
+        connectMode: "audio",
+        transport: {
+          readyState: "open",
+          handlesFunctionCallOutput: true,
+          handlesResponseSequencing: true,
+          sendFunctionCallOutput,
+          requestResponse,
+          sendEvent: vi.fn()
+        }
+      }
+    );
+
+    adapter.sendToolResult(
+      { id: "call_sdk_output", name: "music.next", arguments: {}, source: "realtime" },
+      { status: "success", message: "已切换下一首" }
+    );
+
+    expect(sendFunctionCallOutput).toHaveBeenCalledTimes(1);
+    expect(sendFunctionCallOutput.mock.calls[0]?.[2]).toBe(false);
+    expect(requestResponse).toHaveBeenCalledTimes(1);
+    expect(requestResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ output_modalities: ["audio"], tools: [], tool_choice: "none" })
+    );
+  });
+
   it("uses confirmation-specific realtime instructions for pending confirmations", () => {
     const adapter = new OpenAIRealtimeWebRtcAdapter();
     const sent: unknown[] = [];
@@ -1624,6 +1666,7 @@ describe("OpenAI realtime adapter helpers", () => {
 
     try {
       const adapter = new OpenAIRealtimeWebRtcAdapter({
+        webrtcTransport: "agents_sdk",
         getAccessToken: () => "supabase-token",
         getHighAccuracyMode: () => true,
         onStatusChange: (status) => statuses.push(status),
@@ -1659,6 +1702,7 @@ describe("OpenAI realtime adapter helpers", () => {
       expect(statuses).toContain("connected");
       expect(diagnostics).toEqual(expect.arrayContaining([
         expect.objectContaining({ type: "realtime.connect.start", data: { mode: "text" } }),
+        expect.objectContaining({ type: "realtime.transport.selected", status: "classic", data: { mode: "text" } }),
         expect.objectContaining({ type: "realtime.microphone.permission", status: "skipped", data: { mode: "text" } }),
         expect.objectContaining({ type: "realtime.session.created_ready", status: "connected" }),
         expect.objectContaining({ type: "realtime.initial_selector_update", status: "started" })
@@ -1673,11 +1717,38 @@ describe("OpenAI realtime adapter helpers", () => {
         })
       ]);
       adapter.disconnect();
+      await adapter.connectTextOnly();
+      expect(sessionBodies).toHaveLength(2);
+      expect(diagnostics.filter((event) => event.type === "realtime.session.created_ready")).toHaveLength(2);
+      adapter.disconnect();
     } finally {
       Object.defineProperty(globalThis, "RTCPeerConnection", {
         configurable: true,
         value: originalPeerConnection
       });
+      Object.defineProperty(globalThis, "navigator", {
+        configurable: true,
+        value: originalNavigator
+      });
+    }
+  });
+
+  it("fails before creating a transport when microphone permission is denied", async () => {
+    const originalNavigator = globalThis.navigator;
+    const transportFactory = vi.fn();
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: {
+        permissions: { query: async () => ({ state: "denied" }) },
+        mediaDevices: { getUserMedia: vi.fn() }
+      }
+    });
+    try {
+      const adapter = new OpenAIRealtimeWebRtcAdapter({ transportFactory });
+      await expect(adapter.connect()).rejects.toThrow("MICROPHONE_DENIED");
+      expect(transportFactory).not.toHaveBeenCalled();
+      expect(globalThis.navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    } finally {
       Object.defineProperty(globalThis, "navigator", {
         configurable: true,
         value: originalNavigator
@@ -3421,6 +3492,60 @@ describe("OpenAI realtime adapter helpers", () => {
         commandTraceId: newTrace
       })
     ]));
+  });
+
+  it("uses the SDK transport interrupt primitive for active voice output", () => {
+    const sent: unknown[] = [];
+    const interrupt = vi.fn();
+    const adapter = new OpenAIRealtimeWebRtcAdapter();
+    Object.assign(
+      adapter as unknown as {
+        sessionReady: boolean;
+        connectMode: string;
+        activeResponseId: string | null;
+        activeRealtimeResponseTraceId: string | null;
+        remoteAudioLevel: number;
+        microphoneLevel: number;
+        transport: {
+          readyState: string;
+          handlesInterrupt: boolean;
+          interrupt: () => void;
+          sendEvent: (event: unknown) => void;
+        };
+      },
+      {
+        sessionReady: true,
+        connectMode: "audio",
+        activeResponseId: "resp_sdk_interrupt",
+        activeRealtimeResponseTraceId: "trace_sdk_interrupt",
+        remoteAudioLevel: 0.4,
+        microphoneLevel: 0.35,
+        transport: {
+          readyState: "open",
+          handlesInterrupt: true,
+          interrupt,
+          sendEvent(event: unknown) {
+            sent.push(event);
+          }
+        }
+      }
+    );
+
+    (
+      adapter as unknown as {
+        handleRealtimeEventData: (event: Record<string, unknown>) => void;
+      }
+    ).handleRealtimeEventData({ type: "input_audio_buffer.speech_started", item_id: "item_sdk_interrupt" });
+
+    expect(interrupt).toHaveBeenCalledTimes(1);
+    expect(sent).toEqual([
+      expect.objectContaining({
+        type: "session.update",
+        session: expect.objectContaining({
+          tools: [expect.objectContaining({ name: "assistant__dot__select_tool" })]
+        })
+      })
+    ]);
   });
 
   it("skips late realtime function calls from an interrupted voice response", () => {

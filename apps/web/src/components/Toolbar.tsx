@@ -416,7 +416,7 @@ export function Toolbar({
                   gap: 10
                 }}
               >
-                <span>SDK 语音测试</span>
+                <span>SDK WebRTC transport</span>
                 <TinySwitch checked={agentsVoiceAdapterEnabled} />
               </button>
               <button

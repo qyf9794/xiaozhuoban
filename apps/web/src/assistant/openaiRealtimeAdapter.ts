@@ -61,6 +61,20 @@ import { createRealtimeCapabilityCatalog } from "./capabilityCatalog";
 import { buildRealtimeToolExposurePlan } from "./realtimeToolExposurePlanner";
 import { estimateRealtimeResponseCost } from "./openaiCost";
 import { formatAssistantResultMessage } from "./assistantResultPhrasing";
+import {
+  extractRealtimeResponseId,
+  normalizeRealtimeTransportEvent,
+  reduceRealtimeActiveResponseId,
+  shouldLogRealtimeEventType,
+  type RealtimeEvent
+} from "./realtimeEventLifecycle";
+import {
+  createAgentsSdkRealtimeTransport,
+  createClassicRealtimeTransport,
+  type RealtimeTransport
+} from "./realtimeTransport";
+
+export { reduceRealtimeActiveResponseId } from "./realtimeEventLifecycle";
 
 export type RealtimeConnectionStatus =
   | "disconnected"
@@ -103,9 +117,10 @@ export interface OpenAIRealtimeWebRtcAdapterOptions {
   fetchImpl?: typeof fetch;
   sessionUpdateTimeoutMs?: number;
   connectTimeoutMs?: number;
+  webrtcTransport?: "classic" | "agents_sdk";
+  transportFactory?: (mode: RealtimeConnectMode) => RealtimeTransport;
 }
 
-type RealtimeEvent = Record<string, unknown>;
 type MicrophonePermissionState = PermissionState | "unsupported" | "error";
 type MicrophoneNavigator = {
   mediaDevices?: {
@@ -135,6 +150,7 @@ type ActiveRealtimePlanSelection = {
 type PendingTextCommandAfterSelectorUpdate = {
   events: RealtimeEvent[];
   commandTraceId: string;
+  input: string;
   inputLength: number;
   selectorInstructions: string;
   selectorTools: unknown[];
@@ -2588,11 +2604,6 @@ export function shouldQueueRealtimeEventWhenClosed(event: RealtimeEvent): boolea
   return event.type === "session.update";
 }
 
-function extractRealtimeResponseId(event: RealtimeEvent): string {
-  const response = isRecord(event.response) ? event.response : null;
-  return typeof response?.id === "string" ? response.id : typeof event.response_id === "string" ? event.response_id : "";
-}
-
 function extractRealtimeItemId(event: RealtimeEvent): string {
   const item = isRecord(event.item) ? event.item : null;
   return typeof event.item_id === "string" ? event.item_id : typeof item?.id === "string" ? item.id : "";
@@ -2611,30 +2622,6 @@ function extractRealtimeEventTranscript(event: RealtimeEvent): string {
 function createRealtimeVoiceCommandTraceId(responseId: string): string {
   const responseSuffix = responseId.replace(/[^a-zA-Z0-9_-]/g, "").slice(-12) || Math.random().toString(36).slice(2, 8);
   return `voice_${Date.now()}_${responseSuffix}`;
-}
-
-function shouldLogRealtimeEventType(type: string): boolean {
-  if (!type || type.endsWith(".delta")) return false;
-  return (
-    type === "error" ||
-    type.startsWith("input_audio_buffer.") ||
-    type.startsWith("session.") ||
-    type.startsWith("response.") ||
-    type.startsWith("conversation.") ||
-    type.includes("transcription") ||
-    type.includes("function_call")
-  );
-}
-
-export function reduceRealtimeActiveResponseId(activeResponseId: string | null, event: RealtimeEvent): string | null {
-  if (event.type === "response.created") {
-    return extractRealtimeResponseId(event) || activeResponseId;
-  }
-  if (event.type === "response.done" || event.type === "response.cancelled" || event.type === "response.failed") {
-    const responseId = extractRealtimeResponseId(event);
-    return !responseId || responseId === activeResponseId ? null : activeResponseId;
-  }
-  return activeResponseId;
 }
 
 function createBearerHeaders(token: string | undefined, extra: Record<string, string> = {}): Record<string, string> {
@@ -2667,6 +2654,9 @@ export function resolveMicrophoneAccessErrorCode(error: unknown): "MICROPHONE_DE
 }
 
 export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
+  private transport: RealtimeTransport | null = null;
+  // Temporary compatibility aliases for focused unit tests while transport
+  // ownership migrates in small, independently testable steps.
   private peerConnection: RTCPeerConnection | null = null;
   private dataChannel: RTCDataChannel | null = null;
   private mediaStream: MediaStream | null = null;
@@ -2759,10 +2749,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   }
 
   connect(): Promise<void> {
-    if (shouldReuseRealtimeConnect(Boolean(this.connectPromise), this.dataChannel?.readyState)) {
+    if (shouldReuseRealtimeConnect(Boolean(this.connectPromise), this.getTransportReadyState())) {
       return this.connectPromise ?? Promise.resolve();
     }
-    if (this.dataChannel || this.peerConnection || this.mediaStream) {
+    if (this.hasConnectionResources()) {
       this.closeResources();
     }
 
@@ -2777,10 +2767,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   }
 
   connectTextOnly(): Promise<void> {
-    if (shouldReuseRealtimeConnect(Boolean(this.connectPromise), this.dataChannel?.readyState)) {
+    if (shouldReuseRealtimeConnect(Boolean(this.connectPromise), this.getTransportReadyState())) {
       return this.connectPromise ?? Promise.resolve();
     }
-    if (this.dataChannel || this.peerConnection || this.mediaStream) {
+    if (this.hasConnectionResources()) {
       this.closeResources();
     }
 
@@ -2910,17 +2900,14 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         return;
       }
 
-      const peerConnection = new RTCPeerConnection();
-      const dataChannel = peerConnection.createDataChannel("openai-realtime-data");
-      this.peerConnection = peerConnection;
-      this.dataChannel = dataChannel;
       const sessionReadyPromise = this.createSessionReadyPromise();
-
-      stream?.getAudioTracks().forEach((track) => peerConnection.addTrack(track, stream as MediaStream));
-      if (!stream && typeof peerConnection.addTransceiver === "function") {
-        peerConnection.addTransceiver("audio", { direction: "recvonly" });
-        this.emitDiagnostic({ type: "realtime.audio_transceiver.added", status: "recvonly", data: { mode } });
-      }
+      const transportKind = mode === "audio" ? this.options.webrtcTransport ?? "classic" : "classic";
+      const transport =
+        this.options.transportFactory?.(mode) ??
+        (transportKind === "agents_sdk" ? createAgentsSdkRealtimeTransport() : createClassicRealtimeTransport());
+      this.transport = transport;
+      this.emitDiagnostic({ type: "realtime.transport.selected", status: transportKind, data: { mode } });
+      const transportAudioElement = transport.handlesAudioPlayback ? this.createRemoteAudioElement() : undefined;
       const handlePeerStateChange = (state: string) => {
         const status = resolveRealtimePeerStatus(state);
         if (!status) return;
@@ -2930,57 +2917,61 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         this.emitDiagnostic({ type: "realtime.peer.status", status, data: { state } });
         this.options.onStatusChange?.(status);
       };
-      peerConnection.onconnectionstatechange = () => handlePeerStateChange(peerConnection.connectionState);
-      peerConnection.oniceconnectionstatechange = () => handlePeerStateChange(peerConnection.iceConnectionState);
-      peerConnection.ontrack = (event) => {
-        this.attachRemoteAudioStream(resolveRealtimeRemoteAudioStream(event));
-      };
-
-      dataChannel.onopen = () => {
-        this.options.onStatusChange?.("configuring");
-        this.emitDiagnostic({ type: "realtime.data_channel.open", status: "configuring" });
-        this.armSessionUpdateTimeout();
-        this.discardQueuedSessionUpdates("data_channel_open");
-        this.sendInitialToolSelectionUpdateIfReady("data_channel_open");
-      };
-      dataChannel.onmessage = (event) => this.handleRealtimeEventData(event.data);
-      dataChannel.onclose = () => {
-        this.clearSessionUpdateTimeout();
-        this.sessionReady = false;
-        this.emitDiagnostic({ type: "realtime.data_channel.close", status: "disconnected" });
-        this.options.onStatusChange?.("disconnected");
-      };
-
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-      const sdpResponse = await withTimeout(
-        fetchImpl("https://api.openai.com/v1/realtime/calls", {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${secret}`,
-            "content-type": "application/sdp"
-          },
-          body: offer.sdp ?? ""
-        }),
-        connectTimeoutMs,
-        "REALTIME_CONNECT_TIMEOUT(sdp)",
-        () => this.emitDiagnostic({ type: "realtime.sdp.timeout", status: "failed", errorCode: "REALTIME_CONNECT_TIMEOUT" })
-      );
-      const sdpText = await sdpResponse.text();
-      if (!sdpResponse.ok) {
-        this.emitDiagnostic({
-          type: "realtime.sdp.failed",
-          status: String(sdpResponse.status),
-          errorCode: "REALTIME_SDP_FAILED",
-          message: sdpText.slice(0, 240)
-        });
-        throw new Error("REALTIME_SDP_FAILED");
-      }
-      if (!this.isCurrentAttempt(attemptId)) {
-        peerConnection.close();
-        return;
-      }
-      await peerConnection.setRemoteDescription({ type: "answer", sdp: sdpText });
+      const transportConnectPromise = transport.connect({
+        clientSecret: secret,
+        model: realtimeModel,
+        mediaStream: stream,
+        mode,
+        fetchImpl,
+        timeoutMs: connectTimeoutMs,
+        audioElement: transportAudioElement,
+        shouldContinue: () => this.isCurrentAttempt(attemptId),
+        onOpen: () => {
+          this.options.onStatusChange?.("configuring");
+          this.emitDiagnostic({ type: "realtime.data_channel.open", status: "configuring" });
+          this.armSessionUpdateTimeout();
+          this.discardQueuedSessionUpdates("data_channel_open");
+          this.sendInitialToolSelectionUpdateIfReady("data_channel_open");
+        },
+        onMessage: (data) => this.handleRealtimeEventData(data),
+        onClose: () => {
+          this.clearSessionUpdateTimeout();
+          this.sessionReady = false;
+          this.emitDiagnostic({ type: "realtime.data_channel.close", status: "disconnected" });
+          this.options.onStatusChange?.("disconnected");
+        },
+        onPeerStateChange: handlePeerStateChange,
+        onTrack: (event) => {
+          const remoteStream = resolveRealtimeRemoteAudioStream(event);
+          if (transport.handlesAudioPlayback) {
+            this.observeRemoteAudioStream(remoteStream);
+          } else {
+            this.attachRemoteAudioStream(remoteStream);
+          }
+        },
+        onDiagnostic: (event) => {
+          if (event.type === "audio_transceiver_added") {
+            this.emitDiagnostic({ type: "realtime.audio_transceiver.added", status: "recvonly", data: { mode: event.mode } });
+          } else if (event.type === "sdp_timeout") {
+            this.emitDiagnostic({ type: "realtime.sdp.timeout", status: "failed", errorCode: "REALTIME_CONNECT_TIMEOUT" });
+          } else {
+            this.emitDiagnostic({
+              type: "realtime.sdp.failed",
+              status: String(event.status),
+              errorCode: "REALTIME_SDP_FAILED",
+              message: event.message
+            });
+          }
+        }
+      });
+      // Keep these aliases during the staged migration so existing focused
+      // tests can still inject a channel without constructing a full transport.
+      this.peerConnection = transport.peerConnection;
+      this.dataChannel = transport.dataChannel;
+      await transportConnectPromise;
+      this.peerConnection = transport.peerConnection;
+      this.dataChannel = transport.dataChannel;
+      if (!this.isCurrentAttempt(attemptId)) return;
       await sessionReadyPromise;
     } catch (error) {
       if (this.isCurrentAttempt(attemptId)) {
@@ -3036,11 +3027,17 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private closeResources(): void {
     this.stopMicrophoneLevelMonitor();
     this.releaseRemoteAudioElement();
-    closeRealtimeConnectionResources({
-      dataChannel: this.dataChannel,
-      peerConnection: this.peerConnection,
-      mediaStream: this.mediaStream
-    });
+    if (this.transport) {
+      this.transport.close();
+      this.mediaStream?.getTracks().forEach((track) => track.stop());
+    } else {
+      closeRealtimeConnectionResources({
+        dataChannel: this.dataChannel,
+        peerConnection: this.peerConnection,
+        mediaStream: this.mediaStream
+      });
+    }
+    this.transport = null;
     this.dataChannel = null;
     this.peerConnection = null;
     this.mediaStream = null;
@@ -3066,6 +3063,14 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     this.clearRealtimeTraceState();
   }
 
+  private getTransportReadyState(): string | undefined {
+    return this.transport?.readyState ?? this.dataChannel?.readyState;
+  }
+
+  private hasConnectionResources(): boolean {
+    return Boolean(this.transport || this.dataChannel || this.peerConnection || this.mediaStream);
+  }
+
   private releaseRemoteAudioElement(): void {
     this.stopRemoteAudioLevelMonitor();
     const audio = this.remoteAudioElement;
@@ -3079,6 +3084,27 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     stream?.getTracks().forEach((track) => track.stop());
     audio.remove?.();
     this.remoteAudioElement = null;
+  }
+
+  private createRemoteAudioElement(): HTMLAudioElement | undefined {
+    if (typeof Audio === "undefined") return undefined;
+    this.releaseRemoteAudioElement();
+    const audio = new Audio();
+    audio.autoplay = true;
+    audio.muted = false;
+    audio.volume = 1;
+    audio.setAttribute("playsinline", "true");
+    if (audio.style) audio.style.display = "none";
+    if (typeof Node !== "undefined" && audio instanceof Node) {
+      document.body?.appendChild(audio);
+    }
+    this.remoteAudioElement = audio;
+    return audio;
+  }
+
+  private observeRemoteAudioStream(remoteStream: MediaStream | undefined): void {
+    if (!remoteStream) return;
+    this.startRemoteAudioLevelMonitor(remoteStream);
   }
 
   private markRealtimeTraceInterrupted(commandTraceId: string | null | undefined): void {
@@ -3285,6 +3311,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
 
     const activeResponseId = this.activeResponseId;
     const shouldClearOutputAudio = this.connectMode === "audio" && (Boolean(activeResponseId) || this.remoteAudioLevel > REMOTE_AUDIO_CLEAR_LEVEL);
+    const useSdkInterrupt = Boolean(activeResponseId && shouldClearOutputAudio && this.transport?.handlesInterrupt);
     if (activeResponseId) {
       this.emitDiagnostic({
         type: "realtime.response.cancel_on_speech_started",
@@ -3292,7 +3319,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         operationId: activeResponseId,
         commandTraceId
       });
-      this.sendEvent({ type: "response.cancel" }, { queueWhenClosed: false, commandTraceId });
+      if (!useSdkInterrupt) {
+        this.sendEvent({ type: "response.cancel" }, { queueWhenClosed: false, commandTraceId });
+      }
     }
     if (shouldClearOutputAudio) {
       this.emitDiagnostic({
@@ -3300,7 +3329,12 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         status: "sent",
         commandTraceId
       });
-      this.sendEvent({ type: "output_audio_buffer.clear" }, { queueWhenClosed: false, commandTraceId });
+      if (useSdkInterrupt) {
+        this.transport?.interrupt();
+        this.emitDiagnostic({ type: "realtime.transport.interrupt", status: "sent", commandTraceId });
+      } else {
+        this.sendEvent({ type: "output_audio_buffer.clear" }, { queueWhenClosed: false, commandTraceId });
+      }
     }
     if (activeResponseId) {
       this.emitDiagnostic({
@@ -3326,19 +3360,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   }
 
   private attachRemoteAudioStream(remoteStream: MediaStream | undefined): void {
-    if (!remoteStream || typeof Audio === "undefined") return;
-    this.releaseRemoteAudioElement();
-    const audio = new Audio();
-    audio.autoplay = true;
-    audio.muted = false;
-    audio.volume = 1;
-    audio.setAttribute("playsinline", "true");
-    if (audio.style) audio.style.display = "none";
+    if (!remoteStream) return;
+    const audio = this.createRemoteAudioElement();
+    if (!audio) return;
     audio.srcObject = remoteStream;
-    if (typeof Node !== "undefined" && audio instanceof Node) {
-      document.body?.appendChild(audio);
-    }
-    this.remoteAudioElement = audio;
     this.startRemoteAudioLevelMonitor(remoteStream);
     void audio.play?.().catch((error) => {
       this.emitDiagnostic({
@@ -3450,7 +3475,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   }
 
   private sendInitialToolSelectionUpdateIfReady(reason: string): void {
-    if (this.initialToolSelectionUpdateSent || !this.sessionReady || this.dataChannel?.readyState !== "open") return;
+    if (this.initialToolSelectionUpdateSent || !this.sessionReady || this.getTransportReadyState() !== "open") return;
     this.initialToolSelectionUpdateSent = true;
     this.emitDiagnostic({
       type: "realtime.initial_selector_update",
@@ -4065,14 +4090,39 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       result.status === "success" &&
       !isSelectionResult &&
       !isLegacyRealtimeCommandPlanTool(call.name);
-    createRealtimeToolResultEvents(call, userFacingResult, {
+    const toolResultEvents = createRealtimeToolResultEvents(call, userFacingResult, {
       activeResponseId: this.activeResponseId,
       responseMode,
       continueResponse,
       toolChoice: nextResponseToolChoice,
       tools: nextResponseTools,
       instructions: nextResponseInstructions
-    }).forEach((event) => this.sendEvent(event, { queueWhenClosed: false, commandTraceId }));
+    });
+    if (this.transport?.handlesFunctionCallOutput) {
+      this.emitDiagnostic({
+        type: "realtime.event.send",
+        status: "sent",
+        commandTraceId,
+        data: { eventType: "conversation.item.create", transportMethod: "sendFunctionCallOutput", startResponse: false }
+      });
+      this.transport.sendFunctionCallOutput(
+        {
+          id: call.id,
+          type: "function_call",
+          callId: call.id,
+          name: encodeRealtimeToolName(call.name),
+          arguments: JSON.stringify(call.arguments),
+          responseId: this.activeResponseId ?? ""
+        },
+        JSON.stringify(userFacingResult),
+        false
+      );
+      toolResultEvents.slice(1).forEach((event) =>
+        this.sendEvent(event, { queueWhenClosed: false, commandTraceId })
+      );
+    } else {
+      toolResultEvents.forEach((event) => this.sendEvent(event, { queueWhenClosed: false, commandTraceId }));
+    }
     if (call.name === REALTIME_TOOL_SELECTION_TOOL_NAME) {
       this.scopedToolSelectionResponseInstructions.delete(call.id);
     }
@@ -4339,7 +4389,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       });
       throw new Error("REALTIME_TEXT_COMMAND_EMPTY");
     }
-    if (this.dataChannel?.readyState !== "open" || !this.sessionReady) {
+    if (this.getTransportReadyState() !== "open" || !this.sessionReady) {
       this.emitDiagnostic({
         type: "realtime.text_command.send",
         status: "failed",
@@ -4377,6 +4427,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         instructions: selectorInstructions
       }),
       commandTraceId,
+      input: text,
       inputLength: text.length,
       selectorInstructions,
       selectorTools: selectorRealtimeTools,
@@ -5753,10 +5804,18 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private sendEvent(event: RealtimeEvent, options: { queueWhenClosed?: boolean; commandTraceId?: string } = {}): void {
     this.emitDiagnostic({
       type: "realtime.event.send",
-      status: this.dataChannel?.readyState === "open" ? "sent" : "queued_or_dropped",
+      status: this.getTransportReadyState() === "open" ? "sent" : "queued_or_dropped",
       commandTraceId: options.commandTraceId,
       data: { eventType: typeof event.type === "string" ? event.type : "unknown" }
     });
+    if (this.transport?.readyState === "open") {
+      if (event.type === "response.create" && this.transport.handlesResponseSequencing) {
+        this.transport.requestResponse(isRecord(event.response) ? event.response : undefined);
+        return;
+      }
+      this.transport.sendEvent(event);
+      return;
+    }
     if (this.dataChannel?.readyState === "open") {
       this.dataChannel.send(JSON.stringify(event));
       return;
@@ -5778,14 +5837,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   }
 
   private handleRealtimeEventData(data: unknown): void {
-    let parsed: RealtimeEvent | null = null;
+    const parsed = normalizeRealtimeTransportEvent(data);
     let parsedCommandTraceId: string | undefined;
-    try {
-      parsed = typeof data === "string" ? (JSON.parse(data) as RealtimeEvent) : isRecord(data) ? data : null;
-    } catch {
-      handleRealtimeFunctionCallEvent(data, this.handledFunctionCallIds, (call) => this.handleFunctionCall(call));
-      return;
-    }
     if (parsed) {
       const eventType = typeof parsed.type === "string" ? parsed.type : "unknown";
       const commandTraceId = this.prepareRealtimeEventTrace(parsed);
@@ -5904,8 +5957,22 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
           commandTraceId: pendingTextCommand.commandTraceId,
           data: { inputLength: pendingTextCommand.inputLength }
         });
-        for (const pendingEvent of pendingTextCommand.events) {
-          this.sendEvent(pendingEvent, { queueWhenClosed: false, commandTraceId: pendingTextCommand.commandTraceId });
+        const [messageEvent, ...responseEvents] = pendingTextCommand.events;
+        if (this.transport?.handlesMessageSend && messageEvent?.type === "conversation.item.create") {
+          this.emitDiagnostic({
+            type: "realtime.event.send",
+            status: "sent",
+            commandTraceId: pendingTextCommand.commandTraceId,
+            data: { eventType: "conversation.item.create", transportMethod: "sendMessage", triggerResponse: false }
+          });
+          this.transport.sendMessage(pendingTextCommand.input);
+          for (const pendingEvent of responseEvents) {
+            this.sendEvent(pendingEvent, { queueWhenClosed: false, commandTraceId: pendingTextCommand.commandTraceId });
+          }
+        } else {
+          for (const pendingEvent of pendingTextCommand.events) {
+            this.sendEvent(pendingEvent, { queueWhenClosed: false, commandTraceId: pendingTextCommand.commandTraceId });
+          }
         }
         this.registerPendingSelectorToolResponse(pendingTextCommand.commandTraceId, {
           instructions: pendingTextCommand.selectorInstructions,
@@ -6252,7 +6319,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         data: {
           timeoutMs,
           sessionReady: this.sessionReady,
-          dataChannelState: this.dataChannel?.readyState ?? "missing"
+          dataChannelState: this.getTransportReadyState() ?? "missing"
         }
       });
       this.initialToolSelectionUpdateTimeout = null;

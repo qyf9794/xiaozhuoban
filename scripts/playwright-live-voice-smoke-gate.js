@@ -243,9 +243,13 @@ async function seedTvAssistantChannelCatalog(page, testCaseOrCases) {
 }
 
 async function clearAllAppState(page) {
-  await page.evaluate(async () => {
+  const sdkTransportOverride = process.env.XIAOZHUOBAN_E2E_AGENTS_VOICE_ADAPTER;
+  await page.evaluate(async (transportOverride) => {
     localStorage.clear();
     sessionStorage.clear();
+    if (transportOverride === "true" || transportOverride === "false") {
+      localStorage.setItem("xiaozhuoban.realtime.sdkWebRtcTransport.enabled", transportOverride);
+    }
     const databases = await indexedDB.databases?.();
     await Promise.all(
       (databases ?? [])
@@ -259,7 +263,7 @@ async function clearAllAppState(page) {
             })
         )
     );
-  });
+  }, sdkTransportOverride);
 }
 
 async function clearCaseEvidence(page) {
@@ -1099,14 +1103,21 @@ async function runContinuousSession(playwright, options, runDir, userDataDir, te
   await page.screenshot({ path: path.join(runDir, "session-before.png"), fullPage: false });
 
   await page.getByRole("button", { name: "连接语音", exact: true }).click({ force: true });
-  await page.waitForFunction(
-    () => {
-      const events = window.__xiaozhuobanLiveVoiceDiagnosticEvents || [];
-      return events.some((event) => event.type === "realtime.session.created_ready" && event.status === "connected");
-    },
-    null,
-    { timeout: 30_000 }
-  );
+  try {
+    await page.waitForFunction(
+      () => {
+        const events = window.__xiaozhuobanLiveVoiceDiagnosticEvents || [];
+        return events.some((event) => event.type === "realtime.session.created_ready" && event.status === "connected");
+      },
+      null,
+      { timeout: 30_000 }
+    );
+  } catch (error) {
+    const failedSnapshot = await snapshot(page);
+    const recentDiagnostics = (failedSnapshot.diagnostics?.events || []).slice(-40);
+    console.error("realtime connection readiness diagnostics", JSON.stringify({ recentDiagnostics, consoleErrors }, null, 2));
+    throw error;
+  }
 
   const sessionDurationMs = readPcmWavDurationMs(options.sessionAudio);
   const deadline = Date.now() + (sessionDurationMs > 0 ? Math.min(options.waitMs, sessionDurationMs + 20_000) : options.waitMs);

@@ -4,7 +4,7 @@ import type { AssistantRuntimeMode, RealtimeBudgetMetrics } from "@xiaozhuoban/a
 import {
   createRealtimeAssistantRuntime,
   readAgentsVoiceAdapterEnabled,
-  AGENTS_VOICE_ADAPTER_STORAGE_KEY,
+  SDK_WEBRTC_TRANSPORT_STORAGE_KEY,
   shouldFallbackUnhandledVoiceTranscriptToHarness
 } from "../assistant/createRealtimeAssistantRuntime";
 import {
@@ -207,6 +207,8 @@ export function useAssistantRuntimeController({
         adapterOptions: {
           getAccessToken: () => useAuthStore.getState().session?.access_token,
           getHighAccuracyMode: () => realtimeHighAccuracyModeRef.current,
+          webrtcTransport:
+            import.meta.env.VITE_XIAOZHUOBAN_REALTIME_SDK_TRANSPORT === "true" ? "agents_sdk" : "classic",
           onMicrophoneLevel: setRealtimeAudioLevel,
           onDiagnostic: recordDiagnostic
         },
@@ -307,7 +309,7 @@ export function useAssistantRuntimeController({
   }, [realtimeHighAccuracyMode]);
 
   useEffect(() => {
-    window.localStorage.setItem(AGENTS_VOICE_ADAPTER_STORAGE_KEY, agentsVoiceAdapterEnabled ? "true" : "false");
+    window.localStorage.setItem(SDK_WEBRTC_TRANSPORT_STORAGE_KEY, agentsVoiceAdapterEnabled ? "true" : "false");
   }, [agentsVoiceAdapterEnabled]);
 
   useEffect(() => {

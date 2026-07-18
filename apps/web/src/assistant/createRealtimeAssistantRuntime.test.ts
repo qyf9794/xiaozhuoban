@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CommandPlan } from "@xiaozhuoban/assistant-core";
 import type { OpenAIRealtimeWebRtcAdapterOptions, RealtimeConnectionStatus } from "./openaiRealtimeAdapter";
-import { createRealtimeAssistantRuntime, shouldFallbackUnhandledVoiceTranscriptToHarness } from "./createRealtimeAssistantRuntime";
+import {
+  createRealtimeAssistantRuntime,
+  readAgentsVoiceAdapterEnabled,
+  shouldFallbackUnhandledVoiceTranscriptToHarness
+} from "./createRealtimeAssistantRuntime";
 
 function createRuntimeWithFakeAdapter(options: {
   commandWindowIdleMs?: number;
@@ -63,6 +67,24 @@ afterEach(() => {
 });
 
 describe("createRealtimeAssistantRuntime", () => {
+  it("defaults to the SDK WebRTC transport when no persisted preference exists", () => {
+    expect(readAgentsVoiceAdapterEnabled()).toBe(true);
+    let selectedTransport: OpenAIRealtimeWebRtcAdapterOptions["webrtcTransport"];
+    createRealtimeAssistantRuntime({
+      adapterFactory: (options) => {
+        selectedTransport = options.webrtcTransport;
+        return {
+          connect: vi.fn(async () => undefined),
+          connectTextOnly: vi.fn(async () => undefined),
+          disconnect: vi.fn(),
+          updateTools: vi.fn(),
+          sendToolResult: vi.fn()
+        };
+      }
+    });
+    expect(selectedTransport).toBe("agents_sdk");
+  });
+
   it("can stay in local standby for 24 hours without creating a realtime session", () => {
     const { runtime, adapter } = createRuntimeWithFakeAdapter();
 
@@ -183,6 +205,7 @@ describe("createRealtimeAssistantRuntime", () => {
       sendToolResult: vi.fn()
     };
     let factoryCalls = 0;
+    const selectedTransports: Array<OpenAIRealtimeWebRtcAdapterOptions["webrtcTransport"]> = [];
     const runtime = createRealtimeAssistantRuntime({
       useAgentsVoiceAdapter: true,
       adapterOptions: {
@@ -190,8 +213,9 @@ describe("createRealtimeAssistantRuntime", () => {
           diagnostics.push(event);
         }
       },
-      adapterFactory: () => {
+      adapterFactory: (adapterOptions) => {
         factoryCalls += 1;
+        selectedTransports.push(adapterOptions.webrtcTransport);
         return factoryCalls === 1 ? failingAgentsAdapter : classicAdapter;
       }
     });
@@ -200,6 +224,7 @@ describe("createRealtimeAssistantRuntime", () => {
 
     expect(failingAgentsAdapter.connect).toHaveBeenCalledTimes(1);
     expect(classicAdapter.connect).toHaveBeenCalledTimes(1);
+    expect(selectedTransports).toEqual(["agents_sdk", "classic"]);
     expect(diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({
         type: "realtime.runtime.adapter_fallback",
