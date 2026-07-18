@@ -397,6 +397,98 @@ describe("WidgetCapabilityBridge", () => {
     expect(calls).toEqual(["clearDraft"]);
   });
 
+  it("keeps verified TV playback success instead of replacing it with a click prompt", async () => {
+    const { store } = createStore();
+    const bridge = new WidgetCapabilityBridge();
+    bridge.register("wi_tv", {
+      play() {
+        return {
+          status: "success",
+          message: "已播放电视",
+          data: { channelName: "CCTV1", playbackVerified: true, playbackBlocked: false }
+        };
+      }
+    });
+    const registry = createRegistry(store, bridge);
+
+    const result = await registry.execute(
+      { id: "call_tv_verified", name: "tv.play", arguments: { channelName: "CCTV1" }, source: "test" },
+      { target: targetFor("tv"), now: () => NOW }
+    );
+
+    expect(result).toEqual({
+      status: "success",
+      message: "已播放电视",
+      data: { channelName: "CCTV1", playbackVerified: true, playbackBlocked: false }
+    });
+  });
+
+  it("preserves the discovered music state when playback has not started", async () => {
+    const { store } = createStore();
+    const bridge = new WidgetCapabilityBridge();
+    bridge.register("wi_music", {
+      play() {
+        return {
+          status: "timed_out",
+          message: "已找到《红豆》，当前已加载，但播放时钟尚未开始推进",
+          errorCode: "MUSIC_PLAYBACK_NOT_ADVANCING",
+          data: {
+            itemId: "song_1",
+            title: "红豆",
+            playbackState: "loaded_not_playing",
+            playbackVerified: false
+          }
+        };
+      }
+    });
+    const registry = createRegistry(store, bridge);
+
+    const result = await registry.execute(
+      { id: "call_music_not_started", name: "music.play", arguments: { query: "王菲 红豆" }, source: "test" },
+      { target: targetFor("music"), now: () => NOW }
+    );
+
+    expect(result).toEqual({
+      status: "timed_out",
+      message: "已找到《红豆》，当前已加载，但播放时钟尚未开始推进",
+      errorCode: "MUSIC_PLAYBACK_NOT_ADVANCING",
+      data: {
+        itemId: "song_1",
+        title: "红豆",
+        playbackState: "loaded_not_playing",
+        playbackVerified: false
+      }
+    });
+  });
+
+  it("only asks for playback permission when the TV player actually reports a block", async () => {
+    const { store } = createStore();
+    const bridge = new WidgetCapabilityBridge();
+    bridge.register("wi_tv", {
+      play() {
+        return {
+          status: "failed",
+          message: "浏览器阻止了电视自动播放，请允许播放后重试",
+          errorCode: "BROWSER_PLAYBACK_BLOCKED",
+          data: { playbackVerified: false, playbackBlocked: true }
+        };
+      }
+    });
+    const registry = createRegistry(store, bridge);
+
+    const result = await registry.execute(
+      { id: "call_tv_blocked", name: "tv.play", arguments: { channelName: "CCTV1" }, source: "test" },
+      { target: targetFor("tv"), now: () => NOW }
+    );
+
+    expect(result).toMatchObject({
+      status: "failed",
+      message: "浏览器阻止了电视自动播放，请允许播放后重试",
+      errorCode: "BROWSER_PLAYBACK_BLOCKED",
+      data: { playbackVerified: false, playbackBlocked: true }
+    });
+  });
+
   it("refuses a capability action for a mismatched widget target", async () => {
     const { store } = createStore();
     const bridge = new WidgetCapabilityBridge();

@@ -10,6 +10,12 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test:realtime-live": "node scripts/realtime-live-semantic-gate.mjs",
+    "test:realtime-music-session": "node scripts/playwright-live-voice-smoke-gate.js --cases-file tests/realtime-live-music-session-cases.json --audio-root tests/audio/realtime-live-music-session --session-audio tests/audio/realtime-live-music-session/music-session-10-commands.wav --playback-audio tests/audio/realtime-live-music-session/playback-melody.wav --output-root output/playwright/realtime-live-music-session --report docs/realtime-live-music-session-report.md --wait-ms 240000",
+    "test:realtime-music-switch": "node scripts/playwright-live-voice-smoke-gate.js --cases-file tests/realtime-live-music-switch-cases.json --audio-root tests/audio/realtime-live-music-switch --session-audio tests/audio/realtime-live-music-switch/music-session-10-commands.wav --playback-audio tests/audio/realtime-live-music-switch/playback-melody.wav --output-root output/playwright/realtime-live-music-switch --report docs/realtime-live-music-switch-report.md --wait-ms 240000",
+    "test:realtime-tv-switch": "node scripts/playwright-live-voice-smoke-gate.js --cases-file tests/realtime-live-tv-switch-cases.json --audio-root tests/audio/realtime-live-tv-switch --session-audio tests/audio/realtime-live-tv-switch/music-session-10-commands.wav --playback-audio tests/audio/realtime-live-tv-switch/playback-tv.mp4 --output-root output/playwright/realtime-live-tv-switch --report docs/realtime-live-tv-switch-report.md --wait-ms 240000",
+    "generate:realtime-music-audio": "node scripts/generate-realtime-music-session-audio.mjs",
+    "generate:realtime-music-switch-audio": "node scripts/generate-realtime-music-session-audio.mjs --cases tests/realtime-live-music-switch-cases.json --output tests/audio/realtime-live-music-switch",
+    "generate:realtime-tv-switch-audio": "node scripts/generate-realtime-music-session-audio.mjs --cases tests/realtime-live-tv-switch-cases.json --output tests/audio/realtime-live-tv-switch",
     "diagnostics:assistant": "node scripts/tail-assistant-diagnostics.mjs",
     "sync:worktree-env": "bash scripts/sync-worktree-env.sh",
     "setup:hooks": "git config core.hooksPath .githooks && chmod +x .githooks/post-checkout scripts/sync-worktree-env.sh"
@@ -17,6 +23,7 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/ws": "^8.18.1",
+    "playwright": "^1.61.1",
     "turbo": "^2.3.3",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8",

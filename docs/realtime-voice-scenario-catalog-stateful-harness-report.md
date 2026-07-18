@@ -9,17 +9,17 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 005. [pass] tools=app.settings.open; mutations=settings; command=打开小桌板设置
 006. [pass] tools=app.command_palette.open; mutations=palette; command=打开搜索命令面板
 007. [pass] tools=app.ai_dialog.open; mutations=aiDialog; command=我要新建一个 AI 小工具
-008. [pass] tools=board.auto_align; mutations=autoAlign; command=整理一下桌面所有小工具
+008. [pass] tools=board.auto_align,board.auto_align; mutations=autoAlign; command=整理一下桌面所有小工具
 009. [pass] tools=board.create; mutations=boardAdd:board_3; command=新开一个学习桌板
 010. [pass] tools=board.rename; mutations=boardRename:board_1; command=把当前桌板改名叫夜间工作
 011. [pass] tools=board.switch; mutations=switch:board_2; command=切回工作台桌板
 012. [pass] tools=widget.move; mutations=move:wi_tv; command=把电视拖到右上角
 013. [pass] tools=widget.resize; mutations=resize:wi_tv; command=把电视面板调大一点
-014. [pass] tools=widget.bring_to_front,widget.focus; mutations=front:wi_music,focus:wi_music; command=把音乐播放器放最前
-015. [pass] tools=widget.focus,weather.set_city; mutations=focus:wi_weather,state:wi_weather; command=聚焦天气卡片
-016. [pass] tools=widget.fullscreen_focus,tv.fullscreen,tv.play; mutations=fullscreen:wi_tv,capability:wi_tv:fullscreen,capability:wi_tv:play,state:wi_tv; command=全屏看电视
+014. [fail] tools=widget.bring_to_front; mutations=front:wi_music; command=把音乐播放器放最前
+015. [fail] tools=widget.focus; mutations=focus:wi_weather; command=聚焦天气卡片
+016. [fail] tools=widget.fullscreen_focus; mutations=fullscreen:wi_weather; command=全屏看电视
 017. [pass] tools=widget.remove; mutations=remove:wi_messageBoard; command=关闭留言板
-018. [pass] tools=board.add_widget,dialClock.set_night_mode; mutations=add:dialClock,capability:wi_dialClock:setNightMode,state:wi_dialClock; command=打开一个表盘时钟
+018. [fail] tools=widget.focus; mutations=focus:wi_dialClock; command=打开一个表盘时钟
 019. [pass] tools=note.write; mutations=state:wi_note; command=新建便签实例用于测试
 020. [pass] tools=weather.set_city; mutations=state:wi_weather; command=查北京今天冷不冷
 021. [pass] tools=weather.set_city; mutations=state:wi_weather; command=上海天气给我看一下
@@ -57,7 +57,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 053. [pass] tools=headline.request_refresh; mutations=state:wi_headline; command=刷新重大新闻
 054. [pass] tools=headline.request_refresh; mutations=state:wi_headline; command=今天有什么头条新闻
 055. [pass] tools=market.set_indices; mutations=state:wi_market; command=看美股三大指数
-056. [pass] tools=board.add_widget,market.set_indices; mutations=add:market,state:wi_market; command=打开恒生和上证行情
+056. [fail] tools=market.set_indices; mutations=state:wi_market; command=打开恒生和上证行情
 057. [pass] tools=dialClock.set_night_mode; mutations=capability:wi_dialClock:setNightMode,state:wi_dialClock; command=表盘开启夜间模式
 058. [pass] tools=dialClock.set_night_mode; mutations=capability:wi_dialClock:setNightMode,state:wi_dialClock; command=关闭时钟夜间模式
 059. [pass] tools=messageBoard.send; mutations=capability:wi_messageBoard:send,state:wi_messageBoard; command=留言板发一句我在测试
@@ -110,9 +110,9 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 106. [pass] tools=board.add_widget; mutations=add:recorder; command=再打开一个录音机
 107. [pass] tools=music.play,weather.set_city; mutations=capability:wi_music:play,state:wi_music,state:wi_weather; command=播放陈奕迅十年，然后查上海天气
 108. [pass] tools=app.sidebar.set,app.settings.open; mutations=sidebar:false,settings; command=隐藏侧边栏，同时打开设置
-109. [pass] tools=board.add_widget,tv.fullscreen,tv.select_channel; mutations=add:tv,capability:wi_tv:fullscreen,capability:wi_tv:selectChannel,state:wi_tv; command=打开电视然后切到 CCTV5 再全屏
+109. [fail] tools=tv.fullscreen,tv.select_channel; mutations=capability:wi_tv:fullscreen,capability:wi_tv:selectChannel,state:wi_tv; command=打开电视然后切到 CCTV5 再全屏
 110. [pass] tools=note.write,todo.add_item; mutations=state:wi_note,state:wi_todo; command=先记下买票，然后添加待办订酒店
-111. [pass] tools=widget.remove,widget.remove; mutations=remove:wi_messageBoard,remove:wi_music; command=关闭音乐和留言板
+111. [pass] tools=widget.remove,widget.remove; mutations=remove:wi_music,remove:wi_messageBoard; command=关闭音乐和留言板
 112. [pass] tools=weather.set_city; mutations=state:wi_weather; command=外面适合出门吗看北京，场景1
 113. [pass] tools=music.search; mutations=capability:wi_music:search,state:wi_music; command=我想听点放松的不一定播放，场景1
 114. [pass] tools=music.play; mutations=capability:wi_music:play,state:wi_music; command=来个周杰伦经典，场景1
@@ -208,7 +208,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 204. [pass] tools=app.settings.open,app.command_palette.open; mutations=settings,palette; command=打开设置，切到语音相关页面，如果没有就打开命令面板
 205. [pass] tools=app.sidebar.set,board.auto_align; mutations=sidebar:false,autoAlign; command=我想专心一下，隐藏侧栏并把当前桌面整理整齐
 206. [pass] tools=app.fullscreen.set,app.command_palette.open; mutations=fullscreenApp:false,palette; command=退出全屏，打开搜索面板，然后输入天气两个字
-207. [pass] tools=app.fullscreen.set; mutations=fullscreenApp:true; command=进入沉浸模式，同时不要关闭正在播放的音乐
+207. [pass] tools=app.fullscreen.set; mutations=fullscreenApp:false; command=进入沉浸模式，同时不要关闭正在播放的音乐
 208. [pass] tools=app.settings.open,app.ai_dialog.open; mutations=settings,aiDialog; command=打开小桌板设置，再新建一个 AI 小工具草稿
 209. [pass] tools=app.command_palette.open; mutations=palette; command=把所有弹窗先收起来，只留下命令面板
 210. [pass] tools=app.sidebar.set,widget.bring_to_front,widget.focus; mutations=sidebar:true,front:wi_music,focus:wi_music; command=先显示侧边栏，再把音乐和天气两个窗口都放到前面
@@ -218,14 +218,14 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 214. [pass] tools=app.command_palette.open; mutations=palette; command=把命令面板打开，如果当前在全屏就先退出
 215. [pass] tools=app.sidebar.set,tv.fullscreen,tv.play,widget.fullscreen_focus; mutations=sidebar:false,capability:wi_tv:fullscreen,capability:wi_tv:play,state:wi_tv,fullscreen:wi_tv; command=进入全屏看电视，同时把侧边栏藏起来
 216. [pass] tools=app.settings.open; mutations=settings; command=把设置打开后不要新建工具，只让我看配置
-217. [pass] tools=app.sidebar.set,app.fullscreen.set; mutations=sidebar:true,fullscreenApp:false; command=现在先回到普通窗口，然后显示侧边栏
+217. [pass] tools=app.fullscreen.set,app.sidebar.set; mutations=fullscreenApp:false,sidebar:true; command=现在先回到普通窗口，然后显示侧边栏
 218. [pass] tools=app.command_palette.open; mutations=palette; command=打开搜索命令面板并准备查找世界时钟
 219. [pass] tools=app.sidebar.set,widget.bring_to_front,widget.focus; mutations=sidebar:false,front:wi_dialClock,focus:wi_dialClock; command=把侧边栏切换一下，再把表盘时钟放最前
 220. [pass] tools=app.settings.open; mutations=settings; command=清理桌面前先打开设置让我确认
 221. [pass] tools=board.create; mutations=boardAdd:board_3; command=新建一个叫晨间复盘的桌板，然后切过去
 222. [pass] tools=board.rename,board.auto_align; mutations=boardRename:board_1,autoAlign; command=把当前桌板改名成项目冲刺，并整理所有小工具
-223. [pass] tools=board.switch,board.add_widget,headline.request_refresh,market.set_indices; mutations=switch:board_2,add:headline,state:wi_headline,state:wi_market; command=切到工作台桌板后打开新闻和行情
-224. [fail] tools=board.create,board.add_widget,weather.set_city,worldClock.set_zones; mutations=boardAdd:board_3,add:worldClock,state:wi_weather; command=新开旅行计划桌板，把天气、世界时钟和待办都放上去
+223. [fail] tools=board.switch,market.set_indices; mutations=switch:board_2,state:wi_market; command=切到工作台桌板后打开新闻和行情
+224. [fail] tools=board.create,weather.set_city,worldClock.set_zones; mutations=boardAdd:board_3,state:wi_weather; command=新开旅行计划桌板，把天气、世界时钟和待办都放上去
 225. [pass] tools=board.switch,dialClock.set_night_mode; mutations=switch:board_2,capability:wi_dialClock:setNightMode,state:wi_dialClock; command=回到夜间工作桌板，同时把表盘时钟调成夜间模式
 226. [pass] tools=board.create,board.add_widget; mutations=boardAdd:board_3,add:music; command=创建一个音乐练习桌板，再打开音乐和录音机
 227. [pass] tools=board.rename; mutations=boardRename:board_1; command=把当前桌板改成语音回归测试，不要删除任何小工具
@@ -233,8 +233,8 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 229. [pass] tools=board.create,board.add_widget; mutations=boardAdd:board_3,add:messageBoard; command=新建家庭事务桌板，添加待办、便签和留言板
 230. [pass] tools=board.auto_align,widget.focus; mutations=autoAlign,focus:wi_music; command=把桌面自动整理一下，确认后再聚焦音乐播放器
 231. [pass] tools=board.switch,board.add_widget; mutations=switch:board_2,add:calculator; command=切到学习桌板，打开翻译和计算器
-232. [pass] tools=board.create,board.add_widget,headline.request_refresh,market.set_indices; mutations=boardAdd:board_3,add:headline,state:wi_headline,state:wi_market; command=创建一个市场观察桌板，同时打开行情和重大新闻
-233. [pass] tools=board.rename,board.add_widget,tv.play; mutations=boardRename:board_1,add:tv,capability:wi_tv:play,state:wi_tv; command=把当前桌板重命名为今晚直播，然后打开电视
+232. [fail] tools=board.create,market.set_indices; mutations=boardAdd:board_3,state:wi_market; command=创建一个市场观察桌板，同时打开行情和重大新闻
+233. [fail] tools=board.rename,widget.focus; mutations=boardRename:board_1,focus:wi_tv; command=把当前桌板重命名为今晚直播，然后打开电视
 234. [pass] tools=board.switch,widget.move; mutations=switch:board_2,move:wi_weather; command=回到默认工作台，把天气卡片调到左上角
 235. [pass] tools=board.create,board.add_widget; mutations=boardAdd:board_3,add:countdown; command=新建一个临时桌板，只放倒计时和便签
 236. [pass] tools=board.switch,board.auto_align; mutations=switch:board_2,autoAlign; command=切到项目桌板后把所有窗口按网格排列
@@ -268,7 +268,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 264. [pass] tools=music.play; mutations=capability:wi_music:play,state:wi_music; command=来一首孙燕姿遇见，如果没找到就先展示搜索结果
 265. [pass] tools=widget.bring_to_front,widget.focus; mutations=front:wi_music,focus:wi_music; command=播放林俊杰江南，同时把音乐播放器放最前
 266. [pass] tools=music.play; mutations=capability:wi_music:play,state:wi_music; command=找张学友吻别，别只放试听片段
-267. [pass] tools=board.add_widget,music.play; mutations=add:music,capability:wi_music:play,state:wi_music; command=打开音乐播放器，搜索邓紫棋泡沫并播放
+267. [fail] tools=music.play; mutations=capability:wi_music:play,state:wi_music; command=打开音乐播放器，搜索邓紫棋泡沫并播放
 268. [pass] tools=music.play; mutations=capability:wi_music:play,state:wi_music; command=给我放五月天倔强，播放后把歌词搜索也打开
 269. [pass] tools=music.play; mutations=capability:wi_music:play,state:wi_music; command=播放 Beyond 海阔天空，不要换成同名翻唱
 270. [pass] tools=music.pause,music.play; mutations=capability:wi_music:pause,capability:wi_music:play,state:wi_music; command=搜蔡健雅红色高跟鞋，先暂停当前歌曲再播放
@@ -302,12 +302,12 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 298. [pass] tools=music.play; mutations=capability:wi_music:play,state:wi_music; command=来点周末感觉的歌，如果没把握就让我确认
 299. [pass] tools=music.pause,music.search; mutations=capability:wi_music:pause,capability:wi_music:search,state:wi_music; command=先暂停当前歌曲，再找轻柔民谣
 300. [pass] tools=music.play; mutations=capability:wi_music:play,state:wi_music; command=把音乐换成专注模式用的播放列表
-301. [pass] tools=board.add_widget,tv.select_channel,tv.fullscreen; mutations=add:tv,capability:wi_tv:selectChannel,state:wi_tv,capability:wi_tv:fullscreen; command=打开电视并切到 CCTV5，完成后全屏
+301. [fail] tools=tv.select_channel,tv.fullscreen; mutations=capability:wi_tv:selectChannel,state:wi_tv,capability:wi_tv:fullscreen; command=打开电视并切到 CCTV5，完成后全屏
 302. [pass] tools=tv.play,headline.request_refresh; mutations=capability:wi_tv:play,state:wi_tv,state:wi_headline; command=播放 CCTV13 新闻频道，然后刷新重大新闻
 303. [pass] tools=tv.select_channel; mutations=capability:wi_tv:selectChannel,state:wi_tv; command=电视切到电影频道，但不要关闭音乐
 304. [pass] tools=tv.pause,music.resume; mutations=capability:wi_tv:pause,capability:wi_music:resume; command=暂停电视直播，继续播放音乐
 305. [pass] tools=tv.select_channel; mutations=capability:wi_tv:selectChannel,state:wi_tv; command=把电视从全屏退出来，再切到 CCTV1
-306. [pass] tools=board.add_widget,tv.select_channel; mutations=add:tv,capability:wi_tv:selectChannel,state:wi_tv; command=我想看体育频道，先打开电视再选 CCTV5
+306. [fail] tools=tv.select_channel; mutations=capability:wi_tv:selectChannel,state:wi_tv; command=我想看体育频道，先打开电视再选 CCTV5
 307. [pass] tools=app.sidebar.set,tv.fullscreen; mutations=sidebar:false,capability:wi_tv:fullscreen; command=电视全屏后把侧边栏隐藏
 308. [pass] tools=tv.select_channel,tv.play,widget.move; mutations=capability:wi_tv:selectChannel,state:wi_tv,capability:wi_tv:play,state:wi_tv,move:wi_tv; command=打开 CCTV6，同时把电视窗口放到右上角
 309. [pass] tools=tv.pause,recorder.start; mutations=capability:wi_tv:pause,capability:wi_recorder:start,state:wi_recorder; command=把电视音频先暂停，然后开始录音
@@ -330,7 +330,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 326. [pass] tools=weather.set_city; mutations=state:wi_weather; command=帮我查武汉今天适不适合跑步
 327. [pass] tools=weather.set_city,widget.bring_to_front,widget.focus; mutations=state:wi_weather,front:wi_headline,focus:wi_headline; command=成都天气卡片放最前，别打开新闻
 328. [pass] tools=weather.set_city,converter.set; mutations=state:wi_weather,state:wi_converter; command=波士顿现在冷不冷，再换算华氏和摄氏
-329. [pass] tools=board.add_widget,weather.set_city; mutations=add:weather,state:wi_weather; command=北京和上海天气都打开，我要对比
+329. [fail] tools=weather.set_city; mutations=state:wi_weather; command=北京和上海天气都打开，我要对比
 330. [pass] tools=weather.set_city,todo.add_item; mutations=state:wi_weather,state:wi_todo; command=我明天出门，先查杭州天气再设早上八点提醒
 331. [fail] tools=weather.set_city,worldClock.set_zones; mutations=state:wi_weather; command=查东京天气，同时打开东京世界时钟
 332. [fail] tools=weather.set_city,worldClock.set_zones; mutations=state:wi_weather; command=给我看巴黎天气，顺便显示巴黎时间
@@ -341,8 +341,8 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 337. [pass] tools=weather.set_city,countdown.set; mutations=state:wi_weather,state:wi_countdown; command=切换天气到成都，同时打开倒计时十五分钟
 338. [pass] tools=weather.set_city; mutations=state:wi_weather; command=今天适合洗车吗，看上海天气
 339. [pass] tools=weather.set_city,translate.set_draft; mutations=state:wi_weather,state:wi_translate; command=查北京体感温度，然后翻译成英文一句话
-340. [pass] tools=board.add_widget,weather.set_city; mutations=add:weather,state:wi_weather; command=天气窗口如果没开，先打开再查武汉
-341. [fail] tools=board.add_widget,worldClock.set_zones; mutations=add:worldClock; command=显示北京伦敦纽约时间，并打开表盘时钟
+340. [fail] tools=weather.set_city; mutations=state:wi_weather; command=天气窗口如果没开，先打开再查武汉
+341. [fail] tools=worldClock.set_zones; mutations=none; command=显示北京伦敦纽约时间，并打开表盘时钟
 342. [fail] tools=worldClock.set_zones,dialClock.set_night_mode; mutations=capability:wi_dialClock:setNightMode,state:wi_dialClock; command=世界时钟加东京和巴黎，然后切到夜间模式
 343. [pass] tools=countdown.set,music.play; mutations=state:wi_countdown,capability:wi_music:play,state:wi_music; command=设二十五分钟专注倒计时，同时播放轻音乐
 344. [pass] tools=countdown.pause,note.write; mutations=state:wi_countdown,state:wi_note; command=倒计时暂停后，便签记一下暂停原因是开会
@@ -373,9 +373,9 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 369. [pass] tools=todo.add_item; mutations=state:wi_todo; command=把复盘语音测试设为今天晚上九点提醒
 370. [pass] tools=note.write; mutations=state:wi_note; command=便签写下：轻松音乐要重新搜索
 371. [pass] tools=todo.add_item; mutations=state:wi_todo; command=给待办加一条关闭留言板不能发送关闭两个字
-372. [pass] tools=todo.complete_item; mutations=state:wi_todo; command=把部署完成这项待办勾掉
+372. [fail] tools=todo.complete_item; mutations=none; command=把部署完成这项待办勾掉
 373. [pass] tools=countdown.set,todo.add_item; mutations=state:wi_countdown,state:wi_todo; command=五分钟后提醒我看倒计时有没有声音
-374. [pass] tools=note.write,board.add_widget; mutations=state:wi_note,add:note; command=便签新增一段英文 hello realtime，再打开翻译
+374. [fail] tools=note.write; mutations=state:wi_note; command=便签新增一段英文 hello realtime，再打开翻译
 375. [pass] tools=note.write; mutations=state:wi_note; command=把桌面问题列表写入便签，编号从一开始
 376. [pass] tools=todo.add_item; mutations=state:wi_todo; command=添加待办：测试多轮语音不要重复回复
 377. [pass] tools=headline.request_refresh,note.write; mutations=state:wi_headline,state:wi_note; command=把今天的新闻摘要追加到便签
@@ -398,7 +398,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 394. [pass] tools=clipboard.clear; mutations=state:wi_clipboard; command=清理剪贴板里未固定的测试记录
 395. [pass] tools=clipboard.add_text; mutations=state:wi_clipboard; command=把翻译结果复制到剪贴板，但不要覆盖便签
 396. [pass] tools=clipboard.add_text; mutations=state:wi_clipboard; command=保存命令：打开表盘时钟 到剪贴板
-397. [pass] tools=clipboard.add_text,board.add_widget; mutations=state:wi_clipboard,add:clipboard; command=复制今天日期到剪贴板并打开便签
+397. [fail] tools=clipboard.add_text; mutations=state:wi_clipboard; command=复制今天日期到剪贴板并打开便签
 398. [pass] tools=clipboard.add_text; mutations=state:wi_clipboard; command=剪贴板新增一条部署 id 占位信息
 399. [pass] tools=clipboard.add_text; mutations=state:wi_clipboard; command=固定保存音乐登录状态检查步骤
 400. [pass] tools=clipboard.clear; mutations=state:wi_clipboard; command=清理剪贴板后发一条完成提示
@@ -424,7 +424,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 420. [pass] tools=calculator.set_display; mutations=state:wi_calculator; command=计算部署失败次数三加五再乘二
 421. [pass] tools=headline.request_refresh,market.set_indices; mutations=state:wi_headline,state:wi_market; command=刷新重大新闻，然后打开美股三大指数
 422. [pass] tools=market.set_indices,headline.request_refresh; mutations=state:wi_market,state:wi_headline; command=看纳指和道指，顺便刷新财经新闻
-423. [pass] tools=board.add_widget,market.set_indices; mutations=add:market,state:wi_market; command=打开恒生和上证行情，不要自动开全球指数
+423. [fail] tools=market.set_indices; mutations=state:wi_market; command=打开恒生和上证行情，不要自动开全球指数
 424. [pass] tools=headline.request_refresh,note.write; mutations=state:wi_headline,state:wi_note; command=今天有什么头条新闻，结果追加到便签
 425. [fail] tools=market.set_indices,worldClock.set_zones; mutations=state:wi_market; command=看美股三大指数，同时显示纽约时间
 426. [pass] tools=headline.request_refresh; mutations=state:wi_headline; command=只刷新新闻，不要打开行情窗口
@@ -434,14 +434,14 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 430. [pass] tools=market.set_indices,app.command_palette.open; mutations=state:wi_market,palette; command=看恒生指数，如果没有行情工具就打开命令面板
 431. [pass] tools=headline.request_refresh,messageBoard.send; mutations=state:wi_headline,capability:wi_messageBoard:send,state:wi_messageBoard; command=刷新新闻后发一句摘要到留言板
 432. [pass] tools=widget.remove; mutations=remove:wi_market; command=全球指数不要刷新，先关闭那个小工具
-433. [pass] tools=board.add_widget,headline.request_refresh; mutations=add:headline,state:wi_headline; command=打开重大新闻但不要播放电视
+433. [fail] tools=NONE; mutations=none; command=打开重大新闻但不要播放电视
 434. [pass] tools=widget.resize,market.set_indices; mutations=resize:wi_market,state:wi_market; command=行情窗口太大了，缩小后显示纳指
 435. [pass] tools=widget.move,weather.set_city,headline.request_refresh; mutations=move:wi_headline,state:wi_weather,state:wi_headline; command=把新闻和天气并排放，我要看今天情况
 436. [pass] tools=headline.request_refresh,countdown.set,todo.add_item; mutations=state:wi_headline,state:wi_countdown,state:wi_todo; command=刷新头条后提醒我十五分钟后再看
-437. [pass] tools=board.add_widget,market.set_indices; mutations=add:market,state:wi_market; command=打开上证和深证行情，别误开音乐
+437. [fail] tools=market.set_indices; mutations=state:wi_market; command=打开上证和深证行情，别误开音乐
 438. [pass] tools=market.set_indices,widget.remove; mutations=state:wi_market,remove:wi_market; command=只显示美股指数，关闭港股窗口
 439. [pass] tools=headline.request_refresh,note.write; mutations=state:wi_headline,state:wi_note; command=新闻刷新失败就记录到便签
-440. [pass] tools=board.add_widget,headline.request_refresh,widget.focus; mutations=add:headline,state:wi_headline,focus:wi_headline; command=打开重大新闻小工具后马上聚焦它
+440. [fail] tools=widget.focus; mutations=focus:wi_headline; command=打开重大新闻小工具后马上聚焦它
 441. [pass] tools=recorder.start,note.write; mutations=capability:wi_recorder:start,state:wi_recorder,state:wi_note; command=开始录音，并在便签写下会议开始
 442. [pass] tools=recorder.stop,recorder.play; mutations=capability:wi_recorder:stop,state:wi_recorder,capability:wi_recorder:play; command=停止录音后播放刚才录音检查声音
 443. [pass] tools=recorder.pause,tv.pause; mutations=capability:wi_recorder:pause,capability:wi_tv:pause; command=暂停录音回放，同时把电视也暂停
@@ -465,7 +465,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 461. [pass] tools=widget.remove; mutations=remove:wi_messageBoard; command=关闭留言板，不要把关闭两个字发出去
 462. [pass] tools=messageBoard.send; mutations=capability:wi_messageBoard:send,state:wi_messageBoard; command=留言板发送：我在测试多轮语音
 463. [pass] tools=widget.remove; mutations=remove:wi_messageBoard; command=把留言板收起来，同时保留便签
-464. [pass] tools=board.add_widget,messageBoard.send; mutations=add:messageBoard,capability:wi_messageBoard:send,state:wi_messageBoard; command=打开留言板并发送收到，不要关闭窗口
+464. [fail] tools=messageBoard.send; mutations=capability:wi_messageBoard:send,state:wi_messageBoard; command=打开留言板并发送收到，不要关闭窗口
 465. [pass] tools=messageBoard.send; mutations=capability:wi_messageBoard:send,state:wi_messageBoard; command=留言板回复：部署完成后再测一次
 466. [pass] tools=widget.remove; mutations=remove:wi_messageBoard; command=我说关闭留言板时执行关闭，不是发送消息
 467. [pass] tools=weather.set_city,messageBoard.send; mutations=state:wi_weather,capability:wi_messageBoard:send,state:wi_messageBoard; command=把天气摘要发到留言板
@@ -475,7 +475,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 471. [pass] tools=assistant.runtime_diagnostics; mutations=none; command=留言板不要重复发送刚才那句话
 472. [pass] tools=messageBoard.send; mutations=capability:wi_messageBoard:send,state:wi_messageBoard; command=发送一条包含英文 realtime ready 的留言
 473. [pass] tools=widget.move,messageBoard.send; mutations=move:wi_messageBoard,capability:wi_messageBoard:send,state:wi_messageBoard; command=把留言板移到底部，然后发送正在测试
-474. [pass] tools=board.add_widget,messageBoard.send; mutations=add:messageBoard,capability:wi_messageBoard:send,state:wi_messageBoard; command=如果留言板没打开，先打开再发收到
+474. [fail] tools=messageBoard.send; mutations=capability:wi_messageBoard:send,state:wi_messageBoard; command=如果留言板没打开，先打开再发收到
 475. [pass] tools=widget.bring_to_front; mutations=front:wi_messageBoard; command=不要发消息，只把留言板窗口置顶
 476. [pass] tools=messageBoard.send; mutations=capability:wi_messageBoard:send,state:wi_messageBoard; command=留言板发送：十分钟后回来
 477. [pass] tools=widget.remove,widget.remove; mutations=remove:wi_messageBoard,remove:wi_headline; command=关闭留言板和新闻窗口
@@ -483,13 +483,13 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 479. [pass] tools=messageBoard.send; mutations=capability:wi_messageBoard:send,state:wi_messageBoard; command=发送消息前先确认内容是我在测试
 480. [pass] tools=widget.remove; mutations=remove:wi_messageBoard; command=留言板窗口太碍事了，直接收起来
 481. [pass] tools=music.play,weather.set_city,note.write; mutations=capability:wi_music:play,state:wi_music,state:wi_weather,state:wi_note; command=播放陈奕迅十年，同时查上海天气并写到便签
-482. [pass] tools=board.add_widget,tv.select_channel,headline.request_refresh,music.pause; mutations=add:headline,capability:wi_tv:selectChannel,state:wi_tv,state:wi_headline,capability:wi_music:pause; command=打开电视 CCTV13，再刷新新闻，最后暂停音乐
+482. [fail] tools=tv.select_channel,headline.request_refresh,music.pause; mutations=capability:wi_tv:selectChannel,state:wi_tv,state:wi_headline,capability:wi_music:pause; command=打开电视 CCTV13，再刷新新闻，最后暂停音乐
 483. [pass] tools=weather.set_city,todo.add_item; mutations=state:wi_weather,state:wi_todo; command=查北京天气，如果适合出门就加待办买咖啡
-484. [fail] tools=board.add_widget,market.set_indices,headline.request_refresh,worldClock.set_zones,widget.move; mutations=add:worldClock,state:wi_market,state:wi_headline,move:wi_worldClock; command=打开市场行情、重大新闻和纽约时间，排成一列
-485. [pass] tools=recorder.start,countdown.set,board.add_widget; mutations=capability:wi_recorder:start,state:wi_recorder,state:wi_countdown,add:countdown; command=开始录音，设四十五分钟倒计时，并打开会议便签
-486. [pass] tools=board.add_widget,music.search; mutations=add:music,capability:wi_music:search,state:wi_music; command=搜索轻松音乐但先不播放，然后打开待办
+484. [fail] tools=market.set_indices,worldClock.set_zones,widget.move; mutations=state:wi_market,move:wi_worldClock; command=打开市场行情、重大新闻和纽约时间，排成一列
+485. [fail] tools=recorder.start,countdown.set; mutations=capability:wi_recorder:start,state:wi_recorder,state:wi_countdown; command=开始录音，设四十五分钟倒计时，并打开会议便签
+486. [fail] tools=music.search; mutations=capability:wi_music:search,state:wi_music; command=搜索轻松音乐但先不播放，然后打开待办
 487. [pass] tools=translate.set_draft,clipboard.add_text; mutations=state:wi_translate,state:wi_clipboard; command=把 hello world 翻译成中文，再复制到剪贴板
-488. [fail] tools=board.create,board.add_widget,weather.set_city,worldClock.set_zones; mutations=boardAdd:board_3,add:worldClock,state:wi_weather; command=新建旅行桌板，打开杭州天气和东京时间
+488. [fail] tools=board.create,weather.set_city,worldClock.set_zones; mutations=boardAdd:board_3,state:wi_weather; command=新建旅行桌板，打开杭州天气和东京时间
 489. [pass] tools=widget.remove,widget.bring_to_front; mutations=remove:wi_messageBoard,front:wi_music; command=关闭留言板，再把音乐播放器放最前
 490. [pass] tools=music.play,countdown.set,todo.add_item; mutations=capability:wi_music:play,state:wi_music,state:wi_countdown,state:wi_todo; command=播放王菲红豆后，三分钟后提醒我检查是否试听
 491. [pass] tools=board.add_widget,app.sidebar.set; mutations=add:worldClock,sidebar:false; command=打开表盘时钟而不是世界时钟，然后隐藏侧栏
@@ -506,7 +506,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 502. [pass] tools=music.play; mutations=capability:wi_music:play,state:wi_music; command=播放十年，不对，是陈奕迅的十年
 503. [pass] tools=widget.remove; mutations=remove:wi_messageBoard; command=关闭留言，准确说关闭留言板窗口
 504. [pass] tools=music.search; mutations=capability:wi_music:search,state:wi_music; command=我想听轻松音乐，别继续上一首，重新搜
-505. [pass] tools=board.add_widget,weather.set_city; mutations=add:weather,state:wi_weather; command=打开天气，城市先用北京，刚才说错了不是上海
+505. [fail] tools=weather.set_city; mutations=state:wi_weather; command=打开天气，城市先用北京，刚才说错了不是上海
 506. [pass] tools=tv.select_channel; mutations=capability:wi_tv:selectChannel,state:wi_tv; command=把电视全屏，等下先别全屏，先切 CCTV5
 507. [pass] tools=todo.add_item; mutations=state:wi_todo; command=添加待办买票，哦再加一条订酒店
 508. [pass] tools=translate.set_draft; mutations=state:wi_translate; command=翻译 close message board，只翻译不要执行
@@ -517,7 +517,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 513. [pass] tools=weather.set_city; mutations=state:wi_weather; command=把天气改成杭州，不是广州
 514. [pass] tools=board.auto_align; mutations=autoAlign; command=我要整理桌面，记得需要弹确认
 515. [pass] tools=recorder.pause; mutations=capability:wi_recorder:pause; command=录音先暂停，不对，是暂停回放
-516. [pass] tools=headline.request_refresh; mutations=state:wi_headline; command=新闻别打开全球指数，只要重大新闻
+516. [fail] tools=NONE; mutations=none; command=新闻别打开全球指数，只要重大新闻
 517. [pass] tools=widget.focus; mutations=focus:wi_calculator; command=把计算器放大，算了先聚焦就行
 518. [pass] tools=tv.play; mutations=capability:wi_tv:play,state:wi_tv; command=播放 CCTV1，不是 CCTV13
 519. [pass] tools=note.write; mutations=state:wi_note; command=写到便签：关闭留言板，不要真的关闭
@@ -572,8 +572,8 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 568. [pass] tools=board.switch,board.auto_align; mutations=switch:board_2,autoAlign; command=打开项目冲刺桌板并整理窗口
 569. [pass] tools=clipboard.add_text; mutations=state:wi_clipboard; command=把部署 id 复制到剪贴板并固定
 570. [pass] tools=weather.set_city; mutations=state:wi_weather; command=查上海天气决定下午是否出门
-571. [pass] tools=board.add_widget,calculator.set_display; mutations=add:calculator,state:wi_calculator; command=打开计算器算今天还有多少分钟到六点
-572. [pass] tools=note.write,todo.complete_item; mutations=state:wi_note,state:wi_todo; command=把会议纪要追加到便签，然后标记待办完成
+571. [fail] tools=calculator.set_display; mutations=state:wi_calculator; command=打开计算器算今天还有多少分钟到六点
+572. [fail] tools=note.write,todo.complete_item; mutations=state:wi_note; command=把会议纪要追加到便签，然后标记待办完成
 573. [pass] tools=todo.add_item; mutations=state:wi_todo; command=新建一条待办：验证语音打开小工具
 574. [pass] tools=recorder.start; mutations=capability:wi_recorder:start,state:wi_recorder; command=开始录音记录今天的问题列表
 575. [pass] tools=widget.remove,widget.remove,widget.remove; mutations=remove:wi_countdown,remove:wi_music,remove:wi_tv; command=关闭电视，保留音乐和倒计时
@@ -593,13 +593,13 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 589. [pass] tools=music.play; mutations=capability:wi_music:play,state:wi_music; command=播放轻柔钢琴帮助阅读
 590. [pass] tools=todo.add_item; mutations=state:wi_todo; command=新增待办：背二十个单词
 591. [pass] tools=translate.set_draft; mutations=state:wi_translate; command=把 hello world 翻译成英文解释一下
-592. [pass] tools=board.add_widget,recorder.start; mutations=add:recorder,capability:wi_recorder:start,state:wi_recorder; command=打开录音机录一段口语练习
+592. [fail] tools=recorder.start; mutations=capability:wi_recorder:start,state:wi_recorder; command=打开录音机录一段口语练习
 593. [pass] tools=recorder.stop; mutations=capability:wi_recorder:stop,state:wi_recorder; command=停止录音后播放检查发音
 594. [fail] tools=worldClock.set_zones; mutations=none; command=把巴黎时间和北京时间都显示出来
 595. [pass] tools=translate.set_draft; mutations=state:wi_translate; command=翻译这句：music is still in preview mode
 596. [pass] tools=note.write; mutations=state:wi_note; command=便签记下今天学到的三个命令
 597. [pass] tools=todo.add_item; mutations=state:wi_todo; command=设置十五分钟休息提醒
-598. [pass] tools=board.add_widget,calculator.set_display; mutations=add:calculator,state:wi_calculator; command=打开计算器算 60 除以 5
+598. [fail] tools=calculator.set_display; mutations=state:wi_calculator; command=打开计算器算 60 除以 5
 599. [pass] tools=board.auto_align; mutations=autoAlign; command=把学习桌板自动整理一下
 600. [pass] tools=widget.remove; mutations=remove:wi_headline; command=关闭新闻，避免学习时分心
 601. [pass] tools=board.create,board.add_widget,weather.set_city; mutations=boardAdd:board_3,add:todo,state:wi_weather; command=新建旅行桌板，打开杭州天气和待办
@@ -611,7 +611,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 607. [pass] tools=converter.set; mutations=state:wi_converter; command=把 2 公斤行李换算成克
 608. [pass] tools=weather.set_city; mutations=state:wi_weather; command=查广州天气决定带不带伞
 609. [pass] tools=clipboard.add_text; mutations=state:wi_clipboard; command=把航班号 CA1234 存到剪贴板
-610. [fail] tools=board.add_widget,worldClock.set_zones,widget.move; mutations=add:worldClock,move:wi_worldClock; command=打开世界时钟并放到旅行桌板右侧
+610. [fail] tools=worldClock.set_zones,widget.move; mutations=move:wi_worldClock; command=打开世界时钟并放到旅行桌板右侧
 611. [pass] tools=todo.add_item; mutations=state:wi_todo; command=明天下午三点提醒我办理入住
 612. [pass] tools=translate.set_draft; mutations=state:wi_translate; command=翻译 hotel reservation 成中文
 613. [fail] tools=weather.set_city,worldClock.set_zones; mutations=state:wi_weather; command=查洛杉矶天气并显示当地时间
@@ -621,11 +621,11 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 617. [pass] tools=messageBoard.send; mutations=capability:wi_messageBoard:send,state:wi_messageBoard; command=留言板发一句：我在准备出门
 618. [pass] tools=note.write; mutations=state:wi_note; command=新建便签写旅行物品清单
 619. [pass] tools=countdown.set,todo.add_item; mutations=state:wi_countdown,state:wi_todo; command=三十分钟后提醒我出门
-620. [pass] tools=board.auto_align; mutations=autoAlign; command=整理旅行桌板的小工具位置
+620. [pass] tools=board.auto_align,board.auto_align; mutations=autoAlign; command=整理旅行桌板的小工具位置
 621. [pass] tools=board.add_widget; mutations=add:calculator; command=打开音乐播放器，如果工具没加载就先加载音乐模块
 622. [pass] tools=app.command_palette.open,widget.focus,weather.set_city; mutations=palette,focus:wi_weather,state:wi_weather; command=我要找天气工具，先打开命令面板再聚焦天气
 623. [pass] tools=music.play; mutations=capability:wi_music:play,state:wi_music; command=播放轻松音乐前只加载音乐相关工具，不要全量发送
-624. [pass] tools=board.add_widget,dialClock.set_night_mode; mutations=add:dialClock,capability:wi_dialClock:setNightMode,state:wi_dialClock; command=打开表盘时钟时加载时钟模块，不要加载新闻行情
+624. [fail] tools=dialClock.set_night_mode; mutations=capability:wi_dialClock:setNightMode,state:wi_dialClock; command=打开表盘时钟时加载时钟模块，不要加载新闻行情
 625. [pass] tools=board.auto_align; mutations=autoAlign; command=我说整理桌面时加载桌板和窗口工具
 626. [pass] tools=widget.remove; mutations=remove:wi_messageBoard; command=关闭留言板只需要窗口工具，不要加载留言发送工具
 627. [pass] tools=music.search; mutations=capability:wi_music:search,state:wi_music; command=搜索王菲红豆时加载音乐搜索和播放工具
@@ -686,7 +686,7 @@ Every row below was sent through `AssistantHarness.handleRealtimeUserInput` usin
 682. [pass] tools=widget.remove; mutations=remove:wi_messageBoard; command=找小工具时我又说关闭留言板，也要执行后一个命令
 683. [pass] tools=assistant.reply; mutations=none; command=连接后我说在吗，请先回复再等待下一句
 684. [pass] tools=board.add_widget; mutations=add:calculator; command=如果工具目录没加载完，先用分级策略打开音乐
-685. [pass] tools=board.add_widget,music.play,dialClock.set_night_mode; mutations=add:dialClock,capability:wi_music:play,state:wi_music,capability:wi_dialClock:setNightMode,state:wi_dialClock; command=连续执行打开表盘时钟和播放轻松音乐，不要一直重复表盘已打开
+685. [fail] tools=music.play,dialClock.set_night_mode; mutations=capability:wi_music:play,state:wi_music,capability:wi_dialClock:setNightMode,state:wi_dialClock; command=连续执行打开表盘时钟和播放轻松音乐，不要一直重复表盘已打开
 686. [pass] tools=board.auto_align; mutations=autoAlign; command=我说整理桌面时不要回答没有工具，要触发确认
 687. [pass] tools=assistant.runtime_diagnostics; mutations=none; command=把所有小桌板窗口能力按需加载给 realtime
 688. [pass] tools=assistant.runtime_diagnostics; mutations=none; command=先解析本地高置信命令，低于零点九交给 realtime

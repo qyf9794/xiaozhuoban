@@ -1,0 +1,64 @@
+{
+  "generatedAt": "2026-07-17T11:57:29.870Z",
+  "voice": "macOS Tingting",
+  "commandGapMs": 12000,
+  "reconnectFixtureLeadingSilenceMs": 2000,
+  "reconnectFixtureTrailingSilenceMs": 3000,
+  "commands": [
+    {
+      "id": "S01",
+      "command": "打开音乐播放器，先播放王菲的红豆",
+      "artist": "王菲",
+      "title": "红豆"
+    },
+    {
+      "id": "S02",
+      "command": "这首先停一下",
+      "title": "红豆"
+    },
+    {
+      "id": "S03",
+      "command": "接着放",
+      "title": "红豆"
+    },
+    {
+      "id": "S04",
+      "command": "下一首",
+      "title": "容易受伤的女人"
+    },
+    {
+      "id": "S05",
+      "command": "再往后切一首",
+      "title": "匆匆那年"
+    },
+    {
+      "id": "S06",
+      "command": "回到上一首",
+      "title": "容易受伤的女人"
+    },
+    {
+      "id": "S07",
+      "command": "别放这个了，换成周杰伦的晴天",
+      "artist": "周杰伦",
+      "title": "晴天"
+    },
+    {
+      "id": "S08",
+      "command": "先暂停一下",
+      "title": "晴天"
+    },
+    {
+      "id": "S09",
+      "command": "继续播刚才那首",
+      "title": "晴天"
+    },
+    {
+      "id": "S10",
+      "command": "最后不要切下一首，直接换成陈奕迅的十年",
+      "artist": "陈奕迅",
+      "title": "十年"
+    }
+  ],
+  "sessionAudio": "music-session-10-commands.wav",
+  "playbackAudio": "playback-melody.wav"
+}

@@ -1,0 +1,138 @@
+[
+  {
+    "id": "V01",
+    "command": "把留言板关掉",
+    "audio": "V01-vad.wav",
+    "expected": ["widget.remove"]
+  },
+  {
+    "id": "V02",
+    "command": "打开天气，看看北京今天什么天气",
+    "audio": "V02-vad.wav",
+    "expected": ["weather.set_city", "board.add_widget"],
+    "expectedModules": ["weather"]
+  },
+  {
+    "id": "V03",
+    "command": "再帮我看看东京现在几点",
+    "audio": "V03-vad.wav",
+    "expected": ["worldClock.set_zones", "board.add_widget"],
+    "expectedModules": ["worldClock"]
+  },
+  {
+    "id": "V04",
+    "command": "打开计算器，算一下十二乘以八",
+    "audio": "V04-vad.wav",
+    "expected": ["calculator.set_display", "board.add_widget"],
+    "expectedModules": ["calculator"]
+  },
+  {
+    "id": "V05",
+    "command": "把 hello world 翻译成中文",
+    "audio": "V05-vad.wav",
+    "expected": ["translate.set_draft", "board.add_widget"],
+    "expectedModules": ["translate"]
+  },
+  {
+    "id": "V06",
+    "command": "给我看看今天有什么新闻",
+    "audio": "V06-vad.wav",
+    "expected": ["headline.request_refresh", "board.add_widget"],
+    "expectedModules": ["headline"]
+  },
+  {
+    "id": "V07",
+    "command": "我想看看纳斯达克和标普五百",
+    "audio": "V07-vad.wav",
+    "expected": ["market.set_indices", "board.add_widget"],
+    "expectedModules": ["market"]
+  },
+  {
+    "id": "V08",
+    "command": "帮我添加一条待办，明天下午三点开会",
+    "audio": "V08-vad.wav",
+    "expected": ["todo.add_item", "board.add_widget"],
+    "expectedModules": ["todo"]
+  },
+  {
+    "id": "V09",
+    "command": "设一个五分钟倒计时",
+    "audio": "V09-vad.wav",
+    "expected": ["countdown.set", "board.add_widget"],
+    "expectedModules": ["countdown"]
+  },
+  {
+    "id": "V10",
+    "command": "把账号 demo at example dot com 复制到剪贴板",
+    "audio": "V10-vad.wav",
+    "expected": ["clipboard.add_text", "board.add_widget"],
+    "expectedModules": ["clipboard"]
+  },
+  {
+    "id": "V11",
+    "command": "打开便签，记一下周五提交测试报告",
+    "audio": "V11-vad.wav",
+    "expected": ["note.write", "board.add_widget"]
+  },
+  {
+    "id": "V12",
+    "command": "打开录音机",
+    "audio": "V12-vad.wav",
+    "expected": ["board.add_widget"]
+  },
+  {
+    "id": "V13",
+    "command": "打开音乐，搜索王菲的红豆",
+    "audio": "V13-vad.wav",
+    "expected": ["music.search", "board.add_widget"],
+    "expectedModules": ["music"],
+    "expectedQueryIncludes": ["王菲", "红豆"]
+  },
+  {
+    "id": "V14",
+    "command": "播放第一首歌",
+    "audio": "V14-vad.wav",
+    "expected": ["music.play"],
+    "expectedModules": ["music"]
+  },
+  {
+    "id": "V15",
+    "command": "暂停音乐",
+    "audio": "V15-vad.wav",
+    "expected": ["music.pause"],
+    "expectedModules": ["music"]
+  },
+  {
+    "id": "V16",
+    "command": "打开电视看 BBC 新闻",
+    "audio": "V16-vad.wav",
+    "expected": ["tv.select_channel", "tv.play", "board.add_widget"],
+    "expectedModules": ["tv"],
+    "expectedChannelIncludes": ["BBC"]
+  },
+  {
+    "id": "V17",
+    "command": "把电视切成全屏",
+    "audio": "V17-vad.wav",
+    "expected": ["tv.fullscreen", "widget.fullscreen_focus"],
+    "expectedModules": ["tv"]
+  },
+  {
+    "id": "V18",
+    "command": "在留言板发一句语音测试已完成",
+    "audio": "V18-vad.wav",
+    "expected": ["messageBoard.send", "board.add_widget"]
+  },
+  {
+    "id": "V19",
+    "command": "把留言板小工具移到右上角",
+    "audio": "V19-vad.wav",
+    "expected": ["widget.move"]
+  },
+  {
+    "id": "V20",
+    "command": "关闭留言板，其他小工具别动",
+    "audio": "V20-vad.wav",
+    "expected": ["widget.remove"]
+  }
+]

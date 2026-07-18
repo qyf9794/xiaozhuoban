@@ -1,0 +1,14 @@
+[
+  {
+    "id": "V19",
+    "command": "把留言板小工具移到右上角",
+    "audio": "V19-vad.wav",
+    "expected": ["widget.move"]
+  },
+  {
+    "id": "V20",
+    "command": "关闭留言板，其他小工具别动",
+    "audio": "V20-vad.wav",
+    "expected": ["widget.remove"]
+  }
+]

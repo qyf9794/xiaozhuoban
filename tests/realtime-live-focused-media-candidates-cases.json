@@ -1,0 +1,28 @@
+[
+  {
+    "id": "C01",
+    "command": "打开音乐播放器，先播放王菲的红豆",
+    "audio": "C01.wav",
+    "expected": ["music.play"],
+    "expectedModules": ["music"],
+    "expectedQueryIncludes": ["王菲", "红豆"],
+    "transcriptIncludes": ["红豆"],
+    "title": "红豆",
+    "artist": "王菲",
+    "queue": [
+      { "title": "红豆", "artist": "王菲" },
+      { "title": "容易受伤的女人", "artist": "王菲" }
+    ],
+    "effect": { "state": "playing", "title": "红豆", "titleChanged": true }
+  },
+  {
+    "id": "C02",
+    "command": "播放电视 BBC News",
+    "audio": "C02.wav",
+    "expected": ["tv.play"],
+    "forbidden": ["music.play"],
+    "expectedModules": ["tv", "music"],
+    "expectedChannelIncludes": ["BBC"],
+    "transcriptIncludes": ["BBC"]
+  }
+]

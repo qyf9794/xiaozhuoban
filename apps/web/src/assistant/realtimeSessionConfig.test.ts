@@ -203,8 +203,10 @@ describe("realtime session config", () => {
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("才调用 assistant.execute_command");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("scoped session.update 失败");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("优先选择最接近的已注册工具");
-    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("继续播放音乐");
-    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("music.resume");
+    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("完整语义");
+    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("focusedWidget");
+    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("不要依赖固定短语模板");
+    expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("媒体意图");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("删除用户数据");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("自然简洁");
     expect(XIAOZHUOBAN_REALTIME_INSTRUCTIONS).toContain("不要为了简短人为截断内容");

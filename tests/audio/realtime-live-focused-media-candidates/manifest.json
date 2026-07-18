@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-07-17T13:04:43.356Z",
+  "voice": "macOS Tingting",
+  "commandGapMs": 12000,
+  "reconnectFixtureLeadingSilenceMs": 2000,
+  "reconnectFixtureTrailingSilenceMs": 3000,
+  "commands": [
+    {
+      "id": "C01",
+      "command": "打开音乐播放器，先播放王菲的红豆",
+      "artist": "王菲",
+      "title": "红豆"
+    },
+    {
+      "id": "C02",
+      "command": "播放电视 BBC News"
+    }
+  ],
+  "sessionAudio": "music-session-10-commands.wav",
+  "playbackAudio": "playback-melody.wav"
+}

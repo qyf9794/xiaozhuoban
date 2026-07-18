@@ -20,6 +20,7 @@ const tools: AssistantToolSpec[] = [
   tool({ name: "board.add_widget", scope: "desktop", examples: ["打开音乐播放器", "打开天气"] }),
   tool({ name: "widget.focus", scope: "desktop", requiresTarget: true, examples: ["聚焦音乐"] }),
   tool({ name: "widget.remove", scope: "desktop", requiresTarget: true, risk: "safe", examples: ["关闭音乐"] }),
+  tool({ name: "calculator.set_display", scope: "widget-detail", widgetType: "calculator", requiresTarget: true, argumentKeys: ["display"], examples: ["算一下十二乘以八"] }),
   tool({ name: "music.play", scope: "widget-detail", widgetType: "music", requiresTarget: true, argumentKeys: ["query"], examples: ["播放王菲的红豆"] }),
   tool({ name: "music.search", scope: "widget-detail", widgetType: "music", requiresTarget: true, argumentKeys: ["query"], examples: ["搜一点轻松的音乐"] }),
   tool({ name: "music.pause", scope: "widget-detail", widgetType: "music", requiresTarget: true, examples: ["暂停音乐"] }),
@@ -32,6 +33,7 @@ const tools: AssistantToolSpec[] = [
   tool({ name: "market.set_indices", scope: "widget-detail", widgetType: "market", requiresTarget: true, argumentKeys: ["indexCodes"], examples: ["打开纳斯达克"] }),
   tool({ name: "weather.set_city", scope: "widget-detail", widgetType: "weather", requiresTarget: true, argumentKeys: ["city"], examples: ["上海天气"] }),
   tool({ name: "translate.set_draft", scope: "widget-detail", widgetType: "translate", requiresTarget: true, argumentKeys: ["sourceText", "targetLang"], examples: ["把你好翻译成英文"] }),
+  tool({ name: "todo.add_item", scope: "widget-detail", widgetType: "todo", requiresTarget: true, argumentKeys: ["text", "dueAt"], examples: ["添加待办"] }),
   tool({ name: "note.write", scope: "widget-detail", widgetType: "note", requiresTarget: true, argumentKeys: ["content"], examples: ["帮我记一下"] }),
   tool({ name: "clipboard.clear", scope: "widget-detail", widgetType: "clipboard", requiresTarget: true, risk: "destructive", examples: ["清空剪贴板"] }),
   tool({ name: "gomoku.play", scope: "deferred", examples: ["下棋"] })
@@ -71,11 +73,13 @@ function context(overrides: Partial<CompactAssistantContext> = {}): CompactAssis
     },
     availableDefinitions: [
       { definitionId: "wd_music", type: "music", name: "音乐" },
+      { definitionId: "wd_calculator", type: "calculator", name: "计算器" },
       { definitionId: "wd_countdown", type: "countdown", name: "倒计时" },
       { definitionId: "wd_tv", type: "tv", name: "电视" },
       { definitionId: "wd_market", type: "market", name: "全球指数" },
       { definitionId: "wd_weather", type: "weather", name: "天气" },
       { definitionId: "wd_translate", type: "translate", name: "翻译" },
+      { definitionId: "wd_todo", type: "todo", name: "待办" },
       { definitionId: "wd_note", type: "note", name: "便签" },
       { definitionId: "wd_clipboard", type: "clipboard", name: "剪贴板" }
     ],
@@ -134,13 +138,15 @@ describe("RealtimeToolExposurePlanner", () => {
     expect(plan.exposedTools.map((item) => item.name)).toContain("widget.focus");
   });
 
-  it("exposes weather tools without leaking unrelated widget detail tools", () => {
+  it("exposes weather tools while retaining focused music as a contextual candidate", () => {
     const plan = buildRealtimeToolExposurePlan("上海天气给我看一下", context(), tools);
 
     expect(plan.selectedModules).toContain("weather");
     expect(plan.exposedTools.map((item) => item.name)).toEqual(expect.arrayContaining(["weather.set_city", "board.add_widget"]));
     expect(plan.exposedTools.map((item) => item.name)).not.toContain("note.write");
-    expect(plan.exposedTools.map((item) => item.name)).not.toContain("music.play");
+    expect(plan.semanticModules).toContain("weather");
+    expect(plan.focusedModule).toBe("music");
+    expect(plan.exposedTools.map((item) => item.name)).toContain("music.play");
     expect(plan.excludedReasons["note.write"]).toBe("module_mismatch");
   });
 
@@ -151,6 +157,15 @@ describe("RealtimeToolExposurePlanner", () => {
     expect(plan.selectedModules).not.toContain("weather");
     expect(plan.exposedTools.map((item) => item.name)).toContain("translate.set_draft");
     expect(plan.exposedTools.map((item) => item.name)).not.toContain("weather.set_city");
+  });
+
+  it("keeps an explicit query before a translation as a separate tool intent", () => {
+    const plan = buildRealtimeToolExposurePlan("查北京体感温度，然后翻译成英文一句话", context(), tools);
+
+    expect(plan.selectedModules).toEqual(expect.arrayContaining(["weather", "translate"]));
+    expect(plan.exposedTools.map((item) => item.name)).toEqual(
+      expect.arrayContaining(["weather.set_city", "translate.set_draft"])
+    );
   });
 
   it("keeps destructive tools hidden unless destructive intent is explicit", () => {
@@ -195,6 +210,69 @@ describe("RealtimeToolExposurePlanner", () => {
     expect(plan.selectedModules).toContain("countdown");
     expect(plan.exposedTools.map((item) => item.name)).toContain("countdown.set");
     expect(plan.excludedReasons["music.play"]).toBe("module_mismatch");
+  });
+
+  it("normalizes common ASR and traditional domain variants before exposure", () => {
+    const todoPlan = buildRealtimeToolExposurePlan(
+      "帮我添加一条代辦,明天下午三点开会",
+      context({ widgets: [], focusedWidget: undefined, widgetCountsByType: {} }),
+      tools
+    );
+    const weatherPlan = buildRealtimeToolExposurePlan("把天氣小工具移到右上角", context(), tools);
+
+    expect(todoPlan.input).toContain("待办");
+    expect(todoPlan.selectedModules).toContain("todo");
+    expect(todoPlan.exposedTools.map((item) => item.name)).toContain("todo.add_item");
+    expect(weatherPlan.input).toContain("天气");
+    expect(weatherPlan.selectedModules).toContain("weather");
+  });
+
+  it.each([
+    "來首陳奕迅的十年",
+    "來一首鄧紫棋光年之外",
+    "最後聽莫文蔚的盛夏的果實"
+  ])("keeps traditional music playback phrasing routable: %s", (command) => {
+    const plan = buildRealtimeToolExposurePlan(command, context(), tools);
+
+    expect(plan.selectedModules).toContain("music");
+    expect(plan.exposedTools.map((item) => item.name)).toContain("music.play");
+  });
+
+  it("uses focused music context for elliptical replacement commands", () => {
+    const plan = buildRealtimeToolExposurePlan("幫我換成五月天的倔強", context(), tools);
+
+    expect(plan.selectedModules).toContain("music");
+    expect(plan.exposedTools.map((item) => item.name)).toContain("music.play");
+  });
+
+  it("keeps countdown and todo tools together for minute-based reminders", () => {
+    const plan = buildRealtimeToolExposurePlan(
+      "十分钟后提醒我查看日志",
+      context({ widgets: [], focusedWidget: undefined, widgetCountsByType: {} }),
+      tools
+    );
+
+    expect(plan.selectedModules).toEqual(expect.arrayContaining(["countdown", "todo"]));
+    expect(plan.exposedTools.map((item) => item.name)).toEqual(
+      expect.arrayContaining(["countdown.set", "todo.add_item"])
+    );
+  });
+
+  it("does not expose calculator mutation for a calculator mention without an expression", () => {
+    const openPlan = buildRealtimeToolExposurePlan(
+      "打开计算器",
+      context({ widgets: [], focusedWidget: undefined, widgetCountsByType: {} }),
+      tools
+    );
+    const calculatePlan = buildRealtimeToolExposurePlan(
+      "打开计算器,算一下十二乘以八",
+      context({ widgets: [], focusedWidget: undefined, widgetCountsByType: {} }),
+      tools
+    );
+
+    expect(openPlan.exposedTools.map((item) => item.name)).toContain("board.add_widget");
+    expect(openPlan.exposedTools.map((item) => item.name)).not.toContain("calculator.set_display");
+    expect(calculatePlan.exposedTools.map((item) => item.name)).toContain("calculator.set_display");
   });
 
   it("exposes music tools for artist listening commands", () => {
@@ -253,6 +331,43 @@ describe("RealtimeToolExposurePlanner", () => {
     expect(previousPlan.exposedTools.map((item) => item.name)).toContain("music.previous");
   });
 
+  it("uses focused music context for omitted-subject pause and resume follow-ups", () => {
+    const cases = [
+      ["这首先停一下", "music.pause"],
+      ["先暂停一下", "music.pause"],
+      ["接著放", "music.resume"],
+      ["繼續播剛才那首", "music.resume"]
+    ] as const;
+
+    for (const [command, expectedTool] of cases) {
+      const plan = buildRealtimeToolExposurePlan(command, context(), tools);
+      expect(plan.semanticModules, command).toEqual([]);
+      expect(plan.focusedModule, command).toBe("music");
+      expect(plan.candidateModules, command).toContain("music");
+      expect(plan.exposedTools.map((item) => item.name), command).toContain(expectedTool);
+    }
+  });
+
+  it("keeps explicit TV and focused music as candidates without locally choosing between them", () => {
+    const plan = buildRealtimeToolExposurePlan("播放 CCTV1", context(), tools);
+
+    expect(plan.focusedModule).toBe("music");
+    expect(plan.candidateModules).toEqual(expect.arrayContaining(["tv", "music"]));
+    expect(plan.exposedTools.map((item) => item.name)).toEqual(
+      expect.arrayContaining(["tv.play", "music.play"])
+    );
+  });
+
+  it("normalizes ASR variants and exposes transport controls without phrase-specific artist rules", () => {
+    const nextPlan = buildRealtimeToolExposurePlan("再往後切一手", context(), tools);
+    const switchPlan = buildRealtimeToolExposurePlan("别放这个了，換成周杰伦的晴天", context(), tools);
+
+    expect(nextPlan.selectedModules).toContain("music");
+    expect(nextPlan.exposedTools.map((item) => item.name)).toContain("music.next");
+    expect(switchPlan.selectedModules).toContain("music");
+    expect(switchPlan.exposedTools.map((item) => item.name)).toContain("music.play");
+  });
+
   it("exposes TV channel tools for BBC viewing commands", () => {
     const plan = buildRealtimeToolExposurePlan("我想看BBC", context({ widgets: [], focusedWidget: undefined, widgetCountsByType: {} }), tools);
 
@@ -264,7 +379,10 @@ describe("RealtimeToolExposurePlanner", () => {
     const plan = buildRealtimeToolExposurePlan("桌面上有多少个工具", context(), tools);
 
     expect(plan.exposedTools.map((item) => item.name)).toContain("assistant.get_desktop_state");
-    expect(plan.exposedTools.map((item) => item.name)).not.toContain("music.play");
+    expect(plan.semanticModules).toEqual([]);
+    expect(plan.focusedModule).toBe("music");
+    expect(plan.candidateModules).toContain("music");
+    expect(plan.exposedTools.map((item) => item.name)).toContain("music.play");
   });
 
   it("uses the cached TV channel catalog when no TV widget is mounted", () => {

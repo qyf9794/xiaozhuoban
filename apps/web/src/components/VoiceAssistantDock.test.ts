@@ -138,12 +138,12 @@ describe("VoiceAssistantDock", () => {
     expect(getVoiceAssistantDockTransform(false, { x: 12, y: -8 })).toBe("translate3d(12px, -8px, 0)");
   });
 
-  it("keeps the text panel collapsed until opened, answered, or confirmation is pending", () => {
+  it("keeps the text panel collapsed until the user long-presses the orb", () => {
     expect(shouldShowVoiceAssistantTextPanel(true, false, false)).toBe(false);
     expect(shouldShowVoiceAssistantTextPanel(true, true, false)).toBe(true);
-    expect(shouldShowVoiceAssistantTextPanel(true, false, true)).toBe(true);
+    expect(shouldShowVoiceAssistantTextPanel(true, false, true)).toBe(false);
     expect(shouldShowVoiceAssistantTextPanel(false, false, false)).toBe(false);
-    expect(shouldShowVoiceAssistantTextPanel(false, false, false, true)).toBe(true);
+    expect(shouldShowVoiceAssistantTextPanel(false, false, false, true)).toBe(false);
   });
 
   it("suppresses the orb click after long press or drag", () => {

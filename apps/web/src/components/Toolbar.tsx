@@ -80,6 +80,8 @@ export function Toolbar({
   settingsOpenRequestId,
   realtimeHighAccuracyMode = false,
   onToggleRealtimeHighAccuracyMode,
+  localWakeWordEnabled = false,
+  onToggleLocalWakeWord,
   agentsVoiceAdapterEnabled = false,
   onToggleAgentsVoiceAdapter
 }: {
@@ -104,6 +106,8 @@ export function Toolbar({
   settingsOpenRequestId?: number;
   realtimeHighAccuracyMode?: boolean;
   onToggleRealtimeHighAccuracyMode?: () => void;
+  localWakeWordEnabled?: boolean;
+  onToggleLocalWakeWord?: () => void;
   agentsVoiceAdapterEnabled?: boolean;
   onToggleAgentsVoiceAdapter?: () => void;
 }) {
@@ -382,6 +386,22 @@ export function Toolbar({
               >
                 <span>高准确率模式</span>
                 <TinySwitch checked={realtimeHighAccuracyMode} />
+              </button>
+              <button
+                onClick={() => {
+                  onToggleLocalWakeWord?.();
+                }}
+                className="glass-dropdown-item"
+                aria-pressed={localWakeWordEnabled}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10
+                }}
+              >
+                <span>语音监听唤醒</span>
+                <TinySwitch checked={localWakeWordEnabled} />
               </button>
               <button
                 onClick={() => {

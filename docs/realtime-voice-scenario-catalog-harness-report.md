@@ -57,7 +57,7 @@ Every row below was sent through `AssistantHarness.handleUserInput` with a deter
 053. [pass] tools=headline.request_refresh; command=刷新重大新闻
 054. [pass] tools=headline.request_refresh; command=今天有什么头条新闻
 055. [pass] tools=market.set_indices; command=看美股三大指数
-056. [pass] tools=board.add_widget,market.set_indices; command=打开恒生和上证行情
+056. [fail] tools=market.set_indices; command=打开恒生和上证行情
 057. [pass] tools=dialClock.set_night_mode; command=表盘开启夜间模式
 058. [pass] tools=dialClock.set_night_mode; command=关闭时钟夜间模式
 059. [pass] tools=messageBoard.send; command=留言板发一句我在测试
@@ -224,7 +224,7 @@ Every row below was sent through `AssistantHarness.handleUserInput` with a deter
 220. [pass] tools=app.settings.open; command=清理桌面前先打开设置让我确认
 221. [pass] tools=board.create; command=新建一个叫晨间复盘的桌板，然后切过去
 222. [pass] tools=board.rename,board.auto_align; command=把当前桌板改名成项目冲刺，并整理所有小工具
-223. [pass] tools=board.switch,board.add_widget,headline.request_refresh,market.set_indices; command=切到工作台桌板后打开新闻和行情
+223. [fail] tools=board.switch,market.set_indices; command=切到工作台桌板后打开新闻和行情
 224. [pass] tools=board.create,board.add_widget,weather.set_city,worldClock.set_zones; command=新开旅行计划桌板，把天气、世界时钟和待办都放上去
 225. [pass] tools=board.switch,dialClock.set_night_mode; command=回到夜间工作桌板，同时把表盘时钟调成夜间模式
 226. [pass] tools=board.create,board.add_widget; command=创建一个音乐练习桌板，再打开音乐和录音机
@@ -233,8 +233,8 @@ Every row below was sent through `AssistantHarness.handleUserInput` with a deter
 229. [pass] tools=board.create,board.add_widget; command=新建家庭事务桌板，添加待办、便签和留言板
 230. [pass] tools=board.auto_align,widget.focus; command=把桌面自动整理一下，确认后再聚焦音乐播放器
 231. [pass] tools=board.switch,board.add_widget; command=切到学习桌板，打开翻译和计算器
-232. [pass] tools=board.create,board.add_widget,headline.request_refresh,market.set_indices; command=创建一个市场观察桌板，同时打开行情和重大新闻
-233. [pass] tools=board.rename,board.add_widget,tv.play; command=把当前桌板重命名为今晚直播，然后打开电视
+232. [fail] tools=board.create,market.set_indices; command=创建一个市场观察桌板，同时打开行情和重大新闻
+233. [fail] tools=board.rename,board.add_widget; command=把当前桌板重命名为今晚直播，然后打开电视
 234. [pass] tools=board.switch,widget.move; command=回到默认工作台，把天气卡片调到左上角
 235. [pass] tools=board.create,board.add_widget; command=新建一个临时桌板，只放倒计时和便签
 236. [pass] tools=board.switch,board.auto_align; command=切到项目桌板后把所有窗口按网格排列
@@ -375,7 +375,7 @@ Every row below was sent through `AssistantHarness.handleUserInput` with a deter
 371. [pass] tools=todo.add_item; command=给待办加一条关闭留言板不能发送关闭两个字
 372. [pass] tools=todo.complete_item; command=把部署完成这项待办勾掉
 373. [pass] tools=countdown.set,todo.add_item; command=五分钟后提醒我看倒计时有没有声音
-374. [pass] tools=note.write,board.add_widget; command=便签新增一段英文 hello realtime，再打开翻译
+374. [fail] tools=note.write,board.add_widget; command=便签新增一段英文 hello realtime，再打开翻译
 375. [pass] tools=note.write; command=把桌面问题列表写入便签，编号从一开始
 376. [pass] tools=todo.add_item; command=添加待办：测试多轮语音不要重复回复
 377. [pass] tools=headline.request_refresh,note.write; command=把今天的新闻摘要追加到便签
@@ -398,7 +398,7 @@ Every row below was sent through `AssistantHarness.handleUserInput` with a deter
 394. [pass] tools=clipboard.clear; command=清理剪贴板里未固定的测试记录
 395. [pass] tools=clipboard.add_text; command=把翻译结果复制到剪贴板，但不要覆盖便签
 396. [pass] tools=clipboard.add_text; command=保存命令：打开表盘时钟 到剪贴板
-397. [pass] tools=clipboard.add_text,board.add_widget; command=复制今天日期到剪贴板并打开便签
+397. [fail] tools=clipboard.add_text; command=复制今天日期到剪贴板并打开便签
 398. [pass] tools=clipboard.add_text; command=剪贴板新增一条部署 id 占位信息
 399. [pass] tools=clipboard.add_text; command=固定保存音乐登录状态检查步骤
 400. [pass] tools=clipboard.clear; command=清理剪贴板后发一条完成提示
@@ -424,7 +424,7 @@ Every row below was sent through `AssistantHarness.handleUserInput` with a deter
 420. [pass] tools=calculator.set_display; command=计算部署失败次数三加五再乘二
 421. [pass] tools=headline.request_refresh,market.set_indices; command=刷新重大新闻，然后打开美股三大指数
 422. [pass] tools=market.set_indices,headline.request_refresh; command=看纳指和道指，顺便刷新财经新闻
-423. [pass] tools=board.add_widget,market.set_indices; command=打开恒生和上证行情，不要自动开全球指数
+423. [fail] tools=market.set_indices; command=打开恒生和上证行情，不要自动开全球指数
 424. [pass] tools=headline.request_refresh,note.write; command=今天有什么头条新闻，结果追加到便签
 425. [pass] tools=market.set_indices,worldClock.set_zones; command=看美股三大指数，同时显示纽约时间
 426. [pass] tools=headline.request_refresh; command=只刷新新闻，不要打开行情窗口
@@ -434,14 +434,14 @@ Every row below was sent through `AssistantHarness.handleUserInput` with a deter
 430. [pass] tools=market.set_indices,app.command_palette.open; command=看恒生指数，如果没有行情工具就打开命令面板
 431. [pass] tools=headline.request_refresh,messageBoard.send; command=刷新新闻后发一句摘要到留言板
 432. [pass] tools=widget.remove; command=全球指数不要刷新，先关闭那个小工具
-433. [pass] tools=board.add_widget,headline.request_refresh; command=打开重大新闻但不要播放电视
+433. [fail] tools=NONE; command=打开重大新闻但不要播放电视
 434. [pass] tools=widget.resize,market.set_indices; command=行情窗口太大了，缩小后显示纳指
 435. [pass] tools=widget.move,weather.set_city,headline.request_refresh; command=把新闻和天气并排放，我要看今天情况
 436. [pass] tools=headline.request_refresh,countdown.set,todo.add_item; command=刷新头条后提醒我十五分钟后再看
-437. [pass] tools=board.add_widget,market.set_indices; command=打开上证和深证行情，别误开音乐
+437. [fail] tools=market.set_indices; command=打开上证和深证行情，别误开音乐
 438. [pass] tools=market.set_indices,widget.remove; command=只显示美股指数，关闭港股窗口
 439. [pass] tools=headline.request_refresh,note.write; command=新闻刷新失败就记录到便签
-440. [pass] tools=board.add_widget,headline.request_refresh,widget.focus; command=打开重大新闻小工具后马上聚焦它
+440. [fail] tools=NONE; command=打开重大新闻小工具后马上聚焦它
 441. [pass] tools=recorder.start,note.write; command=开始录音，并在便签写下会议开始
 442. [pass] tools=recorder.stop,recorder.play; command=停止录音后播放刚才录音检查声音
 443. [pass] tools=recorder.pause,tv.pause; command=暂停录音回放，同时把电视也暂停
@@ -485,8 +485,8 @@ Every row below was sent through `AssistantHarness.handleUserInput` with a deter
 481. [pass] tools=music.play,weather.set_city,note.write; command=播放陈奕迅十年，同时查上海天气并写到便签
 482. [pass] tools=board.add_widget,tv.select_channel,headline.request_refresh,music.pause; command=打开电视 CCTV13，再刷新新闻，最后暂停音乐
 483. [pass] tools=weather.set_city,todo.add_item; command=查北京天气，如果适合出门就加待办买咖啡
-484. [pass] tools=board.add_widget,market.set_indices,headline.request_refresh,worldClock.set_zones,widget.move; command=打开市场行情、重大新闻和纽约时间，排成一列
-485. [pass] tools=recorder.start,countdown.set,board.add_widget; command=开始录音，设四十五分钟倒计时，并打开会议便签
+484. [fail] tools=market.set_indices,worldClock.set_zones,widget.move; command=打开市场行情、重大新闻和纽约时间，排成一列
+485. [fail] tools=recorder.start,countdown.set; command=开始录音，设四十五分钟倒计时，并打开会议便签
 486. [pass] tools=board.add_widget,music.search; command=搜索轻松音乐但先不播放，然后打开待办
 487. [pass] tools=translate.set_draft,clipboard.add_text; command=把 hello world 翻译成中文，再复制到剪贴板
 488. [pass] tools=board.create,board.add_widget,weather.set_city,worldClock.set_zones; command=新建旅行桌板，打开杭州天气和东京时间
@@ -517,7 +517,7 @@ Every row below was sent through `AssistantHarness.handleUserInput` with a deter
 513. [pass] tools=weather.set_city; command=把天气改成杭州，不是广州
 514. [pass] tools=board.auto_align; command=我要整理桌面，记得需要弹确认
 515. [pass] tools=recorder.pause; command=录音先暂停，不对，是暂停回放
-516. [pass] tools=headline.request_refresh; command=新闻别打开全球指数，只要重大新闻
+516. [fail] tools=NONE; command=新闻别打开全球指数，只要重大新闻
 517. [pass] tools=widget.focus; command=把计算器放大，算了先聚焦就行
 518. [pass] tools=tv.play; command=播放 CCTV1，不是 CCTV13
 519. [pass] tools=note.write; command=写到便签：关闭留言板，不要真的关闭
@@ -572,7 +572,7 @@ Every row below was sent through `AssistantHarness.handleUserInput` with a deter
 568. [pass] tools=board.switch,board.auto_align; command=打开项目冲刺桌板并整理窗口
 569. [pass] tools=clipboard.add_text; command=把部署 id 复制到剪贴板并固定
 570. [pass] tools=weather.set_city; command=查上海天气决定下午是否出门
-571. [pass] tools=board.add_widget,calculator.set_display; command=打开计算器算今天还有多少分钟到六点
+571. [fail] tools=calculator.set_display; command=打开计算器算今天还有多少分钟到六点
 572. [pass] tools=note.write,todo.complete_item; command=把会议纪要追加到便签，然后标记待办完成
 573. [pass] tools=todo.add_item; command=新建一条待办：验证语音打开小工具
 574. [pass] tools=recorder.start; command=开始录音记录今天的问题列表
@@ -599,7 +599,7 @@ Every row below was sent through `AssistantHarness.handleUserInput` with a deter
 595. [pass] tools=translate.set_draft; command=翻译这句：music is still in preview mode
 596. [pass] tools=note.write; command=便签记下今天学到的三个命令
 597. [pass] tools=todo.add_item; command=设置十五分钟休息提醒
-598. [pass] tools=board.add_widget,calculator.set_display; command=打开计算器算 60 除以 5
+598. [fail] tools=calculator.set_display; command=打开计算器算 60 除以 5
 599. [pass] tools=board.auto_align; command=把学习桌板自动整理一下
 600. [pass] tools=widget.remove; command=关闭新闻，避免学习时分心
 601. [pass] tools=board.create,board.add_widget,weather.set_city; command=新建旅行桌板，打开杭州天气和待办
@@ -611,7 +611,7 @@ Every row below was sent through `AssistantHarness.handleUserInput` with a deter
 607. [pass] tools=converter.set; command=把 2 公斤行李换算成克
 608. [pass] tools=weather.set_city; command=查广州天气决定带不带伞
 609. [pass] tools=clipboard.add_text; command=把航班号 CA1234 存到剪贴板
-610. [pass] tools=board.add_widget,worldClock.set_zones,widget.move; command=打开世界时钟并放到旅行桌板右侧
+610. [fail] tools=board.add_widget,widget.move; command=打开世界时钟并放到旅行桌板右侧
 611. [pass] tools=todo.add_item; command=明天下午三点提醒我办理入住
 612. [pass] tools=translate.set_draft; command=翻译 hotel reservation 成中文
 613. [pass] tools=weather.set_city,worldClock.set_zones; command=查洛杉矶天气并显示当地时间
@@ -629,7 +629,7 @@ Every row below was sent through `AssistantHarness.handleUserInput` with a deter
 625. [pass] tools=board.auto_align; command=我说整理桌面时加载桌板和窗口工具
 626. [pass] tools=widget.remove; command=关闭留言板只需要窗口工具，不要加载留言发送工具
 627. [pass] tools=music.search; command=搜索王菲红豆时加载音乐搜索和播放工具
-628. [pass] tools=board.add_widget,tv.play; command=打开电视 CCTV5 时加载电视频道工具
+628. [fail] tools=board.add_widget; command=打开电视 CCTV5 时加载电视频道工具
 629. [pass] tools=weather.set_city; command=查上海天气时加载天气城市工具
 630. [pass] tools=todo.add_item; command=添加待办时加载待办工具和时间解析上下文
 631. [pass] tools=translate.set_draft; command=翻译英文句子时只加载翻译工具

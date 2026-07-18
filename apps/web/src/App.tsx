@@ -223,6 +223,8 @@ export function App() {
               settingsOpenRequestId={settingsOpenRequestId}
               realtimeHighAccuracyMode={realtimeHighAccuracyMode}
               onToggleRealtimeHighAccuracyMode={() => setRealtimeHighAccuracyMode((value) => !value)}
+              localWakeWordEnabled={localWakeWordEnabled}
+              onToggleLocalWakeWord={() => setLocalWakeWordEnabled((value) => !value)}
               agentsVoiceAdapterEnabled={agentsVoiceAdapterEnabled}
               onToggleAgentsVoiceAdapter={() => setAgentsVoiceAdapterEnabled((value) => !value)}
               fullscreen={fullscreen}
@@ -383,7 +385,6 @@ export function App() {
           wakeWordAudioLevel={localWakeWordAudioLevel}
           wakeWordStatus={localWakeWordStatus}
           wakeWordSupported={localWakeWordSupported}
-          onToggleWakeWord={() => setLocalWakeWordEnabled((value) => !value)}
           runtimeStatus={runtimeStatusText}
           syncPendingCount={syncPendingCount}
           syncLastError={syncLastError}

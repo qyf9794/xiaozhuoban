@@ -1,0 +1,71 @@
+{
+  "generatedAt": "2026-07-17T13:14:31.372Z",
+  "voice": "macOS Tingting",
+  "commandGapMs": 12000,
+  "reconnectFixtureLeadingSilenceMs": 2000,
+  "reconnectFixtureTrailingSilenceMs": 3000,
+  "commands": [
+    {
+      "id": "M01",
+      "command": "打开音乐播放器，播放王菲的红豆",
+      "artist": "王菲",
+      "title": "红豆"
+    },
+    {
+      "id": "M02",
+      "command": "给我放一首周杰伦的晴天",
+      "artist": "周杰伦",
+      "title": "晴天"
+    },
+    {
+      "id": "M03",
+      "command": "来首陈奕迅的十年",
+      "artist": "陈奕迅",
+      "title": "十年"
+    },
+    {
+      "id": "M04",
+      "command": "我想听孙燕姿唱的遇见",
+      "artist": "孙燕姿",
+      "title": "遇见"
+    },
+    {
+      "id": "M05",
+      "command": "播放林俊杰江南",
+      "artist": "林俊杰",
+      "title": "江南"
+    },
+    {
+      "id": "M06",
+      "command": "帮我换成五月天的倔强",
+      "artist": "五月天",
+      "title": "倔强"
+    },
+    {
+      "id": "M07",
+      "command": "来一首邓紫棋的，光年之外",
+      "artist": "邓紫棋",
+      "title": "光年之外"
+    },
+    {
+      "id": "M08",
+      "command": "请播放刘若英的后来",
+      "artist": "刘若英",
+      "title": "后来"
+    },
+    {
+      "id": "M09",
+      "command": "播放歌曲平凡之路",
+      "artist": "朴树",
+      "title": "平凡之路"
+    },
+    {
+      "id": "M10",
+      "command": "最后播放莫文蔚的阴天",
+      "artist": "莫文蔚",
+      "title": "阴天"
+    }
+  ],
+  "sessionAudio": "music-session-10-commands.wav",
+  "playbackAudio": "playback-melody.wav"
+}

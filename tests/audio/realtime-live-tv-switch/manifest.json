@@ -1,0 +1,52 @@
+{
+  "generatedAt": "2026-07-17T15:24:09.072Z",
+  "voice": "macOS Tingting",
+  "commandGapMs": 12000,
+  "reconnectFixtureLeadingSilenceMs": 2000,
+  "reconnectFixtureTrailingSilenceMs": 3000,
+  "commands": [
+    {
+      "id": "T01",
+      "command": "打开电视，播放 B B C News"
+    },
+    {
+      "id": "T02",
+      "command": "换到 CNN 继续播放"
+    },
+    {
+      "id": "T03",
+      "command": "接着看新加坡亚洲新闻台"
+    },
+    {
+      "id": "T04",
+      "command": "现在改播 GB News"
+    },
+    {
+      "id": "T05",
+      "command": "不要停，换成 ABC News"
+    },
+    {
+      "id": "T06",
+      "command": "播放 RT News 给我看"
+    },
+    {
+      "id": "T07",
+      "command": "切到 Bloomberg TV 并开始播放"
+    },
+    {
+      "id": "T08",
+      "command": "接下来播放 NHK World Japan"
+    },
+    {
+      "id": "T09",
+      "command": "换成法国二十四小时英语频道，直接播放"
+    },
+    {
+      "id": "T10",
+      "command": "最后播放中央电视台十三套新闻频道"
+    }
+  ],
+  "sessionAudio": "music-session-10-commands.wav",
+  "playbackAudio": "playback-melody.wav",
+  "tvPlaybackVideo": "playback-tv.mp4"
+}

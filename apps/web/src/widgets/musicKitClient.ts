@@ -145,6 +145,33 @@ export function isMusicKitAuthorized(music: MusicKitInstanceLike | null | undefi
   return music?.isAuthorized === true;
 }
 
+/**
+ * Read an elapsed playback clock from MusicKit across SDK variants.
+ * Some releases expose seconds directly while others expose only progress.
+ */
+export function readMusicKitPlaybackTime(music: MusicKitInstanceLike | null | undefined): number {
+  const currentTime = music?.currentPlaybackTime;
+  if (typeof currentTime === "number" && Number.isFinite(currentTime) && currentTime >= 0) {
+    return currentTime;
+  }
+
+  const duration = music?.currentPlaybackDuration;
+  const progress = music?.currentPlaybackProgress;
+  if (
+    typeof duration !== "number" ||
+    !Number.isFinite(duration) ||
+    duration <= 0 ||
+    typeof progress !== "number" ||
+    !Number.isFinite(progress) ||
+    progress < 0
+  ) {
+    return 0;
+  }
+
+  const normalizedProgress = progress <= 1 ? progress : progress / 100;
+  return duration * Math.min(1, normalizedProgress);
+}
+
 export function inferAppleMusicStorefront(locale: string | undefined, fallback = "us"): string {
   const region = locale?.split("-")[1]?.trim().toLowerCase();
   return region && /^[a-z]{2}$/.test(region) ? region : fallback;

@@ -2062,6 +2062,13 @@ describe("IntentShortcutRouter", () => {
     expect(result).toEqual({ matched: false, reason: "no_shortcut_match" });
   });
 
+  it("defers single TV channel playback to Realtime instead of treating the channel as a song", () => {
+    const router = createDefaultIntentShortcutRouter();
+    const result = router.route("播放 CCTV1", context);
+
+    expect(result).toEqual({ matched: false, reason: "no_shortcut_match" });
+  });
+
   it("defers TV channel switch commands to Realtime", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("切到 CCTV13 新闻频道", context);

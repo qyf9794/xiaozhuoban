@@ -4,10 +4,19 @@ import {
   type RealtimeScopedModuleContext,
   type WidgetAssistantRegistry
 } from "@xiaozhuoban/assistant-core";
-import { REALTIME_ADD_WIDGET_TOOL_NAME, findRealtimeWidgetType, realtimeWidgetAliases } from "./realtimeRoutingPolicy";
+import {
+  REALTIME_ADD_WIDGET_TOOL_NAME,
+  findRealtimeWidgetType,
+  normalizeRealtimeIntentText,
+  realtimeWidgetAliases
+} from "./realtimeRoutingPolicy";
 
 export type RealtimeToolExposurePlan = {
   input: string;
+  semanticModules: string[];
+  focusedModule?: string;
+  candidateModules: string[];
+  /** @deprecated Use candidateModules. Kept for trace/report compatibility. */
   selectedModules: string[];
   exposedTools: AssistantToolSpec[];
   scopedContexts: RealtimeScopedModuleContext[];
@@ -46,33 +55,34 @@ const WINDOW_TOOL_NAMES = new Set([
 const DESTRUCTIVE_WORDS = /(清空|删除|移除|删掉|全部删|清除|清理|覆盖)/;
 const OPEN_OR_CREATE_WORDS = /(打开|新增|新建|创建|唤出|调出|放一个|来一个|开一个|播放|听|看|查)/;
 const TARGET_REQUIRED_PENALTY = 40;
+const EXPLICIT_TOOL_INTENT_REQUIRED = new Set(["calculator.set_display"]);
 const MARKET_WORDS = /(行情|股票|股价|个股|指数|纳指|纳斯达克|NASDAQ|NDX|恒生|上证|美股|A股|港股)/i;
 const MARKET_TICKER_QUERY_PATTERN = /(?:(?:查|查询|搜索|搜).{0,8}\b[A-Z]{1,6}\b|(?:看|打开).{0,8}\b[A-Z]{1,6}\b.{0,8}(?:股票|股价|行情))/i;
 const TV_CHANNEL_CODE_PATTERN = /\b(?:BBC|CNN|CNA|HBO|CCTV|CGTN|NHK|TVB|Bloomberg)\b/i;
 const TV_CHANNEL_QUERY_PATTERN = /(?:看|打开|播放|切到|换到|想看|我要看|我想看).{0,12}\b(?:BBC|CNN|CNA|HBO|CCTV|CGTN|NHK|TVB|Bloomberg)\b/i;
-const MUSIC_NO_PLAY_WORDS = /不一定播放|暂时不播放|先不播放|先不要播放|不要播放|别播放|不用播放|先别播|先不要播|先不播|不要马上播放/;
-const MUSIC_PLAY_WORDS = /播放(?!器)|放一下|放一首|来一首|来个|来点|我想听|想听|我要听|给我一首|听一下|听一首|听点/i;
-const MUSIC_SEARCH_WORDS = /搜|搜索|查找|找一点|找一下|找些|找首|找歌|找音乐|推荐|看看有没有|不一定播放|暂时不播放|先不播放|先不要播放|轻松|放松|经典|白噪音|自然声|睡前|巴洛克|羽管键琴|爵士|电子|古典|民谣|原声|OST|ambient|soundtrack|playlist/i;
+const MUSIC_NO_PLAY_WORDS = /不一定播放|暂时不播放|先不播放|先不要播放|不要播放|别播放|不用播放|先别播|先不要播|先不播|不要马上播放|播放前/;
+const MUSIC_PLAY_WORDS = /播放(?!器)|放一下|放一首|来首|来一首|来个|来点|最后听|我想听|想听|我要听|给我一首|听一下|听一首|听点/i;
+const MUSIC_SEARCH_WORDS = /搜|搜索|查找|找一点|找一下|找些|找首|找歌|找音乐|找.{0,12}(?:音乐|歌曲|歌|曲目|歌单|专辑)|推荐|看看有没有|不一定播放|暂时不播放|先不播放|先不要播放|轻松|放松|经典|白噪音|自然声|睡前|巴洛克|羽管键琴|爵士|电子|古典|民谣|原声|OST|ambient|soundtrack|playlist/i;
 const MUSIC_NEXT_WORDS = /下一首|下首|换下一首|切下一首|跳到下一首|下一首歌|下一个|换一首/;
 const MUSIC_PREVIOUS_WORDS = /上一首|前一首|切回上一首|回到上一首|上一首歌|上一个/;
 const MUSIC_MEDIA_WORDS = /音乐|歌曲|歌|播放器|歌手|曲子|曲目|歌单|专辑|试听|Apple Music|MusicKit|钢琴|爵士|电子|古典|民谣|摇滚|原声|OST|ambient|soundtrack|playlist|track|album|artist|band|DJ/i;
 
 const MODULE_INTENT_PATTERNS: Record<string, RegExp> = {
-  calculator: /(计算器|算一下|计算.*多少|[一二三四五六七八九十百千万\d]+\s*(加|减|乘|除)|十二乘十二)/,
+  calculator: /(计算器|算一下|计算.*多少|[一二三四五六七八九十百千万\d]+\s*(加上?|减去?|乘以?|除以?)|十二乘十二)/,
   clipboard: /(剪贴板|复制|保存|存起来|口令|验证码|清理.*记录)/,
   converter: /(换算|单位|转成|摄氏|华氏|Fahrenheit|斤|公斤|克|米|公里)/i,
-  countdown: /(倒计时|计时器|定时|计时|秒|小时|一分半|半小时)/,
+  countdown: /(倒计时|计时器|定时|计时|秒|分钟|小时|一分半|半小时)/,
   dialClock: /(表盘|钟表|时钟|夜间模式|别太亮)/,
   headline: /(新闻|头条|刚刚有什么)/,
   market: /(行情|股票|股价|个股|指数|纳指|纳斯达克|NASDAQ|NDX|恒生|上证|美股|A股|港股|(?:(?:查|查询|搜索|搜).{0,8}\b[A-Z]{1,6}\b|(?:看|打开).{0,8}\b[A-Z]{1,6}\b.{0,8}(?:股票|股价|行情)))/i,
   messageBoard: /(留言板|留言|回复收到|发一句)/,
-  music: /(音乐|歌曲|歌|播放器|歌手|曲子|曲目|歌单|专辑|试听|Apple Music|MusicKit|播放(?!器).{0,40}|(?:想听|我要听|我想听|来一首|来个|来点|放一首|听点).{0,40}|搜.{0,30}(?:音乐|歌|歌曲|歌手|曲目|专辑|playlist|track|album)|找.{0,30}(?:音乐|歌|歌曲|歌手|曲目|专辑|playlist|track|album)|轻松|放松|睡前|白噪音|自然声|钢琴|巴洛克|羽管键琴|爵士|电子|古典|民谣|摇滚|原声|OST|ambient|soundtrack|playlist|track|album|artist|band|DJ|token|登录)/i,
+  music: /(音乐|歌曲|歌|播放器|歌手|曲子|曲目|歌单|专辑|试听|Apple Music|MusicKit|播放(?!器).{0,40}|(?:想听|我要听|我想听|最后听|来首|来一首|来个|来点|放一首|听点).{0,40}|搜.{0,30}(?:音乐|歌|歌曲|歌手|曲目|专辑|playlist|track|album)|找.{0,30}(?:音乐|歌|歌曲|歌手|曲目|专辑|playlist|track|album)|轻松|放松|睡前|白噪音|自然声|钢琴|巴洛克|羽管键琴|爵士|电子|古典|民谣|摇滚|原声|OST|ambient|soundtrack|playlist|track|album|artist|band|DJ|token|登录)/i,
   note: /(便签|笔记|记下|会议纪要|记一下|写下|写上|追加|备忘)/,
   recorder: /(录音|录一段|刚才录音|回放)/,
   todo: /(待办|任务|清单|提醒|叫我|复盘|买牛奶|买咖啡豆|订酒店|提交报告|勾掉|完成)/,
   translate: /(翻译|中文|英文|good night)/i,
   tv: /(电视|直播|CCTV|BBC|CNN|CNA|HBO|CGTN|NHK|TVB|Bloomberg|频道|电视台|电影频道|央视)/i,
-  weather: /(天气|气温|冷不冷|冷|热|下雨|带伞|出门|北京|上海|杭州|广州|成都|武汉|波士顿|洛杉矶)/
+  weather: /(天气|气温|温度|冷不冷|冷|热|下雨|带伞|出门|北京|上海|杭州|广州|成都|武汉|波士顿|洛杉矶)/
 };
 
 const TOOL_INTENT_PATTERNS: Record<string, RegExp> = {
@@ -97,14 +107,14 @@ const TOOL_INTENT_PATTERNS: Record<string, RegExp> = {
   "widget.move": /(拖|移动|移到|挪|右上|左上|左下|右侧|底部|居中|旁边|并排|排成|放到|调到|固定在|盖住|遮住|挡住|不要挡住|不要遮住)/,
   "widget.remove": /(关闭|关掉|收起|收起来|移除|删掉|删除)/,
   "widget.resize": /(调大|调小|放大|缩小|调宽|宽一点|宽度|缩窄|太大|太小|大小|尺寸|文字放大|封面|长文本)/,
-  "calculator.set_display": /(计算器|算一下|计算.*多少|[一二三四五六七八九十百千万\d]+\s*(加|减|乘|除)|十二乘十二)/,
+  "calculator.set_display": /(算一下|计算.*多少|计算器.{0,20}(?:算|计算|等于)|[一二三四五六七八九十百千万\d]+\s*(加上?|减去?|乘以?|除以?)|十二乘十二)/,
   "clipboard.add_text": /(复制|保存|存起来|口令|验证码|固定保存)/,
   "clipboard.clear": /(清理剪贴板|清空剪贴板|清理.*记录|清理普通|保留 pinned|保留固定)/,
   "converter.set": /(换算|转成|摄氏|华氏|Fahrenheit|斤|公斤|克|米|公里)/i,
   "countdown.pause": /(暂停.*(计时|倒计时)|暂停现在的计时器)/,
   "countdown.reset": /(重置.*(计时|倒计时))/,
   "countdown.resume": /(继续.*(计时|倒计时)|继续刚才那个倒计时)/,
-  "countdown.set": /(倒计时|定时|计时|秒|小时|一分半|半小时)/,
+  "countdown.set": /(倒计时|定时|计时|秒|分钟|小时|一分半|半小时)/,
   "dialClock.set_night_mode": /(夜间模式|别太亮|钟表|表盘)/,
   "headline.request_refresh": /(新闻|头条|刚刚有什么)/,
   "market.set_indices": /(行情|股票|股价|个股|指数|纳指|纳斯达克|NASDAQ|NDX|恒生|上证|美股|A股|港股|(?:(?:查|查询|搜索|搜).{0,8}\b[A-Z]{1,6}\b|(?:看|打开).{0,8}\b[A-Z]{1,6}\b.{0,8}(?:股票|股价|行情)))/i,
@@ -131,7 +141,7 @@ const TOOL_INTENT_PATTERNS: Record<string, RegExp> = {
   "tv.pause": /(暂停电视|电视.*暂停)/,
   "tv.play": /(播放 CCTV|打开.*电视|看.*电视|想看|BBC|CNN|CNA|HBO|CGTN|NHK|TVB|Bloomberg|频道|电视台|电影频道|央视|直播)/i,
   "tv.select_channel": /(CCTV|BBC|CNN|CNA|HBO|CGTN|NHK|TVB|Bloomberg|频道|电视台|电影频道|切到.*电视|电视切到|想看)/i,
-  "weather.set_city": /(天气|冷不冷|冷|热|下雨|带伞|出门|北京|上海|杭州|广州|成都|武汉|波士顿|洛杉矶)/,
+  "weather.set_city": /(天气|气温|温度|冷不冷|冷|热|下雨|带伞|出门|北京|上海|杭州|广州|成都|武汉|波士顿|洛杉矶)/,
   "worldClock.set_zones": /(世界时钟|世界时间|本地时间|当地时间|时间|时区|几点|东京|巴黎|纽约|伦敦|北京)/
 };
 
@@ -234,7 +244,11 @@ function selectModules(
 ): string[] {
   // Text before an explicit “translate into” directive is source content, not
   // additional tool intent. Keep the suffix so real follow-up actions remain.
-  const selectionInput = /翻译成|译成/i.test(input)
+  const translationPrefix = input.match(/^(.{0,120}?)(?=翻译成|译成)/i)?.[1] ?? "";
+  const hasExplicitPreTranslationAction = /(?:^|[，,。；;])\s*(?:先|再|然后)?(?:查|查询|看看|看一下|打开|设置|显示|刷新|播放|暂停|添加|记录)/.test(
+    translationPrefix
+  );
+  const selectionInput = /翻译成|译成/i.test(input) && !hasExplicitPreTranslationAction
     ? input.replace(/^.{0,120}?(?=翻译成|译成)/i, "")
     : input;
   const knownModules = unique([
@@ -249,22 +263,19 @@ function selectModules(
     .filter((tool) => TOOL_INTENT_PATTERNS[tool.name]?.test(selectionInput))
     .map(toolModuleType)
     .filter((moduleType) => knownModules.includes(moduleType));
-
   const scored = knownModules
     .map((moduleType) => ({ moduleType, score: scoreModule(selectionInput, moduleType, context, registry) }))
     .filter((item) => item.score >= 30)
     .sort((left, right) => right.score - left.score || left.moduleType.localeCompare(right.moduleType));
 
   const explicitWidgetType = findRealtimeWidgetType(selectionInput);
-  const selected = unique([
+  return unique([
     ...(explicitWidgetType ? [explicitWidgetType] : []),
     ...(knownModules.includes("tv") && isTvChannelIntent(selectionInput, context) ? ["tv"] : []),
     ...patternSelected,
     ...toolIntentSelected,
     ...scored.map((item) => item.moduleType)
   ]).slice(0, maxModules);
-
-  return selected;
 }
 
 function isRelevantWindowTool(tool: AssistantToolSpec, input: string, selectedModules: string[]): boolean {
@@ -305,6 +316,8 @@ function scoreTool(
   const aliases = moduleAliases(moduleType, registry);
   const toolPattern = TOOL_INTENT_PATTERNS[tool.name];
   const hasToolIntentMatch = Boolean(toolPattern?.test(input));
+
+  if (EXPLICIT_TOOL_INTENT_REQUIRED.has(tool.name) && !hasToolIntentMatch) return null;
 
   if (selected) {
     score += 40;
@@ -389,9 +402,13 @@ function scoreTool(
   return { tool, score, moduleType, reasons };
 }
 
-function candidateLimitForModule(moduleType: string, selectedModules: string[], maxToolsPerModule: number): number {
-  if (["app", "board", "widget"].includes(moduleType)) return Math.min(maxToolsPerModule, 4);
-  return selectedModules.length > 1 ? Math.min(maxToolsPerModule, 5) : maxToolsPerModule;
+function candidateLimitForModule(moduleType: string, semanticModules: string[], maxToolsPerModule: number): number {
+  if (["app", "widget"].includes(moduleType)) return Math.min(maxToolsPerModule, 4);
+  if (moduleType === "board") return maxToolsPerModule;
+  // A focused module is extra context, not another locally inferred intent.
+  // It must not consume the semantic module's action budget (for example by
+  // pushing music.search out when weather happens to be focused).
+  return semanticModules.length > 1 ? Math.min(maxToolsPerModule, 5) : maxToolsPerModule;
 }
 
 export function buildRealtimeToolExposurePlan(
@@ -401,12 +418,22 @@ export function buildRealtimeToolExposurePlan(
   registry?: WidgetAssistantRegistry,
   options: RealtimeToolExposurePlannerOptions = {}
 ): RealtimeToolExposurePlan {
-  const text = input.trim();
+  const text = normalizeRealtimeIntentText(input);
   const maxTools = options.maxTools ?? DEFAULT_MAX_TOOLS;
   const maxModules = options.maxModules ?? DEFAULT_MAX_MODULES;
   const maxToolsPerModule = options.maxToolsPerModule ?? DEFAULT_MAX_TOOLS_PER_MODULE;
-  const selectedModules = selectModules(text, context, tools, registry, maxModules);
-  const selectedModuleSet = new Set(selectedModules);
+  const semanticModules = selectModules(text, context, tools, registry, maxModules);
+  const knownModules = new Set(tools.map(toolModuleType));
+  const focusedModule = context.focusedWidget?.type;
+  // Focus is contextual evidence, never a locally decided intent. Keep it in
+  // the candidate set even when another module is semantically suggested so
+  // Realtime can resolve omitted subjects and cross-media commands itself.
+  const candidateModules = unique([
+    ...semanticModules,
+    ...(focusedModule && knownModules.has(focusedModule) ? [focusedModule] : [])
+  ]);
+  const selectedModules = candidateModules;
+  const selectedModuleSet = new Set(candidateModules);
   const candidates = tools
     .map((tool) => scoreTool(text, tool, context, selectedModules, registry))
     .filter((candidate): candidate is ToolCandidate => Boolean(candidate))
@@ -418,7 +445,7 @@ export function buildRealtimeToolExposurePlan(
 
   for (const candidate of candidates) {
     const count = countsByModule.get(candidate.moduleType) ?? 0;
-    if (count >= candidateLimitForModule(candidate.moduleType, selectedModules, maxToolsPerModule)) {
+    if (count >= candidateLimitForModule(candidate.moduleType, semanticModules, maxToolsPerModule)) {
       excludedReasons[candidate.tool.name] = "module_tool_limit";
       continue;
     }
@@ -462,6 +489,9 @@ export function buildRealtimeToolExposurePlan(
   const highestScore = exposed[0]?.score ?? 0;
   return {
     input: text,
+    semanticModules,
+    ...(focusedModule && knownModules.has(focusedModule) ? { focusedModule } : {}),
+    candidateModules,
     selectedModules,
     exposedTools: exposed.map((candidate) => candidate.tool),
     scopedContexts,

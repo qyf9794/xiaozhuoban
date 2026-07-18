@@ -5,6 +5,7 @@ import {
   formatMusicArtworkUrl,
   inferAppleMusicStorefront,
   isMusicKitAuthorized,
+  readMusicKitPlaybackTime,
   normalizeITunesTracks,
   normalizeMusicKitSearchResults,
   searchAppleMusicCatalogApi,
@@ -171,6 +172,14 @@ describe("musicKitClient", () => {
     expect(isMusicKitAuthorized(undefined)).toBe(false);
     expect(isMusicKitAuthorized({ isAuthorized: false } as never)).toBe(false);
     expect(isMusicKitAuthorized({ isAuthorized: true } as never)).toBe(true);
+  });
+
+  it("reads the MusicKit playback clock across SDK variants", () => {
+    expect(readMusicKitPlaybackTime({ currentPlaybackTime: 3.25 } as never)).toBe(3.25);
+    expect(readMusicKitPlaybackTime({ currentPlaybackDuration: 200, currentPlaybackProgress: 0.25 } as never)).toBe(50);
+    expect(readMusicKitPlaybackTime({ currentPlaybackDuration: 200, currentPlaybackProgress: 25 } as never)).toBe(50);
+    expect(readMusicKitPlaybackTime({ currentPlaybackTime: Number.NaN } as never)).toBe(0);
+    expect(readMusicKitPlaybackTime(undefined)).toBe(0);
   });
 
   it("searches through the legacy MusicKit search method when available", async () => {

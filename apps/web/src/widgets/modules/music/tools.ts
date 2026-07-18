@@ -41,7 +41,7 @@ const examplesByTool: Record<string, string[]> = {
   "widget.focus": ["聚焦音乐", "打开音乐", "切到播放器"],
   "widget.fullscreen_focus": ["全屏音乐", "放大播放器", "专注播放音乐"],
   "widget.remove": ["关闭音乐", "音乐关掉", "把音乐收起来"],
-  "music.search": ["搜索七里香", "找周杰伦音乐", "搜一首轻松的音乐", "找一点巴洛克羽管键琴，暂时不播放", "我想听点放松的不一定播放"],
+  "music.search": ["只搜索七里香，不要播放", "展示周杰伦的搜索结果", "找一点巴洛克羽管键琴，暂时不播放", "我想看看放松音乐的结果但不播放"],
   "music.play": ["播放周杰伦", "来个周杰伦经典", "播放陈奕迅十年", "想听王菲红豆", "播放 Nils Frahm 的 Says", "播放 Olafur Arnalds 的 Near Light", "播放第一首"],
   "music.pause": ["暂停音乐", "音乐暂停", "先别放音乐"],
   "music.resume": ["继续音乐", "继续刚才的音乐", "恢复播放音乐", "接着放"],

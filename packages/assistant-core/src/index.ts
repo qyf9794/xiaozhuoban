@@ -2247,7 +2247,11 @@ export function createDefaultIntentShortcutRouter(): IntentShortcutRouter {
         const isNext = /(下一首|下首|切歌|换一首|跳过)/.test(normalized);
         const isPrevious = /(上一首|上首|前一首|返回上一首|倒回上一首)/.test(normalized);
         if (!isPlay && !isPause && !isNext && !isPrevious) return { matched: false, reason: "not_media_control" };
-        const channelName = isPause ? findContextTvChannelName(raw, context) || inferTvChannelName(raw) : "";
+        const explicitTvChannel = findContextTvChannelName(raw, context) || inferTvChannelName(raw);
+        if (isPlay && explicitTvChannel) {
+          return { matched: false, reason: "tv_channel_selection_deferred_to_realtime" };
+        }
+        const channelName = isPause ? explicitTvChannel : "";
         let targetType =
           raw.includes("录音") || raw.includes("录音机")
             ? "recorder"

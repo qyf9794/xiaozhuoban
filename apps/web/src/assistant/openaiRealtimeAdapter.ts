@@ -25,7 +25,12 @@ import {
   decodeRealtimeToolName,
   encodeRealtimeToolName
 } from "./realtimeSessionConfig";
-import { REALTIME_ADD_WIDGET_TOOL_NAME, findRealtimeWidgetType, realtimeWidgetAliases } from "./realtimeRoutingPolicy";
+import {
+  REALTIME_ADD_WIDGET_TOOL_NAME,
+  findRealtimeWidgetType,
+  normalizeRealtimeIntentText,
+  realtimeWidgetAliases
+} from "./realtimeRoutingPolicy";
 import {
   REALTIME_PLAN_SELECTION_TOOL_NAME,
   REALTIME_PLAN_SUBMISSION_TOOL_NAME,
@@ -230,6 +235,7 @@ const REALTIME_CONFIRMATION_RESPONSE_INSTRUCTIONS =
 const REALTIME_RESPONSE_CREATE_CONFLICT_RETRY_MS = 180;
 const REALTIME_RESPONSE_CREATE_CONFLICT_MAX_RETRIES = 3;
 const REALTIME_SCOPED_TOOL_RESPONSE_MAX_RETRIES = 2;
+const REALTIME_TRANSCRIPT_SELECTION_GRACE_MS = 1_000;
 export const DEFAULT_REALTIME_SESSION_UPDATE_TIMEOUT_MS = 12_000;
 
 type InitialRealtimeToolHint = {
@@ -336,9 +342,18 @@ function normalizeMusicToolArguments(args: Record<string, unknown>): Record<stri
 }
 
 function extractMusicQueryFromText(text: string): string {
-  return text
+  const normalized = normalizeRealtimeIntentText(text);
+  const explicitActionMatches = [
+    ...normalized.matchAll(/(?:最后听|我想听|想听|我要听|听点|播放(?!器)|放一下|放一首|来首|来一首|来个|来点|换成|换首|换一首|改成|切换成)\s*/g)
+  ];
+  const lastAction = explicitActionMatches.at(-1);
+  const actionTarget =
+    lastAction && typeof lastAction.index === "number"
+      ? normalized.slice(lastAction.index + lastAction[0].length)
+      : "";
+  return (actionTarget || normalized)
     .replace(/^(帮我|麻烦你|麻烦|请你|请)/, "")
-    .replace(/^(我想听|想听|我要听|听点|播放|放一下|放一首|来一首|来个|来点|搜索|搜一下|搜一点|找一下|找一点|找)/, "")
+    .replace(/^(最后听|我想听|想听|我要听|听点|播放|放一下|放一首|来首|来一首|来个|来点|换成|换首|换一首|搜索|搜一下|搜一点|找一下|找一点|找)/, "")
     .replace(/不一定播放/g, "")
     .replace(/(但|但是)?(先|暂时)?(不|不要|别|不用)(马上)?播放/g, "")
     .replace(/((先|暂时)(别|不要|不用)?播|(别|不要|不用)播)/g, "")
@@ -346,6 +361,20 @@ function extractMusicQueryFromText(text: string): string {
     .replace(/[，。！？、,.!?;；:："'“”‘’]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function isAbsoluteMusicEntityQuery(query: string): boolean {
+  const compact = query.replace(/[\s，。！？、,.!?;；:："'“”‘’]/g, "");
+  if (!compact) return false;
+  return !/^(?:这首|当前这首|现在这首|刚才那首|上一首|前一首|下一首|后一首|第一首|第[一二三四五六七八九十百\d]+首|搜索结果(?:里的)?第?[一二三四五六七八九十百\d]*首)$/.test(compact);
+}
+
+function comparableMusicEntityQuery(query: string): string {
+  return normalizeRealtimeIntentText(query)
+    .toLowerCase()
+    .replace(/(?:歌曲|音乐|曲目|track|song)/gi, "")
+    .replace(/的/g, "")
+    .replace(/[^\p{Letter}\p{Number}]+/gu, "");
 }
 
 function isMusicNoPlayRequest(input: string): boolean {
@@ -362,7 +391,7 @@ function isMusicSearchOnlyRequest(input: string): boolean {
 
 function isMusicExplicitPlayRequest(input: string): boolean {
   if (isMusicNoPlayRequest(input)) return false;
-  return /(播放(?!器)|放一下|放一首|来一首|来个|来点|我想听|想听|我要听|给我一首|听一下|听一首|听点)/.test(input);
+  return /(播放(?!器)|放一下|放一首|来首|来一首|来个|来点|换成|换首|换一首|最后听|我想听|想听|我要听|给我一首|听一下|听一首|听点)/.test(input);
 }
 
 function stripLeadingAssistantActionText(text: string): string {
@@ -887,13 +916,53 @@ function normalizeTvToolArguments(args: Record<string, unknown>, fallbackText = 
   return nextArgs;
 }
 
+function normalizeWeatherToolArguments(args: Record<string, unknown>, fallbackText = ""): Record<string, unknown> {
+  if (
+    (typeof args.city === "string" && args.city.trim()) ||
+    (typeof args.cityCode === "string" && args.cityCode.trim())
+  ) {
+    return { ...args };
+  }
+  const nextArgs = { ...args };
+  const aliasedCity = [nextArgs.city, nextArgs.cityName, nextArgs.location, nextArgs.place, nextArgs.query]
+    .find((value): value is string => typeof value === "string" && Boolean(value.trim()));
+  const commonCity = fallbackText.match(
+    /(北京|上海|广州|深圳|杭州|成都|武汉|南京|苏州|重庆|天津|西安|长沙|青岛|厦门|香港|澳门|台北|东京|大阪|首尔|新加坡|伦敦|巴黎|纽约|洛杉矶|波士顿|悉尼|墨尔本)/
+  )?.[1];
+  const contextualCity = fallbackText.match(
+    /(?:看看|查询|查一下|显示|切到|设置|设为)?\s*([\p{Script=Han}A-Za-z .'-]{2,24}?)(?:今天|现在|当前)?(?:的|什么|怎么样|如何)?(?:天气|气温)/u
+  )?.[1]
+    ?.replace(/^(?:打开|看看|查询|查一下|显示|天气)/, "")
+    .trim();
+  const city = aliasedCity?.trim() || commonCity || contextualCity;
+  if (city) nextArgs.city = city;
+  delete nextArgs.cityName;
+  delete nextArgs.location;
+  delete nextArgs.place;
+  delete nextArgs.query;
+  return nextArgs;
+}
+
 function normalizeRealtimeToolArguments(toolName: string, args: Record<string, unknown>, fallbackText = ""): Record<string, unknown> {
   let nextArgs = args;
   if (toolName === "music.search" || toolName === "music.play") {
     nextArgs = normalizeMusicToolArguments(nextArgs);
-    if (typeof nextArgs.query !== "string" || !nextArgs.query.trim()) {
-      const query = extractMusicQueryFromText(fallbackText);
-      if (query) nextArgs = { ...nextArgs, query };
+    const transcriptQuery = fallbackText ? extractMusicQueryFromText(fallbackText) : "";
+    const shouldTrustTranscriptEntity =
+      toolName === "music.play" &&
+      isMusicExplicitPlayRequest(normalizeRealtimeIntentText(fallbackText)) &&
+      !isMusicNoPlayRequest(normalizeRealtimeIntentText(fallbackText)) &&
+      isAbsoluteMusicEntityQuery(transcriptQuery) &&
+      typeof nextArgs.resultIndex !== "number" &&
+      comparableMusicEntityQuery(transcriptQuery) !== comparableMusicEntityQuery(String(nextArgs.query ?? ""));
+    if (shouldTrustTranscriptEntity) {
+      nextArgs = { ...nextArgs, query: transcriptQuery };
+    } else if (
+      (typeof nextArgs.query !== "string" || !nextArgs.query.trim()) &&
+      transcriptQuery &&
+      (toolName !== "music.play" || (typeof nextArgs.resultIndex !== "number" && isAbsoluteMusicEntityQuery(transcriptQuery)))
+    ) {
+      nextArgs = { ...nextArgs, query: transcriptQuery };
     }
   }
   if (toolName === "todo.add_item" || toolName === "todo.complete_item") {
@@ -910,6 +979,9 @@ function normalizeRealtimeToolArguments(toolName: string, args: Record<string, u
   }
   if (toolName === "tv.play" || toolName === "tv.select_channel") {
     nextArgs = normalizeTvToolArguments(nextArgs, fallbackText);
+  }
+  if (toolName === "weather.set_city") {
+    nextArgs = normalizeWeatherToolArguments(nextArgs, fallbackText);
   }
   if (toolName === "board.add_widget") {
     nextArgs = normalizeBoardAddWidgetArguments(nextArgs, fallbackText);
@@ -954,6 +1026,25 @@ function normalizeRealtimeToolArguments(toolName: string, args: Record<string, u
     delete nextArgs.value;
     delete nextArgs.clipText;
     delete nextArgs.clipboardText;
+    delete nextArgs.query;
+  }
+  if (toolName === "messageBoard.send") {
+    nextArgs = { ...nextArgs };
+    const fallbackMessage = fallbackText
+      .replace(/^.*?(?:留言板)?(?:发一句|发送(?:一条|一句)?(?:消息)?|留言(?:一句|一条)?)[：:\s，,]*/i, "")
+      .replace(/^[“\"']|[”\"'。]$/g, "")
+      .trim();
+    const text =
+      nextArgs.text ??
+      nextArgs.content ??
+      nextArgs.message ??
+      nextArgs.value ??
+      nextArgs.query ??
+      fallbackMessage;
+    if (typeof text === "string" && text.trim()) nextArgs.text = text.trim();
+    delete nextArgs.content;
+    delete nextArgs.message;
+    delete nextArgs.value;
     delete nextArgs.query;
   }
   if (toolName === "calculator.set_display") {
@@ -1178,7 +1269,8 @@ function inferWindowToolTargetType(
     .map((widget) => ({ widget, score: scoreWindowToolTarget(targetText, widget) }))
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score || a.widget.order - b.widget.order);
-  return scored[0]?.widget.type ?? "";
+  if (scored[0]?.widget.type) return scored[0].widget.type;
+  return context.widgets.length === 1 ? context.widgets[0]?.type ?? "" : "";
 }
 
 function bindWindowToolTargetForCall(
@@ -1187,9 +1279,11 @@ function bindWindowToolTargetForCall(
   tools: AssistantToolSpec[],
   hint?: RealtimeTargetHint
 ): AssistantToolCall {
-  if (!context || !isRecord(call.arguments) || typeof call.arguments.widgetId === "string") {
+  if (!context || !isRecord(call.arguments)) {
     return call;
   }
+  const suppliedWidgetId = typeof call.arguments.widgetId === "string" ? call.arguments.widgetId : "";
+  if (suppliedWidgetId && context.widgets.some((widget) => widget.widgetId === suppliedWidgetId)) return call;
   const tool = tools.find((item) => item.name === call.name);
   if (!tool?.requiresTarget) {
     return call;
@@ -2152,12 +2246,21 @@ type RealtimeResponseCreateOptions = {
 
 function createScopedToolCallResponseInstructions(result: AssistantToolResult): string {
   const data = isRecord(result.data) ? result.data : {};
+  const scopedToolNames = Array.isArray(data.scopedTools)
+    ? data.scopedTools.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+    : [];
   return [
     "继续执行候选工具阶段。根据当前 session.update 中的 Candidate Tool Stage、桌面上下文和真实工具 schema，直接调用一个最合适的真实工具。",
     "不要回复文字，不要再次调用 assistant.select_tool，不要调用未暴露的工具。",
+    scopedToolNames.includes("music.play") && scopedToolNames.includes("music.search")
+      ? "按用户要求的最终状态选择音乐动作：music.play 会解析实体并开始真实播放；只要最终状态应为播放，就调用 music.play。music.search 只用于仅展示搜索结果且不播放的请求，不能作为播放前的准备步骤。"
+      : "",
+    scopedToolNames.includes("tv.play") && scopedToolNames.includes("tv.select_channel")
+      ? "按用户要求的最终状态选择电视动作：tv.play 会选择频道并开始播放；最终状态应为播放时调用 tv.play。tv.select_channel 只用于仅换台且不播放的请求。"
+      : "",
     typeof data.userCommand === "string" && data.userCommand.trim() ? `原始用户命令：${data.userCommand.trim()}` : "",
-    Array.isArray(data.scopedTools)
-      ? `当前可调用工具：${data.scopedTools.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).join(", ")}`
+    scopedToolNames.length
+      ? `当前可调用工具：${scopedToolNames.join(", ")}`
       : "",
     typeof data.targetHint === "string" && data.targetHint.trim() ? `目标提示：${data.targetHint.trim()}` : ""
   ]
@@ -2239,8 +2342,18 @@ function resolveScopedToolChoiceName(
   selectedTool: AssistantToolSpec,
   selectedModule: string | undefined,
   context: CompactAssistantContext | null,
-  scopedTools: AssistantToolSpec[]
+  scopedTools: AssistantToolSpec[],
+  candidateMode: boolean
 ): string | undefined {
+  const moduleContentTools = selectedModule
+    ? scopedTools.filter(
+        (tool) => tool.scope === "widget-detail" && tool.widgetType === selectedModule
+      )
+    : [];
+  // assistant.select_tool produces ranked candidates, not a final decision.
+  // When multiple actions remain inside the chosen module, keep tool_choice
+  // required and let the scoped Realtime stage select the final action.
+  if (candidateMode && moduleContentTools.length > 1) return undefined;
   if (!selectedModule || !context || selectedTool.scope !== "widget-detail") return selectedTool.name;
   const hasMountedModule = hasMountedWidgetType(context, selectedModule);
   const canAddMissingModule = scopedTools.some((tool) => tool.name === REALTIME_ADD_WIDGET_TOOL_NAME);
@@ -2583,6 +2696,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   private functionCallTraceIds = new Map<string, string>();
   private realtimeTraceCommandToolCalls = new Set<string>();
   private realtimeTraceUserTranscripts = new Map<string, { input: string; itemId?: string }>();
+  private pendingRealtimeToolSelections = new Map<
+    string,
+    { call: AssistantToolCall; timeout: ReturnType<typeof setTimeout> }
+  >();
   private realtimeTraceCompletedToolKeys = new Map<string, Set<string>>();
   private realtimeTraceExclusiveMediaModules = new Map<string, "music" | "tv" | "recorder">();
   private realtimeTraceExclusiveMediaKeys = new Map<string, string>();
@@ -3436,6 +3553,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       status: plan.exposedTools.length ? "success" : "empty",
       data: {
         input,
+        semanticModules: plan.semanticModules,
+        focusedModule: plan.focusedModule,
+        candidateModules: plan.candidateModules,
         selectedModules: plan.selectedModules,
         exposedTools: plan.exposedTools.map((tool) => tool.name),
         confidence: plan.confidence,
@@ -3451,7 +3571,35 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     commandTraceId?: string
   ): string {
     const tracedInput = commandTraceId ? this.realtimeTraceUserTranscripts.get(commandTraceId)?.input ?? "" : "";
-    return selection.userCommand || tracedInput || selection.targetHint || selection.selectedModule || selection.intent || selection.name || selection.candidateTools?.[0] || "";
+    return normalizeRealtimeIntentText(
+      tracedInput ||
+        selection.userCommand ||
+        selection.targetHint ||
+        selection.selectedModule ||
+        selection.intent ||
+        selection.name ||
+        selection.candidateTools?.[0] ||
+        ""
+    );
+  }
+
+  private resolveExplicitWindowActionTool(input: string, tools: AssistantToolSpec[]): AssistantToolSpec | undefined {
+    const text = normalizeRealtimeIntentText(input).replace(/\s+/g, "");
+    const preferredNames =
+      /(关闭|关掉|收起|移除|删掉|删除)/.test(text)
+        ? ["widget.remove"]
+        : /(移动|移到|挪|右上|左上|右下|左下|放到|调到|拖到)/.test(text)
+          ? ["widget.move"]
+          : /(调大|调小|放大|缩小|调宽|宽一点|缩窄|大小|尺寸)/.test(text)
+            ? ["widget.resize"]
+            : /(最前|置顶|放前面|不要挡住|不要遮住)/.test(text)
+              ? ["widget.bring_to_front"]
+              : /(全屏|沉浸)/.test(text)
+                ? (/电视/.test(text) ? ["tv.fullscreen", "widget.fullscreen_focus", "app.fullscreen.set"] : ["widget.fullscreen_focus", "app.fullscreen.set"])
+                : /(聚焦|设为当前|设成当前|作为当前|切到|切回)/.test(text)
+                  ? ["widget.focus"]
+                  : [];
+    return preferredNames.map((name) => tools.find((tool) => tool.name === name)).find(Boolean);
   }
 
   private findToolSpec(toolName: string): AssistantToolSpec | undefined {
@@ -3633,42 +3781,17 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         userCommand: selection.userCommand || input
       };
     }
-    if (
-      selection.selectedModule === "music" &&
-      (selection.name === "music.search" || selection.candidateTools?.includes("music.search")) &&
-      isMusicExplicitPlayRequest(input) &&
-      !isMusicSearchOnlyRequest(input) &&
-      tools.some((tool) => tool.name === "music.play")
-    ) {
-      this.emitDiagnostic({
-        type: "realtime.tool_selection.semantic_boundary_rewrite",
-        status: "success",
-        commandTraceId,
-        toolName: "music.play",
-        data: {
-          fromTool: selection.name,
-          fromModule: selection.selectedModule,
-          reason: "explicit_music_play_not_search"
-        }
-      });
-      selection = {
-        ...selection,
-        name: "music.play",
-        candidateTools: ["music.play"],
-        selectedModule: "music",
-        intent: selection.intent ?? "play",
-        targetHint: selection.targetHint || input,
-        userCommand: selection.userCommand || input
-      };
-    }
     const candidateToolSpecs = this.resolveCandidateToolSpecs(selection, tools);
     const candidateMode = Boolean(selection.candidateTools?.length);
     const legacySelectedTool = selection.name
       ? tools.find((tool) => tool.name === selection.name) ?? this.findToolSpec(selection.name)
       : candidateToolSpecs[0];
     const pureOpenWidget = isPureOpenWidgetText(input);
-    const inferredOpenWidgetType = pureOpenWidget ? findRealtimeWidgetType(input, selection.targetHint) : undefined;
-    const selectedModule = inferredOpenWidgetType ?? this.resolveSelectedModuleFromSelection(selection, input, legacySelectedTool);
+    const explicitWindowAction = this.resolveExplicitWindowActionTool(input, tools);
+    const inferredCommandWidgetType = pureOpenWidget || explicitWindowAction
+      ? findRealtimeWidgetType(input, selection.targetHint)
+      : undefined;
+    const selectedModule = inferredCommandWidgetType ?? this.resolveSelectedModuleFromSelection(selection, input, legacySelectedTool);
     const exposurePlan = this.createToolExposurePlan(input, context, tools);
     const exposedTools = exposurePlan.exposedTools.map((tool) => tool.name);
     const addWidgetTool = tools.find((tool) => tool.name === REALTIME_ADD_WIDGET_TOOL_NAME);
@@ -3694,10 +3817,28 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       selectedModule &&
         !hasMountedSelectedModule &&
         legacySelectedTool &&
-        canOpenMissingWidgetForSelectedTool(input, selectedModule, legacySelectedTool.name, selection.intent)
+        legacySelectedTool.scope === "widget-detail" &&
+        this.isToolForSelectionModule(legacySelectedTool, selectedModule) &&
+        context.availableDefinitions?.some((definition) => definition.type === selectedModule)
     );
-    const baseTools = candidateMode && candidateToolSpecs.length
-      ? candidateToolSpecs.filter(
+    const exposedCandidateToolSpecs = candidateToolSpecs.filter(
+      (tool) => {
+        if (
+          selectedModule &&
+          tool.scope === "widget-detail" &&
+          !this.isToolForSelectionModule(tool, selectedModule)
+        ) {
+          return false;
+        }
+        // In candidate mode, Realtime has already made the semantic choice.
+        // Local text exposure is context/diagnostics, not an intent veto. A
+        // registered candidate is accepted after module and policy checks so
+        // unseen paraphrases do not require another local phrase rule.
+        return true;
+      }
+    );
+    const baseTools = candidateMode
+      ? exposedCandidateToolSpecs.filter(
           (tool) =>
             tool.name !== REALTIME_ADD_WIDGET_TOOL_NAME ||
             (!hasMountedSelectedModule && (pureOpenWidget || !hasContentCandidateForSelectedModule))
@@ -3722,8 +3863,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
             (!hasContentCandidateForSelectedModule &&
               (MODULE_OPEN_INTENTS.has(selection.intent ?? "") || !hasMountedSelectedModule)))
       );
+    const explicitExposureActionTool = this.resolveExplicitWindowActionTool(input, exposurePlan.exposedTools);
     const scopedCandidates = this.uniqueTools([
       ...baseTools,
+      ...(explicitExposureActionTool ? [explicitExposureActionTool] : []),
       ...(shouldIncludeAddWidget && addWidgetTool ? [addWidgetTool] : []),
       ...(pureOpenWidget && selectedModule && hasMountedSelectedModule && focusWidgetTool ? [focusWidgetTool] : [])
     ]);
@@ -3738,7 +3881,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         shouldIncludeAddWidget &&
         !hasMountedSelectedModule &&
         (isPureOpenWidgetText(input) ||
-          canOpenMissingWidgetForSelectedTool(input, selectedModule, legacySelectedTool?.name, selection.intent))
+          canOpenMissingSelectedModule)
     );
     const pureOpenFocusWidget =
       pureOpenWidget && selectedModule && hasMountedSelectedModule && focusWidgetTool
@@ -3754,7 +3897,9 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
         ? addWidgetTool
         : undefined;
     const legacyCandidate = !candidateMode && selection.name ? sortedCandidates.find((tool) => tool.name === selection.name) : undefined;
+    const explicitWindowActionTool = this.resolveExplicitWindowActionTool(input, sortedCandidates);
     const selectedTool =
+      explicitWindowActionTool ??
       pureOpenFocusWidget ??
       pureOpenAddWidget ??
       legacyCandidate ??
@@ -4425,6 +4570,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (
       typeof selection.confidence === "number" &&
       selection.confidence < REALTIME_TOOL_SELECTION_CONFIDENCE_THRESHOLD &&
+      !resolvedSelection.candidateMode &&
       !shouldAcceptLowConfidenceToolSelection(resolvedSelection.selectedTool.name, resolvedSelection.input, resolvedSelection.selection.targetHint)
     ) {
       this.emitDiagnostic({
@@ -4475,7 +4621,14 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       return;
     }
     const commandTraceId = eventCommandTraceId ?? this.activeCommandTraceId ?? this.activeRealtimeResponseTraceId ?? this.activeUserCommandTraceId ?? undefined;
-    const userTurnTraceId = this.activeCommandTraceId ?? this.activeUserCommandTraceId ?? commandTraceId;
+    const resumedTraceHasTranscript = Boolean(
+      commandTraceId &&
+        this.interruptedRealtimeCommandTraceIds.has(commandTraceId) &&
+        this.realtimeTraceUserTranscripts.has(commandTraceId)
+    );
+    const userTurnTraceId = resumedTraceHasTranscript
+      ? commandTraceId
+      : this.activeCommandTraceId ?? this.activeUserCommandTraceId ?? commandTraceId;
     if (commandTraceId && this.interruptedRealtimeCommandTraceIds.has(commandTraceId) && shouldSkipInterruptedRealtimeFunctionCall(call.name)) {
       this.emitDiagnostic({
         type: "realtime.function_call.skip",
@@ -4549,6 +4702,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     const fallbackText =
       (executionTraceId ? this.realtimeTraceUserTranscripts.get(executionTraceId)?.input ?? "" : "") ||
       this.activeScopedToolSelection?.userCommand ||
+      call.transcript ||
       "";
     if (call.name === "tv.fullscreen" && /(退出|取消|关闭|關閉|離開|离开).{0,6}(全屏|fullscreen)|^(退出|取消|关闭|關閉)(电视)?全屏$/i.test(fallbackText)) {
       const exitFullscreenCall: AssistantToolCall = {
@@ -5068,13 +5222,64 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       });
   }
 
-  private handleToolSelection(call: AssistantToolCall): void {
+  private deferToolSelectionUntilTranscript(call: AssistantToolCall, commandTraceId: string): void {
+    const previous = this.pendingRealtimeToolSelections.get(commandTraceId);
+    if (previous) clearTimeout(previous.timeout);
+    const timeout = setTimeout(() => {
+      const pending = this.pendingRealtimeToolSelections.get(commandTraceId);
+      if (!pending || pending.call.id !== call.id) return;
+      this.pendingRealtimeToolSelections.delete(commandTraceId);
+      this.emitDiagnostic({
+        type: "realtime.tool_selection.transcript_wait",
+        status: "timeout",
+        operationId: call.id,
+        toolName: REALTIME_TOOL_SELECTION_TOOL_NAME,
+        commandTraceId
+      });
+      this.handleToolSelection(call, true);
+    }, REALTIME_TRANSCRIPT_SELECTION_GRACE_MS);
+    this.pendingRealtimeToolSelections.set(commandTraceId, { call, timeout });
+    this.emitDiagnostic({
+      type: "realtime.tool_selection.transcript_wait",
+      status: "started",
+      operationId: call.id,
+      toolName: REALTIME_TOOL_SELECTION_TOOL_NAME,
+      commandTraceId
+    });
+  }
+
+  private flushPendingToolSelection(commandTraceId?: string): void {
+    if (!commandTraceId) return;
+    const pending = this.pendingRealtimeToolSelections.get(commandTraceId);
+    if (!pending) return;
+    clearTimeout(pending.timeout);
+    this.pendingRealtimeToolSelections.delete(commandTraceId);
+    this.emitDiagnostic({
+      type: "realtime.tool_selection.transcript_wait",
+      status: "completed",
+      operationId: pending.call.id,
+      toolName: REALTIME_TOOL_SELECTION_TOOL_NAME,
+      commandTraceId
+    });
+    this.handleToolSelection(pending.call, true);
+  }
+
+  private handleToolSelection(call: AssistantToolCall, allowWithoutTranscript = false): void {
     const commandTraceId =
       this.functionCallTraceIds.get(call.id) ??
       this.activeCommandTraceId ??
       this.activeRealtimeResponseTraceId ??
       this.activeUserCommandTraceId ??
       undefined;
+    if (
+      !allowWithoutTranscript &&
+      this.connectMode === "audio" &&
+      commandTraceId &&
+      !this.realtimeTraceUserTranscripts.has(commandTraceId)
+    ) {
+      this.deferToolSelectionUntilTranscript(call, commandTraceId);
+      return;
+    }
     const selection = parseToolSelectionArguments(call.arguments);
     const resolvedSelection = selection && this.currentContext
       ? this.resolveScopedToolsForSelection(selection, this.currentContext, this.currentTools, commandTraceId)
@@ -5104,6 +5309,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     if (
       typeof selection.confidence === "number" &&
       selection.confidence < REALTIME_TOOL_SELECTION_CONFIDENCE_THRESHOLD &&
+      !resolvedSelection.candidateMode &&
       !shouldAcceptLowConfidenceToolSelection(resolvedSelection.selectedTool.name, resolvedSelection.input, resolvedSelection.selection.targetHint)
     ) {
       this.emitDiagnostic({
@@ -5131,7 +5337,8 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       selectedTool,
       selectedModule,
       this.currentContext,
-      resolvedSelection.scopedTools
+      resolvedSelection.scopedTools,
+      resolvedSelection.candidateMode
     );
 
     if (
@@ -5938,6 +6145,7 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     }
     if (commandTraceId) {
       this.realtimeTraceUserTranscripts.set(commandTraceId, { input, itemId });
+      this.flushPendingToolSelection(commandTraceId);
     }
     if (!this.options.onUserTranscript) return;
     try {
@@ -5963,6 +6171,10 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
   }
 
   private clearRealtimeTraceState(): void {
+    for (const pending of this.pendingRealtimeToolSelections.values()) {
+      clearTimeout(pending.timeout);
+    }
+    this.pendingRealtimeToolSelections.clear();
     this.activeRealtimeResponseTraceId = null;
     this.activeUserCommandTraceId = null;
     this.realtimeResponseTraceIds.clear();

@@ -1,0 +1,124 @@
+[
+  {
+    "id": "S01",
+    "command": "打开音乐播放器，先播放王菲的红豆",
+    "audio": "S01.wav",
+    "expected": ["music.play"],
+    "expectedModules": ["music"],
+    "expectedQueryIncludes": ["王菲", "红豆"],
+    "transcriptIncludes": ["王菲", "红豆"],
+    "title": "红豆",
+    "artist": "王菲",
+    "queue": [
+      { "title": "红豆", "artist": "王菲" },
+      { "title": "容易受伤的女人", "artist": "王菲" },
+      { "title": "匆匆那年", "artist": "王菲" }
+    ],
+    "effect": { "state": "playing", "title": "红豆", "titleChanged": true }
+  },
+  {
+    "id": "S02",
+    "command": "这首先停一下",
+    "audio": "S02.wav",
+    "expected": ["music.pause"],
+    "expectedModules": ["music"],
+    "transcriptIncludes": ["停"],
+    "title": "红豆",
+    "effect": { "state": "paused", "title": "红豆" }
+  },
+  {
+    "id": "S03",
+    "command": "接着放",
+    "audio": "S03.wav",
+    "expected": ["music.resume"],
+    "expectedModules": ["music"],
+    "transcriptIncludes": ["接着", "放"],
+    "title": "红豆",
+    "effect": { "state": "playing", "title": "红豆" }
+  },
+  {
+    "id": "S04",
+    "command": "下一首",
+    "audio": "S04.wav",
+    "expected": ["music.next"],
+    "expectedModules": ["music"],
+    "transcriptIncludes": ["下一首"],
+    "title": "容易受伤的女人",
+    "effect": { "state": "playing", "title": "容易受伤的女人", "titleChanged": true }
+  },
+  {
+    "id": "S05",
+    "command": "再往后切一首",
+    "audio": "S05.wav",
+    "expected": ["music.next"],
+    "expectedModules": ["music"],
+    "transcriptIncludes": ["往后", "一首"],
+    "title": "匆匆那年",
+    "effect": { "state": "playing", "title": "匆匆那年", "titleChanged": true }
+  },
+  {
+    "id": "S06",
+    "command": "回到上一首",
+    "audio": "S06.wav",
+    "expected": ["music.previous"],
+    "expectedModules": ["music"],
+    "transcriptIncludes": ["上一首"],
+    "title": "容易受伤的女人",
+    "effect": { "state": "playing", "title": "容易受伤的女人", "titleChanged": true }
+  },
+  {
+    "id": "S07",
+    "command": "别放这个了，换成周杰伦的晴天",
+    "audio": "S07.wav",
+    "expected": ["music.play"],
+    "expectedModules": ["music"],
+    "expectedQueryIncludes": ["周杰伦", "晴天"],
+    "transcriptIncludes": ["周杰伦", "晴天"],
+    "title": "晴天",
+    "artist": "周杰伦",
+    "queue": [
+      { "title": "晴天", "artist": "周杰伦" },
+      { "title": "七里香", "artist": "周杰伦" },
+      { "title": "稻香", "artist": "周杰伦" }
+    ],
+    "effect": { "state": "playing", "title": "晴天", "titleChanged": true }
+  },
+  {
+    "id": "S08",
+    "command": "先暂停一下",
+    "audio": "S08.wav",
+    "expected": ["music.pause"],
+    "expectedModules": ["music"],
+    "transcriptIncludes": ["暂停"],
+    "title": "晴天",
+    "effect": { "state": "paused", "title": "晴天" }
+  },
+  {
+    "id": "S09",
+    "command": "继续播刚才那首",
+    "audio": "S09.wav",
+    "expected": ["music.resume"],
+    "expectedModules": ["music"],
+    "transcriptIncludes": ["继续", "刚才"],
+    "title": "晴天",
+    "effect": { "state": "playing", "title": "晴天" }
+  },
+  {
+    "id": "S10",
+    "command": "最后不要切下一首，直接换成陈奕迅的十年",
+    "audio": "S10.wav",
+    "expected": ["music.play"],
+    "forbidden": ["music.next"],
+    "expectedModules": ["music"],
+    "expectedQueryIncludes": ["陈奕迅", "十年"],
+    "transcriptIncludes": ["陈奕迅", "十年"],
+    "title": "十年",
+    "artist": "陈奕迅",
+    "queue": [
+      { "title": "十年", "artist": "陈奕迅" },
+      { "title": "K歌之王", "artist": "陈奕迅" },
+      { "title": "好久不见", "artist": "陈奕迅" }
+    ],
+    "effect": { "state": "playing", "title": "十年", "titleChanged": true }
+  }
+]

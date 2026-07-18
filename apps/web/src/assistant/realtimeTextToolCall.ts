@@ -255,6 +255,7 @@ export function createRealtimeToolSelectionInstructions(tools: AssistantToolSpec
     "如果要路由命令，直接调用 assistant.select_tool，不要先说话，不要输出语音或文字，不要把工具选择参数念给用户。",
     "用户要控制桌面时，先调用 assistant.select_tool；前端随后会按候选工具提供最小必要上下文，再由你选择最终工具并调用。",
     "只要用户说的是打开、关闭、播放、搜索、查询、设置、添加、写入、完成、勾掉、暂停、继续、重置、切换、全屏、换算、转换、翻译等桌面动作，必须调用 assistant.select_tool。",
+    "媒体候选按用户要求的最终状态排序：最终要开始或保持播放时，把能解析实体并播放的 play 放在 search/select 前；只有最终状态明确仅为发现结果且不播放时，才把 search/select 排在前面。",
     "candidateTools 必须严格来自工具目录里的已注册工具名；不能返回模块名、别名、意图名、中文说明或未注册工具。",
     "candidateTools 按相关性排序，通常返回 3 到 4 个；非常明确的单一命令也至少返回 1 个。",
     "完成/勾掉待办事项候选包含 todo.complete_item；添加/提醒待办候选包含 todo.add_item；暂停/继续/重置倒计时分别包含 countdown.pause/countdown.resume/countdown.reset。",
@@ -852,10 +853,10 @@ export function createScopedRealtimeToolInstructions(
     "复杂命令可以调用多个已提供工具。需要顺序时按原始命令顺序依次调用；互不依赖时可以并发调用。",
     "只调用候选工具列表中实际提供的工具；不要调用未提供的工具，不要访问未提供的桌面上下文。",
     candidateNames.some((name) => name.startsWith("music."))
-      ? "音乐工具选择规则：用户说播放、放一首、来一首、来个、想听、听点，且命令里有具体歌手、乐队、歌曲名、专辑名或英文曲名时，必须选择 music.play，并把原始歌手/歌曲写入 query；即使需要先搜索试听源，也不要改成 music.search。只有用户明确说搜索、找、搜、推荐，或明确说不一定播放、暂时不播放、先不播放、先不要播放、别播放时，才选择 music.search，绝不要再调用 music.play。恢复、继续、接着播、继续刚才的音乐选择 music.resume；上一首选择 music.previous；下一首选择 music.next。"
+      ? "根据完整语义、连续轮次和 focusedWidget 判断用户要求的最终状态。music.play 会自行完成实体查找并开始播放；最终状态应为播放时直接调用 music.play，不能先调用 music.search 作为准备步骤。只有最终状态仅需发现结果时才调用 music.search；暂停、恢复及前后切换选择对应控制工具。原样保留媒体实体，不要依赖固定短语模板。"
       : "",
     candidateNames.some((name) => name.startsWith("tv."))
-      ? "电视工具选择规则：用户说播放、看、想看、打开电视播放、只说播放电视时调用 tv.play；用户明确说切到、换到、切换到某频道且不是播放请求时才调用 tv.select_channel；原始命令同时包含“全屏”且工具列表提供 tv.fullscreen 时，必须在播放/切台后继续调用 tv.fullscreen。"
+      ? "根据完整语义判断电视的最终状态。tv.play 能同时选择给定频道并开始播放；最终状态应为播放时直接调用 tv.play，不能先调用 tv.select_channel 作为准备步骤。只有最终状态仅需改变频道但不开始播放时才调用 tv.select_channel；暂停和全屏选择对应工具。"
       : "",
     candidateNames.includes("board.add_widget")
       ? "如果用户只是打开、添加、显示某个小工具，才调用 board.add_widget，并从 availableDefinitions 选择匹配 definitionId。"

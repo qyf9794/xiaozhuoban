@@ -265,46 +265,6 @@ body {
   opacity: 0.9;
 }
 
-.voice-assistant-dock__wake-toggle {
-  position: absolute;
-  z-index: 2;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.26);
-  background: rgba(3, 5, 7, 0.72);
-  color: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.18);
-  cursor: pointer;
-}
-
-.voice-assistant-dock__wake-toggle {
-  right: 14px;
-  bottom: 14px;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-}
-
-.voice-assistant-dock__wake-toggle::before {
-  content: "";
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: rgba(148, 163, 184, 0.92);
-  box-shadow: 0 0 0 0 rgba(148, 163, 184, 0);
-}
-
-.voice-assistant-dock__wake-toggle[aria-pressed="true"]::before {
-  background: #22c55e;
-  box-shadow: 0 0 14px rgba(34, 197, 94, 0.66);
-}
-
-.voice-assistant-dock__wake-toggle[data-status="error"]::before,
-.voice-assistant-dock__wake-toggle[data-supported="false"]::before {
-  background: #ef4444;
-  box-shadow: 0 0 14px rgba(239, 68, 68, 0.62);
-}
-
 .voice-assistant-dock__pill {
   --voice-pill-radius: 24px;
   position: relative;
@@ -571,11 +531,6 @@ body {
   .voice-assistant-dock__orb-frame {
     width: 148px;
     height: 148px;
-  }
-
-  .voice-assistant-dock__wake-toggle {
-    right: calc(50% - 48px);
-    bottom: 2px;
   }
 
   .voice-assistant-dock__pill {

@@ -217,7 +217,9 @@ export function shouldShowVoiceAssistantTextPanel(
   hasPanelAnswer = false
 ): boolean {
   void isMobileMode;
-  return mobileTextPanelOpen || hasPendingConfirmation || hasPanelAnswer;
+  void hasPendingConfirmation;
+  void hasPanelAnswer;
+  return mobileTextPanelOpen;
 }
 
 export function shouldSuppressVoiceAssistantOrbClickAfterPress(longPressTriggered: boolean, moved: boolean): boolean {
@@ -329,7 +331,6 @@ export function VoiceAssistantDock({
   wakeWordAudioLevel = 0,
   wakeWordStatus = "idle",
   wakeWordSupported = false,
-  onToggleWakeWord,
   onDiagnostic
 }: {
   harness: AssistantHarness;
@@ -353,7 +354,6 @@ export function VoiceAssistantDock({
   wakeWordAudioLevel?: number;
   wakeWordStatus?: LocalWakeWordStatus;
   wakeWordSupported?: boolean;
-  onToggleWakeWord?: () => void;
   onDiagnostic?: (event: AssistantDiagnosticEvent) => void;
 }) {
   const [state, setState] = useState<VoiceAssistantDockState>("disconnected");
@@ -473,13 +473,10 @@ export function VoiceAssistantDock({
   }, [voiceEnabled, voiceStatus]);
 
   useEffect(() => {
-    if (!onToggleWakeWord || !wakeWordEnabled) return;
+    if (!wakeWordEnabled) return;
     const nextMessage = getLocalWakeWordStatusText(wakeWordEnabled, wakeWordSupported, wakeWordStatus);
     setLastMessage(nextMessage);
-    if (wakeWordStatus === "listening" || wakeWordStatus === "detected" || wakeWordStatus === "error" || !wakeWordSupported) {
-      openMobileTextPanel({ focusInput: false });
-    }
-  }, [onToggleWakeWord, wakeWordEnabled, wakeWordSupported, wakeWordStatus]);
+  }, [wakeWordEnabled, wakeWordSupported, wakeWordStatus]);
 
   useEffect(() => {
     setMobileTextPanelOpen(false);
@@ -505,14 +502,7 @@ export function VoiceAssistantDock({
     };
     setAssistantSpeechLevel(0.62);
     assistantSpeechPulseFrameRef.current = window.requestAnimationFrame(tick);
-    openMobileTextPanel({ focusInput: false });
   }, [assistantSpeech?.id, assistantSpeech?.text, isMobileMode]);
-
-  useEffect(() => {
-    const speechText = userSpeech?.text.trim();
-    if (!speechText) return;
-    openMobileTextPanel({ focusInput: false });
-  }, [userSpeech?.id, userSpeech?.text, isMobileMode]);
 
   useEffect(() => {
     return () => {
@@ -692,12 +682,10 @@ export function VoiceAssistantDock({
     setState("connecting");
     setLastMessage(getVoiceAssistantConnectionMessage("connecting"));
     setOperation({ phase: "thinking", command: "连接语音" });
-    keepMobileTextPanelOpen();
     try {
       await onConnectVoice();
       if (connectAttemptIdRef.current !== attemptId) return;
       setOperation({ phase: "success", command: "连接语音", message: "语音已连接" });
-      keepMobileTextPanelOpen();
       onDiagnostic?.({ type: "voice.connect.result", commandTraceId, status: "success" });
     } catch (error) {
       if (connectAttemptIdRef.current !== attemptId) return;
@@ -706,7 +694,6 @@ export function VoiceAssistantDock({
       setLastMessage(message);
       setOperation({ phase: "error", command: "连接语音", message });
       setState("error");
-      keepMobileTextPanelOpen();
     } finally {
       if (connectAttemptIdRef.current === attemptId) {
         connectInFlightRef.current = false;
@@ -743,7 +730,6 @@ export function VoiceAssistantDock({
     setState("disconnected");
     setLastMessage(getVoiceAssistantConnectionMessage("disconnected"));
     setOperation({ phase: "idle" });
-    keepMobileTextPanelOpen();
   };
 
   const onOrbPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
@@ -840,7 +826,7 @@ export function VoiceAssistantDock({
   const wakeWordText = getLocalWakeWordStatusText(wakeWordEnabled, wakeWordSupported, wakeWordStatus);
   const statusLines = [
     `${getVoiceAssistantDockStatusText(visualState)} · ${lastMessage}`,
-    onToggleWakeWord ? wakeWordText : "",
+    wakeWordEnabled ? wakeWordText : "",
     operationText,
     runtimeText,
     history[0] ? `${history[0].text} · ${history[0].result}` : ""
@@ -888,22 +874,6 @@ export function VoiceAssistantDock({
             tabIndex={-1}
           />
         </button>
-
-        {onToggleWakeWord ? (
-          <button
-            type="button"
-            className="voice-assistant-dock__wake-toggle"
-            aria-label={wakeWordEnabled ? "关闭小桌板唤醒" : "开启小桌板唤醒"}
-            aria-pressed={wakeWordEnabled}
-            data-status={wakeWordStatus}
-            data-supported={wakeWordSupported ? "true" : "false"}
-            title={wakeWordText}
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleWakeWord();
-            }}
-          />
-        ) : null}
 
         {textPanelVisible ? (
         <div

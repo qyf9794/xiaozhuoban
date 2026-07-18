@@ -1,0 +1,14 @@
+[
+  {
+    "id": "V02",
+    "command": "打开天气，看看北京今天什么天气",
+    "audio": "V02-vad.wav",
+    "expected": ["weather.set_city", "board.add_widget"]
+  },
+  {
+    "id": "V19",
+    "command": "把留言板小工具移到右上角",
+    "audio": "V19-vad.wav",
+    "expected": ["widget.move"]
+  }
+]

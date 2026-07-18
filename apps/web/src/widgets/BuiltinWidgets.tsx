@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
 import { Button, Card } from "@xiaozhuoban/ui";
@@ -20,12 +20,14 @@ import {
   isMusicKitAuthorized,
   normalizeITunesTracks,
   normalizeMusicKitSearchResults,
+  readMusicKitPlaybackTime,
   searchAppleMusicCatalogApi,
   searchAppleMusicCatalog,
   type ITunesTrack,
   type MusicKitInstanceLike,
   type MusicSearchItem
 } from "./musicKitClient";
+import { mediaPlaybackErrorCode, waitForPlaybackProgress } from "./mediaPlaybackVerification";
 import {
   DEFAULT_TV_PLAYLIST_URL,
   findFallbackTvChannel,
@@ -3193,15 +3195,24 @@ export function BuiltinWidgetView({
     const [activeItemId, setActiveItemId] = useState<string | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [progress, setProgress] = useState(0);
+    const [playbackStatus, setPlaybackStatus] = useState("");
     const [musicKitStatus, setMusicKitStatus] = useState(musicKitAvailable ? "待登录 Apple Music" : "未配置 Apple Music Token");
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const musicKitRef = useRef<MusicKitInstanceLike | null>(null);
     const searchSeqRef = useRef(0);
+    const playbackRequestIdRef = useRef(0);
     const composingRef = useRef(false);
     const [queryDraft, setQueryDraft] = useState(query);
     const resultsRef = useRef<MusicSearchItem[]>([]);
     const activeItemIdRef = useRef<string | null>(null);
     const latestMusicStateRef = useRef(instance.state);
+    const setActiveTrackId = useCallback((itemId: string | null) => {
+      // Transport commands can arrive faster than React commits state. Keep the
+      // command-side ref authoritative so next/previous never act on a stale
+      // track when Realtime sends consecutive controls.
+      activeItemIdRef.current = itemId;
+      setActiveItemId(itemId);
+    }, []);
     const logMusicDiagnostic = (type: string, status: string, data: Record<string, unknown> = {}) => {
       recordAuthenticatedAssistantDiagnostic({
         type,
@@ -3278,12 +3289,27 @@ export function BuiltinWidgetView({
           return;
         }
         audio.src = nextTrack.previewUrl;
-        setActiveItemId(nextTrack.id);
+        setActiveTrackId(nextTrack.id);
         setProgress(0);
-        void audio.play().catch(() => {
-          setError("自动播放下一首失败，请手动点击播放");
-          setIsPlaying(false);
-        });
+        const requestId = ++playbackRequestIdRef.current;
+        setPlaybackStatus(`正在尝试播放《${nextTrack.title}》`);
+        void audio.play()
+          .then(async () => {
+            const playback = await waitForPlaybackProgress(() => audio.currentTime);
+            if (playbackRequestIdRef.current !== requestId) return;
+            if (!playback.verified) {
+              audio.pause();
+              setIsPlaying(false);
+              setPlaybackStatus(`已切到《${nextTrack.title}》，当前已加载但尚未开始播放`);
+              return;
+            }
+            setPlaybackStatus(`正在播放《${nextTrack.title}》`);
+          })
+          .catch(() => {
+            if (playbackRequestIdRef.current !== requestId) return;
+            setIsPlaying(false);
+            setPlaybackStatus(`已切到《${nextTrack.title}》，当前尚未开始播放`);
+          });
       };
       audio.addEventListener("timeupdate", onTimeUpdate);
       audio.addEventListener("play", onPlay);
@@ -3316,11 +3342,30 @@ export function BuiltinWidgetView({
       return null;
     };
 
-    const pausePlayback = () => {
-      audioRef.current?.pause();
-      void musicKitRef.current?.pause();
+    const pausePlayback = useCallback(async (): Promise<boolean> => {
+      playbackRequestIdRef.current += 1;
+      const currentResults = resultsRef.current;
+      const currentItem = currentResults.find((item) => item.id === activeItemIdRef.current) ?? currentResults[0];
+      const audio = audioRef.current;
+      audio?.pause();
+      let musicKitPaused = true;
+      if (currentItem?.source === "apple" && musicKitRef.current) {
+        try {
+          await musicKitRef.current.pause();
+        } catch {
+          musicKitPaused = false;
+        }
+      }
       setIsPlaying(false);
-    };
+      if (currentItem) {
+        setPlaybackStatus(
+          musicKitPaused
+            ? `已暂停《${currentItem.title}》`
+            : `《${currentItem.title}》当前仍未确认暂停`
+        );
+      }
+      return musicKitPaused && (currentItem?.source === "apple" || !audio || audio.paused);
+    }, []);
 
     const ensureMusicKit = async () => {
       if (!musicKitAvailable) {
@@ -3451,7 +3496,8 @@ export function BuiltinWidgetView({
 
     const findAppleMusicReplacement = async (
       item: MusicSearchItem,
-      args: Record<string, unknown> = {}
+      args: Record<string, unknown> = {},
+      isCurrentRequest: () => boolean = () => true
     ): Promise<MusicSearchItem | undefined> => {
       if (!musicKitAvailable || item.source === "apple" || !isMusicKitAuthorized(musicKitRef.current)) {
         return item;
@@ -3461,10 +3507,11 @@ export function BuiltinWidgetView({
       try {
         const appleItems = await searchAppleMusic(keyword);
         if (!appleItems.length) return item;
+        if (!isCurrentRequest()) return item;
         setResults(appleItems);
         const replacement = selectMusicResult(appleItems, args);
         if (replacement) {
-          setActiveItemId(replacement.id);
+          setActiveTrackId(replacement.id);
         }
         return replacement ?? appleItems[0];
       } catch {
@@ -3472,11 +3519,31 @@ export function BuiltinWidgetView({
       }
     };
 
-    const playItem = async (item: MusicSearchItem | undefined, args: Record<string, unknown> = {}) => {
+    const playItem = async (
+      item: MusicSearchItem | undefined,
+      args: Record<string, unknown> = {},
+      options: { requestId?: number; preferAppleReplacement?: boolean } = {}
+    ) => {
+      const requestId = options.requestId ?? ++playbackRequestIdRef.current;
       if (!item) {
         logMusicDiagnostic("music.play.result", "failed", { errorCode: "MUSIC_TRACK_NOT_FOUND" });
         return { status: "failed" as const, message: "没有可播放的音乐", errorCode: "MUSIC_TRACK_NOT_FOUND" };
       }
+      const isCurrentRequest = () => playbackRequestIdRef.current === requestId;
+      const supersededResult = () => ({
+        status: "cancelled" as const,
+        message: `已找到《${item.title}》，但这次播放请求已被新的播放操作替代`,
+        data: {
+          itemId: item.id,
+          title: item.title,
+          source: item.source,
+          playbackState: "superseded",
+          playbackVerified: false
+        }
+      });
+      if (!isCurrentRequest()) return supersededResult();
+      setError("");
+      setPlaybackStatus(`正在尝试播放《${item.title}》`);
 
       logMusicDiagnostic("music.play.start", "started", {
         itemId: item.id,
@@ -3486,18 +3553,22 @@ export function BuiltinWidgetView({
         hasPreview: Boolean(item.previewUrl),
         requestedArgs: args
       });
-      const preferredItem = await findAppleMusicReplacement(item, args);
+      const preferredItem = options.preferAppleReplacement === false
+        ? item
+        : await findAppleMusicReplacement(item, args, isCurrentRequest);
+      if (!isCurrentRequest()) return supersededResult();
       if (preferredItem && preferredItem !== item) {
         logMusicDiagnostic("music.play.replaced_with_apple", "success", {
           originalSource: item.source,
           replacementId: preferredItem.id,
           replacementTitle: preferredItem.title
         });
-        return playItem(preferredItem, args);
+        return playItem(preferredItem, args, { ...options, requestId });
       }
 
       if (item.source === "apple") {
         const music = musicKitRef.current ?? (await authorizeMusicKit());
+        if (!isCurrentRequest()) return supersededResult();
         if (!music) {
           logMusicDiagnostic("music.play.result", "failed", {
             itemId: item.id,
@@ -3505,25 +3576,92 @@ export function BuiltinWidgetView({
             source: item.source,
             errorCode: "MUSIC_AUTH_FAILED"
           });
-          return { status: "failed" as const, message: "Apple Music 登录失败", errorCode: "MUSIC_AUTH_FAILED" };
+          const message = `已找到《${item.title}》，当前尚未播放：Apple Music 还没有完成登录`;
+          setPlaybackStatus(message);
+          return {
+            status: "failed" as const,
+            message,
+            errorCode: "MUSIC_AUTH_FAILED",
+            data: { itemId: item.id, title: item.title, source: item.source, playbackState: "not_started", playbackVerified: false }
+          };
         }
         try {
           await music.setQueue(createMusicKitQueueDescriptor(item));
+          if (!isCurrentRequest()) return supersededResult();
           await music.play();
+          const playback = await waitForPlaybackProgress(() => readMusicKitPlaybackTime(music), { timeoutMs: 6_000 });
+          if (!isCurrentRequest()) return supersededResult();
+          if (!playback.verified) {
+            try {
+              await music.pause();
+            } catch {
+              // The failed playback result is still authoritative if cleanup is rejected.
+            }
+            setIsPlaying(false);
+            setMusicKitStatus("Apple Music 播放未开始");
+            const message = `已找到《${item.title}》，当前已加载，但播放时钟尚未开始推进`;
+            setPlaybackStatus(message);
+            logMusicDiagnostic("music.play.result", "failed", {
+              itemId: item.id,
+              title: item.title,
+              source: item.source,
+              kind: item.kind,
+              playbackVerified: false,
+              startTime: playback.startTime,
+              endTime: playback.endTime,
+              advancedBy: playback.advancedBy,
+              elapsedMs: playback.elapsedMs,
+              errorCode: "MUSIC_PLAYBACK_NOT_ADVANCING"
+            });
+            return {
+              status: "timed_out" as const,
+              message,
+              errorCode: "MUSIC_PLAYBACK_NOT_ADVANCING",
+              data: {
+                itemId: item.id,
+                title: item.title,
+                kind: item.kind,
+                source: item.source,
+                playbackState: "loaded_not_playing",
+                playbackVerified: false
+              }
+            };
+          }
           audioRef.current?.pause();
-          setActiveItemId(item.id);
+          setActiveTrackId(item.id);
           setProgress(readMusicKitProgress() ?? 0);
           setIsPlaying(true);
           setMusicKitStatus("Apple Music 播放中");
+          setPlaybackStatus(`正在播放《${item.title}》`);
           logMusicDiagnostic("music.play.result", "success", {
             itemId: item.id,
             title: item.title,
             source: item.source,
-            kind: item.kind
+            kind: item.kind,
+            playbackVerified: true,
+            startTime: playback.startTime,
+            endTime: playback.endTime,
+            advancedBy: playback.advancedBy,
+            elapsedMs: playback.elapsedMs
           });
-          return { status: "success" as const, message: "已开始播放音乐", data: { itemId: item.id, title: item.title, kind: item.kind } };
+          return {
+            status: "success" as const,
+            message: `正在播放《${item.title}》`,
+            data: {
+              itemId: item.id,
+              title: item.title,
+              kind: item.kind,
+              source: item.source,
+              playbackState: "playing",
+              playbackVerified: true,
+              advancedBy: playback.advancedBy
+            }
+          };
         } catch (playError) {
+          if (!isCurrentRequest()) return supersededResult();
           setIsPlaying(false);
+          const message = `已找到《${item.title}》，当前尚未播放：Apple Music 没有开始输出音频`;
+          setPlaybackStatus(message);
           logMusicDiagnostic("music.play.result", "failed", {
             itemId: item.id,
             title: item.title,
@@ -3531,7 +3669,12 @@ export function BuiltinWidgetView({
             errorCode: "MUSIC_PLAY_FAILED",
             message: playError instanceof Error ? playError.message : "Apple Music 播放失败"
           });
-          return { status: "failed" as const, message: "Apple Music 播放失败，请确认账号订阅和浏览器播放权限", errorCode: "MUSIC_PLAY_FAILED" };
+          return {
+            status: "failed" as const,
+            message,
+            errorCode: "MUSIC_PLAY_FAILED",
+            data: { itemId: item.id, title: item.title, source: item.source, playbackState: "not_started", playbackVerified: false }
+          };
         }
       }
 
@@ -3543,44 +3686,118 @@ export function BuiltinWidgetView({
           source: item.source,
           errorCode: "MUSIC_PLAYER_NOT_READY"
         });
-        return { status: "failed" as const, message: "音乐播放器还没有准备好", errorCode: "MUSIC_PLAYER_NOT_READY" };
+        const message = `已找到《${item.title}》，播放器当前尚未准备好`;
+        setPlaybackStatus(message);
+        return {
+          status: "timed_out" as const,
+          message,
+          errorCode: "MUSIC_PLAYER_NOT_READY",
+          data: { itemId: item.id, title: item.title, source: item.source, playbackState: "player_not_ready", playbackVerified: false }
+        };
       }
       if (!item.previewUrl) {
         logMusicDiagnostic("music.play.result", "failed", {
           itemId: item.id,
           title: item.title,
           source: item.source,
-          errorCode: "MUSIC_TRACK_NOT_FOUND"
+          errorCode: "MUSIC_PREVIEW_UNAVAILABLE"
         });
-        return { status: "failed" as const, message: "没有可播放的试听结果", errorCode: "MUSIC_TRACK_NOT_FOUND" };
+        const message = `已找到《${item.title}》，但这个结果当前没有可播放的试听音频`;
+        setPlaybackStatus(message);
+        return {
+          status: "failed" as const,
+          message,
+          errorCode: "MUSIC_PREVIEW_UNAVAILABLE",
+          data: { itemId: item.id, title: item.title, source: item.source, playbackState: "unavailable", playbackVerified: false }
+        };
       }
       if (audio.src !== item.previewUrl) {
         audio.src = item.previewUrl;
-        setActiveItemId(item.id);
+        setActiveTrackId(item.id);
         setProgress(0);
       }
       try {
         await audio.play();
       } catch (playError) {
-        logMusicDiagnostic("music.play.result", "success_blocked", {
+        if (!isCurrentRequest()) return supersededResult();
+        const errorCode = mediaPlaybackErrorCode(playError);
+        setIsPlaying(false);
+        const message = errorCode === "BROWSER_PLAYBACK_BLOCKED"
+          ? `已找到《${item.title}》，当前尚未播放：浏览器正在等待用户播放操作`
+          : `已找到《${item.title}》，当前尚未播放：音频资源没有开始输出`;
+        setPlaybackStatus(message);
+        logMusicDiagnostic("music.play.result", "failed", {
           itemId: item.id,
           title: item.title,
           source: item.source,
-          errorCode: "BROWSER_PLAYBACK_BLOCKED",
-          message: playError instanceof Error ? playError.message : "浏览器阻止播放"
+          playbackVerified: false,
+          errorCode,
+          message: playError instanceof Error ? playError.message : "音乐播放失败"
         });
         return {
-          status: "success" as const,
-          message: "已找到音乐，请手动点击播放",
-          data: { itemId: item.id, title: item.title, playbackBlocked: true }
+          status: "failed" as const,
+          message,
+          errorCode,
+          data: {
+            itemId: item.id,
+            title: item.title,
+            source: item.source,
+            playbackState: errorCode === "BROWSER_PLAYBACK_BLOCKED" ? "awaiting_user_gesture" : "not_started",
+            playbackVerified: false
+          }
         };
       }
+      const playback = await waitForPlaybackProgress(() => audio.currentTime);
+      if (!isCurrentRequest()) return supersededResult();
+      if (!playback.verified) {
+        audio.pause();
+        setIsPlaying(false);
+        const message = `已找到《${item.title}》，当前已加载，但播放时钟尚未开始推进`;
+        setPlaybackStatus(message);
+        logMusicDiagnostic("music.play.result", "failed", {
+          itemId: item.id,
+          title: item.title,
+          source: item.source,
+          playbackVerified: false,
+          startTime: playback.startTime,
+          endTime: playback.endTime,
+          advancedBy: playback.advancedBy,
+          elapsedMs: playback.elapsedMs,
+          readyState: audio.readyState,
+          networkState: audio.networkState,
+          errorCode: "MUSIC_PLAYBACK_NOT_ADVANCING"
+        });
+        return {
+          status: "timed_out" as const,
+          message,
+          errorCode: "MUSIC_PLAYBACK_NOT_ADVANCING",
+          data: {
+            itemId: item.id,
+            title: item.title,
+            source: item.source,
+            playbackState: "loaded_not_playing",
+            playbackVerified: false
+          }
+        };
+      }
+      setPlaybackStatus(`正在播放《${item.title}》`);
       logMusicDiagnostic("music.play.result", "success", {
         itemId: item.id,
         title: item.title,
-        source: item.source
+        source: item.source,
+        playbackVerified: true,
+        startTime: playback.startTime,
+        endTime: playback.endTime,
+        advancedBy: playback.advancedBy,
+        elapsedMs: playback.elapsedMs,
+        readyState: audio.readyState,
+        networkState: audio.networkState
       });
-      return { status: "success" as const, message: "已开始播放音乐", data: { itemId: item.id, title: item.title } };
+      return {
+        status: "success" as const,
+        message: `正在播放《${item.title}》`,
+        data: { itemId: item.id, title: item.title, source: item.source, playbackState: "playing", playbackVerified: true }
+      };
     };
 
     const currentOrFirstTrack = () => {
@@ -3589,7 +3806,7 @@ export function BuiltinWidgetView({
       return currentResults.find((track) => track.id === activeId) ?? currentResults[0];
     };
 
-    const playOffset = async (offset: 1 | -1) => {
+    const playOffset = async (offset: 1 | -1, options: { preferAppleReplacement?: boolean } = {}) => {
       const currentResults = resultsRef.current;
       if (!currentResults.length) {
         return { status: "failed" as const, message: offset > 0 ? "没有下一首可播放音乐" : "没有上一首可播放音乐", errorCode: "MUSIC_TRACK_NOT_FOUND" };
@@ -3598,23 +3815,13 @@ export function BuiltinWidgetView({
       const activeIndex = currentResults.findIndex((track) => track.id === activeId);
       const currentIndex = activeIndex >= 0 ? activeIndex : 0;
       const nextTrack = currentResults[(currentIndex + offset + currentResults.length) % currentResults.length];
-      const music = musicKitRef.current;
-      const skip = offset > 0 ? music?.skipToNextItem : music?.skipToPreviousItem;
-      if (music && currentOrFirstTrack()?.source === "apple" && skip) {
-        try {
-          await skip.call(music);
-          if (nextTrack) setActiveItemId(nextTrack.id);
-          setProgress(0);
-          return { status: "success" as const, message: offset > 0 ? "已切到下一首" : "已切到上一首" };
-        } catch {
-          return playItem(nextTrack);
-        }
-      }
-      return playItem(nextTrack);
+      // Reuse the verified play path for every source. MusicKit's skip methods
+      // only confirm request acceptance, not that the next item is audible.
+      return playItem(nextTrack, {}, options);
     };
 
-    const playNext = () => playOffset(1);
-    const playPrevious = () => playOffset(-1);
+    const playNext = (options?: { preferAppleReplacement?: boolean }) => playOffset(1, options);
+    const playPrevious = (options?: { preferAppleReplacement?: boolean }) => playOffset(-1, options);
 
     useEffect(() => {
       const currentItem = results.find((item) => item.id === activeItemId) ?? results[0];
@@ -3646,30 +3853,45 @@ export function BuiltinWidgetView({
             return { status: "failed" as const, message: "没有找到音乐", errorCode: "MUSIC_TRACK_NOT_FOUND" };
           }
           const selected = selectMusicResult(items, args);
-          if (selected) setActiveItemId(selected.id);
+          if (selected) setActiveTrackId(selected.id);
           logMusicDiagnostic("music.tool.search.result", "success", { query: nextQuery, count: items.length, selectedTitle: selected?.title });
           return { status: "success" as const, message: "已搜索音乐", data: { count: items.length, itemId: selected?.id, title: selected?.title } };
         },
         async play(args) {
+          const requestId = ++playbackRequestIdRef.current;
           const nextQuery = typeof args.query === "string" ? args.query.trim() : "";
           logMusicDiagnostic("music.tool.play.request", "started", { query: nextQuery, args });
           if (nextQuery) {
             setQueryDraft(nextQuery);
             const items = await runSearch(nextQuery);
             onStateChange({ ...latestMusicStateRef.current, query: nextQuery });
-            return playItem(selectMusicResult(items, args), args);
+            return playItem(selectMusicResult(items, args), args, { requestId });
           }
           const fallbackQuery = (queryDraft || query || asString(latestMusicStateRef.current.query)).trim();
           if (!resultsRef.current.length && fallbackQuery) {
             const items = await runSearch(fallbackQuery);
-            return playItem(selectMusicResult(items, args), args);
+            return playItem(selectMusicResult(items, args), args, { requestId });
           }
-          return playItem(selectMusicResult(resultsRef.current, args) ?? currentOrFirstTrack(), args);
+          return playItem(selectMusicResult(resultsRef.current, args) ?? currentOrFirstTrack(), args, { requestId });
         },
-        pause() {
-          pausePlayback();
-          logMusicDiagnostic("music.tool.pause.result", "success");
-          return { status: "success", message: "已暂停音乐" };
+        async pause() {
+          const currentItem = currentOrFirstTrack();
+          if (!currentItem) {
+            logMusicDiagnostic("music.tool.pause.result", "failed", { errorCode: "MUSIC_TRACK_NOT_FOUND" });
+            return { status: "failed" as const, message: "当前没有可暂停的音乐", errorCode: "MUSIC_TRACK_NOT_FOUND" };
+          }
+          const previewPaused = await pausePlayback();
+          logMusicDiagnostic("music.tool.pause.result", previewPaused ? "success" : "failed", {
+            itemId: currentItem.id,
+            title: currentItem.title,
+            source: currentItem.source,
+            playbackPaused: previewPaused,
+            currentTime: audioRef.current?.currentTime ?? 0,
+            ...(previewPaused ? {} : { errorCode: "MUSIC_PAUSE_NOT_EFFECTIVE" })
+          });
+          return previewPaused
+            ? { status: "success" as const, message: "已暂停音乐", data: { itemId: currentItem.id, title: currentItem.title } }
+            : { status: "failed" as const, message: "音乐暂停没有生效", errorCode: "MUSIC_PAUSE_NOT_EFFECTIVE" };
         },
         resume() {
           logMusicDiagnostic("music.tool.resume.request", "started");
@@ -3688,7 +3910,7 @@ export function BuiltinWidgetView({
 
     const activeItem = results.find((item) => item.id === activeItemId) ?? results[0];
     const kindLabel: Record<string, string> = { song: "歌曲", album: "专辑", playlist: "歌单" };
-    const sourceLabel = musicKitAvailable ? musicKitStatus : "iTunes 试听模式";
+    const sourceLabel = playbackStatus || (musicKitAvailable ? musicKitStatus : "iTunes 试听模式");
     const musicKitLoggedIn = musicKitStatus.includes("已登录") || musicKitStatus.includes("播放中");
     const showMusicLogin = musicKitAvailable && !musicKitLoggedIn;
     const visibleProgress = activeItem ? clampPercent(progress) : 0;
@@ -3746,7 +3968,7 @@ export function BuiltinWidgetView({
             <div style={{ display: "flex", gap: 16, alignItems: "center", justifyContent: "center", marginTop: 2 }}>
               <button
                 onClick={() => {
-                  void playPrevious().then((result) => {
+                  void playPrevious({ preferAppleReplacement: false }).then((result) => {
                     if (result.status !== "success") setError(result.message);
                   });
                 }}
@@ -3757,11 +3979,22 @@ export function BuiltinWidgetView({
               </button>
               <button
                 onClick={() => {
-                  if (isPlaying) {
-                    pausePlayback();
+                  const currentItem = currentOrFirstTrack();
+                  const audio = audioRef.current;
+                  const actuallyPlaying = currentItem?.source === "apple"
+                    ? isPlaying && activeItemIdRef.current === currentItem.id
+                    : Boolean(
+                        currentItem &&
+                        activeItemIdRef.current === currentItem.id &&
+                        audio &&
+                        !audio.paused &&
+                        !audio.ended
+                      );
+                  if (actuallyPlaying) {
+                    void pausePlayback();
                     return;
                   }
-                  void playItem(currentOrFirstTrack()).then((result) => {
+                  void playItem(currentItem, {}, { preferAppleReplacement: false }).then((result) => {
                     if (result.status !== "success") setError(result.message);
                   });
                 }}
@@ -3772,7 +4005,7 @@ export function BuiltinWidgetView({
               </button>
               <button
                 onClick={() => {
-                  void playNext().then((result) => {
+                  void playNext({ preferAppleReplacement: false }).then((result) => {
                     if (result.status !== "success") setError(result.message);
                   });
                 }}
@@ -3787,7 +4020,7 @@ export function BuiltinWidgetView({
               aria-label="音乐播放进度"
               aria-valuemin={0}
               aria-valuemax={100}
-              aria-valuenow={Math.round(visibleProgress)}
+              aria-valuenow={Number(visibleProgress.toFixed(2))}
               style={{ width: "100%", height: 4, borderRadius: 999, background: "rgba(148, 163, 184, 0.38)", overflow: "hidden" }}
             >
               <div
@@ -3970,6 +4203,9 @@ export function BuiltinWidgetView({
   }
 
   if (definition.type === "tv") {
+    type TvPlaybackResult =
+      | { status: "success"; message: string; data?: Record<string, unknown> }
+      | { status: "failed"; message: string; errorCode: string; data?: Record<string, unknown> };
     const playlistUrl = asString(instance.state.playlistUrl).trim() || DEFAULT_TV_PLAYLIST_URL;
     const selectedChannelUrl = asString(instance.state.selectedChannelUrl);
     const selectedChannelName = asString(instance.state.selectedChannelName);
@@ -3983,6 +4219,18 @@ export function BuiltinWidgetView({
     const latestStateRef = useRef(instance.state);
     const latestSelectedChannelUrlRef = useRef(selectedChannelUrl);
     const playbackRequestIdRef = useRef(0);
+    const playbackInFlightRef = useRef<{ key: string; promise: Promise<TvPlaybackResult> } | null>(null);
+    const logTvDiagnostic = (type: string, status: string, data: Record<string, unknown> = {}) => {
+      recordAuthenticatedAssistantDiagnostic({
+        type,
+        status,
+        toolName: "tv",
+        data: {
+          widgetId: instance.id,
+          ...data
+        }
+      });
+    };
 
     useEffect(() => {
       latestStateRef.current = instance.state;
@@ -4003,61 +4251,112 @@ export function BuiltinWidgetView({
       }
     };
 
-    const waitForVideoPlaying = (video: HTMLVideoElement, timeoutMs = 2500) =>
-      new Promise<boolean>((resolve) => {
-        if (!video.paused && video.readyState >= 2) {
-          resolve(true);
-          return;
-        }
-        let settled = false;
-        const finish = (started: boolean) => {
-          if (settled) return;
-          settled = true;
-          window.clearTimeout(timeoutId);
-          video.removeEventListener("playing", handlePlaying);
-          video.removeEventListener("timeupdate", handlePlaying);
-          resolve(started);
-        };
-        const handlePlaying = () => finish(true);
-        const timeoutId = window.setTimeout(() => finish(!video.paused && video.readyState >= 2), timeoutMs);
-        video.addEventListener("playing", handlePlaying, { once: true });
-        video.addEventListener("timeupdate", handlePlaying, { once: true });
-      });
-
     const startVideoPlayback = async (
       video: HTMLVideoElement,
       channelName: string,
       channelUrl: string
-    ): Promise<{ status: "success"; message: string; data: Record<string, unknown> }> => {
+    ): Promise<
+      | { status: "success"; message: string; data: Record<string, unknown> }
+      | { status: "failed"; message: string; errorCode: string; data: Record<string, unknown> }
+    > => {
+      logTvDiagnostic("tv.play.start", "started", { channelName, channelUrl });
       try {
         await video.play();
-      } catch {
+      } catch (playError) {
+        const errorCode = playError instanceof DOMException && playError.name === "NotAllowedError"
+          ? "BROWSER_PLAYBACK_BLOCKED"
+          : "TV_PLAY_FAILED";
+        setPlaybackError(errorCode === "BROWSER_PLAYBACK_BLOCKED" ? "浏览器阻止了电视自动播放" : "电视播放失败，请切换频道重试");
+        logTvDiagnostic("tv.play.result", "failed", {
+          channelName,
+          channelUrl,
+          playbackVerified: false,
+          errorCode,
+          message: playError instanceof Error ? playError.message : "电视播放失败"
+        });
         return {
-          status: "success",
-          message: "已切到频道，请手动点击播放",
-          data: { channelName, channelUrl, playbackState: "blocked", playbackBlocked: true }
+          status: "failed",
+          message: errorCode === "BROWSER_PLAYBACK_BLOCKED" ? "浏览器阻止了电视自动播放，请允许播放后重试" : "电视播放失败，请切换频道重试",
+          errorCode,
+          data: { channelName, channelUrl, playbackState: "blocked", playbackBlocked: true, playbackVerified: false }
         };
       }
-      const started = await waitForVideoPlaying(video);
-      if (started) {
+      const playback = await waitForPlaybackProgress(() => video.currentTime, { timeoutMs: 3_000 });
+      if (!playback.verified) {
+        video.pause();
+        setPlaybackError("电视已加载但没有真正开始播放");
+        logTvDiagnostic("tv.play.result", "failed", {
+          channelName,
+          channelUrl,
+          playbackVerified: false,
+          startTime: playback.startTime,
+          endTime: playback.endTime,
+          advancedBy: playback.advancedBy,
+          elapsedMs: playback.elapsedMs,
+          readyState: video.readyState,
+          networkState: video.networkState,
+          errorCode: "TV_PLAYBACK_NOT_ADVANCING"
+        });
         return {
-          status: "success",
-          message: "已播放电视",
-          data: { channelName, channelUrl, playbackState: "playing", playbackBlocked: false }
+          status: "failed",
+          message: "电视已加载但没有真正开始播放，请检查频道资源",
+          errorCode: "TV_PLAYBACK_NOT_ADVANCING",
+          data: { channelName, channelUrl, playbackState: "stalled", playbackBlocked: false, playbackVerified: false }
         };
       }
+      if (video.videoWidth <= 0 || video.videoHeight <= 0) {
+        video.pause();
+        setPlaybackError("电视流没有可显示的视频画面");
+        logTvDiagnostic("tv.play.result", "failed", {
+          channelName,
+          channelUrl,
+          playbackVerified: false,
+          advancedBy: playback.advancedBy,
+          videoWidth: video.videoWidth,
+          videoHeight: video.videoHeight,
+          errorCode: "TV_VIDEO_FRAME_MISSING"
+        });
+        return {
+          status: "failed",
+          message: "电视流只有音频或没有可显示的视频画面",
+          errorCode: "TV_VIDEO_FRAME_MISSING",
+          data: { channelName, channelUrl, playbackState: "audio_only", playbackVerified: false }
+        };
+      }
+      logTvDiagnostic("tv.play.result", "success", {
+        channelName,
+        channelUrl,
+        playbackVerified: true,
+        startTime: playback.startTime,
+        endTime: playback.endTime,
+        advancedBy: playback.advancedBy,
+        elapsedMs: playback.elapsedMs,
+        readyState: video.readyState,
+        networkState: video.networkState,
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight
+      });
       return {
         status: "success",
-        message: "已切换电视频道，正在加载播放",
-        data: { channelName, channelUrl, playbackState: "loading", playbackBlocked: false }
+        message: "已播放电视",
+        data: {
+          channelName,
+          channelUrl,
+          playbackState: "playing",
+          playbackBlocked: false,
+          playbackVerified: true,
+          advancedBy: playback.advancedBy,
+          videoWidth: video.videoWidth,
+          videoHeight: video.videoHeight
+        }
       };
     };
 
-    const playChannelSource = async (
+    const runPlayChannelSource = async (
       channelUrl: string,
       channelName: string,
       options: { resetSource?: boolean } = {}
-    ) => {
+    ): Promise<TvPlaybackResult> => {
       if (!channelUrl) {
         return {
           status: "success" as const,
@@ -4080,9 +4379,10 @@ export function BuiltinWidgetView({
       const playNativeSource = async () => {
         if (!isCurrentRequest()) {
           return {
-            status: "success" as const,
-            message: "已切换电视频道，正在加载播放",
-            data: { channelName, channelUrl, playbackState: "loading" }
+            status: "failed" as const,
+            message: "电视播放请求已被新的切台命令替代",
+            errorCode: "TV_PLAYBACK_SUPERSEDED",
+            data: { channelName, channelUrl, playbackState: "superseded", playbackVerified: false }
           };
         }
         if (options.resetSource !== false || video.src !== channelUrl) {
@@ -4102,9 +4402,10 @@ export function BuiltinWidgetView({
         const Hls = mod.default;
         if (!isCurrentRequest()) {
           return {
-            status: "success" as const,
-            message: "已切换电视频道，正在加载播放",
-            data: { channelName, channelUrl, playbackState: "loading" }
+            status: "failed" as const,
+            message: "电视播放请求已被新的切台命令替代",
+            errorCode: "TV_PLAYBACK_SUPERSEDED",
+            data: { channelName, channelUrl, playbackState: "superseded", playbackVerified: false }
           };
         }
         if (!Hls.isSupported()) {
@@ -4136,18 +4437,26 @@ export function BuiltinWidgetView({
             resolve(result);
           };
           const timeoutId = window.setTimeout(() => {
+            logTvDiagnostic("tv.play.result", "failed", {
+              channelName,
+              channelUrl,
+              playbackVerified: false,
+              errorCode: "TV_STREAM_LOAD_TIMEOUT"
+            });
             finish({
-              status: "success",
-              message: "已切换电视频道，正在加载播放",
-              data: { channelName, channelUrl, playbackState: "loading", playbackBlocked: false }
+              status: "failed",
+              message: "电视频道加载超时，请切换频道重试",
+              errorCode: "TV_STREAM_LOAD_TIMEOUT",
+              data: { channelName, channelUrl, playbackState: "loading", playbackBlocked: false, playbackVerified: false }
             });
           }, 5000);
           hls.on(Hls.Events.MANIFEST_PARSED, () => {
             if (!isCurrentRequest()) {
               finish({
-                status: "success",
-                message: "已切换电视频道，正在加载播放",
-                data: { channelName, channelUrl, playbackState: "loading", playbackBlocked: false }
+                status: "failed",
+                message: "电视播放请求已被新的切台命令替代",
+                errorCode: "TV_PLAYBACK_SUPERSEDED",
+                data: { channelName, channelUrl, playbackState: "superseded", playbackBlocked: false, playbackVerified: false }
               });
               return;
             }
@@ -4174,6 +4483,22 @@ export function BuiltinWidgetView({
           data: { channelName, channelUrl, playbackState: "failed" }
         };
       }
+    };
+
+    const playChannelSource = (
+      channelUrl: string,
+      channelName: string,
+      options: { resetSource?: boolean } = {}
+    ): Promise<TvPlaybackResult> => {
+      const key = `${channelUrl}\u0000${channelName}`;
+      const existing = playbackInFlightRef.current;
+      if (existing?.key === key) return existing.promise;
+      const promise = runPlayChannelSource(channelUrl, channelName, options);
+      playbackInFlightRef.current = { key, promise };
+      void promise.finally(() => {
+        if (playbackInFlightRef.current?.promise === promise) playbackInFlightRef.current = null;
+      });
+      return promise;
     };
 
     const loadPlaylist = (sourceUrl?: string) => {
@@ -4284,8 +4609,9 @@ export function BuiltinWidgetView({
             : undefined;
         const selected =
           (channelUrl ? channels.find((channel) => channel.url === channelUrl) : null) ??
-          (channelName ? findTvChannel(channels, channelName) ?? findFallbackTvChannel(channelName) : null) ??
+          (channelName ? findTvChannel(channels, channelName) : null) ??
           (channelName ? findTvChannel(catalogChannels, channelName) : null) ??
+          (channelName ? findFallbackTvChannel(channelName) : null) ??
           (channelUrl || channelName ? null : channels[0] ?? catalogChannels[0]);
         const pendingCatalogChannelName = !selected && !channelUrl ? catalogNameOnlyMatch?.name : undefined;
 
@@ -4337,8 +4663,18 @@ export function BuiltinWidgetView({
           return selected;
         },
         pause() {
-          videoRef.current?.pause();
-          return { status: "success", message: "已暂停电视" };
+          const video = videoRef.current;
+          video?.pause();
+          const playbackPaused = !video || video.paused;
+          logTvDiagnostic("tv.pause.result", playbackPaused ? "success" : "failed", {
+            channelName: latestSelectedChannelUrlRef.current ? asString(latestStateRef.current.selectedChannelName) : "",
+            playbackPaused,
+            currentTime: video?.currentTime ?? 0,
+            ...(playbackPaused ? {} : { errorCode: "TV_PAUSE_NOT_EFFECTIVE" })
+          });
+          return playbackPaused
+            ? { status: "success", message: "已暂停电视" }
+            : { status: "failed", message: "电视暂停没有生效", errorCode: "TV_PAUSE_NOT_EFFECTIVE" };
         },
         async selectChannel(args) {
           return selectChannel(args);

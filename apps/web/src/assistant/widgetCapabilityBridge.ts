@@ -204,7 +204,7 @@ function createMusicActions(store: WidgetCapabilityStore, bridge: WidgetCapabili
     defineAction<WidgetCapabilityArgs>({
       spec: {
         name: "music.search",
-        description: "Search music without starting playback.",
+        description: "Return music search results only, without starting playback. Use only when the requested final state is discovery/results; never use as a preparation step for playback.",
         parameters: genericCapabilitySchema,
         risk: "safe",
         scope: "widget-detail",
@@ -219,7 +219,7 @@ function createMusicActions(store: WidgetCapabilityStore, bridge: WidgetCapabili
     defineAction<WidgetCapabilityArgs>({
       spec: {
         name: "music.play",
-        description: "Play music, optionally searching by query first.",
+        description: "Resolve an optional artist, song, album, or playlist query and start actual playback. Use whenever the requested final state is playing, including switching to another entity.",
         parameters: genericCapabilitySchema,
         risk: "safe",
         scope: "widget-detail",
