@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  WORKBENCH_BACKGROUND_MODEL,
   WorkbenchAgentResultSchema,
   partitionWorkbenchCommands,
   validateWorkbenchCommand
 } from "./index";
+
+describe("workbench model configuration", () => {
+  it("uses GPT-5.6 Luna for delegated background tasks", () => {
+    expect(WORKBENCH_BACKGROUND_MODEL).toBe("gpt-5.6-luna");
+  });
+});
 
 describe("workbench command policy", () => {
   it("fails closed for unknown commands", () => {

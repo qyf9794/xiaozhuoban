@@ -166,8 +166,10 @@ export async function createDurableWorkbenchTask(input: {
   if (insertError) throw new Error(insertError.message);
   try {
     const client = createOpenAIClient();
+    const backgroundModel = process.env.WORKBENCH_BACKGROUND_MODEL || WORKBENCH_BACKGROUND_MODEL;
     const response = await client.responses.create({
-      model: process.env.WORKBENCH_BACKGROUND_MODEL || WORKBENCH_BACKGROUND_MODEL,
+      model: backgroundModel,
+      reasoning: backgroundModel.startsWith("gpt-5.6") ? { effort: "none" } : undefined,
       background: true,
       store: true,
       safety_identifier: safetyIdentifier(input.userId),
