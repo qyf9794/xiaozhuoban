@@ -29,6 +29,12 @@ export type RealtimeToolExposurePlannerOptions = {
   maxTools?: number;
   maxModules?: number;
   maxToolsPerModule?: number;
+  /**
+   * Registered tools selected by Realtime's semantic routing pass. These are
+   * evidence for exposure, not an authorization bypass: deferred and
+   * unrequested destructive tools remain excluded.
+   */
+  selectedToolNames?: string[];
 };
 
 type ToolCandidate = {
@@ -303,7 +309,8 @@ function scoreTool(
   tool: AssistantToolSpec,
   context: CompactAssistantContext,
   selectedModules: string[],
-  registry?: WidgetAssistantRegistry
+  registry?: WidgetAssistantRegistry,
+  selectedToolNames: ReadonlySet<string> = new Set()
 ): ToolCandidate | null {
   if (tool.scope === "deferred") return null;
   if (tool.risk === "destructive" && !DESTRUCTIVE_WORDS.test(input)) return null;
@@ -316,8 +323,14 @@ function scoreTool(
   const aliases = moduleAliases(moduleType, registry);
   const toolPattern = TOOL_INTENT_PATTERNS[tool.name];
   const hasToolIntentMatch = Boolean(toolPattern?.test(input));
+  const selectedByRealtime = selectedToolNames.has(tool.name);
 
-  if (EXPLICIT_TOOL_INTENT_REQUIRED.has(tool.name) && !hasToolIntentMatch) return null;
+  if (EXPLICIT_TOOL_INTENT_REQUIRED.has(tool.name) && !hasToolIntentMatch && !selectedByRealtime) return null;
+
+  if (selectedByRealtime) {
+    score += 100;
+    reasons.push("realtime_selected_tool");
+  }
 
   if (selected) {
     score += 40;
@@ -391,12 +404,13 @@ function scoreTool(
       "global_desktop_match",
       "tool_intent_match",
       "mounted_widget",
-      "focused_widget"
+      "focused_widget",
+      "realtime_selected_tool"
     ].includes(reason)
   );
   if (!hasIntentReason) return null;
   if (!selected && tool.widgetType && !isWindowTool) return null;
-  if (isWindowTool && !isRelevantWindowTool(tool, input, selectedModules)) return null;
+  if (isWindowTool && !isRelevantWindowTool(tool, input, selectedModules) && !selectedByRealtime) return null;
   if (score <= 0) return null;
 
   return { tool, score, moduleType, reasons };
@@ -423,19 +437,26 @@ export function buildRealtimeToolExposurePlan(
   const maxModules = options.maxModules ?? DEFAULT_MAX_MODULES;
   const maxToolsPerModule = options.maxToolsPerModule ?? DEFAULT_MAX_TOOLS_PER_MODULE;
   const semanticModules = selectModules(text, context, tools, registry, maxModules);
+  const selectedToolNames = new Set(
+    (options.selectedToolNames ?? []).filter((name) => tools.some((tool) => tool.name === name))
+  );
   const knownModules = new Set(tools.map(toolModuleType));
   const focusedModule = context.focusedWidget?.type;
+  const realtimeSelectedModules = unique(
+    tools.filter((tool) => selectedToolNames.has(tool.name)).map(toolModuleType)
+  ).filter((moduleType) => knownModules.has(moduleType));
   // Focus is contextual evidence, never a locally decided intent. Keep it in
   // the candidate set even when another module is semantically suggested so
   // Realtime can resolve omitted subjects and cross-media commands itself.
   const candidateModules = unique([
     ...semanticModules,
+    ...realtimeSelectedModules,
     ...(focusedModule && knownModules.has(focusedModule) ? [focusedModule] : [])
   ]);
   const selectedModules = candidateModules;
   const selectedModuleSet = new Set(candidateModules);
   const candidates = tools
-    .map((tool) => scoreTool(text, tool, context, selectedModules, registry))
+    .map((tool) => scoreTool(text, tool, context, selectedModules, registry, selectedToolNames))
     .filter((candidate): candidate is ToolCandidate => Boolean(candidate))
     .sort((left, right) => right.score - left.score || left.tool.name.localeCompare(right.tool.name));
 

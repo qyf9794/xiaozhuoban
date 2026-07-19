@@ -1,5 +1,6 @@
 import {
   createPassthroughSchema,
+  inferCalculatorDisplay,
   type AssistantAction,
   type AssistantActionContext,
   type AssistantToolResult
@@ -480,11 +481,13 @@ async function resolveWeatherCity(args: WeatherCityArgs): Promise<WeatherCityTar
 }
 
 async function resolveWorldClockZonesOnline(rawZones: string[]) {
+  const normalizeAlias = (value: string) => value.normalize("NFKC").trim().toLowerCase().replace(/[\s_-]+/g, "");
   const aliases = new Map(
     WORLD_CLOCK_ZONE_OPTIONS.flatMap((item) => [
-      [item.value, item.value],
-      [item.label, item.value],
-      [item.shortLabel, item.value]
+      [normalizeAlias(item.value), item.value],
+      [normalizeAlias(item.label), item.value],
+      [normalizeAlias(item.shortLabel), item.value],
+      [normalizeAlias(item.value.split("|")[0]?.split("/").at(-1) ?? ""), item.value]
     ])
   );
   const zones: string[] = [];
@@ -492,7 +495,7 @@ async function resolveWorldClockZonesOnline(rawZones: string[]) {
   for (const rawZone of rawZones) {
     const trimmed = rawZone.trim();
     if (!trimmed) continue;
-    const alias = aliases.get(trimmed);
+    const alias = aliases.get(normalizeAlias(trimmed));
     if (alias) {
       zones.push(alias);
       continue;
@@ -851,13 +854,17 @@ function widgetStateActions(store: WidgetStateActionStore): Array<AssistantActio
       async execute(args, context) {
         const target = getTarget(store, context, "calculator");
         if (isToolResult(target)) return target;
+        const currentDisplay = String(target.widget.state.calcDisplay ?? "");
+        const display = typeof args.display === "string"
+          ? inferCalculatorDisplay(args.display, currentDisplay) || args.display
+          : String(args.display);
         await patchWidgetState(store, target.widget, {
-          calcDisplay: String(args.display),
+          calcDisplay: display,
           calcAcc: null,
           calcOp: null,
           calcResetOnInput: true
         }, context);
-        return success("已更新计算器", { widgetId: target.widget.id, display: String(args.display) });
+        return success("已更新计算器", { widgetId: target.widget.id, display });
       }
     }),
     defineAction<HeadlineRefreshArgs>({

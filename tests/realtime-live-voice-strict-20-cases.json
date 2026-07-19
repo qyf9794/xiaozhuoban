@@ -1,0 +1,196 @@
+[
+  {
+    "id": "V01",
+    "command": "先把留言板关掉，音乐播放器保留",
+    "audio": "V01.wav",
+    "expected": ["widget.remove"],
+    "forbidden": ["widget.remove_all"],
+    "transcriptIncludes": ["留言板", "关"],
+    "effect": { "kind": "widget_absent", "widgetType": "messageBoard", "preserveOtherWidgets": true }
+  },
+  {
+    "id": "V02",
+    "command": "打开天气小工具，城市设成北京",
+    "audio": "V02.wav",
+    "expected": ["weather.set_city", "board.add_widget"],
+    "expectedModules": ["weather"],
+    "transcriptIncludes": ["天气", "北京"],
+    "effect": { "kind": "widget_state", "widgetType": "weather", "state": { "cityCode": "beijing" }, "visibleIncludes": ["北京"] }
+  },
+  {
+    "id": "V03",
+    "command": "换成上海看看",
+    "audio": "V03.wav",
+    "expected": ["weather.set_city"],
+    "expectedModules": ["weather"],
+    "transcriptIncludes": ["上海"],
+    "effect": { "kind": "widget_state", "widgetType": "weather", "state": { "cityCode": "shanghai" }, "visibleIncludes": ["上海"], "requireStateChange": true }
+  },
+  {
+    "id": "V04",
+    "command": "再打开世界时钟，显示东京和纽约",
+    "audio": "V04.wav",
+    "expected": ["worldClock.set_zones", "board.add_widget"],
+    "expectedModules": ["worldClock"],
+    "transcriptIncludes": ["世界时钟", "东京", "纽约"],
+    "effect": { "kind": "widget_state", "widgetType": "worldClock", "state": { "zones": ["Asia/Tokyo", "America/New_York"] }, "visibleIncludes": ["东京", "纽约"] }
+  },
+  {
+    "id": "V05",
+    "command": "打开计算器，算十二乘以八",
+    "audio": "V05.wav",
+    "expected": ["calculator.set_display", "board.add_widget"],
+    "expectedModules": ["calculator"],
+    "transcriptIncludes": ["计算器"],
+    "transcriptIncludesAny": [["十二", "12"], ["乘以", "×"], ["八", "8"]],
+    "effect": { "kind": "widget_state", "widgetType": "calculator", "state": { "calcDisplay": "96" }, "visibleIncludes": ["96"] }
+  },
+  {
+    "id": "V06",
+    "command": "再把刚才的结果除以三",
+    "audio": "V06.wav",
+    "expected": ["calculator.set_display"],
+    "expectedModules": ["calculator"],
+    "transcriptIncludes": ["结果"],
+    "transcriptIncludesAny": [["除以三", "除以3"]],
+    "effect": { "kind": "widget_state", "widgetType": "calculator", "state": { "calcDisplay": "32" }, "visibleIncludes": ["32"], "requireStateChange": true }
+  },
+  {
+    "id": "V07",
+    "command": "添加一条待办，明天下午三点开会",
+    "audio": "V07.wav",
+    "expected": ["todo.add_item", "board.add_widget"],
+    "expectedModules": ["todo"],
+    "transcriptIncludes": ["明天下午三点", "开会"],
+    "effect": { "kind": "widget_state", "widgetType": "todo", "state": { "items": [{ "text": "开会" }] }, "visibleIncludes": ["开会", "截止"] }
+  },
+  {
+    "id": "V08",
+    "command": "再加一条，星期五提交测试报告",
+    "audio": "V08.wav",
+    "expected": ["todo.add_item"],
+    "expectedModules": ["todo"],
+    "transcriptIncludes": ["星期五", "提交测试报告"],
+    "effect": { "kind": "widget_state", "widgetType": "todo", "state": { "items": [{ "text": "开会" }, { "text": "提交测试报告" }] }, "visibleIncludes": ["开会", "提交测试报告", "截止"], "requireStateChange": true }
+  },
+  {
+    "id": "V09",
+    "command": "把开会那条待办完成掉",
+    "audio": "V09.wav",
+    "expected": ["todo.complete_item"],
+    "expectedModules": ["todo"],
+    "transcriptIncludes": ["开会", "完成"],
+    "effect": { "kind": "widget_state", "widgetType": "todo", "state": { "items": [{ "text": "提交测试报告" }] }, "stateExcludes": ["开会"], "visibleIncludes": ["提交测试报告", "截止"], "requireStateChange": true }
+  },
+  {
+    "id": "V10",
+    "command": "设一个五分钟倒计时并马上开始",
+    "audio": "V10.wav",
+    "expected": ["countdown.set", "board.add_widget"],
+    "expectedModules": ["countdown"],
+    "transcriptIncludes": ["五分钟", "倒计时", "开始"],
+    "effect": { "kind": "widget_state", "widgetType": "countdown", "state": { "totalSeconds": 300, "running": true }, "visibleIncludes": ["倒计时"] }
+  },
+  {
+    "id": "V11",
+    "command": "先暂停它",
+    "audio": "V11.wav",
+    "expected": ["countdown.pause"],
+    "expectedModules": ["countdown"],
+    "transcriptIncludes": ["暂停"],
+    "effect": { "kind": "widget_state", "widgetType": "countdown", "state": { "totalSeconds": 300, "running": false, "targetEndsAt": 0 }, "visibleIncludes": ["倒计时"], "requireStateChange": true }
+  },
+  {
+    "id": "V12",
+    "command": "继续刚才的倒计时",
+    "audio": "V12.wav",
+    "expected": ["countdown.resume"],
+    "expectedModules": ["countdown"],
+    "transcriptIncludes": ["继续", "倒计时"],
+    "effect": { "kind": "widget_state", "widgetType": "countdown", "state": { "totalSeconds": 300, "running": true }, "visibleIncludes": ["倒计时"], "requireStateChange": true }
+  },
+  {
+    "id": "V13",
+    "command": "打开便签，写下周五提交测试报告",
+    "audio": "V13.wav",
+    "expected": ["note.write", "board.add_widget"],
+    "expectedModules": ["note"],
+    "transcriptIncludes": ["便签", "周五提交测试报告"],
+    "effect": { "kind": "widget_state", "widgetType": "note", "state": { "content": "周五提交测试报告" }, "visibleIncludes": ["周五提交测试报告"] }
+  },
+  {
+    "id": "V14",
+    "command": "再追加一句，记得附上截图",
+    "audio": "V14.wav",
+    "expected": ["note.write"],
+    "expectedModules": ["note"],
+    "transcriptIncludes": ["追加", "附上截图"],
+    "effect": { "kind": "widget_state", "widgetType": "note", "state": { "content": "周五提交测试报告\n记得附上截图" }, "visibleIncludes": ["周五提交测试报告", "记得附上截图"], "requireStateChange": true }
+  },
+  {
+    "id": "V15",
+    "command": "把账号 demo at example dot com 保存到剪贴板",
+    "audio": "V15.wav",
+    "expected": ["clipboard.add_text", "board.add_widget"],
+    "expectedModules": ["clipboard"],
+    "transcriptIncludes": ["账号"],
+    "transcriptIncludesAny": [["剪贴板", "点贴板"], ["demo@example.com", "demo at example dot com"]],
+    "effect": { "kind": "widget_state", "widgetType": "clipboard", "state": { "items": [{ "text": "demo@example.com" }] }, "visibleIncludes": ["demo@example.com"] }
+  },
+  {
+    "id": "V16",
+    "command": "在音乐里搜索王菲的红豆，先别播放",
+    "audio": "V16.wav",
+    "expected": ["music.search"],
+    "forbidden": ["music.play"],
+    "expectedModules": ["music"],
+    "expectedQueryIncludes": ["王菲", "红豆"],
+    "transcriptIncludes": ["音乐", "王菲", "红豆", "播放"],
+    "artist": "王菲",
+    "title": "红豆",
+    "effect": { "kind": "widget_state", "widgetType": "music", "state": { "query": "王菲 红豆" }, "visibleIncludes": ["红豆", "王菲"], "requireStateChange": true }
+  },
+  {
+    "id": "V17",
+    "command": "播放搜索结果里的第一首",
+    "audio": "V17.wav",
+    "expected": ["music.play"],
+    "expectedModules": ["music"],
+    "transcriptIncludes": ["播放", "第一首"],
+    "artist": "王菲",
+    "title": "红豆",
+    "requirePlaybackVerified": true,
+    "effect": { "kind": "music", "state": "playing", "title": "红豆", "minimumAdvanceSeconds": 0.05 }
+  },
+  {
+    "id": "V18",
+    "command": "暂停一下",
+    "audio": "V18.wav",
+    "expected": ["music.pause"],
+    "expectedModules": ["music"],
+    "transcriptIncludes": ["暂停"],
+    "effect": { "kind": "music", "state": "paused", "title": "红豆" }
+  },
+  {
+    "id": "V19",
+    "command": "继续播放刚才那首歌",
+    "audio": "V19.wav",
+    "expected": ["music.resume", "music.play"],
+    "expectedModules": ["music"],
+    "transcriptIncludes": ["继续播放", "刚才", "歌"],
+    "artist": "王菲",
+    "title": "红豆",
+    "requirePlaybackVerified": true,
+    "effect": { "kind": "music", "state": "playing", "title": "红豆", "minimumAdvanceSeconds": 0.05 }
+  },
+  {
+    "id": "V20",
+    "command": "最后关闭音乐播放器，其他小工具都保留",
+    "audio": "V20.wav",
+    "expected": ["widget.remove"],
+    "forbidden": ["widget.remove_all"],
+    "expectedModules": ["music"],
+    "transcriptIncludes": ["关闭", "音乐播放器", "其他小工具", "保留"],
+    "effect": { "kind": "widget_absent", "widgetType": "music", "preserveOtherWidgets": true }
+  }
+]

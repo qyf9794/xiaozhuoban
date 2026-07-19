@@ -81,6 +81,10 @@ export function getMusicKitDeveloperToken(): string {
   return String(import.meta.env.VITE_APPLE_MUSIC_DEVELOPER_TOKEN ?? "").trim();
 }
 
+export function shouldUseAppleMusicCatalog(configured: boolean, authorized: boolean): boolean {
+  return configured && authorized;
+}
+
 export function formatMusicArtworkUrl(url: string | undefined, size = 240): string | undefined {
   if (!url) return undefined;
   return url.replace("{w}", String(size)).replace("{h}", String(size));

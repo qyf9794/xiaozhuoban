@@ -830,7 +830,7 @@ describe("stage-one assistant acceptance scenarios", () => {
     expect(confirmed.result.status).toBe("success");
     expect(confirmed.result.message).toContain("已清理剪贴板历史");
     expect(confirmed.result.message).toContain("已新增待办");
-    expect(getWidget("todo")?.state.items).toMatchObject([{ text: "明天买牛奶" }]);
+    expect(getWidget("todo")?.state.items).toMatchObject([{ text: "买牛奶" }]);
     expect(modelInputs).toEqual([]);
   });
 

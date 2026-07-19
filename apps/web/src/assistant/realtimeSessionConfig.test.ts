@@ -147,7 +147,7 @@ describe("realtime session config", () => {
       interrupt_response: true
     });
     expect(payload.session.audio.input.transcription).toMatchObject({
-      model: "gpt-4o-mini-transcribe",
+      model: "gpt-4o-transcribe",
       language: "zh",
       prompt: expect.stringContaining("准确保留")
     });
@@ -178,7 +178,7 @@ describe("realtime session config", () => {
 
   it("enables low-cost input audio transcription for user speech diagnostics", () => {
     expect(createRealtimeInputTranscription()).toMatchObject({
-      model: "gpt-4o-mini-transcribe",
+      model: "gpt-4o-transcribe",
       language: "zh",
       prompt: expect.stringContaining("搜索结果第一首")
     });
@@ -194,7 +194,7 @@ describe("realtime session config", () => {
           interrupt_response: true
         },
         transcription: {
-          model: "gpt-4o-mini-transcribe",
+          model: "gpt-4o-transcribe",
           language: "zh",
           prompt: expect.stringContaining("准确保留")
         }

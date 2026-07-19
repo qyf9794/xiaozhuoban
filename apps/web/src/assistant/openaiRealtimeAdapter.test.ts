@@ -14,6 +14,7 @@ import {
   handleRealtimeFunctionCallEvent,
   isCurrentRealtimeConnectAttempt,
   isRealtimeAssistantReplyComplete,
+  normalizeRealtimeToolArguments,
   parseRealtimeFunctionCallEvent,
   reduceRealtimeActiveResponseId,
   resolveRealtimeConnectFailureStatus,
@@ -27,6 +28,49 @@ import {
 } from "./openaiRealtimeAdapter";
 
 describe("OpenAI realtime adapter helpers", () => {
+  it("infers append mode for note continuations without changing the content", () => {
+    expect(
+      normalizeRealtimeToolArguments(
+        "note.write",
+        { content: "记得附上截图" },
+        "再追加一句，记得附上截图"
+      )
+    ).toEqual({ content: "记得附上截图", mode: "append" });
+
+    expect(
+      normalizeRealtimeToolArguments("note.write", { content: "新的正文" }, "把便签替换成新的正文")
+    ).toEqual({ content: "新的正文" });
+  });
+
+  it("canonicalizes structured music entities into one query string", () => {
+    expect(
+      normalizeRealtimeToolArguments("music.search", {
+        query: ["王菲", "红豆"],
+        firstOnly: true
+      })
+    ).toEqual({ query: "王菲 红豆", firstOnly: true });
+
+    expect(
+      normalizeRealtimeToolArguments("music.play", {
+        query: { artist: "王菲", title: "红豆" }
+      })
+    ).toEqual({ query: "王菲 红豆" });
+  });
+
+  it("canonicalizes date-only todos and removes world-clock control tokens", () => {
+    expect(
+      normalizeRealtimeToolArguments(
+        "todo.add_item",
+        { text: "星期五提交测试报告", dueAt: "2026-07-24T01:00:00.000Z" },
+        "再加一条，星期五提交测试报告"
+      )
+    ).toEqual({ text: "提交测试报告", dueAt: "2026-07-24T01:00:00.000Z" });
+
+    expect(
+      normalizeRealtimeToolArguments("worldClock.set_zones", { zones: ["在打开", "东京", "纽约"] })
+    ).toEqual({ zones: ["东京", "纽约"] });
+  });
+
   it("detects semantically truncated assistant replies", () => {
     expect(isRealtimeAssistantReplyComplete("正在播放《晴天》。")).toBe(true);
     expect(isRealtimeAssistantReplyComplete("正在播放《晴天》，而不是你之前")).toBe(false);
@@ -3756,12 +3800,27 @@ describe("OpenAI realtime adapter helpers", () => {
   it("falls back when a voice transcript finishes without a command tool call", async () => {
     const fallbackInputs: Array<{ input: string; commandTraceId?: string; itemId?: string }> = [];
     const diagnostics: Array<{ type: string; commandTraceId?: string; status?: string; data?: Record<string, unknown> }> = [];
+    const sent: unknown[] = [];
     const adapter = new OpenAIRealtimeWebRtcAdapter({
       onUnhandledUserTranscript(input, options) {
         fallbackInputs.push({ input, ...options });
       },
       onDiagnostic(event) {
         diagnostics.push(event);
+      }
+    });
+    Object.assign(adapter as unknown as {
+      connectMode: "audio";
+      sessionReady: boolean;
+      dataChannel: { readyState: string; send: (payload: string) => void };
+    }, {
+      connectMode: "audio",
+      sessionReady: true,
+      dataChannel: {
+        readyState: "open",
+        send(payload: string) {
+          sent.push(JSON.parse(payload) as unknown);
+        }
       }
     });
 
@@ -3804,9 +3863,11 @@ describe("OpenAI realtime adapter helpers", () => {
     const trace = diagnostics.find((event) => event.type === "realtime.voice.speech_started")?.commandTraceId;
     expect(fallbackInputs).toEqual([{ input: "关闭所有小工具", commandTraceId: trace, itemId: "item_voice_close_all" }]);
     expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "realtime.selector_tool_response.retry", status: "sent", commandTraceId: trace }),
       expect.objectContaining({ type: "realtime.voice.user_transcript_unhandled", status: "started", commandTraceId: trace }),
       expect.objectContaining({ type: "realtime.voice.user_transcript_unhandled", status: "success", commandTraceId: trace })
     ]));
+    expect(JSON.stringify(sent)).toContain("assistant__dot__select_tool");
   });
 
   it("does not run transcript fallback after a unified command tool call", async () => {
@@ -4481,7 +4542,7 @@ describe("OpenAI realtime adapter helpers", () => {
     expect(serialized).not.toContain("assistant__dot__execute_command");
     expect(serialized).toContain("widget__dot__remove");
     expect(serialized).toContain("semantic_vad");
-    expect(serialized).toContain("gpt-4o-mini-transcribe");
+    expect(serialized).toContain("gpt-4o-transcribe");
     expect(serialized).toContain("wi_music");
     expect(serialized).not.toContain("music__dot__pause");
     expect(serialized).not.toContain("private note");
@@ -4618,10 +4679,10 @@ describe("OpenAI realtime adapter helpers", () => {
         expect.objectContaining({
           type: "realtime.tool_selection.success",
           status: "success",
-          toolName: "assistant.get_desktop_state",
+          toolName: "widget.move",
           data: expect.objectContaining({
-            candidateTools: ["assistant.get_desktop_state", "widget.move", "weather.set_city"],
-            scopedTools: ["assistant.get_desktop_state", "widget.move", "weather.set_city"]
+            candidateTools: ["widget.move", "weather.set_city", "assistant.get_desktop_state"],
+            scopedTools: ["widget.move", "weather.set_city", "assistant.get_desktop_state"]
           })
         })
       ])

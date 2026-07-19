@@ -1,0 +1,93 @@
+{
+  "generatedAt": "2026-07-18T15:44:08.812Z",
+  "sourceCases": "/Users/qianyifeng/CodexProjects/xiaozhuoban/tests/realtime-live-voice-strict-20-cases.json",
+  "voice": "Tingting",
+  "rate": "175",
+  "gapMs": 12000,
+  "leadingMs": 3000,
+  "tailMs": 25000,
+  "sessionAudio": "/Users/qianyifeng/CodexProjects/xiaozhuoban/tests/audio/realtime-live-voice-strict-20-final/voice-session.wav",
+  "sessionDurationSeconds": 317.352125,
+  "commands": [
+    {
+      "id": "V01",
+      "command": "先把留言板关掉，音乐播放器保留"
+    },
+    {
+      "id": "V02",
+      "command": "打开天气小工具，城市设成北京"
+    },
+    {
+      "id": "V03",
+      "command": "换成上海看看"
+    },
+    {
+      "id": "V04",
+      "command": "再打开世界时钟，显示东京和纽约"
+    },
+    {
+      "id": "V05",
+      "command": "打开计算器，算十二乘以八"
+    },
+    {
+      "id": "V06",
+      "command": "再把刚才的结果除以三"
+    },
+    {
+      "id": "V07",
+      "command": "添加一条待办，明天下午三点开会"
+    },
+    {
+      "id": "V08",
+      "command": "再加一条，星期五提交测试报告"
+    },
+    {
+      "id": "V09",
+      "command": "把开会那条待办完成掉"
+    },
+    {
+      "id": "V10",
+      "command": "设一个五分钟倒计时并马上开始"
+    },
+    {
+      "id": "V11",
+      "command": "先暂停它"
+    },
+    {
+      "id": "V12",
+      "command": "继续刚才的倒计时"
+    },
+    {
+      "id": "V13",
+      "command": "打开便签，写下周五提交测试报告"
+    },
+    {
+      "id": "V14",
+      "command": "再追加一句，记得附上截图"
+    },
+    {
+      "id": "V15",
+      "command": "把账号 demo at example dot com 保存到剪贴板"
+    },
+    {
+      "id": "V16",
+      "command": "在音乐里搜索王菲的红豆，先别播放"
+    },
+    {
+      "id": "V17",
+      "command": "播放搜索结果里的第一首"
+    },
+    {
+      "id": "V18",
+      "command": "暂停一下"
+    },
+    {
+      "id": "V19",
+      "command": "继续播放刚才那首歌"
+    },
+    {
+      "id": "V20",
+      "command": "最后关闭音乐播放器，其他小工具都保留"
+    }
+  ]
+}

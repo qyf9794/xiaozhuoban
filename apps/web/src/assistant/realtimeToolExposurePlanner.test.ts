@@ -89,6 +89,61 @@ function context(overrides: Partial<CompactAssistantContext> = {}): CompactAssis
 }
 
 describe("RealtimeToolExposurePlanner", () => {
+  it("uses a registered Realtime selection as second-stage exposure evidence", () => {
+    const plan = buildRealtimeToolExposurePlan(
+      "再把刚才的结果除以三",
+      context({
+        widgets: [
+          {
+            widgetId: "wi_calculator",
+            definitionId: "wd_calculator",
+            type: "calculator",
+            name: "计算器",
+            order: 1,
+            summary: "96",
+            focused: true
+          }
+        ],
+        focusedWidget: {
+          widgetId: "wi_calculator",
+          definitionId: "wd_calculator",
+          type: "calculator",
+          name: "计算器",
+          order: 1,
+          summary: "96",
+          focused: true
+        },
+        widgetCountsByType: { calculator: 1 }
+      }),
+      tools,
+      undefined,
+      { selectedToolNames: ["calculator.set_display"] }
+    );
+
+    expect(plan.exposedTools.map((item) => item.name)).toContain("calculator.set_display");
+    expect(plan.reasons["calculator.set_display"]).toContain("realtime_selected_tool");
+  });
+
+  it("keeps a safe selected window action exposed when the selector target omits the verb", () => {
+    const plan = buildRealtimeToolExposurePlan("留言板、音乐播放", context(), tools, undefined, {
+      selectedToolNames: ["widget.remove"]
+    });
+
+    expect(plan.exposedTools.map((item) => item.name)).toContain("widget.remove");
+    expect(plan.reasons["widget.remove"]).toContain("realtime_selected_tool");
+  });
+
+  it("does not let selected-tool evidence bypass destructive or deferred safety", () => {
+    const plan = buildRealtimeToolExposurePlan("看一下剪贴板", context(), tools, undefined, {
+      selectedToolNames: ["clipboard.clear", "gomoku.play"]
+    });
+
+    expect(plan.exposedTools.map((item) => item.name)).not.toContain("clipboard.clear");
+    expect(plan.exposedTools.map((item) => item.name)).not.toContain("gomoku.play");
+    expect(plan.excludedReasons["clipboard.clear"]).toBe("destructive_not_requested");
+    expect(plan.excludedReasons["gomoku.play"]).toBe("deferred_scope");
+  });
+
   it("only exposes the AI dialog for explicit AI creation intent", () => {
     const sidebarPlan = buildRealtimeToolExposurePlan("显示侧边栏", context(), tools);
     const aiPlan = buildRealtimeToolExposurePlan("帮我新建一个 AI 小工具", context(), tools);

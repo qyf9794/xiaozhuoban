@@ -25,6 +25,7 @@ import {
   requestMusicKitAuthorizationFromUserGesture,
   searchAppleMusicCatalogApi,
   searchAppleMusicCatalog,
+  shouldUseAppleMusicCatalog,
   type ITunesTrack,
   type MusicKitInstanceLike,
   type MusicSearchItem
@@ -3299,6 +3300,13 @@ export function BuiltinWidgetView({
     useEffect(() => {
       const audio = new Audio();
       audio.preload = "none";
+      // Keep the real media element in the document so accessibility tooling,
+      // browser diagnostics, and end-to-end verification can inspect the same
+      // clock used by playback. This is the authoritative player, not a mirror.
+      audio.hidden = true;
+      audio.setAttribute("aria-hidden", "true");
+      audio.dataset.musicWidgetId = instance.id;
+      document.body.appendChild(audio);
       const onTimeUpdate = () => {
         if (!audio.duration || Number.isNaN(audio.duration)) {
           setProgress(0);
@@ -3358,6 +3366,7 @@ export function BuiltinWidgetView({
         audio.removeEventListener("play", onPlay);
         audio.removeEventListener("pause", onPause);
         audio.removeEventListener("ended", onEnded);
+        audio.remove();
       };
     }, []);
 
@@ -3598,15 +3607,21 @@ export function BuiltinWidgetView({
         setLoading(false);
         return [];
       }
+      const useAppleMusic = shouldUseAppleMusicCatalog(
+        musicKitAvailable,
+        isMusicKitAuthorized(musicKitRef.current)
+      );
       logMusicDiagnostic("music.search.start", "started", {
         query: keyword,
-        source: musicKitAvailable ? "apple" : "itunes"
+        source: useAppleMusic ? "apple" : "itunes",
+        musicKitConfigured: musicKitAvailable,
+        musicKitAuthorized: useAppleMusic
       });
       const seq = ++searchSeqRef.current;
       setLoading(true);
       setError("");
       try {
-        const items = musicKitAvailable ? await searchAppleMusic(keyword) : normalizeITunesTracks(await searchITunesTracks(keyword));
+        const items = useAppleMusic ? await searchAppleMusic(keyword) : normalizeITunesTracks(await searchITunesTracks(keyword));
         if (seq !== searchSeqRef.current) return [];
         setResults(items);
         const firstItem = items[0];
@@ -3618,7 +3633,7 @@ export function BuiltinWidgetView({
         }
         logMusicDiagnostic("music.search.result", items.length ? "success" : "empty", {
           query: keyword,
-          source: musicKitAvailable ? "apple" : "itunes",
+          source: useAppleMusic ? "apple" : "itunes",
           count: items.length,
           firstSource: items[0]?.source,
           firstKind: items[0]?.kind,
@@ -3628,7 +3643,7 @@ export function BuiltinWidgetView({
           appleQueuePreparationSeqRef.current += 1;
           setPreparedAppleTrackId(null);
           setPlaybackNeedsGestureItemId(null);
-          setError(musicKitAvailable ? "未找到 Apple Music 结果" : "未找到可试听结果");
+          setError(useAppleMusic ? "未找到 Apple Music 结果" : "未找到可试听结果");
         }
         return items;
       } catch (searchError) {
@@ -3640,7 +3655,7 @@ export function BuiltinWidgetView({
         setResults([]);
         logMusicDiagnostic("music.search.result", "failed", {
           query: keyword,
-          source: musicKitAvailable ? "apple" : "itunes",
+          source: useAppleMusic ? "apple" : "itunes",
           message: searchError instanceof Error ? searchError.message : "搜索失败"
         });
         return [];
@@ -4267,10 +4282,10 @@ export function BuiltinWidgetView({
 
     const activeItem = results.find((item) => item.id === activeItemId) ?? results[0];
     const kindLabel: Record<string, string> = { song: "歌曲", album: "专辑", playlist: "歌单" };
-    const sourceLabel = playbackStatus || (musicKitAvailable ? musicKitStatus : "iTunes 试听模式");
     const musicKitLoggedIn = isMusicKitAuthorized(musicKitRef.current) || [musicKitStatus, playbackStatus].some(
       (status) => status.includes("Apple Music 已登录") || status.includes("Apple Music 播放中")
     );
+    const sourceLabel = playbackStatus || (musicKitLoggedIn ? musicKitStatus : "iTunes 试听模式");
     const showMusicLogin = musicKitAvailable && !musicKitLoggedIn;
     const visibleProgress = activeItem ? clampPercent(progress) : 0;
     const gesturePlaybackItem = playbackNeedsGestureItemId
@@ -4578,7 +4593,11 @@ export function BuiltinWidgetView({
           })}
           {!loading && !results.length && !error ? (
             <div style={{ fontSize: 12, color: "#64748b" }}>
-              {musicKitAvailable ? "登录后可搜索并播放 Apple Music 歌曲、专辑和歌单。" : "输入关键词后搜索并试听 30 秒。"}
+              {musicKitLoggedIn
+                ? "可搜索并播放 Apple Music 歌曲、专辑和歌单。"
+                : musicKitAvailable
+                  ? "未登录时可试听 30 秒；登录后可播放 Apple Music 完整内容。"
+                  : "输入关键词后搜索并试听 30 秒。"}
             </div>
           ) : null}
         </div>

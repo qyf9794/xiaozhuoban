@@ -133,7 +133,7 @@ describe("realtime session API", () => {
       interrupt_response: true
     });
     expect(payload.session.audio.input.transcription).toMatchObject({
-      model: "gpt-4o-mini-transcribe",
+      model: "gpt-4o-transcribe",
       language: "zh",
       prompt: expect.stringContaining("准确保留")
     });

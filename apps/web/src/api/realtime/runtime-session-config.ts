@@ -30,7 +30,7 @@ export const XIAOZHUOBAN_REALTIME_MINI_MODEL = "gpt-realtime-2.1-mini";
 export const XIAOZHUOBAN_REALTIME_HIGH_ACCURACY_MODEL = "gpt-realtime-2.1";
 export const XIAOZHUOBAN_REALTIME_MODEL = XIAOZHUOBAN_REALTIME_MINI_MODEL;
 export const XIAOZHUOBAN_DEFAULT_TEXT_TOOL_MODEL = "gpt-4.1-mini";
-export const XIAOZHUOBAN_REALTIME_INPUT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
+export const XIAOZHUOBAN_REALTIME_INPUT_TRANSCRIPTION_MODEL = "gpt-4o-transcribe";
 export const DEFAULT_REALTIME_CLIENT_SECRET_TTL_SECONDS = 600;
 export const XIAOZHUOBAN_REALTIME_OUTPUT_VOICE = "marin";
 export const XIAOZHUOBAN_REALTIME_MAX_OUTPUT_TOKENS = 480;
@@ -86,7 +86,7 @@ export function createRealtimeInputTranscription() {
     model: XIAOZHUOBAN_REALTIME_INPUT_TRANSCRIPTION_MODEL,
     language: "zh",
     prompt:
-      "中文小桌板语音控制。准确保留应用、小工具、歌手、歌曲、频道和操作名称；常见音乐操作包括搜索、播放、暂停、继续、上一首、下一首、搜索结果第一首。"
+      "中文小桌板语音控制。准确保留应用、小工具、歌手、歌曲、频道、操作名称，以及日期、星期和具体时间等时间实体。时间词表包括周一、周二、周三、周四、周五、周六、周日，以及上午、中午、下午、晚上；结合声学信号区分星期与日内时段，不要把“周”替换成“中”。常见音乐操作包括搜索、播放、暂停、继续、上一首、下一首、搜索结果第一首。"
   };
 }
 

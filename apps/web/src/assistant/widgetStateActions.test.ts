@@ -433,6 +433,38 @@ describe("widget state assistant actions", () => {
     expect(getWidget("clipboard")?.state.items).toMatchObject([{ text: "一段剪贴板内容", pinned: true }]);
   });
 
+  it("evaluates arithmetic expressions before committing calculator display state", async () => {
+    const { store, getWidget } = createStore();
+    const registry = createRegistry(store);
+
+    const result = await registry.execute(
+      { id: "call_calc_expression", name: "calculator.set_display", arguments: { display: "96除以3" }, source: "realtime" },
+      { target: targetFor("calculator"), now: () => NOW }
+    );
+
+    expect(result.status).toBe("success");
+    expect(result.data).toMatchObject({ display: "32" });
+    expect(getWidget("calculator")?.state.calcDisplay).toBe("32");
+  });
+
+  it("evaluates relative calculator follow-ups against the committed display", async () => {
+    const { store, getWidget } = createStore();
+    const registry = createRegistry(store);
+
+    await registry.execute(
+      { id: "call_calc_seed", name: "calculator.set_display", arguments: { display: "96" }, source: "realtime" },
+      { target: targetFor("calculator"), now: () => NOW }
+    );
+    const result = await registry.execute(
+      { id: "call_calc_followup", name: "calculator.set_display", arguments: { display: "再把刚才的结果除以三" }, source: "realtime" },
+      { target: targetFor("calculator"), now: () => NOW }
+    );
+
+    expect(result.status).toBe("success");
+    expect(result.data).toMatchObject({ display: "32" });
+    expect(getWidget("calculator")?.state.calcDisplay).toBe("32");
+  });
+
   it("normalizes natural Nasdaq market arguments to the Nasdaq 100 code", async () => {
     const { store, getWidget } = createStore();
     const registry = createRegistry(store);
@@ -555,6 +587,26 @@ describe("widget state assistant actions", () => {
     expect(getWidget("worldClock")?.state.worldClockZoneLabels).toEqual({
       "America/Los_Angeles|geo-5809844": "西雅图"
     });
+  });
+
+  it("resolves English IANA city aliases locally before online geocoding", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { store, getWidget } = createStore();
+    const registry = createRegistry(store);
+
+    await registry.execute(
+      { id: "call_english_zones", name: "worldClock.set_zones", arguments: { zones: ["Tokyo", "New York"] }, source: "test" },
+      { target: targetFor("worldClock"), now: () => NOW }
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getWidget("worldClock")?.state.zones).toEqual([
+      "Asia/Shanghai",
+      "Asia/Tokyo",
+      "America/New_York",
+      "America/Los_Angeles"
+    ]);
   });
 
   it("accepts area, time, and currency converter categories", async () => {

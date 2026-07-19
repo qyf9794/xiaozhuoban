@@ -367,7 +367,7 @@ describe("Realtime text tool call fallback", () => {
     expect(update?.session.tool_choice).toBe("required");
     expect(update?.session.audio?.input?.turn_detection).toMatchObject({ type: "semantic_vad", create_response: true });
     expect(update?.session.audio?.input?.transcription).toMatchObject({
-      model: "gpt-4o-mini-transcribe",
+      model: "gpt-4o-transcribe",
       language: "zh",
       prompt: expect.stringContaining("准确保留")
     });

@@ -10,6 +10,7 @@ import {
   type RealtimeScopedModuleContext,
   inferTodoAdd,
   inferTodoCompleteText,
+  inferCalculatorDisplay,
   parseCountdownDurationSeconds
 } from "@xiaozhuoban/assistant-core";
 import type { AssistantRealtimeAdapter } from "./AssistantHarness";
@@ -299,12 +300,11 @@ export function resolveRealtimeMicrophoneLevel(samples: Uint8Array): number {
 
 function normalizeMusicToolArguments(args: Record<string, unknown>): Record<string, unknown> {
   const nextArgs = { ...args };
-  const keywordValues = Array.isArray(nextArgs.keywords) ? nextArgs.keywords : [nextArgs.keywords];
   const queryParts = [
     nextArgs.query,
     nextArgs.q,
     nextArgs.keyword,
-    ...keywordValues,
+    nextArgs.keywords,
     nextArgs.term,
     nextArgs.search,
     nextArgs.artist,
@@ -319,6 +319,11 @@ function normalizeMusicToolArguments(args: Record<string, unknown>): Record<stri
     nextArgs.musicHint,
     nextArgs.targetHint
   ]
+    .flatMap((value): unknown[] => {
+      if (Array.isArray(value)) return value.flatMap((item) => (isRecord(item) ? Object.values(item) : [item]));
+      if (isRecord(value)) return Object.values(value);
+      return [value];
+    })
     .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
     .map((value) => value.trim());
   const query = Array.from(new Set(queryParts)).join(" ");
@@ -763,10 +768,17 @@ function canOpenMissingWidgetForSelectedTool(
   return false;
 }
 
-function normalizeNoteToolArguments(args: Record<string, unknown>): Record<string, unknown> {
+function normalizeNoteToolArguments(args: Record<string, unknown>, fallbackText = ""): Record<string, unknown> {
   const nextArgs = { ...args };
   if (typeof nextArgs.content !== "string" && typeof nextArgs.text === "string") {
     nextArgs.content = nextArgs.text;
+  }
+  if (
+    nextArgs.mode !== "append" &&
+    nextArgs.mode !== "replace" &&
+    /(?:追加|补充|续写|接着写|继续写|再(?:写|记|加|添)|加上|添上)/.test(normalizeRealtimeIntentText(fallbackText))
+  ) {
+    nextArgs.mode = "append";
   }
   delete nextArgs.text;
   return nextArgs;
@@ -791,6 +803,7 @@ function normalizeTodoToolArguments(toolName: string, args: Record<string, unkno
   if (toolName === "todo.add_item" && typeof nextArgs.text === "string") {
     let nextText = nextArgs.text;
     const inferred = fallbackText ? inferTodoAdd(fallbackText, now) : undefined;
+    const inferredFromArgument = inferTodoAdd(`添加待办 ${nextText}`, now);
     if (typeof nextArgs.dueAt !== "string" && inferred?.dueAt) {
       nextArgs.dueAt = inferred.dueAt;
     }
@@ -799,6 +812,10 @@ function normalizeTodoToolArguments(toolName: string, args: Record<string, unkno
       .trim() || nextText;
     if (inferred?.text && (/([今明后]天|今晚|明早|明晚|下周|星期|礼拜|\d{1,2}[:：]\d{2}|[零〇一二两三四五六七八九十\d]+点|提醒我|提醒|叫我|记得|别忘了)/.test(nextText) || nextText.length > inferred.text.length + 4)) {
       nextText = inferred.text;
+    }
+    if ((typeof nextArgs.dueAt === "string" || inferredFromArgument.dueAt) && inferredFromArgument.text) {
+      nextText = inferredFromArgument.text;
+      if (typeof nextArgs.dueAt !== "string" && inferredFromArgument.dueAt) nextArgs.dueAt = inferredFromArgument.dueAt;
     }
     nextArgs.text = nextText;
   }
@@ -859,8 +876,17 @@ function extractWorldClockZonesFromText(input: string): string[] {
 function normalizeWorldClockToolArguments(args: Record<string, unknown>, fallbackText = ""): Record<string, unknown> {
   const zones = args.zones ?? args.cities ?? args.city ?? args.timezones ?? args.timezone ?? args.locations ?? args.target ?? args.targetHint;
   const nextArgs = { ...args };
-  if (typeof zones === "string" && zones.trim()) nextArgs.zones = [zones.trim()];
-  if (Array.isArray(zones)) nextArgs.zones = zones.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  const cleanZone = (value: string) => value
+    .replace(/^(?:再|先|在)?(?:打开|开启|新增|添加|显示|查看|看看|查询|查)\s*/, "")
+    .replace(/^(?:在|于)\s*/, "")
+    .trim();
+  if (typeof zones === "string" && cleanZone(zones)) nextArgs.zones = [cleanZone(zones)];
+  if (Array.isArray(zones)) {
+    nextArgs.zones = zones
+      .filter((item): item is string => typeof item === "string")
+      .map(cleanZone)
+      .filter((item) => item.length > 1 && !/^(在|于|的|了)$/.test(item));
+  }
   if ((!Array.isArray(nextArgs.zones) || nextArgs.zones.length === 0) && fallbackText) {
     const fallbackZones = extractWorldClockZonesFromText(fallbackText);
     if (fallbackZones.length > 0) nextArgs.zones = fallbackZones;
@@ -973,7 +999,7 @@ function normalizeWeatherToolArguments(args: Record<string, unknown>, fallbackTe
   return nextArgs;
 }
 
-function normalizeRealtimeToolArguments(
+export function normalizeRealtimeToolArguments(
   toolName: string,
   args: Record<string, unknown>,
   fallbackText = "",
@@ -1013,7 +1039,7 @@ function normalizeRealtimeToolArguments(
     nextArgs = normalizeCountdownToolArguments(nextArgs, fallbackText);
   }
   if (toolName === "note.write") {
-    nextArgs = normalizeNoteToolArguments(nextArgs);
+    nextArgs = normalizeNoteToolArguments(nextArgs, fallbackText);
   }
   if (toolName === "market.set_indices") {
     nextArgs = normalizeMarketToolArguments(nextArgs, fallbackText);
@@ -1091,7 +1117,11 @@ function normalizeRealtimeToolArguments(
   if (toolName === "calculator.set_display") {
     nextArgs = { ...nextArgs };
     const display = nextArgs.display ?? nextArgs.expression ?? nextArgs.result ?? nextArgs.value ?? fallbackText;
-    if ((typeof display === "string" && display.trim()) || typeof display === "number") nextArgs.display = display;
+    const evaluatedDisplay = typeof display === "string" ? inferCalculatorDisplay(display) : "";
+    const evaluatedFallback = fallbackText ? inferCalculatorDisplay(fallbackText) : "";
+    if (evaluatedDisplay) nextArgs.display = evaluatedDisplay;
+    else if (evaluatedFallback) nextArgs.display = evaluatedFallback;
+    else if ((typeof display === "string" && display.trim()) || typeof display === "number") nextArgs.display = display;
     delete nextArgs.expression;
     delete nextArgs.result;
     delete nextArgs.value;
@@ -1290,15 +1320,23 @@ function inferWindowToolTargetType(
   hint?: RealtimeTargetHint
 ) {
   const args = isRecord(command.args) ? command.args : {};
+  const explicitTargetText = [
+    compactTargetText(args.targetText),
+    compactTargetText(args.target),
+    compactTargetText(args.widgetRef),
+    compactTargetText(hint?.targetHint)
+  ].join(" ");
+  const explicitTarget = context.widgets
+    .map((widget) => ({ widget, score: scoreWindowToolTarget(explicitTargetText, widget) }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.widget.order - b.widget.order)[0]?.widget;
+  if (explicitTarget?.type) return explicitTarget.type;
   const explicitModule = hint?.selectedModule || (command.module && !["widget", "board", "app", "app-shell"].includes(command.module) ? command.module : "");
   if (explicitModule && context.widgets.some((widget) => widget.type === explicitModule)) {
     return explicitModule;
   }
   const targetText = [
-    compactTargetText(args.targetText),
-    compactTargetText(args.target),
-    compactTargetText(args.widgetRef),
-    compactTargetText(hint?.targetHint),
+    explicitTargetText,
     compactTargetText(hint?.userCommand),
     compactTargetText(plan.sourceText),
     compactTargetText(plan.normalizedText)
@@ -1511,6 +1549,20 @@ function completeRealtimeToolArguments(
   }
   if (call.name === "tv.play" || call.name === "tv.select_channel") {
     return { ...call, arguments: completeTvChannelArgumentsFromContext(call.arguments, context, fallbackText) };
+  }
+  if (call.name === "calculator.set_display") {
+    const calculator = context.focusedWidget?.type === "calculator"
+      ? context.focusedWidget
+      : context.widgets.find((item) => item.type === "calculator");
+    const assistantState = isRecord(calculator?.assistantState) ? calculator.assistantState : {};
+    const currentDisplay =
+      typeof assistantState.calcDisplay === "string"
+        ? assistantState.calcDisplay
+        : typeof calculator?.summary === "string"
+          ? calculator.summary.match(/-?\d+(?:\.\d+)?/)?.[0] ?? ""
+          : "";
+    const inferredDisplay = inferCalculatorDisplay(fallbackText, currentDisplay);
+    if (inferredDisplay) return { ...call, arguments: { ...call.arguments, display: inferredDisplay } };
   }
   return call;
 }
@@ -3567,8 +3619,13 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     return createRealtimeCapabilityCatalog(tools, this.moduleRegistry?.getRealtimeCatalog());
   }
 
-  private createToolExposurePlan(input: string, context: CompactAssistantContext, tools: AssistantToolSpec[]) {
-    const plan = buildRealtimeToolExposurePlan(input, context, tools, this.moduleRegistry ?? undefined);
+  private createToolExposurePlan(
+    input: string,
+    context: CompactAssistantContext,
+    tools: AssistantToolSpec[],
+    selectedToolNames: string[] = []
+  ) {
+    const plan = buildRealtimeToolExposurePlan(input, context, tools, this.moduleRegistry ?? undefined, { selectedToolNames });
     this.emitDiagnostic({
       type: "realtime.tool_exposure.plan",
       status: plan.exposedTools.length ? "success" : "empty",
@@ -3814,7 +3871,14 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
       ? findRealtimeWidgetType(input, selection.targetHint)
       : undefined;
     const selectedModule = inferredCommandWidgetType ?? this.resolveSelectedModuleFromSelection(selection, input, legacySelectedTool);
-    const exposurePlan = this.createToolExposurePlan(input, context, tools);
+    const exposurePlan = this.createToolExposurePlan(
+      input,
+      context,
+      tools,
+      [selection.name, ...(selection.candidateTools ?? [])].filter(
+        (name): name is string => typeof name === "string" && Boolean(name.trim())
+      )
+    );
     const exposedTools = exposurePlan.exposedTools.map((tool) => tool.name);
     const addWidgetTool = tools.find((tool) => tool.name === REALTIME_ADD_WIDGET_TOOL_NAME);
     const focusWidgetTool = tools.find((tool) => tool.name === "widget.focus");
@@ -3874,10 +3938,23 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
           ...(shouldIncludeAddWidget && addWidgetTool ? [addWidgetTool] : []),
           ...(pureOpenWidget && selectedModule && hasMountedSelectedModule && focusWidgetTool ? [focusWidgetTool] : [])
         ]);
-    const sortedCandidates = (candidateMode
-      ? scopedCandidates
-      : this.sortToolsForSelectionIntent(scopedCandidates, selection, selectedModule)
-    ).slice(0, MAX_SCOPED_SELECTION_TOOLS);
+    // A declared semantic intent ranks candidates in both modes. When intent
+    // is omitted, preserve Realtime's ordering except for a broad desktop-state
+    // lookup preceding concrete action candidates: retrieval must not consume
+    // an action turn unless the user explicitly asked to inspect state.
+    const explicitStateInspection = /(有多少|多少个|几个|有哪些|打开了哪些|当前状态|桌面状态|小工具状态|查看.{0,8}状态|查询.{0,8}状态)/.test(input);
+    const candidatePool = selection.intent
+      ? this.sortToolsForSelectionIntent(scopedCandidates, selection, selectedModule)
+      : candidateMode &&
+          !explicitStateInspection &&
+          scopedCandidates[0]?.name === "assistant.get_desktop_state" &&
+          scopedCandidates.some((tool) => tool.name !== "assistant.get_desktop_state")
+        ? [
+            ...scopedCandidates.filter((tool) => tool.name !== "assistant.get_desktop_state"),
+            ...scopedCandidates.filter((tool) => tool.name === "assistant.get_desktop_state")
+          ]
+        : scopedCandidates;
+    const sortedCandidates = candidatePool.slice(0, MAX_SCOPED_SELECTION_TOOLS);
 
     const canUseLocalAddWidgetFollowUp = Boolean(
       selectedModule &&
@@ -6109,6 +6186,22 @@ export class OpenAIRealtimeWebRtcAdapter implements AssistantRealtimeAdapter {
     }
     if (commandTraceId) {
       this.realtimeTraceUserTranscripts.set(commandTraceId, { input, itemId });
+      if (this.connectMode === "audio" && !this.realtimeTraceCommandToolCalls.has(commandTraceId)) {
+        const selectorTools = this.getEffectiveSessionTools();
+        const selectorCatalog = this.createCapabilityCatalog(selectorTools);
+        const selectorRealtimeTools = [createRealtimeToolSelectionTool(selectorTools, selectorCatalog)];
+        this.registerPendingSelectorToolResponse(commandTraceId, {
+          instructions: [
+            createRealtimeToolSelectionInstructions(selectorTools, selectorCatalog),
+            "",
+            "# Current User Command",
+            input,
+            "必须基于 Current User Command 调用 assistant.select_tool，不要只回复文字。"
+          ].join("\n"),
+          tools: selectorRealtimeTools,
+          toolChoice: createRealtimeToolSelectionToolChoice()
+        });
+      }
     }
     if (!this.options.onUserTranscript) return;
     try {

@@ -32,6 +32,9 @@ import {
   commandPolicyManifest,
   getNonActionModelTools,
   installReviewedModule,
+  inferCalculatorDisplay,
+  inferTodoAdd,
+  inferTodoCompleteText,
   isNonActionModelTool,
   parseAiGeneratedModuleManifest,
   reviewAiGeneratedModule,
@@ -1311,6 +1314,13 @@ describe("IntentShortcutRouter", () => {
     }
   });
 
+  it("defaults date-only todo deadlines to local 9am", () => {
+    expect(inferTodoAdd("添加待办，周五提交测试报告", new Date(2026, 5, 17, 12, 0, 0))).toEqual({
+      text: "提交测试报告",
+      dueAt: new Date(2026, 5, 19, 9, 0, 0).toISOString()
+    });
+  });
+
   it("routes todo add commands with days-later due times", () => {
     const router = createDefaultIntentShortcutRouter();
     const result = router.route("三天后下午4点提醒我寄快递", {
@@ -1829,6 +1839,16 @@ describe("IntentShortcutRouter", () => {
       expect(result.toolCall.name).toBe("calculator.set_display");
       expect(result.toolCall.arguments).toEqual({ widgetId: "wi_calculator", display: "42" });
     }
+  });
+
+  it("evaluates parenthesized arithmetic returned by Realtime", () => {
+    expect(inferCalculatorDisplay("(96)/3")).toBe("32");
+    expect(inferCalculatorDisplay("(12+8)*2")).toBe("40");
+    expect(inferCalculatorDisplay("再把刚才的结果除以三", "96")).toBe("32");
+  });
+
+  it("extracts the referenced todo before a trailing completion action", () => {
+    expect(inferTodoCompleteText("把开会那条待办完成掉")).toBe("开会");
   });
 
   it("routes natural Chinese arithmetic questions to the calculator widget", () => {

@@ -1049,6 +1049,33 @@ function inferTodoDueAt(input: string, now: Date) {
     compact.match(/(?:(凌晨|早上|上午|中午|下午|晚上|今晚|傍晚|夜里|明早|明晚))?(\d{1,2})[:：]([0-5]\d)/);
 
   if (!timeMatch) {
+    let dateOnly: Date | undefined;
+    if (explicitDate) {
+      dateOnly = new Date(
+        explicitDate[1] ? Number(explicitDate[1]) : now.getFullYear(),
+        Number(explicitDate[2]) - 1,
+        Number(explicitDate[3]),
+        9,
+        0,
+        0,
+        0
+      );
+    } else if (slashDate) {
+      dateOnly = new Date(now.getFullYear(), Number(slashDate[1]) - 1, Number(slashDate[2]), 9, 0, 0, 0);
+    } else if (daysLater) {
+      const dayCount = parseChineseInteger(daysLater[1] ?? "");
+      if (dayCount !== null && dayCount >= 0) dateOnly = addDays(now, dayCount);
+    } else if (weekday) {
+      dateOnly = resolveWeekdayDate(now, weekday[2] ?? "", Boolean(weekday[1]));
+    } else if (/(明天|明早|明晚)/.test(compact)) {
+      dateOnly = addDays(now, 1);
+    } else if (/后天/.test(compact)) {
+      dateOnly = addDays(now, 2);
+    }
+    if (dateOnly) {
+      dateOnly.setHours(9, 0, 0, 0);
+      return dateOnly.toISOString();
+    }
     const relativeSeconds = /(小时|钟头|分钟|分)(?:半)?(?:以)?后|秒(?:以)?后/.test(compact) ? parseCountdownDurationSeconds(compact) : undefined;
     if (!relativeSeconds || !Number.isFinite(relativeSeconds) || relativeSeconds <= 0) return undefined;
     return new Date(now.getTime() + relativeSeconds * 1000).toISOString();
@@ -1238,14 +1265,17 @@ export function inferTodoAdd(raw: string, now: Date) {
 
 export function inferTodoCompleteText(raw: string) {
   const patterns = [
+    /把(.+?)(?:标记为已完成|标记完成|设为完成|完成|做完|(?<!待)办完|勾掉|勾选|删除|移除|去掉)(?:待办|任务|清单)?/,
     /(?:完成|做完|办完|勾掉|勾选|删除|移除|去掉)(?:一个|一条)?(?:待办|任务|清单)[：:\s]*(.+)/,
     /(?:待办|任务|清单).*(?:完成|做完|办完|勾掉|勾选|删除|移除|去掉)(?:一个|一条)?[：:\s]*(.+)/,
-    /把(.+?)(?:标记为已完成|标记完成|设为完成|完成|做完|办完|勾掉|勾选|删除|移除|去掉)(?:待办|任务|清单)?/,
     /(?:完成|做完|办完|勾掉|勾选|标记完成|标记为已完成)\s*(.+)/
   ];
   for (const pattern of patterns) {
     const match = raw.match(pattern);
-    const text = cleanCommandContent(match?.[1] ?? "").replace(/(?:这)?(?:一)?(?:项|条|个)$/, "").trim();
+    const text = cleanCommandContent(match?.[1] ?? "")
+      .replace(/(?:这|那)?(?:一)?(?:项|条|个)?(?:待办|任务|事项|清单)$/, "")
+      .replace(/(?:这)?(?:一)?(?:项|条|个)$/, "")
+      .trim();
     if (text) return text;
   }
   return "";
@@ -1390,7 +1420,7 @@ function evaluateNaturalArithmeticExpression(raw: string) {
   return evaluateArithmeticExpression(expression);
 }
 
-function inferCalculatorDisplay(raw: string) {
+export function inferCalculatorDisplay(raw: string, currentDisplay = "") {
   const naturalExpression = evaluateNaturalArithmeticExpression(raw);
   if (naturalExpression) return naturalExpression;
   const chineseExpression = raw.match(/([零〇一二两三四五六七八九十\d]+)\s*(加上|加|减去|减|乘以|乘|除以|除)\s*([零〇一二两三四五六七八九十\d]+)/);
@@ -1408,8 +1438,18 @@ function inferCalculatorDisplay(raw: string) {
       if (value !== null && Number.isFinite(value)) return String(Number(value.toFixed(8)));
     }
   }
+  const relativeExpression = raw.match(/(?:结果|答案|它|这个数|当前值|刚才(?:的结果)?)\s*(加上?|减去?|乘以?|除以?)\s*([零〇一二两三四五六七八九十百千万\d]+)/);
+  if (relativeExpression && /^-?\d+(?:\.\d+)?$/.test(currentDisplay.trim())) {
+    const right = parseNumberToken(relativeExpression[2] ?? "");
+    const operator = relativeExpression[1] ?? "";
+    const symbol = operator.includes("加") ? "+" : operator.includes("减") ? "-" : operator.includes("乘") ? "*" : "/";
+    if (right !== null) {
+      const evaluatedRelative = evaluateArithmeticExpression(`(${currentDisplay.trim()})${symbol}${right}`);
+      if (evaluatedRelative) return evaluatedRelative;
+    }
+  }
   const expression =
-    raw.match(/([0-9][0-9+\-*/×÷().\s]+[0-9])/) ??
+    raw.match(/([0-9(][0-9+\-*/×÷().\s]+[0-9)])/) ??
     raw.match(/([0-9][0-9+\-*/×÷().\s]*(?:加上|加|减去|减|乘以|乘|除以|除)[0-9+\-*/×÷().\s]*\d)/);
   const evaluated = expression ? evaluateArithmeticExpression(expression[1]) : null;
   if (evaluated) return evaluated;

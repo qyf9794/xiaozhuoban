@@ -83,7 +83,12 @@ function loadCases(casesFile) {
       throw new Error(`Case ${testCase.id} requires a title when playback verification is enabled`);
     }
     if (testCase.effect && !["playing", "paused"].includes(testCase.effect.state)) {
-      throw new Error(`Case ${testCase.id} effect.state must be playing or paused`);
+      if (testCase.effect.kind === "music" || testCase.effect.kind === "tv") {
+        throw new Error(`Case ${testCase.id} effect.state must be playing or paused`);
+      }
+    }
+    if (!testCase.effect || typeof testCase.effect.kind !== "string") {
+      throw new Error(`Case ${testCase.id} must declare an authoritative observable effect`);
     }
     return testCase;
   });
@@ -383,10 +388,13 @@ async function ensureMusicWidgetMounted(page) {
 }
 
 async function snapshot(page) {
-  return page.evaluate(() => {
+  return page.evaluate(async () => {
     const widgets = Array.from(document.querySelectorAll("[data-widget-id]")).map((element) => ({
       id: element.getAttribute("data-widget-id") || "",
       text: element.innerText,
+      formValues: Array.from(element.querySelectorAll("input, textarea, select"))
+        .map((control) => control.value)
+        .filter(Boolean),
       className: String(element.className || "")
     }));
     const musicInput = document.querySelector('input[aria-label="音乐搜索"]');
@@ -394,16 +402,60 @@ async function snapshot(page) {
     const musicProgressElement = musicWidget?.querySelector('[role="progressbar"][aria-label="音乐播放进度"]');
     const musicControl = musicWidget?.querySelector('button[title="暂停"], button[title="播放"]');
     const artwork = musicWidget?.querySelector("img[alt]");
+    const musicWidgetId = musicWidget?.getAttribute("data-widget-id") || "";
+    const musicAudio = Array.from(document.querySelectorAll("audio[data-music-widget-id]"))
+      .find((audio) => audio.dataset.musicWidgetId === musicWidgetId);
     const musicState = musicWidget
       ? {
           title: artwork?.getAttribute("alt") || "",
           control: musicControl?.getAttribute("title") || "",
           progress: Number(musicProgressElement?.getAttribute("aria-valuenow") || "0"),
+          currentTime: Number(musicAudio?.currentTime || 0),
+          paused: musicAudio ? musicAudio.paused : true,
+          readyState: musicAudio?.readyState ?? 0,
+          networkState: musicAudio?.networkState ?? 0,
+          currentSrc: musicAudio?.currentSrc || musicAudio?.getAttribute("src") || "",
           recoveryVisible: Boolean(
             musicWidget?.querySelector('button[aria-label^="播放"]:not([aria-label="播放音乐"])')
           )
         }
       : null;
+    const exportedAppState = window.__xiaozhuobanExportAppState?.();
+    const indexedDbWidgets = await new Promise((resolve) => {
+      const request = indexedDB.open("xiaozhuoban");
+      request.onerror = () => resolve([]);
+      request.onupgradeneeded = () => resolve([]);
+      request.onsuccess = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains("widgetInstances") || !db.objectStoreNames.contains("widgetDefs")) {
+          db.close();
+          resolve([]);
+          return;
+        }
+        const transaction = db.transaction(["widgetInstances", "widgetDefs"], "readonly");
+        const instanceRequest = transaction.objectStore("widgetInstances").getAll();
+        const definitionRequest = transaction.objectStore("widgetDefs").getAll();
+        transaction.onerror = () => {
+          db.close();
+          resolve([]);
+        };
+        transaction.oncomplete = () => {
+          const definitions = new Map(
+            (definitionRequest.result || []).map((definition) => [definition.id, definition])
+          );
+          const rows = (instanceRequest.result || []).map((instance) => ({
+            ...instance,
+            definitionType: definitions.get(instance.definitionId)?.type || "",
+            definitionName: definitions.get(instance.definitionId)?.name || ""
+          }));
+          db.close();
+          resolve(rows);
+        };
+      };
+    });
+    const persistedWidgets = Array.isArray(exportedAppState?.persistedWidgets)
+      ? exportedAppState.persistedWidgets
+      : indexedDbWidgets;
     const tvVideo = document.querySelector(".tv-video-box video");
     const tvWidget = tvVideo?.closest("[data-widget-id]");
     const activeTvChannel = tvWidget?.querySelector(".tv-channel-item.is-active span");
@@ -427,6 +479,7 @@ async function snapshot(page) {
     return {
       bodyText: document.body.innerText,
       widgets,
+      persistedWidgets,
       musicState,
       tvState,
       musicProgress: Array.from(document.querySelectorAll('[role="progressbar"][aria-label="音乐播放进度"]'))
@@ -484,6 +537,11 @@ function eventIndex(events, predicate) {
 
 function eventData(event) {
   return event && typeof event.data === "object" && event.data !== null ? event.data : {};
+}
+
+function minimumPlaybackAdvance(testCase) {
+  const configured = Number(testCase.effect?.minimumAdvanceSeconds);
+  return Number.isFinite(configured) && configured > 0 ? configured : 0.05;
 }
 
 function executedToolNames(snapshotAfter, events) {
@@ -580,6 +638,76 @@ function approximatelyIncludes(value, expected) {
     }
   }
   return false;
+}
+
+function findPersistedWidget(snapshotValue, definitionType) {
+  return (snapshotValue.persistedWidgets ?? []).find((widget) => widget.definitionType === definitionType);
+}
+
+function normalizedJsonContains(value, expected) {
+  return normalizedText(JSON.stringify(value ?? null)).includes(normalizedText(expected));
+}
+
+function observableValueMatches(actual, expected) {
+  if (Array.isArray(expected)) {
+    if (!Array.isArray(actual)) return false;
+    return expected.every((expectedItem) => actual.some((actualItem) => observableValueMatches(actualItem, expectedItem)));
+  }
+  if (expected && typeof expected === "object") {
+    if (!actual || typeof actual !== "object") return false;
+    return Object.entries(expected).every(([key, value]) => observableValueMatches(actual[key], value));
+  }
+  if (typeof expected === "string") return normalizedText(actual) === normalizedText(expected);
+  return Object.is(actual, expected);
+}
+
+function verifyObservableEffect(testCase, before, after) {
+  const effect = testCase.effect ?? {};
+  if (effect.kind === "music" || effect.kind === "tv") {
+    return { verified: true, failure: "", observed: effect.kind === "music" ? after.musicState : after.tvState };
+  }
+  if (effect.kind === "widget_absent") {
+    const beforeWidget = findPersistedWidget(before, effect.widgetType);
+    const afterWidget = findPersistedWidget(after, effect.widgetType);
+    const preserved = !effect.preserveOtherWidgets || (before.persistedWidgets ?? [])
+      .filter((widget) => widget.definitionType !== effect.widgetType)
+      .every((widget) => (after.persistedWidgets ?? []).some((candidate) => candidate.id === widget.id));
+    const verified = Boolean(beforeWidget) && !afterWidget && preserved;
+    return {
+      verified,
+      failure: verified ? "" : !beforeWidget ? "observable_precondition_missing" : afterWidget ? "ui_or_state_effect_missing" : "unrelated_widget_changed",
+      observed: {
+        beforeWidgetId: beforeWidget?.id ?? "",
+        afterWidgetId: afterWidget?.id ?? "",
+        preserved
+      }
+    };
+  }
+  if (effect.kind === "widget_state") {
+    const widget = findPersistedWidget(after, effect.widgetType);
+    const beforeWidget = findPersistedWidget(before, effect.widgetType);
+    const stateMatches = widget && observableValueMatches(widget.state ?? {}, effect.state ?? {});
+    const visibleWidget = widget ? (after.widgets ?? []).find((candidate) => candidate.id === widget.id) : undefined;
+    const visibleIncludes = Array.isArray(effect.visibleIncludes) ? effect.visibleIncludes : [];
+    const visibleSurface = [visibleWidget?.text ?? "", ...(visibleWidget?.formValues ?? [])].join("\n");
+    const visibleMatches = visibleIncludes.every((part) => normalizedJsonContains(visibleSurface, part));
+    const stateExcludes = Array.isArray(effect.stateExcludes) ? effect.stateExcludes : [];
+    const excludesMatch = stateExcludes.every((part) => !normalizedJsonContains(widget?.state ?? {}, part));
+    const stateChanged = !effect.requireStateChange || JSON.stringify(beforeWidget?.state ?? null) !== JSON.stringify(widget?.state ?? null);
+    const verified = Boolean(widget && stateMatches && visibleMatches && excludesMatch && stateChanged);
+    return {
+      verified,
+      failure: verified ? "" : !widget ? "ui_or_state_effect_missing" : !stateMatches ? "authoritative_state_wrong" : !visibleMatches ? "visible_ui_effect_missing" : !excludesMatch ? "authoritative_state_wrong" : "authoritative_state_unchanged",
+      observed: {
+        widgetId: widget?.id ?? "",
+        definitionType: widget?.definitionType ?? "",
+        state: widget?.state ?? null,
+        visibleText: visibleWidget?.text ?? "",
+        visibleFormValues: visibleWidget?.formValues ?? []
+      }
+    };
+  }
+  return { verified: false, failure: "observable_effect_unsupported", observed: null };
 }
 
 function analyzeDetailedChecks(testCase, before, after, events) {
@@ -758,6 +886,7 @@ function assertCase(testCase, before, after) {
   const uiChanged =
     before.bodyText !== after.bodyText ||
     before.widgets.length !== after.widgets.length ||
+    JSON.stringify(before.persistedWidgets) !== JSON.stringify(after.persistedWidgets) ||
     JSON.stringify(before.musicState) !== JSON.stringify(after.musicState) ||
     JSON.stringify(before.tvState) !== JSON.stringify(after.tvState);
   const realtimePath = analyzeRealtimeToolPath(events);
@@ -767,7 +896,7 @@ function assertCase(testCase, before, after) {
       event.type === "music.play.result" &&
       event.status === "success" &&
       eventData(event).playbackVerified === true &&
-      Number(eventData(event).advancedBy) > 0
+      Number(eventData(event).advancedBy) >= minimumPlaybackAdvance(testCase)
   );
   const playbackVerified = verifiedPlaybackEvents.length > 0;
   const verifiedTvPlaybackEvents = events.filter(
@@ -775,7 +904,7 @@ function assertCase(testCase, before, after) {
       event.type === "tv.play.result" &&
       event.status === "success" &&
       eventData(event).playbackVerified === true &&
-      Number(eventData(event).advancedBy) > 0 &&
+      Number(eventData(event).advancedBy) >= minimumPlaybackAdvance(testCase) &&
       Number(eventData(event).videoWidth) > 0 &&
       Number(eventData(event).videoHeight) > 0
   );
@@ -796,6 +925,7 @@ function assertCase(testCase, before, after) {
   const expectedTitleVisible = !testCase.title || after.bodyText.includes(testCase.title);
   const playbackProgressVisible = Array.isArray(after.musicProgress) && after.musicProgress.some((value) => value > 0);
   const failure = classifyFailure({ events, expected: testCase.expected, uiChanged });
+  const observableEffect = verifyObservableEffect(testCase, before, after);
   let detailFailure = failure;
   if (!detailFailure && !detailed.expectedModulesOk) detailFailure = "expected_module_not_exposed";
   else if (!detailFailure && !detailed.expectedQueryOk) detailFailure = "query_missing_or_wrong";
@@ -806,12 +936,13 @@ function assertCase(testCase, before, after) {
   else if (!detailFailure && testCase.requireTvPlaybackVerified && !tvPlaybackVerified) detailFailure = "tv_playback_not_verified";
   else if (!detailFailure && testCase.requireTvPlaybackVerified && !tvChannelVisible) detailFailure = "tv_channel_not_visible";
   else if (!detailFailure && testCase.requireTvPlaybackVerified && !tvPlayerStateVerified) detailFailure = "tv_player_state_wrong";
+  else if (!detailFailure && !observableEffect.verified) detailFailure = observableEffect.failure;
   return {
     passed:
       !detailFailure &&
       operationSuccess &&
       expectedHit &&
-      uiChanged &&
+      observableEffect.verified &&
       (!testCase.requirePlaybackVerified || (playbackVerified && expectedTitleVisible && playbackProgressVisible)) &&
       (!testCase.requireTvPlaybackVerified || (tvPlaybackVerified && tvChannelVisible && tvPlayerStateVerified)),
     failure: detailFailure,
@@ -822,6 +953,8 @@ function assertCase(testCase, before, after) {
     operationSuccess,
     expectedHit,
     uiChanged,
+    effectVerified: observableEffect.verified,
+    observedEffect: observableEffect.observed,
     tools,
     exposurePlan: realtimePath.exposurePlan,
     selectedTool: realtimePath.selectedTool,
@@ -902,9 +1035,14 @@ async function runCase(playwright, options, runDir, userDataDir, testCase, isFir
   });
   const page = context.pages()[0] ?? (await context.newPage());
   const consoleErrors = [];
+  const pageErrors = [];
   page.on("console", (message) => {
-    if (message.type() === "error") consoleErrors.push(message.text());
+    if (message.type() === "error") {
+      const location = message.location();
+      consoleErrors.push(`${message.text()}${location?.url ? ` @ ${location.url}` : ""}`);
+    }
   });
+  page.on("pageerror", (error) => pageErrors.push(error.message));
   await installExternalMocks(page, testCase, options.playbackAudio);
   await page.goto(options.site, { waitUntil: "domcontentloaded", timeout: 20_000 });
   await waitForAppReady(page);
@@ -916,6 +1054,8 @@ async function runCase(playwright, options, runDir, userDataDir, testCase, isFir
   }
   await clearCaseEvidence(page);
   await waitForAppReady(page);
+  consoleErrors.length = 0;
+  pageErrors.length = 0;
   const before = await snapshot(page);
   await page.screenshot({ path: path.join(caseDir, "before.png"), fullPage: false });
   await page.getByTestId("voice-assistant-dock").locator(".voice-assistant-dock__orb").click({ force: true });
@@ -1138,7 +1278,7 @@ function caseEffectCompletionIndex(events, testCase) {
         event.status === "success" &&
         (!testCase.effect?.channel || eventData(event).channelName === testCase.effect.channel) &&
         eventData(event).playbackVerified === true &&
-        Number(eventData(event).advancedBy) > 0 &&
+        Number(eventData(event).advancedBy) >= minimumPlaybackAdvance(testCase) &&
         Number(eventData(event).videoWidth) > 0 &&
         Number(eventData(event).videoHeight) > 0
     );
@@ -1154,7 +1294,7 @@ function caseEffectCompletionIndex(events, testCase) {
         event.status === "success" &&
         (!testCase.effect?.title || eventData(event).title === testCase.effect.title) &&
         eventData(event).playbackVerified === true &&
-        Number(eventData(event).advancedBy) > 0
+        Number(eventData(event).advancedBy) >= minimumPlaybackAdvance(testCase)
     );
   }
   return events.findIndex((event) => event.type === "assistant.operation" && event.status === "success");
@@ -1181,7 +1321,7 @@ function assertContinuousCase(testCase, before, after, events, transcriptEvent) 
       event.status === "success" &&
       (!expectedTitle || eventData(event).title === expectedTitle) &&
       eventData(event).playbackVerified === true &&
-      Number(eventData(event).advancedBy) > 0
+      Number(eventData(event).advancedBy) >= minimumPlaybackAdvance(testCase)
   );
   const playbackVerified = Boolean(playbackEvent);
   const pauseVerified = events.some((event) => event.type === "music.tool.pause.result" && event.status === "success");
@@ -1189,15 +1329,21 @@ function assertContinuousCase(testCase, before, after, events, transcriptEvent) 
   const playbackProgressVisible = Array.isArray(after.musicProgress) && after.musicProgress.some((value) => value > 0);
   const playerStateVerified =
     effectState === "paused"
-      ? pauseVerified && after.musicState?.control === "播放"
+      ? pauseVerified && after.musicState?.control === "播放" && after.musicState?.paused === true
       : effectState === "playing"
-        ? playbackVerified && after.musicState?.control === "暂停" && playbackProgressVisible
+        ? playbackVerified &&
+          after.musicState?.control === "暂停" &&
+          after.musicState?.paused === false &&
+          Number(after.musicState?.currentTime) > 0 &&
+          Number(after.musicState?.readyState) >= 2 &&
+          playbackProgressVisible
         : true;
   const titleChangedVerified = !testCase.effect?.titleChanged || before.musicState?.title !== after.musicState?.title;
   const transcriptOk = transcriptPreservesIntent(testCase, eventData(transcriptEvent).transcript ?? "");
   const forbiddenTools = Array.isArray(testCase.forbidden) ? testCase.forbidden : [];
   const executed = executedToolNames({ auditLogs: [] }, events);
   const forbiddenToolUsed = forbiddenTools.find((toolName) => executed.includes(toolName)) ?? "";
+  const isMusicCase = testCase.effect?.kind === "music";
   const isTvCase = testCase.effect?.kind === "tv" || testCase.requireTvPlaybackVerified;
   const expectedTvChannel = isTvCase ? testCase.effect?.channel ?? testCase.channelName ?? "" : "";
   const tvPlaybackEvent = isTvCase
@@ -1207,7 +1353,7 @@ function assertContinuousCase(testCase, before, after, events, transcriptEvent) 
           event.status === "success" &&
           (!expectedTvChannel || eventData(event).channelName === expectedTvChannel) &&
           eventData(event).playbackVerified === true &&
-          Number(eventData(event).advancedBy) > 0 &&
+          Number(eventData(event).advancedBy) >= minimumPlaybackAdvance(testCase) &&
           Number(eventData(event).videoWidth) > 0 &&
           Number(eventData(event).videoHeight) > 0
       )
@@ -1251,6 +1397,7 @@ function assertContinuousCase(testCase, before, after, events, transcriptEvent) 
     speechStarted: speechStarted ? 1 : 0,
     speechStopped: speechStopped ? 1 : 0,
     operationSuccess: base.operationSuccess && (isTvCase ? tvPlayerStateVerified : playerStateVerified),
+    effectVerified: isTvCase ? tvPlayerStateVerified : isMusicCase ? playerStateVerified : base.effectVerified,
     expectedHit: base.expectedHit,
     tools: base.tools,
     playbackVerified,
@@ -1301,9 +1448,14 @@ async function runContinuousSession(playwright, options, runDir, userDataDir, te
   await context.addInitScript(installDiagnosticCaptureScript);
   const page = context.pages()[0] ?? (await context.newPage());
   const consoleErrors = [];
+  const pageErrors = [];
   page.on("console", (message) => {
-    if (message.type() === "error") consoleErrors.push(message.text());
+    if (message.type() === "error") {
+      const location = message.location();
+      consoleErrors.push(`${message.text()}${location?.url ? ` @ ${location.url}` : ""}`);
+    }
   });
+  page.on("pageerror", (error) => pageErrors.push(error.message));
   await installExternalMocks(page, testCases, options.playbackAudio);
   await page.goto(options.site, { waitUntil: "domcontentloaded", timeout: 20_000 });
   await waitForAppReady(page);
@@ -1314,6 +1466,8 @@ async function runContinuousSession(playwright, options, runDir, userDataDir, te
   await ensureMusicWidgetMounted(page);
   await clearCaseEvidence(page);
   await waitForAppReady(page);
+  consoleErrors.length = 0;
+  pageErrors.length = 0;
 
   const initialSnapshot = await snapshot(page);
   const lifecycleEventOffset = initialSnapshot.diagnostics?.events?.length ?? 0;
@@ -1331,34 +1485,42 @@ async function runContinuousSession(playwright, options, runDir, userDataDir, te
 
   const sessionDurationMs = readPcmWavDurationMs(options.sessionAudio);
   const deadline = Date.now() + (sessionDurationMs > 0 ? Math.min(options.waitMs, sessionDurationMs + 20_000) : options.waitMs);
-  const transcriptCaptures = new Set();
+  const boundaryCaptures = new Map();
   const caseCaptures = new Map();
   while (Date.now() < deadline && caseCaptures.size < testCases.length) {
     const liveEvents = await page.evaluate(() => window.__xiaozhuobanLiveVoiceDiagnosticEvents || []);
-    const uniqueTranscripts = [];
-    const seenItems = new Set();
+    const uniqueSpeechStarts = [];
+    const seenSpeechStarts = new Set();
     for (const event of liveEvents) {
-      if (event.type !== "realtime.voice.user_transcript" || event.status !== "success") continue;
-      const key = event.data?.itemId || `${event.commandTraceId}:${event.data?.transcript}`;
-      if (!key || seenItems.has(key)) continue;
-      seenItems.add(key);
-      uniqueTranscripts.push(event);
+      if (event.type !== "realtime.voice.speech_started") continue;
+      const key = event.commandTraceId || event.data?.itemId || `speech_${uniqueSpeechStarts.length}`;
+      if (seenSpeechStarts.has(key)) continue;
+      seenSpeechStarts.add(key);
+      uniqueSpeechStarts.push(event);
     }
-    for (let index = 0; index < Math.min(testCases.length, uniqueTranscripts.length); index += 1) {
+    for (let index = 0; index < Math.min(testCases.length, uniqueSpeechStarts.length); index += 1) {
       const testCase = testCases[index];
       const caseDir = path.join(runDir, testCase.id);
       fs.mkdirSync(caseDir, { recursive: true });
-      if (!transcriptCaptures.has(testCase.id)) {
+      if (!boundaryCaptures.has(testCase.id)) {
+        const boundaryCapture = await snapshot(page);
         await page.screenshot({ path: path.join(caseDir, "before.png"), fullPage: false }).catch(() => undefined);
-        transcriptCaptures.add(testCase.id);
+        boundaryCaptures.set(testCase.id, boundaryCapture);
+        if (index > 0) {
+          const previousCase = testCases[index - 1];
+          if (!caseCaptures.has(previousCase.id)) {
+            caseCaptures.set(previousCase.id, boundaryCapture);
+            await page.screenshot({ path: path.join(runDir, previousCase.id, "after.png"), fullPage: false }).catch(() => undefined);
+          }
+        }
       }
       if (caseCaptures.has(testCase.id)) continue;
-      const transcriptIndex = liveEvents.indexOf(uniqueTranscripts[index]);
-      const nextTranscript = uniqueTranscripts[index + 1];
-      const nextTranscriptIndex = nextTranscript ? liveEvents.indexOf(nextTranscript) : liveEvents.length;
-      const caseEvents = liveEvents.slice(transcriptIndex, nextTranscriptIndex);
+      const startIndex = liveEvents.indexOf(uniqueSpeechStarts[index]);
+      const nextSpeechStart = uniqueSpeechStarts[index + 1];
+      const nextStartIndex = nextSpeechStart ? liveEvents.indexOf(nextSpeechStart) : liveEvents.length;
+      const caseEvents = liveEvents.slice(startIndex, nextStartIndex);
       const completionIndex = caseEffectCompletionIndex(caseEvents, testCase);
-      const boundaryClosed = Boolean(nextTranscript);
+      const boundaryClosed = Boolean(nextSpeechStart);
       if (completionIndex < 0 && !boundaryClosed) continue;
       await page.waitForTimeout(250);
       const capture = await snapshot(page);
@@ -1371,54 +1533,49 @@ async function runContinuousSession(playwright, options, runDir, userDataDir, te
   const beforeDisconnect = await snapshot(page);
   fs.writeFileSync(path.join(runDir, "session-trace.json"), JSON.stringify(beforeDisconnect, null, 2));
   const allEvents = beforeDisconnect.diagnostics?.events ?? [];
-  const uniqueTranscriptEvents = [];
-  const seenTranscriptItems = new Set();
+  const uniqueSpeechStartEvents = [];
+  const seenSpeechStartItems = new Set();
   for (const event of allEvents) {
-    if (event.type !== "realtime.voice.user_transcript" || event.status !== "success") continue;
-    const key = eventData(event).itemId || `${event.commandTraceId}:${eventData(event).transcript}`;
-    if (!key || seenTranscriptItems.has(key)) continue;
-    seenTranscriptItems.add(key);
-    uniqueTranscriptEvents.push(event);
+    if (event.type !== "realtime.voice.speech_started") continue;
+    const key = event.commandTraceId || eventData(event).itemId || `speech_${uniqueSpeechStartEvents.length}`;
+    if (seenSpeechStartItems.has(key)) continue;
+    seenSpeechStartItems.add(key);
+    uniqueSpeechStartEvents.push(event);
   }
 
   const results = [];
-  let previousSnapshot = initialSnapshot;
   for (const [index, testCase] of testCases.entries()) {
     const caseDir = path.join(runDir, testCase.id);
     fs.mkdirSync(caseDir, { recursive: true });
-    const transcriptEvent = uniqueTranscriptEvents[index];
-    const nextTranscriptEvent = uniqueTranscriptEvents[index + 1];
-    const transcriptIndex = transcriptEvent ? allEvents.indexOf(transcriptEvent) : -1;
-    const speechStartIndex = transcriptEvent
-      ? allEvents.findIndex(
-          (event, eventIndex) =>
-            eventIndex <= transcriptIndex &&
-            event.type === "realtime.voice.speech_started" &&
-            event.commandTraceId === transcriptEvent.commandTraceId
-        )
-      : -1;
-    const startIndex = speechStartIndex >= 0 ? speechStartIndex : transcriptIndex >= 0 ? transcriptIndex : 0;
-    const nextIndex = nextTranscriptEvent ? allEvents.indexOf(nextTranscriptEvent) : allEvents.length;
-    const preliminaryEvents = allEvents.slice(startIndex, nextIndex);
-    const completionOffset = caseEffectCompletionIndex(preliminaryEvents, testCase);
-    const completionIndex = completionOffset >= 0 ? startIndex + completionOffset : -1;
-    const endIndex = Math.max(nextIndex, completionIndex >= 0 ? completionIndex + 1 : nextIndex);
-    const caseEvents = allEvents.slice(startIndex, endIndex);
+    const speechStartEvent = uniqueSpeechStartEvents[index];
+    const nextSpeechStartEvent = uniqueSpeechStartEvents[index + 1];
+    const startIndex = speechStartEvent ? allEvents.indexOf(speechStartEvent) : allEvents.length;
+    const endIndex = nextSpeechStartEvent ? allEvents.indexOf(nextSpeechStartEvent) : allEvents.length;
+    const caseEvents = speechStartEvent ? allEvents.slice(startIndex, endIndex) : [];
+    const transcriptEvent = caseEvents.find(
+      (event) =>
+        event.type === "realtime.voice.user_transcript" &&
+        event.status === "success" &&
+        (!speechStartEvent.commandTraceId || event.commandTraceId === speechStartEvent.commandTraceId)
+    ) ?? caseEvents.find((event) => event.type === "realtime.voice.user_transcript" && event.status === "success");
+    const caseBefore = boundaryCaptures.get(testCase.id) ?? (index === 0 ? initialSnapshot : caseCaptures.get(testCases[index - 1].id) ?? initialSnapshot);
     const caseAfter = caseCaptures.get(testCase.id) ?? beforeDisconnect;
-    if (!transcriptCaptures.has(testCase.id)) {
+    if (!boundaryCaptures.has(testCase.id)) {
       await page.screenshot({ path: path.join(caseDir, "before.png"), fullPage: false }).catch(() => undefined);
     }
     if (!caseCaptures.has(testCase.id)) {
       await page.screenshot({ path: path.join(caseDir, "after.png"), fullPage: false }).catch(() => undefined);
     }
-    const assertion = assertContinuousCase(testCase, previousSnapshot, caseAfter, caseEvents, transcriptEvent);
+    let assertion = assertContinuousCase(testCase, caseBefore, caseAfter, caseEvents, transcriptEvent);
+    if (!assertion.failure && (consoleErrors.length > 0 || pageErrors.length > 0)) {
+      assertion = { ...assertion, passed: false, failure: "unexpected_browser_error" };
+    }
     const traceAfter = { ...caseAfter, diagnostics: { ...caseAfter.diagnostics, events: caseEvents } };
     fs.writeFileSync(
       path.join(caseDir, "trace.json"),
-      JSON.stringify({ id: testCase.id, command: testCase.command, before: previousSnapshot, after: traceAfter, consoleErrors }, null, 2)
+      JSON.stringify({ id: testCase.id, command: testCase.command, before: caseBefore, after: traceAfter, consoleErrors, pageErrors }, null, 2)
     );
-    results.push({ ...testCase, ...assertion, consoleErrors, evidenceDir: path.relative(repoRoot, caseDir) });
-    previousSnapshot = caseAfter;
+    results.push({ ...testCase, ...assertion, consoleErrors, pageErrors, evidenceDir: path.relative(repoRoot, caseDir) });
   }
 
   const beforeDisconnectEvents = allEvents.slice(lifecycleEventOffset);
@@ -1506,7 +1663,8 @@ function writeReport(runId, results, options, sessionSummary = null) {
         : item.playbackVerified
           ? `music yes (${item.playbackAdvancedBy.map((value) => value.toFixed(3)).join(", ")}s)`
           : "no";
-      return `| ${item.id} | ${item.passed ? "pass" : "fail"} | ${item.command} | ${String(item.transcript).replace(/\|/g, "/")} | ${item.detailed.exposedModules.join(", ") || "-"} | ${item.detailed.exposedTools.join(", ") || "-"} | ${item.selectedTool || "-"} | ${item.detailed.functionToolNames.join(", ") || "-"} | ${item.detailed.queryValues.join(", ") || "-"} | ${item.detailed.channelValues.join(", ") || "-"} | ${item.detailed.widgetIds.join(", ") || "-"} | ${item.detailed.musicPlayback.join("<br>") || "-"} | ${actualPlayback} | ${item.playbackProgressVisible ? "yes" : "no"} | ${item.detailed.tvPlayback.join("<br>") || "-"} | ${item.uiChanged ? "yes" : "no"} (${item.detailed.uiBeforeWidgetCount}->${item.detailed.uiAfterWidgetCount}) | ${path} | ${item.failure || "-"} | ${screenshots} |`;
+      const authoritativeEffect = `${item.effectVerified ? "verified" : "failed"}: ${JSON.stringify(item.effect ?? {})}`.replace(/\|/g, "/");
+      return `| ${item.id} | ${item.passed ? "pass" : "fail"} | ${item.command} | ${String(item.transcript).replace(/\|/g, "/")} | ${item.detailed.exposedModules.join(", ") || "-"} | ${item.detailed.exposedTools.join(", ") || "-"} | ${item.selectedTool || "-"} | ${item.detailed.functionToolNames.join(", ") || "-"} | ${item.detailed.queryValues.join(", ") || "-"} | ${item.detailed.channelValues.join(", ") || "-"} | ${item.detailed.widgetIds.join(", ") || "-"} | ${item.detailed.musicPlayback.join("<br>") || "-"} | ${actualPlayback} | ${item.playbackProgressVisible ? "yes" : "no"} | ${item.detailed.tvPlayback.join("<br>") || "-"} | ${authoritativeEffect} | ${path} | ${item.failure || "-"} | ${screenshots} |`;
     })
     .join("\n");
   const relativeAudioRoot = path.relative(repoRoot, options.audioRoot) || ".";
@@ -1530,7 +1688,8 @@ function writeReport(runId, results, options, sessionSummary = null) {
 - Fallback execute_command uses: ${fallbackExecuteCommandCount}
 - Audio fixtures: ${relativeAudioRoot}
 - Playback audio fixture: ${path.relative(repoRoot, options.playbackAudio)}
-- Music success rule: music.play.result=success, playbackVerified=true, media clock advanced, title visible, and progress bar above zero.
+- Widget success rule: the read-only application-store export must match the declared widget type and state, and the matching widget DOM must expose the expected visible value.
+- Music success rule: music.play.result=success, playbackVerified=true, HTMLMediaElement currentTime advanced, paused=false, readyState>=2, title visible, and progress bar above zero.
 - TV success rule: tv.play.result=success, playbackVerified=true, channel matches, video is not paused, media clock advanced, and decoded video dimensions are above zero.
 - Realtime lifecycle: ${
     sessionSummary
@@ -1540,7 +1699,7 @@ function writeReport(runId, results, options, sessionSummary = null) {
 - Evidence root: ${relativeOutputRoot}/${runId}
 - Secret handling: Realtime credentials are never written to this report.
 
-| id | result | spoken command | transcript | exposed modules | exposed tools | selected tool | function tools | query args | channel args | widgetIds | music playback/token | actual playback | progress visible | tv playback | UI changed | realtime path | failure | evidence |
+| id | result | spoken command | transcript | exposed modules | exposed tools | selected tool | function tools | query args | channel args | widgetIds | music playback/token | actual playback | progress visible | tv playback | authoritative effect | realtime path | failure | evidence |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 ${rows}
 `;

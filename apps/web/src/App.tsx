@@ -160,6 +160,30 @@ export function App() {
   }, [assistantRuntime, activeBoardId, boards, focusedWidgetId, widgetDefinitions, widgetInstances]);
 
   useEffect(() => {
+    if (!E2E_AUTH_BYPASS) return undefined;
+    const diagnosticsWindow = window as typeof window & {
+      __xiaozhuobanExportAppState?: () => unknown;
+    };
+    diagnosticsWindow.__xiaozhuobanExportAppState = () => {
+      const state = useAppStore.getState();
+      const definitions = new Map(state.widgetDefinitions.map((definition) => [definition.id, definition]));
+      return {
+        ready: state.ready,
+        activeBoardId: state.activeBoardId,
+        focusedWidgetId: state.focusedWidgetId,
+        persistedWidgets: state.widgetInstances.map((instance) => ({
+          ...instance,
+          definitionType: definitions.get(instance.definitionId)?.type ?? "",
+          definitionName: definitions.get(instance.definitionId)?.name ?? ""
+        }))
+      };
+    };
+    return () => {
+      delete diagnosticsWindow.__xiaozhuobanExportAppState;
+    };
+  }, []);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const isMeta = event.metaKey || event.ctrlKey;
       if (isMeta && event.key.toLowerCase() === "k") {

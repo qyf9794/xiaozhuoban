@@ -12,11 +12,18 @@ import {
   normalizeMusicKitSearchResults,
   searchAppleMusicCatalogApi,
   searchAppleMusicCatalog,
+  shouldUseAppleMusicCatalog,
   startMusicKitPlaybackFromUserGesture,
   MusicKitPlaybackSequencer
 } from "./musicKitClient";
 
 describe("musicKitClient", () => {
+  it("uses the Apple catalog only when MusicKit is both configured and authorized", () => {
+    expect(shouldUseAppleMusicCatalog(true, true)).toBe(true);
+    expect(shouldUseAppleMusicCatalog(true, false)).toBe(false);
+    expect(shouldUseAppleMusicCatalog(false, true)).toBe(false);
+  });
+
   it("normalizes MusicKit song, album, and playlist search results", () => {
     const results = normalizeMusicKitSearchResults({
       songs: {
