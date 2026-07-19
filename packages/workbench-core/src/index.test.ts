@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   WORKBENCH_BACKGROUND_MODEL,
+  WORKBENCH_IMAGE_MODEL,
   WorkbenchAgentResultSchema,
   partitionWorkbenchCommands,
   validateWorkbenchCommand
@@ -9,6 +10,10 @@ import {
 describe("workbench model configuration", () => {
   it("uses GPT-5.6 Luna for delegated background tasks", () => {
     expect(WORKBENCH_BACKGROUND_MODEL).toBe("gpt-5.6-luna");
+  });
+
+  it("uses GPT Image 2 for image generation", () => {
+    expect(WORKBENCH_IMAGE_MODEL).toBe("gpt-image-2");
   });
 });
 

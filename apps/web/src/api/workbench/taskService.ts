@@ -4,6 +4,7 @@ import type { ResponseInput, ResponseInputContent } from "openai/resources/respo
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   WORKBENCH_BACKGROUND_MODEL,
+  WORKBENCH_IMAGE_MODEL,
   WorkbenchAgentResultSchema,
   partitionWorkbenchCommands,
   type WorkbenchAgentResult,
@@ -183,7 +184,7 @@ export async function createDurableWorkbenchTask(input: {
         "commands.args 中未使用的字段必须返回 null；artifacts 中不可用的可选值也必须返回 null。"
       ].join("\n"),
       input: await buildTaskInput(supabase, input),
-      tools: [{ type: "web_search" }, { type: "image_generation" }],
+      tools: [{ type: "web_search" }, { type: "image_generation", model: WORKBENCH_IMAGE_MODEL }],
       text: {
         format: {
           type: "json_schema",

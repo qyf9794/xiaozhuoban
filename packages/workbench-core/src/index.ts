@@ -161,5 +161,6 @@ export function partitionWorkbenchCommands(commands: readonly WorkbenchCommand[]
 }
 
 export const WORKBENCH_BACKGROUND_MODEL = "gpt-5.6-luna";
+export const WORKBENCH_IMAGE_MODEL = "gpt-image-2";
 export const WORKBENCH_REALTIME_MODEL = "gpt-realtime-2.1-mini";
 export const WORKBENCH_STORAGE_BUCKET = "workbench-files";

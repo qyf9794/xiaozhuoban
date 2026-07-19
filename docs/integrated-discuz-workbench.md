@@ -40,7 +40,7 @@ https://<部署域名>/api/workbench/openai-webhook
 
 订阅 `response.completed`，把签名密钥保存为 `OPENAI_WEBHOOK_SECRET`。处理器使用官方 Node SDK 的 `client.webhooks.unwrap(rawBody, headers)` 验签，以 `webhook-id` 去重，并在持久化事件后返回 2xx。`/api/workbench/process` 由 Vercel Cron 每分钟恢复卡住的后台任务。
 
-复杂任务通过官方 Responses API 的 background mode 创建；后台模型默认使用 `gpt-5.6-luna`，并显式设置 `reasoning.effort: "none"`，以保持迁移前的有效推理强度和延迟等级。联网使用 hosted `web_search`，生图使用 hosted `image_generation`，输出使用严格 JSON Schema。所有返回命令仍会经过服务端命令注册表、用户归属、风险和幂等校验。
+复杂任务通过官方 Responses API 的 background mode 创建；后台模型默认使用 `gpt-5.6-luna`，并显式设置 `reasoning.effort: "none"`，以保持迁移前的有效推理强度和延迟等级。联网使用 hosted `web_search`，生图使用 hosted `image_generation` 并显式指定 `gpt-image-2`，输出使用严格 JSON Schema。所有返回命令仍会经过服务端命令注册表、用户归属、风险和幂等校验。
 
 ## Discuz 数据导入
 
@@ -85,6 +85,7 @@ pnpm test:workbench-voice
 - [OpenAI Realtime](https://developers.openai.com/api/docs/guides/realtime)
 - [OpenAI Voice Agents](https://developers.openai.com/api/docs/guides/voice-agents)
 - [OpenAI Background mode](https://developers.openai.com/api/docs/guides/background)
+- [OpenAI GPT Image 2](https://developers.openai.com/api/docs/models/gpt-image-2)
 - [OpenAI Webhooks](https://developers.openai.com/api/docs/guides/webhooks)
 - [Supabase Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security)
 - [Supabase Storage access control](https://supabase.com/docs/guides/storage/security/access-control)
