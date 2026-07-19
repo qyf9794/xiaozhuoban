@@ -155,6 +155,23 @@ describe("realtime session API", () => {
     expect(payload.session.instructions).toContain("优先选择最接近的已注册工具");
   });
 
+  it("pins the unified workbench session to gpt-realtime-2.1-mini", async () => {
+    stubSupabaseEnv();
+    vi.stubEnv("OPENAI_API_KEY", "sk-test");
+    vi.stubEnv("WORKBENCH_ENABLED", "true");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createSupabaseUserResponse("user_123"))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ value: "client-secret" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await callHandler(JSON.stringify({ highAccuracy: true }));
+
+    const [, init] = fetchMock.mock.calls[1] as [RequestInfo | URL, RequestInit];
+    const payload = JSON.parse(String(init?.body));
+    expect(payload.session.model).toBe("gpt-realtime-2.1-mini");
+  });
+
   it("derives the OpenAI safety identifier from auth even when the request has none", async () => {
     stubSupabaseEnv();
     vi.stubEnv("OPENAI_API_KEY", "sk-test");

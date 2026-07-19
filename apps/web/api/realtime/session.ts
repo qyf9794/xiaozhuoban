@@ -163,7 +163,11 @@ export default async function handler(request: IncomingMessage, response: Server
     upstream = await fetch(OPENAI_REALTIME_CLIENT_SECRET_URL, {
       method: "POST",
       headers,
-      body: JSON.stringify(createRealtimeClientSecretPayload(options))
+      body: JSON.stringify(
+        createRealtimeClientSecretPayload(
+          process.env.WORKBENCH_ENABLED === "true" ? { ...options, highAccuracy: false } : options
+        )
+      )
     });
   } catch (error) {
     sendJson(response, 502, {

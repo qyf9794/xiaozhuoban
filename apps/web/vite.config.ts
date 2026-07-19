@@ -44,7 +44,11 @@ function applyLocalRealtimeApiEnv(env: Record<string, string>): void {
     "ASSISTANT_LOG_CLEANUP_SECRET",
     "ASSISTANT_LOG_RETENTION_DAYS",
     "XIAOZHUOBAN_TEXT_TOOL_MODEL",
-    "XIAOZHUOBAN_E2E_REALTIME_AUTH_BYPASS"
+    "XIAOZHUOBAN_E2E_REALTIME_AUTH_BYPASS",
+    "WORKBENCH_ENABLED",
+    "WORKBENCH_BACKGROUND_MODEL",
+    "OPENAI_WEBHOOK_SECRET",
+    "VITE_WORKBENCH_ENABLED"
   ];
 
   for (const key of keys) {
@@ -84,6 +88,22 @@ function localRealtimeApiPlugin(env: Record<string, string>): Plugin {
         const { default: handler } = await server.ssrLoadModule("./api/geo/search.ts");
         await handler(request as IncomingMessage, response as ServerResponse);
       });
+      server.middlewares.use("/api/workbench/tasks", async (request, response) => {
+        const { default: handler } = await server.ssrLoadModule("./api/workbench/tasks.ts");
+        await handler(request as IncomingMessage, response as ServerResponse);
+      });
+      server.middlewares.use("/api/workbench/task-action", async (request, response) => {
+        const { default: handler } = await server.ssrLoadModule("./api/workbench/task-action.ts");
+        await handler(request as IncomingMessage, response as ServerResponse);
+      });
+      server.middlewares.use("/api/workbench/openai-webhook", async (request, response) => {
+        const { default: handler } = await server.ssrLoadModule("./api/workbench/openai-webhook.ts");
+        await handler(request as IncomingMessage, response as ServerResponse);
+      });
+      server.middlewares.use("/api/workbench/process", async (request, response) => {
+        const { default: handler } = await server.ssrLoadModule("./api/workbench/process.ts");
+        await handler(request as IncomingMessage, response as ServerResponse);
+      });
     }
   };
 }
@@ -119,7 +139,8 @@ export default defineConfig(({ mode }) => {
         "@xiaozhuoban/ai-builder": path.resolve(__dirname, "../../packages/ai-builder/src"),
         "@xiaozhuoban/data": path.resolve(__dirname, "../../packages/data/src"),
         "@xiaozhuoban/contracts": path.resolve(__dirname, "../../packages/contracts/src"),
-        "@xiaozhuoban/ui": path.resolve(__dirname, "../../packages/ui/src")
+        "@xiaozhuoban/ui": path.resolve(__dirname, "../../packages/ui/src"),
+        "@xiaozhuoban/workbench-core": path.resolve(__dirname, "../../packages/workbench-core/src")
       }
     }
   };

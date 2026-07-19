@@ -71,6 +71,26 @@ describe("App shell assistant actions", () => {
     expect(getFullscreen()).toBe(true);
   });
 
+  it("only exposes and controls the workbench when its bridge is installed", async () => {
+    let open = false;
+    const actions = createAppShellActions({
+      getWorkbenchOpen: () => open,
+      setWorkbenchOpen: (next) => {
+        open = next;
+      }
+    });
+    const registry = new ActionRegistry();
+    actions.forEach((action) => registry.register(action));
+
+    expect(registry.get("app.workbench.set")).toBeDefined();
+    await registry.execute(
+      { id: "call_workbench", name: "app.workbench.set", arguments: { mode: "open" }, source: "test" },
+      { now: () => NOW }
+    );
+    expect(open).toBe(true);
+    expect(createAppShellActions({}).some((action) => action.spec.name === "app.workbench.set")).toBe(false);
+  });
+
   it("opens shell panels without widget targets", async () => {
     const { registry, opened, aiDialogMetadata } = createRegistry();
 

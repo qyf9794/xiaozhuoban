@@ -1,0 +1,14 @@
+[
+  {
+    "id": "WB01",
+    "command": "请打开工作台",
+    "expectedTool": "app.workbench.set",
+    "expectedOpen": true
+  },
+  {
+    "id": "WB02",
+    "command": "把工作台收起来",
+    "expectedTool": "app.workbench.set",
+    "expectedOpen": false
+  }
+]

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createLayoutEngine, fromWidgetInstances } from "@xiaozhuoban/layout-engine";
 import type { Board, WidgetDefinition, WidgetInstance } from "@xiaozhuoban/domain";
+import type { WorkbenchPresentationMode } from "@xiaozhuoban/workbench-core";
 import { AIFormWidgetView, BuiltinWidgetView } from "../widgets/BuiltinWidgets";
 import type { WidgetCapabilityBridge } from "../assistant/widgetCapabilityBridge";
 import { clampTvWidgetSize } from "../widgets/tvShared";
@@ -35,12 +36,21 @@ interface PendingTouchDragState {
   captureTarget: Element | null;
 }
 
+export function sortWidgetsForStackedPresentation(widgets: readonly WidgetInstance[]): WidgetInstance[] {
+  return [...widgets].sort((a, b) => {
+    if (a.position.y !== b.position.y) return a.position.y - b.position.y;
+    if (a.position.x !== b.position.x) return a.position.x - b.position.x;
+    return a.zIndex - b.zIndex;
+  });
+}
+
 export function BoardCanvas({
   board,
   definitions,
   widgets,
   fullscreen = false,
   isMobileMode = false,
+  presentationMode = "closed",
   focusedWidgetId,
   onMove,
   onResize,
@@ -54,6 +64,7 @@ export function BoardCanvas({
   widgets: WidgetInstance[];
   fullscreen?: boolean;
   isMobileMode?: boolean;
+  presentationMode?: WorkbenchPresentationMode;
   focusedWidgetId?: string;
   assistantCapabilityBridge?: WidgetCapabilityBridge;
   onMove: (widgetId: string, x: number, y: number) => void;
@@ -64,6 +75,8 @@ export function BoardCanvas({
 }) {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [resize, setResize] = useState<ResizeState | null>(null);
+  const workbenchRailMode = presentationMode === "desktop-rail";
+  const stackedPresentation = isMobileMode || workbenchRailMode;
   const pendingTouchDragRef = useRef<PendingTouchDragState | null>(null);
   const pendingTouchDragTimerRef = useRef<number | null>(null);
 
@@ -147,17 +160,9 @@ export function BoardCanvas({
     };
   }, [drag?.id, dragPosition, isMobileMode, resize?.currentW, resize?.id, widgets]);
 
-  const mobileWidgets = useMemo(
-    () =>
-      [...widgets].sort((a, b) => {
-        if (a.position.y !== b.position.y) return a.position.y - b.position.y;
-        if (a.position.x !== b.position.x) return a.position.x - b.position.x;
-        return a.zIndex - b.zIndex;
-      }),
-    [widgets]
-  );
+  const mobileWidgets = useMemo(() => sortWidgetsForStackedPresentation(widgets), [widgets]);
 
-  const renderedWidgets = isMobileMode ? mobileWidgets : widgets;
+  const renderedWidgets = stackedPresentation ? mobileWidgets : widgets;
   const startDrag = (
     widget: WidgetInstance,
     pointerId: number,
@@ -232,18 +237,22 @@ export function BoardCanvas({
 
   return (
     <div
-      className={isMobileMode ? "board-canvas board-canvas-mobile" : "board-canvas"}
+      className={[
+        "board-canvas",
+        isMobileMode ? "board-canvas-mobile" : "",
+        workbenchRailMode ? "board-canvas-workbench-rail" : ""
+      ].filter(Boolean).join(" ")}
       style={{
         position: "relative",
-        overflow: isMobileMode ? "visible" : "auto",
-        overflowY: isMobileMode ? "visible" : "auto",
-        overflowX: isMobileMode ? "visible" : "auto",
-        display: isMobileMode ? "flex" : "block",
-        flexDirection: isMobileMode ? "column" : "row",
-        gap: isMobileMode ? 16 : 0,
-        padding: isMobileMode ? mobileCanvasPadding : 0,
-        minWidth: desktopCanvasBounds?.minWidth,
-        minHeight: desktopCanvasBounds?.minHeight ?? 0,
+        overflow: stackedPresentation ? (workbenchRailMode ? "auto" : "visible") : "auto",
+        overflowY: stackedPresentation ? (workbenchRailMode ? "auto" : "visible") : "auto",
+        overflowX: stackedPresentation ? (workbenchRailMode ? "hidden" : "visible") : "auto",
+        display: stackedPresentation ? "flex" : "block",
+        flexDirection: stackedPresentation ? "column" : "row",
+        gap: stackedPresentation ? 16 : 0,
+        padding: isMobileMode ? mobileCanvasPadding : workbenchRailMode ? "12px 14px 140px" : 0,
+        minWidth: workbenchRailMode ? 0 : desktopCanvasBounds?.minWidth,
+        minHeight: workbenchRailMode ? 0 : desktopCanvasBounds?.minHeight ?? 0,
         flex: isMobileMode ? undefined : 1,
         height: isMobileMode ? "auto" : fullscreen ? "100dvh" : "calc(100dvh - 120px)",
         borderRadius: fullscreen ? 0 : 16,
@@ -252,11 +261,11 @@ export function BoardCanvas({
         WebkitOverflowScrolling: useTouchScrollableDesktopCanvas ? "touch" : undefined,
         overscrollBehaviorX: useTouchScrollableDesktopCanvas ? "contain" : undefined,
         overscrollBehaviorY: useTouchScrollableDesktopCanvas ? "contain" : undefined,
-        touchAction: isMobileMode ? "pan-y" : supportsTouchScroll ? "pan-x pan-y" : "none",
+        touchAction: stackedPresentation ? "pan-y" : supportsTouchScroll ? "pan-x pan-y" : "none",
         background: "transparent"
       }}
       onPointerMove={
-        isMobileMode
+        stackedPresentation
           ? undefined
           : (event) => {
               const pendingTouchDrag = pendingTouchDragRef.current;
@@ -313,7 +322,7 @@ export function BoardCanvas({
             }
       }
       onPointerUp={
-        isMobileMode
+        stackedPresentation
           ? undefined
           : (event) => {
               if (clearPendingTouchDrag(event.pointerId)) {
@@ -332,7 +341,7 @@ export function BoardCanvas({
             }
       }
       onPointerCancel={
-        isMobileMode
+        stackedPresentation
           ? undefined
           : (event) => {
               if (clearPendingTouchDrag(event.pointerId)) {
@@ -365,7 +374,7 @@ export function BoardCanvas({
           definition.type === "worldClock" ||
           definition.type === "messageBoard" ||
           definition.type === "dialClock";
-        const isDynamicHeightWidget = !isMobileMode && !isFixedHeightDesktopWidget;
+        const isDynamicHeightWidget = workbenchRailMode || (!isMobileMode && !isFixedHeightDesktopWidget);
         const baseSize = isResizableDesktopWidget
           ? clampDesktopWidgetSize(definition.type, widget.size.w, widget.size.h)
           : widget.size;
@@ -382,29 +391,30 @@ export function BoardCanvas({
             key={widget.id}
             data-widget-id={widget.id}
             style={{
-              position: isMobileMode ? "relative" : "absolute",
-              width: isMobileMode ? "min(350px, 100%)" : size.w,
-              height: isMobileMode || isDynamicHeightWidget ? "auto" : size.h,
-              left: isMobileMode ? undefined : position.x,
-              top: isMobileMode ? undefined : position.y,
-              zIndex: isMobileMode ? "auto" : widget.zIndex,
-              cursor: isMobileMode ? "default" : board.locked ? "default" : drag?.id === widget.id ? "grabbing" : "grab",
+              position: stackedPresentation ? "relative" : "absolute",
+              width: workbenchRailMode ? "100%" : isMobileMode ? "min(350px, 100%)" : size.w,
+              height: stackedPresentation || isDynamicHeightWidget ? "auto" : size.h,
+              left: stackedPresentation ? undefined : position.x,
+              top: stackedPresentation ? undefined : position.y,
+              zIndex: stackedPresentation ? "auto" : widget.zIndex,
+              cursor: stackedPresentation ? "default" : board.locked ? "default" : drag?.id === widget.id ? "grabbing" : "grab",
               margin: isMobileMode ? "0 auto" : undefined
             }}
             className={[
               "widget-box",
               isMobileMode ? "widget-box-mobile" : "",
+              workbenchRailMode ? "widget-box-workbench-rail" : "",
               isFocusedWidget ? "is-focused" : ""
             ]
               .filter(Boolean)
               .join(" ")}
             onPointerDownCapture={() => {
-              if (!isFocusedWidget) {
+              if (!workbenchRailMode && !isFocusedWidget) {
                 onFocusWidget?.(widget.id);
               }
             }}
             onPointerDown={(event) => {
-              if (isMobileMode || resize || board.locked || widget.locked) {
+              if (stackedPresentation || resize || board.locked || widget.locked) {
                 return;
               }
               const target = event.target as HTMLElement;
@@ -437,7 +447,7 @@ export function BoardCanvas({
             >
               ×
             </button>
-            {isResizableDesktopWidget && !isMobileMode ? (
+            {isResizableDesktopWidget && !stackedPresentation ? (
               <div
                 className="widget-resize-edge"
                 data-no-drag="true"
@@ -472,7 +482,7 @@ export function BoardCanvas({
               <BuiltinWidgetView
                 definition={definition}
                 instance={widget}
-                isMobileMode={isMobileMode}
+                isMobileMode={stackedPresentation}
                 assistantCapabilityBridge={assistantCapabilityBridge}
                 onStateChange={(nextState) => onStateChange(widget.id, nextState)}
               />

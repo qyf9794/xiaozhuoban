@@ -33,6 +33,9 @@ import { createTvAssistantModule } from "../widgets/modules/tv/assistant";
 import { createWeatherAssistantModule } from "../widgets/modules/weather/assistant";
 import { createWorldClockAssistantModule } from "../widgets/modules/worldClock/assistant";
 import { readTvAssistantChannelCatalog } from "../widgets/tvChannelCatalog";
+import { createWorkbenchActions, createWorkbenchAssistantModule } from "../workbench/assistant";
+import { readWorkbenchAssistantState } from "../workbench/store";
+import { WORKBENCH_FEATURE_ENABLED } from "../workbench/config";
 
 const MOBILE_VIEWPORT_MAX = 900;
 
@@ -82,16 +85,19 @@ function createContextInput(): ContextSummarizerInput {
       name: definition.name
     })),
     maxWidgets: Math.min(16, Math.max(8, activeWidgets.length)),
-    moduleStates: tvChannelCatalog
-      ? {
-          tv: {
-            assistantChannelNames: tvChannelCatalog.channelNames,
-            assistantChannelCount: tvChannelCatalog.channelCount,
-            selectedChannelName: tvChannelCatalog.selectedChannelName,
-            updatedAt: tvChannelCatalog.updatedAt
+    moduleStates: {
+      ...(tvChannelCatalog
+        ? {
+            tv: {
+              assistantChannelNames: tvChannelCatalog.channelNames,
+              assistantChannelCount: tvChannelCatalog.channelCount,
+              selectedChannelName: tvChannelCatalog.selectedChannelName,
+              updatedAt: tvChannelCatalog.updatedAt
+            }
           }
-        }
-      : undefined,
+        : {}),
+      ...(WORKBENCH_FEATURE_ENABLED ? { workbench: readWorkbenchAssistantState() } : {})
+    },
     viewport,
     recentWidgetIds: activeWidgets.slice(-3).map((widget) => widget.id),
     widgets: activeWidgets.map((widget, index) => {
@@ -167,7 +173,8 @@ export function createLocalAssistantHarness(options?: {
     ...createAppShellActions(options?.appShellBridge ?? {}),
     ...registerBoardActions(registry, adapter),
     ...createWidgetStateActions(adapter),
-    ...createWidgetCapabilityActions(adapter, capabilityBridge)
+    ...createWidgetCapabilityActions(adapter, capabilityBridge),
+    ...(WORKBENCH_FEATURE_ENABLED ? createWorkbenchActions() : [])
   ];
   actions.forEach((action) => {
     if (!registry.get(action.spec.name)) {
@@ -190,6 +197,7 @@ export function createLocalAssistantHarness(options?: {
   moduleRegistry.register(createRecorderAssistantModule(widgetDefinitions, actions));
   moduleRegistry.register(createTvAssistantModule(widgetDefinitions, actions));
   createDailyWidgetAssistantModules(widgetDefinitions, actions).forEach((module) => moduleRegistry.register(module));
+  if (WORKBENCH_FEATURE_ENABLED) moduleRegistry.register(createWorkbenchAssistantModule(actions));
 
   const auditContext: AssistantAuditContext = {
     getUserId: () => useAuthStore.getState().user?.id,

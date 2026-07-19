@@ -78,6 +78,7 @@ export function Toolbar({
   onOpenAiDialog,
   onEditDisplayName,
   settingsOpenRequestId,
+  realtimeHighAccuracyAvailable = true,
   realtimeHighAccuracyMode = false,
   onToggleRealtimeHighAccuracyMode,
   localWakeWordEnabled = false,
@@ -104,6 +105,7 @@ export function Toolbar({
   onOpenAiDialog: () => void;
   onEditDisplayName: () => void;
   settingsOpenRequestId?: number;
+  realtimeHighAccuracyAvailable?: boolean;
   realtimeHighAccuracyMode?: boolean;
   onToggleRealtimeHighAccuracyMode?: () => void;
   localWakeWordEnabled?: boolean;
@@ -371,22 +373,24 @@ export function Toolbar({
               >
                 壁纸
               </button>
-              <button
-                onClick={() => {
-                  onToggleRealtimeHighAccuracyMode?.();
-                }}
-                className="glass-dropdown-item"
-                aria-pressed={realtimeHighAccuracyMode}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 10
-                }}
-              >
-                <span>高准确率模式</span>
-                <TinySwitch checked={realtimeHighAccuracyMode} />
-              </button>
+              {realtimeHighAccuracyAvailable ? (
+                <button
+                  onClick={() => {
+                    onToggleRealtimeHighAccuracyMode?.();
+                  }}
+                  className="glass-dropdown-item"
+                  aria-pressed={realtimeHighAccuracyMode}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10
+                  }}
+                >
+                  <span>高准确率模式</span>
+                  <TinySwitch checked={realtimeHighAccuracyMode} />
+                </button>
+              ) : null}
               <button
                 onClick={() => {
                   onToggleLocalWakeWord?.();

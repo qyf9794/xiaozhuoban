@@ -78,6 +78,8 @@ interface UseAssistantRuntimeControllerOptions {
   setFullscreen: Dispatch<SetStateAction<boolean>>;
   setSidebarOpen: Dispatch<SetStateAction<boolean>>;
   sidebarOpen: boolean;
+  getWorkbenchState?: () => { open: boolean };
+  setWorkbenchOpen?: (open: boolean) => void;
 }
 
 export function useAssistantRuntimeController({
@@ -86,6 +88,8 @@ export function useAssistantRuntimeController({
   onOpenCommandPalette,
   onOpenSettings,
   onOpenWallpaperPicker,
+  getWorkbenchState,
+  setWorkbenchOpen,
   setFullscreen,
   setSidebarOpen,
   sidebarOpen
@@ -202,7 +206,9 @@ export function useAssistantRuntimeController({
             });
             onOpenAiDialog(prompt, metadata);
           },
-          openWallpaperPicker: onOpenWallpaperPicker
+          openWallpaperPicker: onOpenWallpaperPicker,
+          getWorkbenchOpen: () => getWorkbenchState?.().open ?? false,
+          setWorkbenchOpen
         },
         adapterOptions: {
           getAccessToken: () => useAuthStore.getState().session?.access_token,

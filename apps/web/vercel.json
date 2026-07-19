@@ -3,6 +3,10 @@
     {
       "path": "/api/assistant/cleanup",
       "schedule": "17 19 * * *"
+    },
+    {
+      "path": "/api/workbench/process",
+      "schedule": "* * * * *"
     }
   ],
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]

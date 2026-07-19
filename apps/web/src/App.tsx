@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BoardCanvas } from "./components/BoardCanvas";
 import { BoardSidebar } from "./components/BoardSidebar";
 import { Toolbar } from "./components/Toolbar";
@@ -16,6 +16,9 @@ import { useAssistantRuntimeController } from "./hooks/useAssistantRuntimeContro
 import { useBackupImportExport } from "./hooks/useBackupImportExport";
 import { useResponsiveShell } from "./hooks/useResponsiveShell";
 import { useWallpaperUpload } from "./hooks/useWallpaperUpload";
+import { WORKBENCH_FEATURE_ENABLED } from "./workbench/config";
+import { WorkbenchToggle, WorkbenchViewport } from "./workbench/WorkbenchShell";
+import { readWorkbenchAssistantState, useWorkbenchStore } from "./workbench/store";
 
 const E2E_AUTH_BYPASS = import.meta.env.VITE_XIAOZHUOBAN_E2E_AUTH_BYPASS === "true";
 
@@ -68,6 +71,12 @@ export function App() {
   const [commandPaletteInitialQuery, setCommandPaletteInitialQuery] = useState("");
   const [aiDialogInitialPrompt, setAiDialogInitialPrompt] = useState("");
   const [settingsOpenRequestId, setSettingsOpenRequestId] = useState(0);
+  const workbenchOpen = useWorkbenchStore((state) => state.open);
+  const setWorkbenchOpen = useWorkbenchStore((state) => state.setOpen);
+  const hydrateWorkbench = useWorkbenchStore((state) => state.hydrate);
+  const workbenchTasks = useWorkbenchStore((state) => state.tasks);
+  const markWorkbenchTaskRead = useWorkbenchStore((state) => state.markTaskRead);
+  const deliveredWorkbenchTaskIdsRef = useRef(new Set<string>());
   const activeBoard = useMemo(() => boards.find((item) => item.id === activeBoardId), [activeBoardId, boards]);
   const appBackgroundColor = activeBoard?.background.type === "color" ? activeBoard.background.value : "#0f172a";
   const appBackgroundImage = activeBoard?.background.type === "image" ? activeBoard.background.value : null;
@@ -126,6 +135,8 @@ export function App() {
     },
     onOpenSettings: () => setSettingsOpenRequestId((value) => value + 1),
     onOpenWallpaperPicker: openWallpaperPicker,
+    getWorkbenchState: WORKBENCH_FEATURE_ENABLED ? readWorkbenchAssistantState : undefined,
+    setWorkbenchOpen: WORKBENCH_FEATURE_ENABLED ? setWorkbenchOpen : undefined,
     setFullscreen,
     setSidebarOpen,
     sidebarOpen
@@ -141,6 +152,30 @@ export function App() {
     userId
   });
   useAppBackground({ activeBoard, backgroundColor: appBackgroundColor });
+
+  useEffect(() => {
+    if (!WORKBENCH_FEATURE_ENABLED || !userId) return;
+    void hydrateWorkbench(userId, activeBoardId).catch(() => undefined);
+  }, [activeBoardId, hydrateWorkbench, userId]);
+
+  useEffect(() => {
+    if (!WORKBENCH_FEATURE_ENABLED || realtimeStatus !== "connected") return;
+    const completed = workbenchTasks.find(
+      (task) =>
+        task.unread &&
+        (task.status === "succeeded" || task.status === "failed") &&
+        !deliveredWorkbenchTaskIdsRef.current.has(task.id)
+    );
+    if (!completed) return;
+    const message = completed.status === "succeeded"
+      ? `[可信工作台后台事件] 任务已完成。请自然、简洁地向用户播报：${completed.reply || "任务已完成"}`
+      : `[可信工作台后台事件] 任务失败。请向用户说明：${completed.error || "后台任务执行失败"}`;
+    if (!assistantRuntime.appendTrustedRealtimeMessage(message)) return;
+    deliveredWorkbenchTaskIdsRef.current.add(completed.id);
+    void markWorkbenchTaskRead(completed.id).catch(() => {
+      deliveredWorkbenchTaskIdsRef.current.delete(completed.id);
+    });
+  }, [assistantRuntime, markWorkbenchTaskRead, realtimeStatus, workbenchTasks]);
 
   const handleRemoveWidget = async (widgetId: string) => {
     const targetWidget = widgetInstances.find((item) => item.id === widgetId);
@@ -210,12 +245,21 @@ export function App() {
   }
 
   return (
-    <div className={`app-shell ${isMobileMode ? "app-shell-mobile" : ""}`}>
+    <div className={`app-shell ${isMobileMode ? "app-shell-mobile" : ""} ${WORKBENCH_FEATURE_ENABLED && workbenchOpen ? "workbench-stage-open" : ""}`}>
       <div className="app-background-layer" style={{ backgroundColor: appBackgroundColor }}>
         {appBackgroundImage ? <img className="app-background-image" src={appBackgroundImage} alt="" /> : null}
       </div>
-      <div className={isMobileMode ? "mobile-stage" : "desktop-stage"}>
-        {sidebarOpen && !fullscreen && !isMobileMode ? (
+      {WORKBENCH_FEATURE_ENABLED && isMobileMode && userId ? (
+        <WorkbenchViewport
+          open={workbenchOpen}
+          userId={userId}
+          boardId={activeBoardId}
+          isMobileMode
+          onClose={() => setWorkbenchOpen(false)}
+        />
+      ) : null}
+      <div className={`${isMobileMode ? "mobile-stage" : "desktop-stage"} ${WORKBENCH_FEATURE_ENABLED && workbenchOpen ? "workbench-stage-open" : ""}`}>
+        {sidebarOpen && !fullscreen && !isMobileMode && !workbenchOpen ? (
           <BoardSidebar
             boards={boards}
             activeBoardId={activeBoardId}
@@ -245,7 +289,8 @@ export function App() {
               mobileVisible={mobileChromeVisible}
               onMenuOpenChange={setMobileToolbarMenuOpen}
               settingsOpenRequestId={settingsOpenRequestId}
-              realtimeHighAccuracyMode={realtimeHighAccuracyMode}
+              realtimeHighAccuracyAvailable={!WORKBENCH_FEATURE_ENABLED}
+              realtimeHighAccuracyMode={WORKBENCH_FEATURE_ENABLED ? false : realtimeHighAccuracyMode}
               onToggleRealtimeHighAccuracyMode={() => setRealtimeHighAccuracyMode((value) => !value)}
               localWakeWordEnabled={localWakeWordEnabled}
               onToggleLocalWakeWord={() => setLocalWakeWordEnabled((value) => !value)}
@@ -303,6 +348,7 @@ export function App() {
             widgets={widgetInstances}
             fullscreen={fullscreen}
             isMobileMode={isMobileMode}
+            presentationMode={WORKBENCH_FEATURE_ENABLED && workbenchOpen ? (isMobileMode ? "mobile-push" : "desktop-rail") : "closed"}
             focusedWidgetId={focusedWidgetId}
             assistantCapabilityBridge={assistantCapabilityBridge}
             onMove={(widgetId, x, y) => void updateWidgetPosition(widgetId, x, y)}
@@ -312,7 +358,7 @@ export function App() {
             onRemoveWidget={(widgetId) => void handleRemoveWidget(widgetId)}
           />
 
-          {!isMobileMode ? (
+          {!isMobileMode && !workbenchOpen ? (
             <button
               onClick={() => {
                 const sidebarWidth = sidebarOpen && !fullscreen ? 280 : 0;
@@ -345,6 +391,16 @@ export function App() {
 
         </main>
 
+        {WORKBENCH_FEATURE_ENABLED && !isMobileMode && userId ? (
+          <WorkbenchViewport
+            open={workbenchOpen}
+            userId={userId}
+            boardId={activeBoardId}
+            isMobileMode={false}
+            onClose={() => setWorkbenchOpen(false)}
+          />
+        ) : null}
+
         {isMobileMode && !fullscreen && mobileSidebarOpen ? (
           <>
             <button
@@ -369,6 +425,10 @@ export function App() {
           </>
         ) : null}
       </div>
+
+      {WORKBENCH_FEATURE_ENABLED ? (
+        <WorkbenchToggle open={workbenchOpen} isMobileMode={isMobileMode} onToggle={() => setWorkbenchOpen(!workbenchOpen)} />
+      ) : null}
 
       <CommandPalette
         open={commandPaletteOpen}

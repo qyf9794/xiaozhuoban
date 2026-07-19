@@ -8,6 +8,7 @@ type SidebarSetArgs = { open?: boolean; mode?: "show" | "hide" | "toggle" };
 type FullscreenSetArgs = { enabled?: boolean; mode?: "enter" | "exit" | "toggle" };
 type CommandPaletteOpenArgs = { query?: string };
 type AiDialogOpenArgs = { prompt?: string };
+type WorkbenchSetArgs = { open?: boolean; mode?: "open" | "close" | "toggle" };
 type EmptyArgs = Record<string, never>;
 
 export type AiDialogOpenMetadata = {
@@ -26,6 +27,8 @@ export interface AppShellActionBridge {
   openCommandPalette?: (query?: string) => Promise<void> | void;
   openAiDialog?: (prompt?: string, metadata?: AiDialogOpenMetadata) => Promise<void> | void;
   openWallpaperPicker?: () => Promise<void> | void;
+  setWorkbenchOpen?: (open: boolean) => Promise<void> | void;
+  getWorkbenchOpen?: () => boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -52,6 +55,12 @@ const commandPaletteOpenSchema = createPassthroughSchema<CommandPaletteOpenArgs>
 );
 const aiDialogOpenSchema = createPassthroughSchema<AiDialogOpenArgs>(
   (value): value is AiDialogOpenArgs => isRecord(value) && (value.prompt === undefined || typeof value.prompt === "string")
+);
+const workbenchSetSchema = createPassthroughSchema<WorkbenchSetArgs>(
+  (value): value is WorkbenchSetArgs =>
+    isRecord(value) &&
+    (value.open === undefined || typeof value.open === "boolean") &&
+    (value.mode === undefined || value.mode === "open" || value.mode === "close" || value.mode === "toggle")
 );
 
 function success(message: string, data?: unknown): AssistantToolResult {
@@ -84,8 +93,36 @@ function resolveFullscreenEnabled(args: FullscreenSetArgs, bridge: AppShellActio
   return !bridge.getFullscreen?.();
 }
 
+function resolveWorkbenchOpen(args: WorkbenchSetArgs, bridge: AppShellActionBridge) {
+  if (typeof args.open === "boolean") return args.open;
+  if (args.mode === "open") return true;
+  if (args.mode === "close") return false;
+  return !bridge.getWorkbenchOpen?.();
+}
+
 export function createAppShellActions(bridge: AppShellActionBridge): Array<AssistantAction<any>> {
   return [
+    ...(bridge.setWorkbenchOpen
+      ? [
+          defineAction<WorkbenchSetArgs>({
+            spec: {
+              name: "app.workbench.set",
+              description: "Open, close, or toggle the integrated AI workbench without changing the saved Xiaozhuoban widget layout.",
+              parameters: workbenchSetSchema,
+              risk: "safe",
+              scope: "desktop",
+              idempotency: "idempotent",
+              concurrencyKey: "app.workbench",
+              examples: ["打开工作台", "关闭工作台", "把工作台收起来", "切换工作台"]
+            },
+            async execute(args) {
+              const open = resolveWorkbenchOpen(args, bridge);
+              await bridge.setWorkbenchOpen?.(open);
+              return success(open ? "已打开工作台" : "已关闭工作台", { open });
+            }
+          })
+        ]
+      : []),
     defineAction<SidebarSetArgs>({
       spec: {
         name: "app.sidebar.set",
